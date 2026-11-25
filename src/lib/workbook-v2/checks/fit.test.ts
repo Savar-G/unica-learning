@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { mathToken, wordToken, type DrawnText, type FlowToken, type Ink, type PageModel } from "../contract";
+import { checkFit } from "../testing/drawn-checks";
 import { reportedTexts } from "../testing/fake-typesetter";
 import { factsBook, goodPages } from "../testing/sample";
-import { checkFit } from "./fit";
 
 const pages = goodPages();
 /** The report of the example pages with one change in the text at this place of the list. */
@@ -96,17 +96,22 @@ describe("flow text", () => {
     ["a token that is broken into lines", [mathToken("5 + 5")], (all) => { all[0].end.y += 12; }, 'Page 381: the token "5 + 5" of "question-1" is not on one line.'],
     ["a token that is drawn narrower", words("one"), (all) => { all[0].end.x -= 2; }, 'Page 381: the token "one" of "question-1" is drawn 6 points wide and wants 8.'],
     ["a smaller token", words("one"), (all) => { all[0].size = 9; }, 'Page 381: the token "one" of "question-1" has the size 9 and the weight 400, and the model says 12 and 400.'],
-    ["a token over the one before it", words("one", "two"), (all) => at(all[1], 104, 108), 'Page 381: the token "two" of "question-1" does not come after the one before it.'],
-    ["a token above the one before it", words("one", "two", "three", "four", "five"), (all) => at(all[4], 100, 108), 'Page 381: the token "five" of "question-1" does not come after the one before it.'],
-    ["a line that does not start at the left", words("one", "two", "three", "four", "five"), (all) => at(all[3], 110, 120), 'Page 381: the token "four" of "question-1" starts a line that is not at the left.'],
-    ["a line over the line before it", words("one", "two", "three", "four"), (all) => at(all[3], 100, 112), 'Page 381: the token "four" of "question-1" does not come after the one before it.'],
-    ["a break inside a token with no space", words("hand-woven"), (all) => at(all[1], 114, 108), 'Page 381: the token "hand-woven" of "question-1" has a gap inside it.'],
-    ["two tokens with no space", words("one", "two"), (all) => at(all[1], 108, 108), 'Page 381: the token "two" of "question-1" has no space before it.'],
+    ["a token over the one before it", words("one", "two"), (all) => at(all[1], 104, 108), 'Page 381: the token "two" of "question-1" is -4 points after the piece before it and must be 4.'],
+    ["a token with more space before it", words("one", "two"), (all) => at(all[1], 112.2, 108), 'Page 381: the token "two" of "question-1" is 4.2 points after the piece before it and must be 4.'],
+    ["a token with no space before it", words("one", "two"), (all) => at(all[1], 108, 108), 'Page 381: the token "two" of "question-1" is 0 points after the piece before it and must be 4.'],
+    ["a gap inside a token", words("hand-woven"), (all) => at(all[1], 108.2, 108), 'Page 381: the token "hand-woven" of "question-1" is 0.2 points after the piece before it and must be 0.'],
+    ["a token above the one before it", words("one", "two", "three", "four", "five"), (all) => at(all[4], 100, 108), 'Page 381: the token "five" of "question-1" is -44 points after the piece before it and must be 4.'],
+    ["a line that does not start at the left", words("one", "two", "three", "four", "five"), (all) => at(all[4], 100.2, 120), 'Page 381: the token "five" of "question-1" starts a line that is not at the left.'],
+    ["a line that is 0.2 points too low", words("one", "two", "three", "four", "five"), (all) => at(all[4], 100, 120.2), 'Page 381: the token "five" of "question-1" is on a line 12.2 points below the one before it and must be 12.'],
+    ["a line that is 0.2 points too high", words("one", "two", "three", "four", "five"), (all) => at(all[4], 100, 119.8), 'Page 381: the token "five" of "question-1" is on a line 11.8 points below the one before it and must be 12.'],
+    ["a first line that is too low", words("one", "two"), (all) => all.forEach((d) => at(d, d.start.x, 108.2)), 'Page 381: the token "one" of "question-1" does not start at the corner of its place.'],
+    ["a first line that starts right of its place", words("one", "two"), (all) => all.forEach((d) => at(d, d.start.x + 0.2, 108)), 'Page 381: the token "one" of "question-1" does not start at the corner of its place.'],
+    ["text that is not drawn as a flow", words("one"), (all) => { all[0].flow = null; }, 'Page 381: the token "one" of "question-1" is not flow text.'],
   ])("%s is a problem", (_name, tokens, change, problem) => {
     expect(problems(page(tokens), change)).toContain(problem);
   });
 
   it("with no number in its report does not pass", () => {
-    for (const change of [(d: DrawnText) => { d.natural.w = Number.NaN; }, (d: DrawnText) => { d.start.x = Number.NaN; }, (d: DrawnText) => { d.start.y = Number.NaN; }, (d: DrawnText) => { d.natural.below = Number.NaN; }, (d: DrawnText) => { d.natural.above = Number.NaN; }]) expect(problems(page(words("one", "two")), (all) => change(all[1]))).not.toEqual([]);
+    for (const change of [(d: DrawnText) => { d.natural.w = Number.NaN; }, (d: DrawnText) => { d.start.x = Number.NaN; }, (d: DrawnText) => { d.start.y = Number.NaN; }, (d: DrawnText) => { d.natural.below = Number.NaN; }, (d: DrawnText) => { d.natural.above = Number.NaN; }, (d: DrawnText) => { if (d.flow) d.flow.space = Number.NaN; }]) expect(problems(page(words("one", "two")), (all) => change(all[1]))).not.toEqual([]);
   });
 });

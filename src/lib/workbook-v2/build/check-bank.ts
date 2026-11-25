@@ -1,20 +1,22 @@
-// The checks of a level before it is frozen: every sheet and row of a snapshot is made with many seeds, and the widest
-// question of each form is drawn at each place of its template. A sheet that passes makes no book that cannot be printed.
-import { validateSnapshot, type SnapshotRow, type SnapshotSheet, type TemplateLibrary } from "../bank/snapshot";
-import { inkOutside } from "../checks/blank";
+// The checks of a level before it is frozen: every sheet and row of a snapshot is made with many seeds, the widest question
+// of each form is drawn at each place of its template, and every text that a row can print is measured in its place. A
+// sheet that passes makes no book that cannot be printed.
+import { ShapeFault, validateSnapshot, type SnapshotResult, type SnapshotRow, type SnapshotSheet, type TemplateLibrary } from "../bank/snapshot";
 import { checkDrawing } from "../checks/drawn";
-import { checkFit } from "../checks/fit";
-import { readPageImage } from "../checks/page-image";
-import { checkTexts } from "../checks/positions";
-import { checkRendering } from "../checks/rendering";
-import { IMAGE_PIXELS_PER_INCH, type BookItem, type Ink, type PageModel, type Rect, type Region, type Side } from "../contract";
+import { flowProblems, textProblem } from "../checks/fit";
+import { checkItemImage } from "../checks/images";
+import { regionName } from "../checks/page-rules";
+import { checkImageFiles, checkReport } from "../checks/rendering";
+import { placeTexts } from "../checks/texts";
+import { IMAGE_PIXELS_PER_INCH, PAPER, type BookItem, type Ink, type PageModel, type Rect, type Region, type Side } from "../contract";
 import type { PlannedSheet } from "../layout/build-pages";
 import { TEMPLATES } from "../layout/templates";
-import { RenderError, type Renderer, type Rendering } from "../renderer";
+import { RenderError, type Renderer } from "../renderer";
 import { SHAPES, type Item, type ShapeLibrary } from "../shapes";
 import { formsOf } from "../shapes/shape";
 import { planPages } from "./build-book";
 import { sheetItems } from "./items";
+import { rowTexts } from "./row-texts";
 
 /** How many children a level is made for before it is frozen. */
 export const BANK_SEEDS = 200;
@@ -36,9 +38,8 @@ interface Planned { pages: PageModel[]; items: BookItem[] }
 interface Group extends Planned { owner: string }
 /** A question that is drawn alone on a small page. */
 interface Alone { owner: string; page: PageModel; slot: Region; number: number; side: Side }
-/** A text of the row that printed it first, with the page and the rectangle that it stands in. */
-interface OwnText { owner: string; page: PageModel; region: Region; ink: Ink }
-type Check = (pages: PageModel[], items: BookItem[], drawn: Rendering) => string[];
+/** A text, and where each row prints it first. */
+interface Measured { ink: Ink; owners: Map<string, { name: string; side: Side }> }
 
 const rowPlace = (sheet: SnapshotSheet, side: Side, rows: readonly { id: string }[]): string => `Sheet "${sheet.id}", ${side} side, row${rows.length === 1 ? "" : "s"} ${rows.map((r) => `"${r.id}"`).join(", ")}`;
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
@@ -54,6 +55,16 @@ function attempt<T>(what: string, step: () => T): Made<T> {
   }
 }
 
+/** The same for a drawing: only a problem of the typesetter is one of the bank. */
+async function drawing<T>(step: () => Promise<T>): Promise<Made<T>> {
+  try {
+    return { ok: true, value: await step() };
+  } catch (error) {
+    if (error instanceof RenderError) return { ok: false, problems: [error.message] };
+    throw error;
+  }
+}
+
 const planned = (sheet: SnapshotSheet, levelName: string, items: BookItem[], run = 1): PlannedSheet => ({ sheet, levelName, attempt: run, qr: QR, items });
 
 class BankCheck {
@@ -62,8 +73,7 @@ class BankCheck {
   private readonly groups: Group[] = [];
   private readonly alone: Alone[] = [];
   private readonly aloneKeys = new Set<string>();
-  private readonly texts: OwnText[] = [];
-  private readonly textKeys = new Set<string>();
+  private readonly texts = new Map<string, Measured>();
   private runs = 0;
 
   constructor(private readonly levelName: string, private readonly shapes: ShapeLibrary, seeds: number, private readonly renderer: Renderer) {
@@ -102,30 +112,27 @@ class BankCheck {
     if (!told) this.tell(`Sheet "${sheet.id}", both sides, seed ${seed}`, problems);
   }
 
-  /** Every text that the pages print, one time for each size of its place. */
-  private collectTexts(sheet: SnapshotSheet, { pages, items }: Planned): void {
-    const rowOf = new Map(items.map((i) => [i.id, i.rowId]));
-    for (const page of pages) {
-      for (const region of page.regions) {
-        for (const ink of region.ink) {
-          if (ink.kind !== "text" && ink.kind !== "flow") continue;
-          const { w, h } = ink.rect;
-          const key = ink.kind === "text" ? `${ink.text}|${ink.size}|${ink.weight}|${ink.align}|${w}|${h}` : JSON.stringify({ ...ink, rect: { w, h } });
-          if (this.textKeys.has(key)) continue;
-          this.textKeys.add(key);
-          const rows = region.item === null ? sheet[page.side].rows : sheet[page.side].rows.filter((r) => r.id === rowOf.get(region.item ?? ""));
-          this.texts.push({ owner: rowPlace(sheet, page.side, rows), page: { ...page, regions: [] }, region: { ...region, ink: [] }, ink });
-        }
-      }
-    }
+  /** A text to measure, one time for each size of its place. */
+  private measure(owner: string, ink: Ink, name: string, side: Side): void {
+    if (ink.kind !== "text" && ink.kind !== "flow") return;
+    const { w, h } = ink.rect;
+    const key = ink.kind === "text" ? `${ink.text}|${ink.size}|${ink.weight}|${ink.align}|${w}|${h}` : JSON.stringify({ ...ink, rect: { w, h } });
+    const known = this.texts.get(key);
+    if (!known) this.texts.set(key, { ink, owners: new Map([[owner, { name, side }]]) });
+    else if (!known.owners.has(owner)) known.owners.set(owner, { name, side });
   }
 
   seeds(sheet: SnapshotSheet): void {
     for (let seed = 1; seed <= this.checked.seeds; seed++) {
       const plan = this.plan(sheet, seed, SIDES);
       if (!plan.ok) return this.tellSeed(sheet, seed, plan.problems);
-      this.checked.questions += plan.value.items.length;
-      this.collectTexts(sheet, plan.value);
+      const { pages, items } = plan.value;
+      this.checked.questions += items.length;
+      const ownerOf = new Map<string | null, string>(items.map((i) => [i.id, rowPlace(sheet, i.side, [{ id: i.rowId }])]));
+      for (const page of pages) {
+        const whole = rowPlace(sheet, page.side, sheet[page.side].rows);
+        for (const region of page.regions) for (const ink of region.ink) this.measure(ownerOf.get(region.item) ?? whole, ink, regionName(region).slice(1, -1), page.side);
+      }
     }
   }
 
@@ -151,63 +158,100 @@ class BankCheck {
   private drawAlone(owner: string, page: PageModel, item: BookItem, template: string): void {
     const key = [template, item.side, item.number, JSON.stringify([item.face, item.answer])].join("|");
     const own = page.regions.filter((r) => r.item === item.id);
-    const slot = own.find((r) => r.role === "slot");
-    if (!slot || this.aloneKeys.has(key)) return;
+    if (this.aloneKeys.has(key)) return;
     this.aloneKeys.add(key);
-    const small = alonePage(page, own, slot);
-    this.alone.push({ owner, page: small, slot: small.regions.find((r) => r.role === "slot") ?? slot, number: item.number, side: item.side });
+    const small = alonePage(page, own);
+    if (small) this.alone.push({ owner, ...small, number: item.number, side: item.side });
+    else this.tell(owner, [`question ${item.number} of the ${item.side} side has no slot to be drawn in.`]);
+  }
+
+  private row(sheet: SnapshotSheet, side: Side, row: SnapshotRow): void {
+    const owner = rowPlace(sheet, side, [row]);
+    const before = this.problems.length;
+    const forms = attempt("the widest question cannot be made", () => formsOf(row.shape, row.limits));
+    if (!forms.ok) return this.tell(owner, forms.problems);
+    const texts = attempt("the texts of the row cannot be made", () => rowTexts(row, sheet[side].template));
+    if (texts.ok) for (const { ink, name, side: at } of texts.value.texts) this.measure(owner, ink, name, at);
+    this.tell(owner, texts.ok ? texts.value.problems : texts.problems);
+    const runs = this.runs;
+    for (const form of forms.value) this.widest(sheet, side, row, form);
+    if (this.runs === runs && this.problems.length === before) this.tell(owner, ["nothing was drawn, because the shape gives no form of its questions."]);
   }
 
   rows(sheet: SnapshotSheet): void {
     for (const side of SIDES) {
       for (const row of sheet[side].rows) {
         this.checked.rows++;
-        const forms = attempt("the widest question cannot be made", () => formsOf(row.shape, row.limits));
-        if (forms.ok) for (const form of forms.value) this.widest(sheet, side, row, form);
-        else this.tell(rowPlace(sheet, side, [row]), forms.problems);
+        this.row(sheet, side, row);
       }
     }
   }
 
-  private async render(pages: readonly PageModel[]): Promise<Rendering | string[]> {
-    try {
-      return await this.renderer.render(pages);
-    } catch (error) {
-      if (error instanceof RenderError) return [error.message];
-      throw error;
-    }
+  private async groupProblems(groups: readonly Group[]): Promise<string[]> {
+    const [pages, items] = [groups.flatMap((g) => g.pages), groups.flatMap((g) => g.items)];
+    const drawn = await drawing(() => this.renderer.render(pages));
+    return drawn.ok ? checkDrawing(pages, items, drawn.value) : drawn.problems;
   }
 
-  private async problemsOf(groups: readonly Group[], check: Check): Promise<string[]> {
-    const pages = groups.flatMap((g) => g.pages);
-    const drawn = await this.render(pages);
-    return Array.isArray(drawn) ? drawn : check(pages, groups.flatMap((g) => g.items), drawn);
+  /** Each problem of some questions that are drawn alone, or why they could not be drawn. */
+  private async aloneProblems(batch: readonly Alone[]): Promise<{ told: [Alone, string][] } | { failed: string[] }> {
+    const pages = batch.map((a) => a.page);
+    const drawn = await drawing(() => this.renderer.images(pages));
+    const failed = drawn.ok ? checkImageFiles(pages, drawn.value) : drawn.problems;
+    if (!drawn.ok || failed.length > 0) return { failed };
+    return { told: batch.flatMap((one, i) => checkItemImage(one.page, one.slot, drawn.value[i]).map((problem): [Alone, string] => [one, problem])) };
   }
 
-  /** Draws the groups in batches. A batch that fails is drawn again group by group, so that each problem has its row. */
-  private async drawGroups(groups: readonly Group[], check: Check): Promise<void> {
-    for (const batch of batchesOf(groups, (g) => g.pages.length)) {
-      const together = await this.problemsOf(batch, check);
+  private async textProblems(batch: readonly Measured[]): Promise<{ told: [Measured, string][] } | { failed: string[] }> {
+    const { pages, textOf } = measurePages(batch);
+    const drawn = await drawing(() => this.renderer.report(pages));
+    const failed = drawn.ok ? checkReport(pages, drawn.value) : drawn.problems;
+    if (!drawn.ok || failed.length > 0) return { failed };
+    const placed = placeTexts(pages, drawn.value.texts);
+    const found = new Set<Measured>();
+    const told: [Measured, string][] = [];
+    const tell = (region: Region, problems: readonly string[]) => {
+      const text = textOf.get(region.id);
+      if (!text) return;
+      found.add(text);
+      for (const problem of problems) told.push([text, problem]);
+    };
+    for (const one of placed.texts) tell(one.region, [textProblem(one) ?? []].flat());
+    for (const flow of placed.flows) tell(flow.region, flowProblems(flow));
+    return { told: [...told, ...batch.flatMap((text): [Measured, string][] => (found.has(text) ? [] : [[text, "was not drawn as the model says it"]]))] };
+  }
+
+  /** Draws in batches. A batch that cannot be drawn is drawn again one by one, so that each problem has its row. */
+  private async drawBatches<T>(all: readonly T[], size: (one: T) => number, check: (batch: readonly T[]) => Promise<string[]>, tellOne: (one: T, problems: string[]) => void, ownersOf: (one: T) => string[]): Promise<void> {
+    for (const batch of batchesOf(all, size)) {
+      const together = await check(batch);
       if (together.length === 0) continue;
       const before = this.problems.length;
-      for (const group of batch) this.tell(group.owner, batch.length === 1 ? together : await this.problemsOf([group], check));
-      if (this.problems.length === before) this.tell("The rows of one drawing", together);
+      for (const one of batch) tellOne(one, batch.length === 1 ? together : await check([one]));
+      if (this.problems.length === before) this.tell(`${[...new Set(batch.flatMap(ownersOf))].join(" and ")}, drawn together`, together);
     }
   }
 
   private async drawAlones(all: readonly Alone[]): Promise<void> {
-    for (const batch of batchesOf(all, () => 1)) {
-      const drawn = await this.render(batch.map((a) => a.page));
-      const missing = Array.isArray(drawn) ? drawn : checkRendering(batch.map((a) => a.page), drawn);
-      if (Array.isArray(drawn) || missing.length > 0) {
-        this.tell(batch[0].owner, missing);
-        continue;
-      }
-      batch.forEach(({ owner, slot, number, side }, i) => {
-        const problem = aloneProblem(drawn.images[i], slot);
-        if (problem) this.tell(owner, [`question ${number} of the ${side} side, drawn alone${problem}.`]);
-      });
-    }
+    const tellOne = ({ owner, number, side }: Alone, problems: string[]) => this.tell(owner, problems.map((problem) => `question ${number} of the ${side} side, drawn alone: ${problem.replace(/\.$/, "")}.`));
+    await this.drawBatches(all, () => 1, async (batch) => {
+      const result = await this.aloneProblems(batch);
+      if ("failed" in result) return result.failed;
+      for (const [one, problem] of result.told) tellOne(one, [problem]);
+      return [];
+    }, tellOne, ({ owner }) => [owner]);
+  }
+
+  private async measureAll(all: readonly Measured[]): Promise<void> {
+    const tellOne = ({ ink, owners }: Measured, problems: string[]) => {
+      for (const [owner, { name, side }] of owners) this.tell(owner, problems.map((problem) => (ink.kind === "text" ? `the text "${ink.text}" of "${name}" of the ${side} side ${problem.replace(/\.$/, "")}.` : `the flow text of "${name}" of the ${side} side: ${problem.replace(/\.$/, "")}.`)));
+    };
+    await this.drawBatches(all, () => 1 / TEXTS_OF_A_PAGE, async (batch) => {
+      const result = await this.textProblems(batch);
+      if ("failed" in result) return result.failed;
+      for (const [one, problem] of result.told) tellOne(one, [problem]);
+      return [];
+    }, tellOne, ({ owners }) => [...owners.keys()]);
   }
 
   /** Draws what waits, when it fills a drawing or when there is no more. A level has thousands of pages, so they do not all wait. */
@@ -215,31 +259,28 @@ class BankCheck {
     const pages = this.groups.reduce((sum, g) => sum + g.pages.length, 0);
     if (last || pages >= BATCH) {
       this.checked.pages += pages;
-      await this.drawGroups(this.groups.splice(0), checkDrawing);
+      await this.drawBatches(this.groups.splice(0), (g) => g.pages.length, (batch) => this.groupProblems(batch), ({ owner }, problems) => this.tell(owner, problems), ({ owner }) => [owner]);
     }
     if (last || this.alone.length >= BATCH) {
       this.checked.alone += this.alone.length;
       await this.drawAlones(this.alone.splice(0));
     }
     if (!last) return;
-    this.checked.texts = this.texts.length;
-    const byOwner = new Map<string, OwnText[]>();
-    for (const text of this.texts) byOwner.set(text.owner, [...(byOwner.get(text.owner) ?? []), text]);
-    const measured = [...byOwner].flatMap(([owner, texts]) => measurePages(texts).map((page): Group => ({ owner, pages: [page], items: [] })));
-    await this.drawGroups(measured, (all, _items, drawn) => [...checkTexts(all, drawn.texts), ...checkFit(all, drawn.texts)]);
+    this.checked.texts = this.texts.size;
+    await this.measureAll([...this.texts.values()]);
   }
 }
 
-function batchesOf<T>(all: readonly T[], pagesOf: (one: T) => number): T[][] {
+function batchesOf<T>(all: readonly T[], size: (one: T) => number): T[][] {
   const batches: T[][] = [];
   let room = 0;
   for (const one of all) {
-    if (room < pagesOf(one)) {
+    if (room < size(one)) {
       batches.push([]);
-      room = Math.max(BATCH, pagesOf(one));
+      room = Math.max(BATCH, size(one));
     }
     batches[batches.length - 1].push(one);
-    room -= pagesOf(one);
+    room -= size(one);
   }
   return batches;
 }
@@ -251,46 +292,55 @@ const PIXEL = 72 / IMAGE_PIXELS_PER_INCH;
 
 const movedRect = (r: Rect, dx: number, dy: number): Rect => ({ ...r, x: r.x + dx, y: r.y + dy });
 
-/** A small empty page with nothing but the ink of one item. */
-function alonePage(page: PageModel, own: readonly Region[], slot: Region): PageModel {
-  const [dx, dy] = [slot.rect.x, slot.rect.y].map((at) => Math.round((ALONE_EDGE - at) / PIXEL) * PIXEL);
+/** A small empty page with nothing but the ink of one item. Its size is in whole pixels. */
+function alonePage(page: PageModel, own: readonly Region[]): { page: PageModel; slot: Region } | null {
+  const place = own.find((r) => r.role === "slot");
+  if (!place) return null;
+  const [dx, dy] = [place.rect.x, place.rect.y].map((at) => Math.round((ALONE_EDGE - at) / PIXEL) * PIXEL);
   const regions = own.map((r): Region => ({ ...r, rect: movedRect(r.rect, dx, dy), ink: r.ink.map((ink): Ink => ({ ...ink, rect: movedRect(ink.rect, dx, dy) })) }));
-  return { ...page, size: { w: Math.ceil(slot.rect.w) + 2 * ALONE_EDGE, h: Math.ceil(slot.rect.h) + 2 * ALONE_EDGE }, regions };
+  const slot = regions.find((r) => r.role === "slot");
+  const size = (length: number) => Math.ceil((length + 2 * ALONE_EDGE) / PIXEL) * PIXEL;
+  return slot ? { page: { ...page, size: { w: size(place.rect.w), h: size(place.rect.h) }, regions }, slot } : null;
 }
 
-/** Layer 2: an item alone has ink in its slot and nowhere else. */
-function aloneProblem(png: Uint8Array, slot: Region): string | null {
-  const image = readPageImage(png);
-  if (typeof image === "string") return `: ${image}`;
-  const name = `"${slot.id.slice(slot.id.lastIndexOf("/") + 1)}"`;
-  if (inkOutside(image, slot.rect)) return `, has ink outside ${name}`;
-  return inkOutside(image, { x: 0, y: 0, w: 0, h: 0 }) ? null : ", has no ink";
-}
-
-const MEASURE = { w: 612, gap: 4, rowsHigh: 700 };
+const MEASURE = { gap: 4, high: 700 };
+/** About how many texts a page of them has. It only decides the size of a batch. */
+const TEXTS_OF_A_PAGE = 50;
 
 /** Pages with nothing but texts, each in a rectangle of its own size. They are measured and not printed. */
-function measurePages(texts: readonly OwnText[]): PageModel[] {
+function measurePages(texts: readonly Measured[]): { pages: PageModel[]; textOf: Map<string, Measured> } {
   const pages: PageModel[] = [];
-  let [x, y, high] = [0, MEASURE.rowsHigh, 0];
-  for (const { page, region, ink } of texts) {
-    const { w, h } = ink.rect;
-    if (x + w > MEASURE.w) [x, y, high] = [0, y + high + MEASURE.gap, 0];
-    if (y + h > MEASURE.rowsHigh) {
-      pages.push({ ...page, size: { w: Math.max(MEASURE.w, w), h: Math.max(MEASURE.rowsHigh, h) }, regions: [] });
+  const textOf = new Map<string, Measured>();
+  let [x, y, high] = [0, MEASURE.high, 0];
+  for (const text of texts) {
+    const { w, h } = text.ink.rect;
+    if (x + w > PAPER.w) [x, y, high] = [0, y + high + MEASURE.gap, 0];
+    if (y + h > MEASURE.high) {
+      const id = `measure-${pages.length + 1}`;
+      pages.push({ id, sheetId: id, attempt: 1, side: "front", page: pages.length + 1, levelName: "", topicCode: "", topicTitle: "", instruction: "", template: "", qr: "", size: { w: Math.max(PAPER.w, w), h: Math.max(MEASURE.high, h) }, regions: [] });
       [x, y, high] = [0, 0, 0];
     }
+    const id = `measure/${textOf.size + 1}`;
     const rect = { x, y, w, h };
-    pages[pages.length - 1].regions.push({ ...region, rect, ink: [{ ...ink, rect }] });
+    textOf.set(id, text);
+    pages[pages.length - 1].regions.push({ id, role: "question", rect, item: null, part: null, ink: [{ ...text.ink, rect }] });
     [x, high] = [x + w + MEASURE.gap, Math.max(high, h)];
   }
-  return pages;
+  return { pages, textOf };
+}
+
+function readBank(snapshot: unknown, shapes: ShapeLibrary, templates: TemplateLibrary): SnapshotResult {
+  try {
+    return validateSnapshot(snapshot, shapes, templates);
+  } catch (error) {
+    if (error instanceof ShapeFault) return { ok: false, problems: [`${error.message}.`] };
+    throw error;
+  }
 }
 
 /** Every problem of a snapshot, with its sheet, side and row. It changes nothing, and the same snapshot gives the same report. */
 export async function checkBank(snapshot: unknown, renderer: Renderer, { shapes = SHAPES, templates = TEMPLATES, seeds = BANK_SEEDS }: BankOptions = {}): Promise<BankReport> {
-  const read = attempt("The snapshot cannot be checked", () => validateSnapshot(snapshot, shapes, templates));
-  const bank = read.ok ? read.value : read;
+  const bank = readBank(snapshot, shapes, templates);
   if (!bank.ok) return { problems: bank.problems, checked: { sheets: 0, rows: 0, seeds: 0, questions: 0, pages: 0, alone: 0, texts: 0 } };
   const check = new BankCheck(bank.snapshot.level.name, shapes, seeds, renderer);
   for (const sheet of bank.snapshot.sheets.values()) {

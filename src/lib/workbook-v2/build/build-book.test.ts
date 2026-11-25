@@ -8,7 +8,7 @@ import { RenderError, type Renderer, type Rendering } from "../renderer";
 import { SHAPES, shapeLibrary, type Shape } from "../shapes";
 import { wholeNumber } from "../shapes/shape";
 import { pagesPdf } from "../testing/fake-pdf";
-import { reportedPositions, reportedTexts } from "../testing/fake-typesetter";
+import { fakeRenderer } from "../testing/fake-renderer";
 import { drawPage, paint, pagePng, toPng } from "../testing/raster";
 import { stackOf } from "../testing/sample";
 import { skipTypstTests, testAssets } from "../testing/typst";
@@ -30,32 +30,11 @@ const input = (change: (i: Input) => unknown = () => {}): Input => {
 };
 const put = (target: object, key: string, value: unknown) => { Reflect.set(target, key, value); };
 
-const IDENTITY: Renderer["identity"] = { typst: "0.0.0", program: "p", template: "t", fonts: { "A.ttf": "a", "B.ttf": "b" } };
-/** The image of a page, made one time for all the tests that print the same page. */
-const images = new Map<string, Uint8Array>();
-function imageOf(page: PageModel): Uint8Array {
-  const key = JSON.stringify(page);
-  const image = images.get(key) ?? pagePng(page);
-  images.set(key, image);
-  return Uint8Array.from(image);
-}
-/** A renderer that draws exactly the model. */
+const IDENTITY = fakeRenderer().identity;
+/** A renderer that draws exactly the model. `drawn` are the books that it drew. */
 function fake(change: Partial<Renderer> = {}): Renderer & { drawn: PageModel[][] } {
-  const drawn: PageModel[][] = [];
-  return {
-    drawn,
-    identity: IDENTITY,
-    render: async (pages) => {
-      drawn.push([...pages]);
-      return {
-        pdf: pagesPdf(pages),
-        images: pages.map(imageOf),
-        positions: reportedPositions(pages),
-        texts: reportedTexts(pages),
-      };
-    },
-    ...change,
-  };
+  const fake = fakeRenderer();
+  return { ...fake, ...change, drawn: fake.drawn.render };
 }
 
 async function built(i: Input, renderer: Renderer = fake()): Promise<BuiltBook> {

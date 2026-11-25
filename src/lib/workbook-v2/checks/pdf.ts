@@ -3,7 +3,7 @@
 import type { DrawnText, Ink, PageModel, Rect } from "../contract";
 import { readPdf, type PdfInk, type PdfPage } from "./pdf-file";
 import { near } from "./rects";
-import { placeTexts, type PlacedPiece } from "./texts";
+import type { PlacedTexts } from "./texts";
 
 /** The weight of each font file of the engine. */
 const WEIGHTS: Readonly<Record<string, number>> = { "Geist-Regular": 400, "Geist-SemiBold": 600 };
@@ -52,20 +52,19 @@ function pageProblem(page: PageModel, wanted: readonly Wanted[], pdf: PdfPage): 
 }
 
 /** What each page must draw. A text that was not reported is a problem of `checkTexts`, and here it is not drawn. */
-function wantedInk(pages: readonly PageModel[], drawn: readonly DrawnText[]): Wanted[][] {
-  const { texts, flows } = placeTexts(pages, drawn);
+function wantedInk(pages: readonly PageModel[], { texts, flows }: PlacedTexts): Wanted[][] {
   const reported = new Map<Ink, readonly DrawnText[]>();
   for (const { ink, drawn: one } of texts) reported.set(ink, [one]);
-  for (const { ink, pieces } of flows) reported.set(ink, pieces.map((p: PlacedPiece) => p.drawn));
+  for (const { ink, pieces } of flows) reported.set(ink, pieces.map((p) => p.drawn));
   return pages.map((page) => page.regions.flatMap((r) => r.ink).flatMap((ink): Wanted[] => (ink.kind === "fill" || ink.kind === "outline" ? [ink] : (reported.get(ink) ?? []).map((one) => ({ kind: "text", drawn: one })))));
 }
 
-/** Where the PDF is not what the model says, in plain words. `drawn` is what the typesetter reports of its texts. */
-export function checkPdf(pages: readonly PageModel[], drawn: readonly DrawnText[], pdf: Uint8Array): string[] {
+/** Where the PDF is not what the model says, in plain words. `placed` is what the typesetter reports of its texts. */
+export function checkPdf(pages: readonly PageModel[], placed: PlacedTexts, pdf: Uint8Array): string[] {
   const read = readPdf(pdf);
   if (typeof read === "string") return [`The PDF ${read}.`];
   if (read.length !== pages.length) return [`The PDF has ${read.length} pages and the book has ${pages.length}.`];
-  const wanted = wantedInk(pages, drawn);
+  const wanted = wantedInk(pages, placed);
   return pages.flatMap((page, i) => {
     const problem = pageProblem(page, wanted[i], read[i]);
     return problem ? [`Page ${page.page}: ${problem}.`] : [];

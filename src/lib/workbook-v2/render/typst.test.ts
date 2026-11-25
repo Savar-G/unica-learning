@@ -2,14 +2,15 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
+import fc from "fast-check";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { isPrintable, mathToken, wordToken, type Ink, type PageModel, type Rect, type Region } from "../contract";
-import { checkFit } from "../checks/fit";
 import { checkImages } from "../checks/images";
-import { checkPdf } from "../checks/pdf";
-import { checkPositions, checkTexts } from "../checks/positions";
+import { checkPositions } from "../checks/positions";
+import { DIGIT_KERNING } from "../build/row-texts";
 import { sha256 } from "../hash";
 import { qrSquares } from "../layout/qr";
+import { checkFit, checkPdf, checkTexts } from "../testing/drawn-checks";
 import { darkest, isGrey, qrText, readImage } from "../testing/images";
 import { characterCodes } from "../testing/glyphs";
 import { goodPages, smallPages } from "../testing/sample";
@@ -281,6 +282,31 @@ describe.skipIf(skipTypstTests()).concurrent("with the real Typst", () => {
     expect(checkFit(all, out.texts)).toEqual([]);
     expect(checkImages(all, out.images)).toEqual([]);
     expect(checkPdf(all, out.texts, out.pdf)).toEqual([]);
+  });
+
+  it("draws any text that may be printed where it reports it, with no move of a letter but the kerning of its fonts", async () => {
+    const [page] = goodPages();
+    const printable = Array.from({ length: 0x3000 }, (_, code) => String.fromCharCode(code)).filter(isPrintable);
+    const region = (inks: Ink[], role: Region["role"], i: number): Region => ({ id: `${page.id}/texts-${i}`, role, rect: { x: 0, y: 0, w: 1200, h: 1320 }, item: null, part: null, ink: inks });
+    // Any text in any size, weight, place and role, such as one that ends in points or a dash, which some typesetters hang over the edge.
+    const word = fc.array(fc.constantFrom(...printable, ".", ".", "-", "–", "“", "”", "’"), { minLength: 1, maxLength: 16 }).map((c) => c.join("").trim()).filter((text) => text !== "");
+    const any = fc.record({ text: word, size: fc.constantFrom(10, 11, 12, 15, 16, 18, 20, 22, 24), weight: fc.constantFrom(400, 600), align: fc.constantFrom("left" as const, "center" as const, "right" as const), role: fc.constantFrom("heading" as const, "instruction" as const, "footer" as const, "label" as const, "question" as const) });
+    const asked = [...["....", "a.", "one-", "“to”", "‘J’", "A–"].flatMap((text) => (["left", "center", "right"] as const).map((align) => ({ text, size: 18, weight: 600, align, role: "footer" as const }))), ...fc.sample(any, { numRuns: 120, seed: 137 })];
+    const texts = asked.map(({ role, ...text }, i) => region([{ kind: "text", color: "black", rect: { x: (i % 3) * 400, y: Math.floor(i / 3) * 28 + 10, w: 390.3, h: 26 }, ...text }], role, i));
+    // Every pair of characters, both ways round: "a" beside each later character.
+    const pairs = [400, 600].map((weight) => region(printable.flatMap((a, i): Ink[] => (a === " " ? [] : [{ kind: "text", color: "black", size: 6, weight, align: "left", rect: { x: 10, y: 10 * i, w: 1100, h: 9 }, text: printable.slice(i).concat(" ").reduce((text, b) => `${text}${b}${a}`, a) }])), "heading", weight));
+    const digits = [..."0123456789"];
+    const numbers = [400, 600].map((weight) => region(digits.flatMap((a, i) => ["", ...digits].map((b, j): Ink => ({ kind: "text", color: "black", size: 10, weight, align: "left", rect: { x: 10 + 30 * j, y: 20 * i, w: 29, h: 19 }, text: a + b }))), "question", weight));
+    const pages = [texts, ...pairs.map((r) => [r]), ...numbers.map((r) => [r])].map((regions, i): PageModel => ({ ...page, page: i + 1, size: { w: 1200, h: 1320 }, regions }));
+    const out = await (await usualRenderer()).render(pages);
+    expect([checkTexts(pages, out.texts), checkFit(pages, out.texts), checkPdf(pages, out.texts, out.pdf)]).toEqual([[], [], []]);
+    for (const sheet of [4, 5]) {
+      const width = new Map(out.texts.filter((t) => t.sheet === sheet).map((t) => [t.text, t.natural.w]));
+      const of = (text: string) => width.get(text) ?? Number.NaN;
+      const widest = Math.max(...digits.flatMap((a) => digits.map((b) => of(a + b) - of(a) - of(b))));
+      expect(widest / 10).toBeLessThanOrEqual(DIGIT_KERNING);
+      expect(widest / 10).toBeGreaterThan(DIGIT_KERNING - 0.002);
+    }
   });
 
   describe("the fit of text", () => {

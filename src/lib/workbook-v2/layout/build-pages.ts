@@ -38,6 +38,9 @@ function markInk(rect: Rect, corner: keyof PageFrame["marks"]): Ink[] {
 const digitsInk = (cells: readonly Rect[], digits: string): Ink[] =>
   [...digits].map((digit, i) => text(cells[cells.length - digits.length + i], digit, 22, REGULAR, "center"));
 
+/** The parts of a question that decide its rectangles. */
+export type LaidOut = Pick<BookItem, "id" | "number" | "face" | "answer">;
+
 type MakeRegion = (role: RegionRole, rect: Rect, ink?: Ink[], part?: string | null) => Region;
 
 const areaRegions = (make: MakeRegion, { answer, reach }: AnswerArea, part: string): Region[] => [
@@ -45,7 +48,7 @@ const areaRegions = (make: MakeRegion, { answer, reach }: AnswerArea, part: stri
   make("reach", reach, [], part),
 ];
 
-function columnRegions(make: MakeRegion, place: ColumnPlace, { face, answer }: BookItem): Region[] {
+function columnRegions(make: MakeRegion, place: ColumnPlace, { face, answer }: LaidOut): Region[] {
   if (face.kind !== "column" || answer.parts.length !== 1) throw new Error("a stack has one answer area");
   const signCell = place.bottomCells[place.bottomCells.length - face.bottom.length - 1];
   return [
@@ -60,7 +63,7 @@ function columnRegions(make: MakeRegion, place: ColumnPlace, { face, answer }: B
   ];
 }
 
-function tokenRegions(make: MakeRegion, place: TokenPlace, { face }: BookItem): Region[] {
+function tokenRegions(make: MakeRegion, place: TokenPlace, { face }: LaidOut): Region[] {
   const tokens = face.kind === "column" ? [] : face.tokens;
   const cells = cellsFor(place, tokens) ?? [];
   const ink: Ink[] = place.rule ? [fill(place.rule)] : [];
@@ -74,7 +77,7 @@ function tokenRegions(make: MakeRegion, place: TokenPlace, { face }: BookItem): 
 }
 
 /** The rectangles of one question that fits its place (`placeProblem`). */
-export function itemRegions(place: ItemPlace, item: BookItem, at: (name: string) => string): Region[] {
+export function itemRegions(place: ItemPlace, item: LaidOut, at: (name: string) => string): Region[] {
   const { number } = item;
   const make: MakeRegion = (role, rect, ink = [], part = null) => ({ id: at(partRegionName(role, number, part)), role, rect, item: item.id, part, ink });
   return [

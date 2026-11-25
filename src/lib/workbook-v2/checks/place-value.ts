@@ -2,7 +2,7 @@
 // right end; where the digits stand is what the typesetter reports.
 import type { BookItem, ColumnFace, DrawnText, PageModel } from "../contract";
 import { near, right } from "./rects";
-import { placeTexts, type PlacedText } from "./texts";
+import type { PlacedText, PlacedTexts } from "./texts";
 
 const PLACES = ["ones", "tens", "hundreds", "thousands", "ten thousands", "hundred thousands", "millions"];
 const placeName = (place: number): string => `in the ${PLACES[place] ?? `place ${place + 1}`}`;
@@ -31,10 +31,10 @@ function checkStack({ top, sign, bottom }: ColumnFace, texts: readonly PlacedTex
   }));
 }
 
-export function checkPlaces(pages: readonly PageModel[], items: readonly BookItem[], drawn: readonly DrawnText[]): string[] {
+export function checkPlaces(pages: readonly PageModel[], items: readonly BookItem[], { texts }: PlacedTexts): string[] {
   const problems: string[] = [];
   const ofItem = new Map<string | null, PlacedText[]>();
-  for (const placed of placeTexts(pages, drawn).texts) {
+  for (const placed of texts) {
     if (placed.region.role === "question") ofItem.set(placed.region.item, [...(ofItem.get(placed.region.item) ?? []), placed]);
   }
   const itemOf = new Map<string | null, BookItem>(items.map((i) => [i.id, i]));

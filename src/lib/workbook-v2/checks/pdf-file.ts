@@ -219,6 +219,15 @@ function rectOf(path: readonly (readonly [number, number])[], closed: boolean): 
 }
 
 const IGNORED = new Set(["BMC", "BDC", "EMC", "M"]);
+/** Commands that a page has, and that may not come between a path and its paint. */
+const BETWEEN = new Set(["q", "Q", "cm", "cs", "CS", "scn", "SCN", "w", "M", "BT", "ET", "Tr", "Tf", "Tm", "Tj", "TJ", "BMC", "BDC", "EMC"]);
+
+/**
+ * How far one letter may stand from the end of the one before it, in thousandths of the size of the text: the kerning of
+ * the fonts of the engine, over all pairs of characters that may be printed, and 1 more. Every other move is refused, also
+ * one that a later move takes back.
+ */
+const KERNING = { least: -31, most: 161 };
 
 /** What the drawing commands of a page draw, in their order. */
 function readDrawing(content: string, height: number, fonts: ReadonlyMap<string, Font>, greys: ReadonlySet<string>): PdfInk[] {
@@ -241,10 +250,19 @@ function readDrawing(content: string, height: number, fonts: ReadonlyMap<string,
     if (!text?.placed || !now.flipped) return refuse(TURNED);
     let written = "";
     let width = 0;
+    let move = 0;
+    if (isNumber(parts[0])) return refuse("moves the start of a text");
+    if (isNumber(parts.at(-1))) return refuse("moves the end of a text");
     for (const part of parts) {
-      if (isNumber(part)) width -= part;
-      else if (!isText(part) || part.text.length % 2 !== 0) return refuse(CANNOT_READ);
-      else for (let i = 0; i < part.text.length; i += 2) {
+      if (isNumber(part)) {
+        move -= part;
+        continue;
+      }
+      if (!isText(part) || part.text.length % 2 !== 0) return refuse(CANNOT_READ);
+      if (!(-move >= KERNING.least && -move <= KERNING.most)) return refuse(`moves a letter ${-move} thousandths of its size, which no font of a book does`);
+      width += move;
+      move = 0;
+      for (let i = 0; i < part.text.length; i += 2) {
         const code = part.text.charCodeAt(i) * 256 + part.text.charCodeAt(i + 1);
         written += font.textOf.get(code) ?? refuse("has a character that it does not name");
         width += font.widthOf(code);
@@ -261,6 +279,8 @@ function readDrawing(content: string, height: number, fonts: ReadonlyMap<string,
   readCommands(content, 0, (name, values) => {
     const numbers = values.filter(isNumber);
     const [first] = values;
+    // A path has its place when it is made, so nothing may come between it and its paint.
+    if (path.length > 0 && BETWEEN.has(name)) refuse("has a shape that is not painted at once");
     const unknown = () => refuse(`has the drawing command "${name}"${numbers.length > 0 && name === "Tr" ? ` with ${numbers.join(" ")}` : ""}, which no page of a book has`);
     const count = (n: number) => { if (numbers.length !== n || values.length !== n) refuse(CANNOT_READ); };
     const colour = () => (numbers.length === 1 && values.length === 1 ? numbers[0] : refuse("has a colour that is not a grey"));

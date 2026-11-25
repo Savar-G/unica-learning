@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { mathToken, wordToken, type DrawnText, type PageModel, type Position } from "../contract";
+import { checkTexts } from "../testing/drawn-checks";
 import { reportedPositions, reportedTexts } from "../testing/fake-typesetter";
 import { goodPages } from "../testing/sample";
-import { checkPositions, checkTexts } from "./positions";
+import { checkPositions } from "./positions";
 
 const pages = goodPages();
 const reported = (): Position[] => reportedPositions(pages);

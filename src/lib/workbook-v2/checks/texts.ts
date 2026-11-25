@@ -1,4 +1,5 @@
-// Finds the report of each text of the model. The model has one text for each one-line ink, and one for each piece of a flow.
+// Finds the report of each text of the model: every text is drawn once at its place, and nothing else is drawn. The model
+// has one text for each one-line ink, and one for each piece of a flow. A drawing is matched one time for all its checks.
 import type { DrawnText, FlowToken, Ink, PageModel, Region } from "../contract";
 import { near } from "./rects";
 
@@ -10,6 +11,7 @@ export interface PlacedText extends Place { ink: TextInk; drawn: DrawnText }
 export interface PlacedPiece { token: FlowToken; text: string; drawn: DrawnText }
 export interface PlacedFlow extends Place { ink: FlowInk; pieces: PlacedPiece[] }
 
+/** `problems` are the texts of the model that were not drawn, and the drawn ones that are not in the model. */
 export interface PlacedTexts { texts: PlacedText[]; flows: PlacedFlow[]; problems: string[] }
 
 export function placeTexts(pages: readonly PageModel[], drawn: readonly DrawnText[]): PlacedTexts {

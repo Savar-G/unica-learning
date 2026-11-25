@@ -1,7 +1,6 @@
-// The typesetter says where it put each region and which text it drew. Both must equal the page model.
-import type { DrawnText, PageModel, Position, Rect } from "../contract";
+// The typesetter says where it put each region. It must equal the page model.
+import type { PageModel, Position, Rect } from "../contract";
 import { near } from "./rects";
-import { placeTexts } from "./texts";
 
 const show = (r: Rect) => `(${r.x}, ${r.y}, ${r.w} by ${r.h})`;
 const same = (a: Rect, b: Rect) => near(a.x, b.x) && near(a.y, b.y) && near(a.w, b.w) && near(a.h, b.h);
@@ -25,6 +24,3 @@ export function checkPositions(pages: readonly PageModel[], positions: readonly 
   for (const id of reported.keys()) problems.push(`"${id}" is not in the model.`);
   return problems;
 }
-
-/** Every text of the model is drawn once at its place, and nothing else is drawn. */
-export const checkTexts = (pages: readonly PageModel[], texts: readonly DrawnText[]): string[] => placeTexts(pages, texts).problems;

@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { PageModel, Rect } from "../contract";
 import addSubSnapshot from "../fixtures/snapshot-add-sub.json";
 import factsSnapshot from "../fixtures/snapshot-facts.json";
@@ -9,19 +9,16 @@ import wideSnapshot from "../fixtures/snapshot-4-digits.json";
 import rawSnapshot from "../fixtures/snapshot.json";
 import { TEMPLATES, type ColumnPlace, type PageTemplate, type TokenPlace } from "../layout/templates";
 import { openRenderer } from "../render/typst";
-import { RenderError, type Renderer, type Rendering } from "../renderer";
+import { RenderError, type Renderer } from "../renderer";
 import { SHAPES, shapeLibrary, type Shape } from "../shapes";
-import { pagesPdf } from "../testing/fake-pdf";
-import { reportedPositions, reportedTexts } from "../testing/fake-typesetter";
-import { drawPage, paint, toPng } from "../testing/raster";
+import { fakeRenderer } from "../testing/fake-renderer";
+import { drawPage, paint, toColourPng, toPng } from "../testing/raster";
 import { stackOf } from "../testing/sample";
 import { skipTypstTests, testAssets } from "../testing/typst";
 import { BANK_SEEDS, checkBank } from "./check-bank";
 
-type Draw = (pages: readonly PageModel[]) => Promise<Rendering>;
-const drawModel: Draw = async (pages) => ({ pdf: pagesPdf(pages), images: pages.map((p) => toPng(drawPage(p))), positions: reportedPositions(pages), texts: reportedTexts(pages) });
-const fake = (render: Draw = drawModel): Renderer => ({ identity: { typst: "0", program: "p", template: "t", fonts: {} }, render: vi.fn(render) });
-const isAlone = (page: PageModel) => page.regions.every((r) => r.role !== "qr") && page.regions.some((r) => r.role === "slot");
+const isWhole = (page: PageModel) => page.regions.some((r) => r.role === "qr");
+const pagesOf = (drawings: PageModel[][]) => drawings.flat();
 
 type Snapshot = typeof rawSnapshot;
 /** The example level with one row of two questions on each side, and a change. */
@@ -52,46 +49,110 @@ const moved = (rect: Rect, dx: number, dy = 0): Rect => ({ ...rect, x: rect.x + 
 
 describe("a good bank", () => {
   it("has no problem, and each row is drawn at each place of both sides, together and alone", async () => {
-    const renderer = fake();
+    const renderer = fakeRenderer();
     const report = await checkBank(snapshotWith(), renderer, FEW);
     expect(report.problems).toEqual([]);
-    const drawn = vi.mocked(renderer.render).mock.calls.flatMap(([pages]) => pages);
-    const whole = drawn.filter((p) => p.regions.some((r) => r.role === "qr"));
+    const whole = pagesOf(renderer.drawn.render);
     // Two rows, two sides each, with eight questions on each side. The widest questions of the rows differ, so each is drawn alone.
+    expect(whole.every(isWhole)).toBe(true);
     expect(whole.map((p) => [p.side, p.regions.filter((r) => r.role === "slot").length])).toEqual([["front", 8], ["back", 8], ["front", 8], ["back", 8]]);
-    expect(drawn.filter(isAlone)).toHaveLength(32);
+    expect(pagesOf(renderer.drawn.images).map((p) => p.regions.filter((r) => r.role === "slot").length)).toEqual(Array(32).fill(1));
     expect(report.checked).toEqual({ sheets: 1, rows: 2, seeds: 5, questions: 20, pages: whole.length, alone: 32, texts: expect.any(Number) });
+    expect(pagesOf(renderer.drawn.report).flatMap((p) => p.regions)).toHaveLength(report.checked.texts);
   });
 
   it("asks for 200 seeds", () => expect(BANK_SEEDS).toBe(200));
 
   it("draws a question alone one time, also when two rows have the same widest question", async () => {
-    const renderer = fake();
     const same = snapshotWith((s) => { s.sheets[0].back.rows = [{ ...s.sheets[0].front.rows[0], id: "again" }]; });
-    const report = await checkBank(same, renderer, FEW);
-    expect(report).toMatchObject({ problems: [], checked: { alone: 16, pages: 4 } });
+    expect(await checkBank(same, fakeRenderer(), FEW)).toMatchObject({ problems: [], checked: { alone: 16, pages: 4 } });
   });
 
   it("gives the same report for the same bank", async () => {
-    expect(await checkBank(snapshotWith(), fake(), FEW)).toEqual(await checkBank(snapshotWith(), fake(), FEW));
+    expect(await checkBank(snapshotWith(), fakeRenderer(), FEW)).toEqual(await checkBank(snapshotWith(), fakeRenderer(), FEW));
+  });
+});
+
+describe("the texts of a row", () => {
+  const measured = async (snapshot: Snapshot, options: Parameters<typeof checkBank>[2] = FEW) => {
+    const renderer = fakeRenderer();
+    const report = await checkBank(snapshot, renderer, { ...options, seeds: 1 });
+    return { report, texts: new Set(pagesOf(renderer.drawn.report).flatMap((p) => p.regions.flatMap((r) => r.ink.flatMap((i) => (i.kind === "text" ? [i.text] : []))))) };
+  };
+  const rowOf = (template: string, shape: string, limits: object) => snapshotWith((s) => {
+    for (const [i, side] of [s.sheets[0].front, s.sheets[0].back].entries()) Object.assign(side, { template, rows: [{ id: `row-${i}`, shape, limits, items: 1 }] });
+  });
+
+  it("are all that its list has, and not only those of the widest question and the seeds", async () => {
+    const { report, texts } = await measured(rowOf("facts-2x10", "fact.add", { tables: [1, 7, 10, 20], second: { min: 0, max: 3 }, result: { min: 0, max: 20 }, order: "up" }));
+    expect(report.problems).toEqual([]);
+    expect([...texts]).toEqual(expect.arrayContaining(["1", "7", "10", "20", "0", "2", "3", "+", "="]));
+    expect(texts.has("4") && texts.has("21")).toBe(false);
+  });
+
+  it("have every digit in each place of a stack that a shape with no list can fill", async () => {
+    const renderer = fakeRenderer();
+    // One digit plus one digit, with an answer of two digits: the widest question fills two of the three places.
+    const snapshot = snapshotWith((s) => { for (const side of [s.sheets[0].front, s.sheets[0].back]) side.rows = [{ ...side.rows[0], items: 1 }]; });
+    await checkBank(snapshot, renderer, { seeds: 1 });
+    const cells = new Map<string, Set<string>>();
+    for (const r of pagesOf(renderer.drawn.report).flatMap((p) => p.regions)) for (const i of r.ink) if (i.kind === "text" && /^\d$/.test(i.text) && i.size === 22) cells.set(`${i.rect.w} ${i.rect.h}`, new Set([...(cells.get(`${i.rect.w} ${i.rect.h}`) ?? []), i.text]));
+    expect([...cells.values()].map((digits) => [...digits].sort().join(""))).toContain("0123456789");
+  });
+
+  it("of a shape with no list have as many digits as its template holds for them", async () => {
+    const { report, texts } = await measured(rowOf("sequences-2x2", "count.skip", { step: { min: 2, max: 2 }, direction: "up", start: { min: 92, max: 92 }, offStep: "never", terms: { min: 5, max: 5 }, blanks: { min: 1, max: 1 }, places: { min: 3, max: 4 } }));
+    expect(report.problems).toEqual([]);
+    // 92, 94, 96, 98 and 100: each place may hold three digits, whichever they are.
+    expect([...texts]).toEqual(expect.arrayContaining(["000", "444", "999"]));
+  });
+
+  it("that do not fit name every row that prints them", async () => {
+    const renderer = fakeRenderer({ report: ({ texts }) => { for (const t of texts) if (t.text === "3") t.natural.w = 30; } });
+    const limits = { tables: [3], second: { min: 0, max: 1 }, result: { min: 0, max: 9 }, order: "up" };
+    const { problems } = await checkBank(rowOf("sums-1x10", "fact.add", limits), renderer, { seeds: 1 });
+    expect(problems.filter((p) => p.includes('the text "3"') && p.includes("30 points wide and its place is 24"))).toEqual([
+      'Sheet "column-multiplication-1", front side, row "row-0": the text "3" of "question-1" of the front side is 30 points wide and its place is 24.',
+      'Sheet "column-multiplication-1", back side, row "row-1": the text "3" of "question-1" of the back side is 30 points wide and its place is 24.',
+    ]);
+  });
+
+  it("of a question of the list that fits no place are a problem", async () => {
+    const fact = SHAPES.get("fact.add");
+    if (!fact) throw new Error("no shape");
+    const shapes = shapeLibrary([{ ...fact, list: (l) => [...(fact.list?.(l) ?? []), { a: 2000, b: 1 }] }]);
+    const { report } = await measured(rowOf("facts-2x10", "fact.add", { tables: [3], second: { min: 0, max: 1 }, result: { min: 0, max: 9 }, order: "up" }), { shapes });
+    expect(report.problems).toContain('Sheet "column-multiplication-1", front side, row "row-0": the question 2000 + 1 = [2001] needs 4 characters in a number and the template "facts-2x10" has 3.');
+  });
+
+  it("of which one was not drawn, or with no report of their size, are a problem of their row", async () => {
+    const left = fakeRenderer({ report: (out) => { out.texts = out.texts.filter((t) => t.text !== "="); } });
+    const snapshot = rowOf("facts-2x10", "fact.add", { tables: [3], second: { min: 0, max: 1 }, result: { min: 0, max: 9 }, order: "up" });
+    expect((await checkBank(snapshot, left, { seeds: 1 })).problems).toContain('Sheet "column-multiplication-1", front side, row "row-0": the text "=" of "question-1" of the front side was not drawn as the model says it.');
+    const none = fakeRenderer({ report: (out) => { Reflect.set(out, "texts", undefined); } });
+    expect((await checkBank(snapshot, none, { seeds: 1 })).problems[0]).toMatch(/^Sheet "column-multiplication-1", front side, row "row-0": the text .*gave no texts of page 1\.$/);
   });
 });
 
 describe("a bank with a problem", () => {
   it("that is in the file itself draws nothing", async () => {
-    const renderer = fake();
+    const renderer = fakeRenderer();
     const report = await checkBank(snapshotWith((s) => { s.sheets[0].front.template = "columns-9x9"; }), renderer, FEW);
     expect(report.problems).toEqual(['Sheet "column-multiplication-1", front side: there is no template "columns-9x9".']);
-    expect(renderer.render).not.toHaveBeenCalled();
+    expect(renderer.drawn).toEqual({ render: [], images: [], report: [] });
   });
 
   it.each<[string, Parameters<typeof withShape>[0], RegExp]>([
     ["a question that cannot be made", (s) => ({ generate: (l, seed) => { if (JSON.stringify(l).includes('"max":0')) throw new Error("no such number"); return s.generate(l, seed); } }), new RegExp(`^${FRONT}, seed 1: a question cannot be made \\(no such number\\)\\.$`)],
     ["a question that prints another number", (s) => ({ face: (q) => { const f = stackOf({ face: s.face(q) }); return { ...f, bottom: f.bottom === "9" ? "8" : String(Number(f.bottom) + 1) }; } }), new RegExp(`^${FRONT}, seed 1: Sheet "column-multiplication-1", front side, question 1 .*by one computation`)],
     ["a worked step that is not the answer", (s) => ({ steps: (q) => [...s.steps(q).slice(0, -1), { text: "0", marks: [] }] }), /seed 1: .*by one computation and "0" by the worked steps/],
-    ["a widest question that cannot be made", () => ({ forms: () => { throw new Error("none"); } }), /^The snapshot cannot be checked \(none\)\.$/],
+    ["a widest question that cannot be made", () => ({ forms: () => { throw new Error("none"); } }), new RegExp(`^${FRONT}: the shape fails \\(none\\)\\.$`)],
+    ["a shape that gives no form", () => ({ forms: () => [] }), new RegExp(`^${FRONT}: the shape gives no form of its questions, so their size is not known\\.$`)],
+    ["limits that cannot be read", () => ({ readLimits: () => { throw new Error("none"); } }), new RegExp(`^${FRONT}: the shape fails \\(none\\)\\.$`)],
+    ["questions that cannot be counted", () => ({ count: () => { throw new Error("none"); } }), new RegExp(`^${FRONT}: the shape fails \\(none\\)\\.$`)],
+    ["a face that cannot be made", () => ({ face: () => { throw new Error("none"); } }), new RegExp(`^${FRONT}: the shape fails \\(none\\)\\.$`)],
   ])("names the sheet, the side and the row: %s", async (_name, change, problem) => {
-    const { problems } = await checkBank(snapshotWith(), fake(), withShape(change));
+    const { problems } = await checkBank(snapshotWith(), fakeRenderer(), withShape(change));
     expect(problems.some((p) => problem.test(p))).toBe(true);
   });
 
@@ -101,67 +162,85 @@ describe("a bank with a problem", () => {
     const bad = JSON.stringify(second.limits);
     expect(JSON.stringify(first.limits)).not.toBe(bad);
     const options = withShape((s) => ({ generate: (l, seed) => { if (JSON.stringify(l) === bad) throw new Error("no such number"); return s.generate(l, seed); } }));
-    expect((await checkBank(two, fake(), options)).problems).toEqual([`Sheet "column-multiplication-1", front side, row "${second.id}", seed 1: a question cannot be made (no such number).`]);
+    expect((await checkBank(two, fakeRenderer(), options)).problems).toEqual([`Sheet "column-multiplication-1", front side, row "${second.id}", seed 1: a question cannot be made (no such number).`]);
   });
 
   it("that only one seed has names the row and the seed", async () => {
     let wrong = "";
     const options = withShape((s) => ({ generate: (l, seed) => { const item = s.generate(l, seed); if (wrong === "" && JSON.stringify(l) !== "") wrong = seed; return seed === wrong ? { ...item, answer: { parts: [{ name: "answer", kind: "whole-number", value: "" }] } } : item; } }));
-    expect((await checkBank(snapshotWith(), fake(), options)).problems).toEqual([expect.stringMatching(/^Sheet "column-multiplication-1", front side, row "no-carry", seed 1: .*which is no whole-number\.$/)]);
+    expect((await checkBank(snapshotWith(), fakeRenderer(), options)).problems).toEqual([expect.stringMatching(/^Sheet "column-multiplication-1", front side, row "no-carry", seed 1: .*which is no whole-number\.$/)]);
   });
 
   it.each<[string, ReadonlyMap<string, PageTemplate>, RegExp]>([
     ["a digit in another place, at one place of the other side", templateWith("columns-2x4", (p, i, side) => { if (i === 7 && side === "back" && "bottomCells" in p) p.bottomCells = p.bottomCells.map((c) => moved(c, -24)); }), new RegExp(`^${FRONT}: Page 382: .*question 8 |^${FRONT}: Page 382: the ink of "question-8" is outside it`)],
     ["an answer area in the spine zone, at one place", templateWith("columns-2x4", (p, i, side) => { if (i === 2 && side === "front" && "answer" in p) p.answer = moved(p.answer, -60); }), new RegExp(`^${FRONT}: Page 381: "answer-3" enters the spine zone`)],
   ])("in a template names each row that uses it: %s", async (_name, templates, problem) => {
-    const { problems } = await checkBank(snapshotWith(), fake(), { ...FEW, templates });
+    const { problems } = await checkBank(snapshotWith(), fakeRenderer(), { ...FEW, templates });
     expect(problems.join("\n")).toMatch(new RegExp(problem.source, "m"));
     expect(problems.join("\n")).toContain(`back side, row "${BACK_ROW}"`);
   });
 
   it("in one drawing names the rows of that drawing and no other", async () => {
-    const wrong: Draw = async (pages) => {
-      const out = await drawModel(pages);
-      pages.forEach((page, i) => {
-        if (!page.regions.some((r) => r.role === "qr") || page.side !== "back" || page.attempt !== 2) return;
-        const canvas = drawPage(page);
-        paint(canvas, { x: 20, y: 400, w: 3, h: 3 });
-        out.images[i] = toPng(canvas);
-      });
-      return out;
-    };
-    expect((await checkBank(snapshotWith(), fake(wrong), FEW)).problems).toEqual([`Sheet "column-multiplication-1", back side, row "${BACK_ROW}": Page 382: the image has ink that the model does not have, at (20, 400) in the margin.`]);
+    const wrong = fakeRenderer({ render: (out, pages) => pages.forEach((page, i) => {
+      if (page.side !== "back" || page.attempt !== 2) return;
+      const canvas = drawPage(page);
+      paint(canvas, { x: 20, y: 400, w: 3, h: 3 });
+      out.images[i] = toPng(canvas);
+    }) });
+    expect((await checkBank(snapshotWith(), wrong, FEW)).problems).toEqual([`Sheet "column-multiplication-1", back side, row "${BACK_ROW}": Page 382: the image has ink that the model does not have, at (20, 400) in the margin.`]);
   });
 
-  it("with ink outside the slot of a question that is drawn alone names its place", async () => {
-    const wrong: Draw = async (pages) => {
-      const out = await drawModel(pages);
-      const at = pages.findIndex((p) => isAlone(p) && p.side === "back" && p.regions.some((r) => r.id.endsWith("/slot-6")));
-      if (at >= 0) {
-        const canvas = drawPage(pages[at]);
-        paint(canvas, { x: 20, y: 60, w: 3, h: 3 }, 244);
-        out.images[at] = toPng(canvas);
-      }
-      return out;
-    };
-    expect((await checkBank(snapshotWith(), fake(wrong), FEW)).problems).toEqual([`${FRONT}: question 6 of the back side, drawn alone, has ink outside "slot-6".`]);
+  it("with a shape that has a form at the check of the file and none after it draws nothing for its rows, and says so", async () => {
+    let asked = 0;
+    const options = withShape((s) => ({ forms: (l) => (asked++ < 2 ? [s.worstCase(l)] : []) }));
+    expect((await checkBank(snapshotWith(), fakeRenderer(), options)).problems).toEqual([FRONT, `Sheet "column-multiplication-1", back side, row "${BACK_ROW}"`].map((owner) => `${owner}: nothing was drawn, because the shape gives no form of its questions.`));
   });
 
-  it("with nothing drawn for a question alone, or an image that cannot be read, is a problem", async () => {
-    const blank = (make: () => Uint8Array): Draw => async (pages) => { const out = await drawModel(pages); pages.forEach((p, i) => { if (isAlone(p)) out.images[i] = make(); }); return out; };
-    const empty = blank(() => new TextEncoder().encode("page"));
-    expect((await checkBank(snapshotWith(), fake(empty), FEW)).problems[0]).toBe(`${FRONT}: question 1 of the front side, drawn alone: the page image cannot be read.`);
-    const white: Draw = async (pages) => { const out = await drawModel(pages); pages.forEach((p, i) => { if (isAlone(p)) out.images[i] = toPng(drawPage({ ...p, regions: [] })); }); return out; };
-    expect((await checkBank(snapshotWith(), fake(white), FEW)).problems[0]).toBe(`${FRONT}: question 1 of the front side, drawn alone, has no ink.`);
-    const none: Draw = async (pages) => { const out = await drawModel(pages); return pages.some(isAlone) ? { ...out, images: out.images.slice(1) } : out; };
-    expect((await checkBank(snapshotWith(), fake(none), FEW)).problems.join("\n")).toMatch(/must give one image for each of the \d+ pages/);
+  /** The bank check when the image of question 6 of the back side, drawn alone, is another one. */
+  const withAlone = async (image: (page: PageModel) => Uint8Array) => (await checkBank(snapshotWith(), fakeRenderer({ images: (out, pages) => {
+    const at = pages.findIndex((p) => p.side === "back" && p.regions.some((r) => r.id.endsWith("/slot-6")));
+    if (at >= 0) out[at] = image(pages[at]);
+  } }), FEW)).problems;
+  const ALONE = `${FRONT}: question 6 of the back side, drawn alone:`;
+  const without = (role: "question" | "label" | "answer") => (page: PageModel) => toPng(drawPage({ ...page, regions: page.regions.filter((r) => r.role !== role) }));
+  it.each<[string, (page: PageModel) => Uint8Array, RegExp]>([
+    ["ink outside the slot", (p) => { const canvas = drawPage(p); paint(canvas, { x: 20, y: 60, w: 3, h: 3 }, 244); return toPng(canvas); }, /it has ink outside "slot-6"\.$/],
+    ["no ink", (p) => toPng(drawPage({ ...p, regions: [] })), /"label-6" must print "6" and the image has no ink there\.$/],
+    ["no question", without("question"), /"question-6" must print "\d" and the image has no ink there\.$/],
+    ["no number", without("label"), /"label-6" must print "6" and the image has no ink there\.$/],
+    ["no border of its answer area", without("answer"), /the image has no outline of "answer-6"\.$/],
+    ["another size", (p) => toPng(drawPage({ ...p, size: { w: p.size.w + 4.8, h: p.size.h } })), /the page image is \d+ by \d+ pixels and must be \d+ by \d+\.$/],
+    ["a colour", (p) => { const canvas = drawPage(p); return toColourPng(canvas, [{ x: 200, y: 200, colour: [255, 250, 250] }]); }, /the image has a colour that is not a grey/],
+    ["no image that can be read", () => new TextEncoder().encode("page"), /the page image cannot be read\.$/],
+  ])("with a question that is drawn alone with %s names its place", async (_name, image, problem) => {
+    const problems = await withAlone(image);
+    for (const told of problems) expect(told.startsWith(ALONE)).toBe(true);
+    expect(problems.some((told) => problem.test(told))).toBe(true);
   });
 
-  it("with a typesetter that fails is a problem, and a fault in the code is not hidden", async () => {
-    const fails = fake(async () => { throw new RenderError("Typst reported: a warning"); });
-    expect((await checkBank(snapshotWith(), fails, FEW)).problems).toContain(`${FRONT}: Typst reported: a warning`);
-    const broken = fake(async () => { throw new TypeError("a fault"); });
+  it("with a question alone that gives no image names each question", async () => {
+    const none = fakeRenderer({ images: (out) => out.splice(0) });
+    const { problems } = await checkBank(snapshotWith(), none, FEW);
+    expect(problems).toContain(`${ALONE} The typesetter must give one image for each of the 1 pages, and it gave 0.`);
+    expect(problems).toContain(`Sheet "column-multiplication-1", back side, row "${BACK_ROW}": question 1 of the front side, drawn alone: The typesetter gave no image of page 381.`);
+  });
+
+  it.each<["render" | "images" | "report", RegExp]>([
+    ["render", /^Sheet "column-multiplication-1", (front|back) side, row "[a-z-]+": Typst reported: a warning$/],
+    ["images", /^Sheet "column-multiplication-1", (front|back) side, row "[a-z-]+": question \d of the (front|back) side, drawn alone: Typst reported: a warning\.$/],
+    ["report", /^Sheet "column-multiplication-1", (front|back) side, rows? "[a-z-]+": the text ".*" of "[a-z-]+\d*" of the (front|back) side Typst reported: a warning\.$/],
+  ])("with a typesetter that fails (%s) names each row, and a fault in the code is not hidden", async (kind, form) => {
+    const fails = fakeRenderer({ [kind]: () => { throw new RenderError("Typst reported: a warning"); } });
+    const { problems } = await checkBank(snapshotWith(), fails, FEW);
+    expect(problems.length).toBeGreaterThan(1);
+    for (const problem of problems) expect(problem).toMatch(form);
+    const broken = fakeRenderer({ [kind]: () => { throw new TypeError("a fault"); } });
     await expect(checkBank(snapshotWith(), broken, FEW)).rejects.toThrow("a fault");
+  });
+
+  it("with rows that can only be drawn one by one names all rows of the drawing", async () => {
+    const together = fakeRenderer({ render: (_out, pages) => { if (pages.length > 2) throw new RenderError("too many pages"); } });
+    expect((await checkBank(snapshotWith(), together, FEW)).problems).toEqual([`${FRONT} and Sheet "column-multiplication-1", back side, row "${BACK_ROW}", drawn together: too many pages`]);
   });
 });
 
@@ -195,12 +274,13 @@ describe.skipIf(skipTypstTests())("with the real Typst", () => {
     expect(problems).toMatch(new RegExp(`^${FRONT}: Page 382: the text "3-20 · ${"W".repeat(44)}" of "heading" is \\d+\\.\\d+ points wide and its place is 443\\.$`, "m"));
   });
 
-  it("a number that is wider than the widest question, with as many digits, is found by its seed", async () => {
+  it("a number that is wider than the widest question, with as many digits, is found", async () => {
     // "10" fits a cell of 20 points and "20" does not.
     const templates = templateWith("facts-2x10", (p) => { if ("forms" in p) for (const form of p.forms) for (const cell of form) if (cell.text && cell.text.w === 33) cell.text = { ...cell.text, w: 20 }; });
     const limits = { tables: [10, 20], second: { min: 0, max: 0 }, result: { min: 0, max: 20 }, order: "mixed" };
     const snapshot = snapshotWith((s) => { for (const side of [s.sheets[0].front, s.sheets[0].back]) { side.template = "facts-2x10"; side.rows = [{ id: "row", shape: "fact.add", items: 2, limits } as never]; } s.sheets[0].back.rows[0].id = "other"; });
-    expect((await checkBank(snapshot, await typst(), { ...FEW, templates })).problems).toContain('Sheet "column-multiplication-1", front side, row "row": Page 381: the text "20" of "question-2" is 23.08 points wide and its place is 20.');
+    // No seed prints it here: it is measured because the limits admit it.
+    expect((await checkBank(snapshot, await typst(), { seeds: 0, templates })).problems).toEqual([["front", "row"], ["back", "other"]].map(([side, row]) => `Sheet "column-multiplication-1", ${side} side, row "${row}": the text "20" of "question-1" of the front side is 23.08 points wide and its place is 20.`));
   });
 
   it("ink that a drawing puts past the slot of a question is found in the page and in the question that is drawn alone", async () => {
@@ -214,7 +294,7 @@ describe.skipIf(skipTypstTests())("with the real Typst", () => {
       const one = snapshotWith((s) => { s.sheets[0].back.rows = [{ ...s.sheets[0].front.rows[0], id: "again" }]; });
       const problems = (await checkBank(one, await openRenderer({ ...testAssets(), template }), FEW)).problems.join("\n");
       expect(problems).toMatch(/^Sheet "column-multiplication-1", front side, row "no-carry": Page 381: the image has ink that the model does not have, at \(70, \d+\) in the spine zone\.$/m);
-      for (const side of ["front", "back"]) expect(problems).toContain(`${FRONT}: question 8 of the ${side} side, drawn alone, has ink outside "slot-8".`);
+      for (const side of ["front", "back"]) expect(problems).toContain(`${FRONT}: question 8 of the ${side} side, drawn alone: it has ink outside "slot-8".`);
     } finally {
       rmSync(folder, { recursive: true, force: true });
     }

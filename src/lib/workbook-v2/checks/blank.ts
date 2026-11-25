@@ -22,6 +22,9 @@ export const outer = ({ x, y, w, h }: Rect): Box => ({ left: Math.floor(x * SCAL
 /** The pixels that are in the rectangle with all of their area, so that ink of a neighbour does not count. */
 export const inner = ({ x, y, w, h }: Rect): Box => ({ left: Math.ceil(x * SCALE - ROUNDING), top: Math.ceil(y * SCALE - ROUNDING), right: Math.floor((x + w) * SCALE + ROUNDING), bottom: Math.floor((y + h) * SCALE + ROUNDING) });
 
+/** The pixels whose middle is in the rectangle. */
+const middles = ({ x, y, w, h }: Rect): Box => ({ left: Math.ceil(x * SCALE - 0.5), top: Math.ceil(y * SCALE - 0.5), right: Math.ceil((x + w) * SCALE - 0.5), bottom: Math.ceil((y + h) * SCALE - 0.5) });
+
 const inImage = ({ left, top, right, bottom }: Box, { width, height }: PageImage): Box => ({ left: Math.max(0, left), top: Math.max(0, top), right: Math.min(width, right), bottom: Math.min(height, bottom) });
 
 /** Where ink may be, and the part of the page that a problem names. */
@@ -93,6 +96,23 @@ class Remains {
     return -1;
   }
 
+  /** Clears a part of the image and gives its first pixel of ink, or -1. */
+  takeInk(box: Box): number {
+    const { left, top, right, bottom } = inImage(box, this.image);
+    let first = -1;
+    for (let y = top; y < bottom && left < right && first < 0; y++) {
+      const at = this.nextInk(y * this.image.width + left);
+      // The next ink of the page: in this line of the part, or at the earliest in the line that it is in.
+      if (at < 0) break;
+      const line = Math.floor(at / this.image.width);
+      const x = at % this.image.width;
+      if (line === y && x < right) first = at;
+      else if (line > y) y = line - (x < right ? 1 : 0);
+    }
+    if (first >= 0) this.clear(box);
+    return first;
+  }
+
   pointOf(at: number): { x: number; y: number } {
     return { x: (at % this.image.width) / SCALE, y: Math.floor(at / this.image.width) / SCALE };
   }
@@ -113,18 +133,15 @@ export function strayInk(page: PageModel, image: PageImage): Stray[] {
     ...page.regions.filter((r) => r.role !== "slot"), ...page.regions.filter((r) => r.role === "slot"),
   ].map((p) => ("name" in p ? p : { name: regionName(p), rect: p.rect, region: p }));
   const found: Stray[] = [];
-  let unplaced = false;
-  for (let at = left.nextInk(0); at >= 0; at = left.nextInk(at + 1)) {
-    const { x, y } = left.pointOf(at);
-    const pixel = { x: x + 0.5 / SCALE, y: y + 0.5 / SCALE, w: 0, h: 0 };
-    const place = places.find(({ rect }) => inside(pixel, rect));
-    if (place) left.clear(outer(place.rect));
-    else if (unplaced) continue;
-    unplaced ||= !place;
-    const name = place?.name ?? "no rectangle of the page";
-    if (!found.some((s) => s.place === name)) found.push({ place: name, x, y });
+  // A pixel belongs to the first place that holds its middle, so a place never takes the ink of one that lies in it.
+  for (const { name, rect } of places) {
+    if (left.nextInk(0) < 0) break;
+    const at = left.takeInk(middles(rect));
+    if (at >= 0 && !found.some((s) => s.place === name)) found.push({ place: name, ...left.pointOf(at) });
   }
-  return found;
+  const rest = left.nextInk(0);
+  if (rest >= 0) found.push({ place: "no rectangle of the page", ...left.pointOf(rest) });
+  return found.sort((a, b) => a.y - b.y || a.x - b.x);
 }
 
 /** The first ink outside one rectangle, for an item that is drawn alone. */

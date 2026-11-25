@@ -325,7 +325,7 @@ const REFUSED: readonly Refused[] = [
   }), message]),
   ["book", "a back side that reverses the digits", () => ({ shape: add(), options: reversedBack }), /back side, question \d \(/],
   ["book", "a generate that widens the limits of the book", () => widensInTheBook("generate"), /threw Cannot assign to read only property 'a'/],
-  ["book", "a count that widens the limits of the book", () => widensInTheBook("count"), /threw Cannot assign to read only property 'a'/],
+  ["book", "a count that widens the limits of the book", () => widensInTheBook("count"), /threw Sheet "sheet-0", front side, row "front-0": the shape fails \(Cannot assign to read only property 'a'/],
   ["layout", "a back side that turns the rows, which the shape and the reader accept", () => ({ shape: add({ solveAgain: (rows) => addShape.solveAgain(eitherOrder(rows)) }), options: withPlaces("back", (p) => ({ topCells: p.bottomCells, bottomCells: p.topCells })), registration: { read: (rows) => addRegistration.read(eitherOrder(rows)) } }), /prints \["\+\d","\d+"\] and the first place prints/],
   ["evidence", "a template that no page of the book fills", () => ({ ...plusOne(1, 120), seeds: 1, options: withNarrow }), /no page of the book fills narrow, front side and narrow, back side/],
   ["evidence", "limits that are all the same, so that nothing can be wider", oneSpace, /and 1 limits were used/],
@@ -402,6 +402,7 @@ describe("wrong shapes that touch more than one check", () => {
     ["that gives no answer part", ["answer-form"], () => ({ shape: skip({ answer: () => ({ parts: [] }) }) })],
     ["with two parts that is said to be worked in columns", ["steps-marks"], () => ({ shape: skip(), registration: { working: "columns" } })],
     ["with rows in order and no list", ["list"], () => ({ shape: fact({ list: undefined }) })],
+    ["with no form of its questions", ["forms", "book"], () => ({ shape: { ...missingFactor, forms: () => [] } as Shape })],
     ["with a form that is not the widest", ["forms"], () => ({ shape: { ...missingFactor, forms: (l: MissingLimits) => missingFactor.forms?.(l).map((item) => (item.question.result > 9 ? { question: { ...item.question, known: 1, result: 2 }, answer: whole("2") } : item)) ?? [] } as Shape })],
     ["that gives one list of rows and turns it each time", ["determinism"], () => {
       const known = new Map<string, FactQuestion[][] | null>();

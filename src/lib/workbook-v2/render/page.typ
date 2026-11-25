@@ -55,6 +55,11 @@
       capitals: line.height / 1pt,
       above: size("bounds", "baseline").height / 1pt,
       below: (size("cap-height", "bounds").height - line.height) / 1pt,
+      flow: if text.top-edge == "ascender" {
+        let whole = size("ascender", "descender").height
+        let rise = size("ascender", "baseline").height
+        (space: measure({ box(); [ ]; box() }).width / 1pt, rise: rise / 1pt, fall: (whole - rise) / 1pt)
+      },
     )) <drawn>]
   }
   end-of(<start>)
@@ -86,7 +91,7 @@
 )
 
 #set document(date: none)
-#set text(font: "Geist", fallback: false, lang: "en", top-edge: "cap-height", bottom-edge: "baseline")
+#set text(font: "Geist", fallback: false, lang: "en", overhang: false, top-edge: "cap-height", bottom-edge: "baseline")
 #show text: it => if reports { report-text(it) } else { it }
 
 #for (i, sheet) in model.pages.enumerate() {

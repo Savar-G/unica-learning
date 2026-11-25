@@ -61,7 +61,10 @@ describe("a black square of one point", () => {
     ["in an answer area of a ladder", facts[8], middle(named(facts[8], "answer-1-blank-2").rect), '"answer-1-blank-2"'],
     ["in the reach of a ladder", facts[8], square(named(facts[8], "reach-1-blank-2").rect.x + 1, named(facts[8], "reach-1-blank-2").rect.y + 1), '"reach-1-blank-2"'],
   ])("%s is found", (_name, page, rect, place) => {
-    expect(placesWith(page, rect)).toEqual([place]);
+    // A pixel on an edge has its middle on one side of it, so the square can be in the place beside it too.
+    const places = placesWith(page, rect);
+    expect(places).toContain(place);
+    expect(places.length).toBeLessThanOrEqual(2);
   });
 
   it("is found at each place of each zone, also when it is as light as ink can be", () => {
@@ -105,7 +108,7 @@ describe("a black square of one point", () => {
 
 it("a border that is thicker, or a text that leaves its place, is found", () => {
   const { x, y, w, h } = named(front, "answer-1").rect;
-  expect(placesWith(front, { x: x - 1.5, y: y - 1.5, w: 3, h: h + 3 })).toEqual(['"reach-1"']);
+  expect(placesWith(front, { x: x - 1.5, y: y - 1.5, w: 3, h: h + 3 }).sort()).toEqual(['"answer-1"', '"reach-1"']);
   expect(placesWith(front, { x: x + 4, y: y - 4, w: 3, h: 3 }).length).toBeGreaterThan(0);
   expect(placesWith(front, { x: 500, y: 40, w: 60, h: 10 })).toEqual(["no rectangle of the page"]);
   expect(w).toBe(72);
@@ -114,6 +117,34 @@ it("a border that is thicker, or a text that leaves its place, is found", () => 
 it("a text over an answer area is found, also when the model has the text there", () => {
   const page: PageModel = { ...front, regions: front.regions.map((r) => (r.id.endsWith("/label-1") ? { ...r, ink: r.ink.map((i) => ({ ...i, rect: named(front, "answer-1").rect })) } : r)) };
   expect(strayInk(page, imageOf(drawPage(page))).map((s) => s.place)).toEqual(['"answer-1"']);
+});
+
+describe("ink in more than one place", () => {
+  it("names every place: an answer area and the reach round it, on both sides", () => {
+    for (const page of [front, back]) {
+      const { x, y } = named(page, "answer-1").rect;
+      const canvas = drawPage(page);
+      paintSmooth(canvas, square(x - 5, y - 3));
+      paintSmooth(canvas, square(x + 5, y + 5));
+      expect(strayInk(page, imageOf(canvas)).map((s) => s.place).sort()).toEqual(['"answer-1"', '"reach-1"']);
+    }
+  });
+
+  it("names every place of one mark that crosses the page", () => {
+    const { y } = named(front, "answer-1").rect;
+    const found = placesWith(front, { x: 0, y: y + 20, w: 612, h: 3 });
+    expect(found).toEqual(expect.arrayContaining(['"answer-1"', '"reach-1"', '"work-1"', '"answer-2"', '"reach-2"', '"work-2"', "the spine zone", "the margin"]));
+    expect(new Set(found).size).toBe(found.length);
+  });
+
+  it("names each zone of random pairs of zones, whichever holds the other", () => {
+    const zones = front.regions.filter((r) => ["answer", "work"].includes(r.role));
+    fc.assert(fc.property(fc.constantFrom(...zones), fc.constantFrom(...zones), (a, b) => {
+      const canvas = drawPage(front);
+      for (const zone of [a, b]) paintSmooth(canvas, middle(zone.rect));
+      expect(new Set(strayInk(front, imageOf(canvas)).map((s) => s.place))).toEqual(new Set([a, b].map((z) => `"${z.id.slice(z.id.lastIndexOf("/") + 1)}"`)));
+    }), { numRuns: 20 });
+  });
 });
 
 describe("ink outside one rectangle", () => {

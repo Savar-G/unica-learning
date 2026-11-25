@@ -1,10 +1,9 @@
-import { deflateSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { mathToken, wordToken, type Ink, type PageModel } from "../contract";
+import { checkPdf } from "../testing/drawn-checks";
 import { fillOf, pagesPdf, pdfFile, pdfPageOf, type FakePage } from "../testing/fake-pdf";
 import { reportedTexts } from "../testing/fake-typesetter";
 import { factsBook, goodPages } from "../testing/sample";
-import { checkPdf } from "./pdf";
 
 const pages = goodPages();
 const [front] = pages;
@@ -40,14 +39,11 @@ describe("the PDF of a book", () => {
   });
 
   it("may hold its drawing commands packed, and kerning", () => {
-    const { w, h, commands } = pdfPageOf(front);
-    const body = commands.join("\n").replace(/\[<(\w{4})(\w{4})/, "[<$1>20<$2>-20<");
-    const packed = deflateSync(body).toString("latin1");
-    const file = Buffer.from(pdfFile([{ w, h, commands: ["@"] }])).toString("latin1");
-    const [start, end] = file.split("<</Length 1>>\nstream\n@\nendstream");
-    const whole = `${start}<</Length ${packed.length}/Filter/FlateDecode>>\nstream\n${packed}\nendstream${end}`;
-    const moved = whole.replace(/startxref\n(\d+)/, (_, n: string) => `startxref\n${Number(n) + whole.length - file.length}`);
-    expect(checkPdf([front], reportedTexts([front]), Buffer.from(moved, "latin1"))).toEqual([]);
+    expect(problems(edit("Tm", /\[<(\w{4})(\w{4})(\w{4})/, "[<$1>20<$2>-25<$3>5<"), { packed: true })).toEqual([]);
+  });
+
+  it("may move a letter as far as the kerning of its fonts", () => {
+    expect(problems(edit("Tm", /\[<(\w{4})(\w{4})(\w{4})(\w{4})(\w{4})(\w{4})(\w{4})/, "[<$1>160<$2>-30<$3>-30<$4>-30<$5>-30<$6>-30<$7>-10<"))).toEqual([]);
   });
 
   it.each<[string, (page: FakePage) => unknown, RegExp]>([
@@ -57,9 +53,15 @@ describe("the PDF of a book", () => {
     ["is cut", (p) => { p.more = "/CropBox[0 0 300 300]"; }, /^The PDF has a page with "CropBox"/],
     ["draws a text in another place", edit("Tm", /-1 111\.5 /, "-1 112.5 "), /^Page 381: the PDF draws the text "3-20 · [^"]*" at \(112\.5, 50\) with 15 points and weight 600 and the model has the text "3-20 · [^"]*" at \(111\.5, 50\) with 15 points and weight 600\.$/],
     ["draws a text in another size", edit("Tm", " 15 Tf", " 14 Tf"), /with 14 points and weight 600 and the model has/],
-    ["draws a text in another weight", edit("Tm", "/f1 ", "/f0 "), /with 15 points and weight 400 and the model has/],
+    ["draws a text in another weight", edit("Tm", "/f1x", "/f0x"), /with 15 points and weight 400 and the model has/],
     ["draws another digit", edit("<0032>", "<0032>", "<0033>"), /^Page 381: the PDF draws the text "3" at .* and the model has the text "2" at/],
-    ["draws a text wider than it wants", edit("Tm", />[\d.]+\]TJ/, ">0]TJ"), /^Page 381: the PDF draws the text "3-20 · .*" 570 points wide and it wants 8\.$/],
+    ["draws a text wider than it wants", edit("Tm", "x38x15", "x37x15"), /^Page 381: the PDF draws the text "3-20 · .*" 8\.22 points wide and it wants 8\.$/],
+    ["moves a letter and moves it back", edit("Tm", /\[<(\w{4})(\w{4})/, "[<$1>200<$2>-200<"), /^The PDF moves a letter 200 thousandths of its size, which no font of a book does\.$/],
+    ["moves a letter the other way and back", edit("Tm", /\[<(\w{4})(\w{4})/, "[<$1>-40<$2>40<"), /^The PDF moves a letter -40 thousandths/],
+    ["moves a letter in small steps", edit("Tm", /\[<(\w{4})(\w{4})/, "[<$1>100 100<$2>-30<"), /^The PDF moves a letter 200 thousandths/],
+    ["moves its first letter", edit("Tm", "Tm[<", "Tm[100<"), /^The PDF moves the start of a text\.$/],
+    ["moves after its last letter", edit("Tm", /\]TJ/, " 0.5]TJ"), /^The PDF moves the end of a text\.$/],
+    ["moves a shape after its path", (p) => { const i = p.commands.length - 1; p.commands[i] = p.commands[i].replace(/\nf\n/, "\nq 1 0 0 -1 5 5 cm f Q\n"); }, /^The PDF has a shape that is not painted at once\.$/],
     ["leaves a text out", (p) => p.commands.splice(indexOf(p, "Tm"), 1), /^Page 381: the PDF draws the text "Multiply.*and the model has the text "3-20/],
     ["leaves the last square out", (p) => p.commands.pop(), /^Page 381: the PDF draws nothing and the model has a fill at/],
     ["draws a square more", (p) => p.commands.push(fillOf({ x: 300, y: 300, w: 1, h: 1 }, 792)), /^Page 381: the PDF draws a fill at \(300, 300, 1 by 1\) and the model has nothing\.$/],
@@ -81,7 +83,7 @@ describe("the PDF of a book", () => {
     ["draws a colour", edit("Tm", "0 scn", "1 0 0 scn"), /^The PDF has a colour that is not a grey\.$/],
     ["has see-through ink", (p) => p.commands.push("/g0 gs"), /^The PDF has the drawing command "gs"/],
     ["has a character that it does not name", edit("<0032>", "<0032>", "<4444>"), /^The PDF has a character that it does not name\.$/],
-    ["has a font that it does not name", edit("Tm", "/f1 ", "/f7 "), /^The PDF has a font that it does not name\.$/],
+    ["has a font that it does not name", edit("Tm", "/f1x", "/g1x"), /^The PDF has a font that it does not name\.$/],
     ["has a command with no end", (p) => p.commands.push("(abc"), /^The PDF cannot be read\.$/],
   ])("%s: the book stops", (_name, change, problem) => {
     const found = problems(change);
@@ -108,8 +110,8 @@ describe("the PDF of a book", () => {
     ["text", Buffer.from("%PDF-1.7 nothing")],
     ["half of a file", pagesPdf(pages).subarray(0, 9000)],
     ["a table in another place", Buffer.from(Buffer.from(pagesPdf(pages)).toString("latin1").replace(/startxref\n\d+/, "startxref\n17"), "latin1")],
-    ["a page tree with no end", Buffer.from(Buffer.from(pagesPdf(pages)).toString("latin1").replace("/Kids[10 0 R", "/Kids[02 0 R"), "latin1")],
-    ["an object that is not there", Buffer.from(Buffer.from(pagesPdf(pages)).toString("latin1").replace("/Kids[10 0 R", "/Kids[99 0 R"), "latin1")],
+    ["a page tree with no end", Buffer.from(Buffer.from(pagesPdf(pages)).toString("latin1").replace(/Kids\[\d+ 0 R/, "Kids[2 0 R"), "latin1")],
+    ["an object that is not there", Buffer.from(Buffer.from(pagesPdf(pages)).toString("latin1").replace(/Kids\[\d+ 0 R/, "Kids[999 0 R"), "latin1")],
   ])("%s is no PDF of a book", (_name, pdf) => {
     expect(checkPdf(pages, texts, pdf)).toEqual(["The PDF cannot be read."]);
   });

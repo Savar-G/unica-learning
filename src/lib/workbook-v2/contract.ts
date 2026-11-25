@@ -129,6 +129,8 @@ export interface DrawnText {
   end: { x: number; y: number };
   /** Its size with all the room it wants: its width, the height of a capital, and how far its ink goes above and below its line. */
   natural: { w: number; capitals: number; above: number; below: number };
+  /** For a piece of a flow: the width of a space, and the parts of a line above and below the line that its letters stand on. */
+  flow: { space: number; rise: number; fall: number } | null;
 }
 
 /** How fine a page image is. A page image is the paper at this size, so a point of the model has one place in it. */

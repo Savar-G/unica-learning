@@ -3,9 +3,9 @@ import { planBook } from "../build/build-book";
 import type { DrawnText } from "../contract";
 import addSubBook from "../fixtures/book-add-sub.json";
 import addSubSnapshot from "../fixtures/snapshot-add-sub.json";
+import { checkPlaces } from "../testing/drawn-checks";
 import { reportedTexts } from "../testing/fake-typesetter";
 import { factsBook, goodBook } from "../testing/sample";
-import { checkPlaces } from "./place-value";
 
 const book = goodBook();
 const first = book.items[0].face;
@@ -35,6 +35,8 @@ it("each digit of the example pages stands in its place, in stacks of two to fiv
   expect(checkPlaces(facts.pages, facts.items, reportedTexts(facts.pages))).toEqual([]);
 });
 
+it("a digit may be 1.5% of a place away from its middle", () => expect(problems((own) => shift(own[3], 0.015))).toEqual([]));
+
 describe("a digit in another place stops the book", () => {
   it.each<[string, (own: DrawnText[]) => unknown, string]>([
     ["the ones of the lower number under the tens", (own) => { shift(own[3], -1); shift(own[2], -1); }, `Page 381: question 1 must have "${bottom}" of its line 2 in the ones, and it stands in the tens.`],
@@ -42,6 +44,7 @@ describe("a digit in another place stops the book", () => {
     ["the top number one place to the left", (own) => { shift(own[0], -1); shift(own[1], -1); }, `Page 381: question 1 must have "${top[0]}" of its line 1 in the tens, and it stands in the hundreds.`],
     ["the whole stack one place to the left", (own) => own.forEach((d) => shift(d, -1)), `Page 381: question 1 must have "${top[1]}" of its line 1 in the ones, and it stands in the tens.`],
     ["a digit between two places", (own) => shift(own[3], -0.2), `Page 381: question 1 must have "${bottom}" of its line 2 in the ones, and it stands between two places.`],
+    ["a digit 2.5% of a place away from its middle", (own) => shift(own[3], 0.025), `Page 381: question 1 must have "${bottom}" of its line 2 in the ones, and it stands between two places.`],
     ["a digit right of the ones", (own) => shift(own[3], 1), `Page 381: question 1 must have "${bottom}" of its line 2 in the ones, and it stands between two places.`],
     ["a digit with no place", (own) => { own[3].start.x = Number.NaN; }, `Page 381: question 1 must have "${bottom}" of its line 2 in the ones, and it stands between two places.`],
     ["two digits in each other's place", (own) => { shift(own[0], 1); shift(own[1], -1); }, `Page 381: question 1 must have "${top[0]}" of its line 1 in the tens, and it stands in the ones.`],
