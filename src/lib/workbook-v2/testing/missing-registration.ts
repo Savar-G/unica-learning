@@ -24,8 +24,9 @@ export function missingRegistration({ id, sign, back, known: [knownMin, knownMax
     const isNumber = (text: string | undefined) => text !== undefined && /^\d+$/.test(text) && String(Number(text)) === text;
     if (pair.length !== 2 || blank < 0 || !isNumber(pair[1 - blank]) || !isNumber(sides[1])) return null;
     const [known, total] = [Number(pair[1 - blank]), Number(sides[1])];
+    if (known < knownMin || known > knownMax || total > mostResult) return null;
     const fitting = span(0, mostMissing).filter((n) => result(known, n) === total);
-    if (known < knownMin || known > knownMax || total > mostResult || fitting.length !== 1) return null;
+    if (fitting.length !== 1) return null;
     const [missing] = fitting;
     const [a, b] = blank === 0 ? [missing, known] : [known, missing];
     return {

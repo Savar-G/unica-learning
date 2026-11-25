@@ -182,6 +182,11 @@ describe("the templates of tokens", () => {
     expect(fitProblem(template, face, wholeNumber(answer))).toBe(problem);
   });
 
+  it.each([0, 2, 3])("say that a stack with %s answer parts does not fit", (count) => {
+    const parts = Array.from({ length: count }, (_, i) => ({ ...wholeNumber(72).parts[0], name: `blank-${i + 1}` }));
+    for (const id of ["columns-2x4", "columns-2x4-wide"]) expect(fitProblem(TEMPLATES.get(id)!, column, { parts })).toBe(`has ${count} answer parts and a stack has one answer area`);
+  });
+
   it("show a question with its answer, and how large it is", () => {
     expect(questionText(equation("5", "×", "□", "=", "35"), wholeNumber(7))).toBe("5 × [7] = 35");
     expect(questionText(column, wholeNumber(72))).toBe("24 × 3 = 72");

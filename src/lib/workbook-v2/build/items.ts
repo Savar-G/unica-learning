@@ -101,7 +101,7 @@ export function sheetItems(sheet: SnapshotSheet, childId: string, attempt: numbe
     sideItems(sheet.id, side, rows[side]).map((item, i) => ({ ...item, id: `${sheet.id}/${attempt}/${side}/${i + 1}`, number: i + 1 })));
 }
 
-/** The rows of a sheet with a question that an earlier row of the side or the front side has too. A book with them is built. */
+/** The rows of a sheet with a question that the row, an earlier row of the side or the front side has too. A book with them is built. */
 export function repeatNotices(sheet: SnapshotSheet, items: readonly BookItem[]): string[] {
   const notices: string[] = [];
   const front = new Set<string>();
@@ -109,11 +109,11 @@ export function repeatNotices(sheet: SnapshotSheet, items: readonly BookItem[]):
     const onSide = new Set<string>();
     for (const row of sheet[side].rows) {
       const keys = items.filter((item) => item.side === side && item.rowId === row.id).map((item) => keyOf(row.shape, item.question));
-      const tell = (others: Set<string>, what: string) => {
-        const twice = keys.filter((key) => others.has(key)).length;
+      const tell = (others: ReadonlySet<string>, what: string, inRow = false) => {
+        const twice = keys.filter((key, i) => others.has(key) || (inRow && keys.indexOf(key) < i)).length;
         if (twice > 0) notices.push(`Sheet "${sheet.id}", ${side} side, row "${row.id}": ${twice} ${twice === 1 ? "question is" : "questions are"} ${what}.`);
       };
-      tell(onSide, "on this side more than once");
+      tell(onSide, "on this side more than once", true);
       if (side === "back") tell(front, "on the front side too");
       for (const key of keys) (side === "front" ? [onSide, front] : [onSide]).forEach((on) => on.add(key));
     }

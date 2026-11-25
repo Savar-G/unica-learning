@@ -370,10 +370,11 @@ class Harness {
     for (const items of new Set([1, Math.min(2, count), Math.ceil(count / 2), count])) {
       const at = `orderedRuns(${json}, ${items})`;
       const runs = this.shape.orderedRuns?.(limits, items) ?? null;
+      const before = canonicalJson(runs);
       if ((runs !== null) !== asked) this.tell("ordered-row", `${at} ${runs ? "gave rows" : "gave no rows"} and the limits ask for ${asked ? "some" : "none"}`);
       if (!runs) continue;
       if (runs.length === 0) this.tell("ordered-row", `${at} gave no row`);
-      if (canonicalJson(this.shape.orderedRuns?.(limits, items)) !== canonicalJson(runs)) this.tell("determinism", `${at} gave other rows the second time`);
+      if (canonicalJson(this.shape.orderedRuns?.(limits, items)) !== before) this.tell("determinism", `${at} gave other rows the second time`);
       const all = runs.map((run) => run.map((question) => this.inspect(question)).filter((q) => q !== null));
       if (new Set(all.map((run) => run.map((q) => keyOf(q.rows)).join())).size < all.length) this.tell("ordered-row", `${at} gave one row twice`);
       for (const run of all) {

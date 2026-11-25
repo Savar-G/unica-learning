@@ -300,7 +300,11 @@ describe("no question repeats on a side while there are enough different ones", 
       'Sheet "column-multiplication-1", front side, row "front-1": 2 questions are on this side more than once.',
       'Sheet "column-multiplication-1", back side, row "back-0": 3 questions are on the front side too.',
     ]);
-    expect(repeatNotices(SHEET, sheetItems(SHEET, "child", 1))).toEqual([]);
+    const items = sheetItems(SHEET, "child", 1);
+    expect(repeatNotices(SHEET, items)).toEqual([]);
+    const [first, second] = items;
+    expect(second.rowId).toBe(first.rowId);
+    expect(repeatNotices(SHEET, items.with(1, { ...second, question: first.question }))).toEqual([`Sheet "column-multiplication-1", front side, row "${first.rowId}": 1 question is on this side more than once.`]);
   });
 
   it("the first question of a row is the one that its seed gives, when nothing is in its way", () => {
