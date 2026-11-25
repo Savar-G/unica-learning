@@ -57,17 +57,17 @@ export interface HarnessOptions {
 
 /** Where the limits of a registration are made: a run there can be stopped after some time. */
 const CONTEXT = vm.createContext({});
-/** The limits that some rules made. The seed is fixed, so the same rules make the same limits. */
-const madeBefore = new WeakMap<ShapeRegistration["limits"], Map<number, readonly Limits[]>>();
 
-function makeLimits(rules: ShapeRegistration["limits"], { madeLimits = ARBITRARY_LIMITS, timeLimitMs = TIME_LIMIT_MS }: HarnessOptions): readonly Limits[] {
-  const known = madeBefore.get(rules) ?? new Map<number, readonly Limits[]>();
-  madeBefore.set(rules, known);
-  const before = known.get(madeLimits);
+function makeLimits(
+  rules: ShapeRegistration["limits"],
+  { madeLimits = ARBITRARY_LIMITS, timeLimitMs = TIME_LIMIT_MS }: HarnessOptions,
+  cache: Map<number, readonly Limits[]>,
+): readonly Limits[] {
+  const before = cache.get(madeLimits);
   if (before) return before;
   const run = () => fc.sample(fc.record(Object.fromEntries(Object.entries(rules).map(([name, rule]) => [name, rule.values]))), { numRuns: madeLimits, seed: SAMPLE_SEED });
   const made = vm.runInContext("run()", Object.assign(CONTEXT, { run }), { timeout: timeLimitMs }) as Limits[];
-  known.set(madeLimits, made);
+  cache.set(madeLimits, made);
   return made;
 }
 
@@ -82,11 +82,10 @@ interface Listed { rows: Rows; printed: Printed; asked: Inspected | null }
 /** All that the checks know about one set of limits. */
 interface Space { limits: Limits; json: string; count: number; easiest: number; hardest: number; widths: Readonly<Record<string, number>>; places: number }
 
-/** What the layout printed. It depends on the template, the face and the answer, and many runs print the same questions. */
-const printedBefore = new WeakMap<PageTemplate, Map<string, Rows>>();
-function layoutRows(template: PageTemplate, face: Face, answer: Answer): Rows {
-  const known = printedBefore.get(template) ?? new Map<string, Rows>();
-  printedBefore.set(template, known);
+/** What the layout printed, cached inside one harness run only. */
+function layoutRows(template: PageTemplate, face: Face, answer: Answer, cache: WeakMap<PageTemplate, Map<string, Rows>>): Rows {
+  const known = cache.get(template) ?? new Map<string, Rows>();
+  cache.set(template, known);
   const key = JSON.stringify([face, answer.value]);
   const before = known.get(key);
   if (before) return before;
@@ -108,6 +107,8 @@ class Harness {
   private readonly byRows = new Map<string, Inspected | null>();
   readonly spaces = new Map<string, Space | null>();
   private readonly seen = new WeakMap<Limits, Space | null>();
+  private readonly madeLimitsCache = new Map<number, readonly Limits[]>();
+  private readonly printedCache = new WeakMap<PageTemplate, Map<string, Rows>>();
   private every: Listed[] | null = null;
   readonly shape: Shape;
   /** The shape as the build gets it: its `generate` checks each question. */
@@ -148,7 +149,7 @@ class Harness {
     const places = digitPlaces(face, answer.value);
     const template = this.templates.find((t) => t.faces.includes(face.kind) && t.digits >= places);
     if (!template) throw new Error(`no template takes a ${face.kind} question with ${places} digit places`);
-    return { rows: layoutRows(template, face, answer), places };
+    return { rows: layoutRows(template, face, answer, this.printedCache), places };
   }
 
   /** Everything about a question that no limits decide. Each question is inspected once. */
@@ -188,13 +189,21 @@ class Harness {
     if (bad !== undefined) this.tell("steps-end", `${at}: the step ${JSON.stringify(bad.text)} cannot be printed`);
     const end = steps.at(-1)?.text;
     if (end !== answer.value) this.tell("steps-end", `${at}: the steps end in ${JSON.stringify(end)} and not in "${answer.value}"`);
-    for (const { text } of steps) {
+    let textOk = true;
+    // The last step is the answer itself (checked above against answer.value and answer-form); check every working step with the closed grammar.
+    for (const { text } of steps.slice(0, -1)) {
       const { wrong, unread } = readStep(text);
-      if (unread.length > 0) this.tell("steps-true", `cannot read "${unread[0]}" in a step of ${at}`);
-      if (wrong.length > 0) this.tell("steps-true", `${at}: the step "${text}" holds "${wrong[0]}"`);
+      if (unread.length > 0) {
+        textOk = false;
+        this.tell("steps-true", `cannot read "${unread[0]}" in a step of ${at}`);
+      }
+      if (wrong.length > 0) {
+        textOk = false;
+        this.tell("steps-true", `${at}: the step "${text}" holds "${wrong[0]}"`);
+      }
     }
-    // Wrong answers and ends have their own checks; the marks are compared with a good answer.
-    const marks = answer.kind === "whole-number" && hasAnswerForm(answer) && end === answer.value ? marksProblem(steps, answer.value) : null;
+    // Wrong answers, ends and unreadable steps have their own checks; the marks are compared with a good step list.
+    const marks = textOk && answer.kind === "whole-number" && hasAnswerForm(answer) && end === answer.value ? marksProblem(steps, answer.value) : null;
     if (marks) this.tell("steps-marks", `${at}: ${marks}`);
     const said = canonicalJson(steps);
     const wanted = canonicalJson(printed.steps);
@@ -294,7 +303,7 @@ class Harness {
   sampleLimits(): { named: readonly Limits[]; made: readonly Limits[] } {
     const { reg } = this;
     const named = [...new Map([...reg.cases, ...reg.smallSpaces, ...reg.witnesses].map((c) => [canonicalJson(c.limits), c.limits])).values()];
-    const made = this.guard("arbitrary", () => makeLimits(reg.limits, this.options)) ?? [];
+    const made = this.guard("arbitrary", () => makeLimits(reg.limits, this.options, this.madeLimitsCache)) ?? [];
     for (const [name, { values }] of Object.entries(reg.limits)) {
       if (made.length > 0 && new Set(made.map((l) => canonicalJson(l[name]))).size < 2) this.tell("arbitrary", `the limit "${name}" never changes`);
       const lost = this.guard("arbitrary", () => named.find((l) => !values.canShrinkWithoutContext(l[name])));

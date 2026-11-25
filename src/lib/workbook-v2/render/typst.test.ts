@@ -220,8 +220,7 @@ describe.skipIf(skipTypstTests()).concurrent("with the real Typst", () => {
   // Each drawing has two faults that do not touch each other, because a drawing costs three runs of Typst.
   describe("a drawing file that reports more than it prints does not pass the image check", () => {
     type Fault = [name: string, change: (s: string) => string, problem: RegExp];
-    const drawnProblems = async (faults: readonly Fault[]) => {
-      const pages = smallPages();
+    const drawnProblems = async (faults: readonly Fault[], pages: PageModel[] = smallPages()) => {
       let a = assets();
       for (const [name, change] of faults) a = template(`${name.replaceAll(" ", "-")}.typ`, change, a);
       const out = await renderDrawing(a, pages);
@@ -229,27 +228,37 @@ describe.skipIf(skipTypstTests()).concurrent("with the real Typst", () => {
       expect(checkTexts(pages, out.texts)).toEqual([]);
       return checkImages(pages, out.images).join("\n");
     };
-    const PAIRS: readonly (readonly [Fault, Fault])[] = [
-      [
-        ["hides the text", (s) => s.replace("  it\n}", "  hide(it)\n}"), /^Page 381: "heading" must print "3-20 · Multiplying 2 digits by 1 digit" and the image has no ink there\.$[^]*^Page 382: "question-1" must print/m],
-        ["prints the QR code of the first page on each page", (s) => s.replace("for ink in region.ink {", 'for ink in if region.role == "qr" { model.pages.first().regions.last().ink.map(ink => { ink.rect.x += region.rect.x - model.pages.first().regions.last().rect.x; ink }) } else { region.ink } {'), /^Page 382: the QR code reads "https:\/\/unicalearning\.com\/tutor\/p\/example-front-381" and must read "https:\/\/unicalearning\.com\/tutor\/p\/example-back-382"\.$/m],
-      ],
-      [
-        ["hides one text", (s) => s.replace("  it\n}", '  if it.text == "×" { hide(it) } else { it }\n}'), /^Page 381: "question-1" must print "×" and the image has no ink there\.$/m],
-        ["prints the QR code a second time", (s) => s.replace("      report(region.id)", '      report(region.id)\n      if region.role == "qr" { place(origin, dx: -points(region.rect.w) * 3, dy: -points(region.rect.h), block(width: points(region.rect.w), height: points(region.rect.h), for ink in region.ink { put(ink.rect, region.rect, drawers.at(ink.kind)(ink)) })) }'), /^Page 381: the image has a second QR code, which reads "https:\/\/unicalearning\.com\/tutor\/p\/example-front-381"\.$/m],
-      ],
-      [
-        ["prints white text", (s) => s.replace("fill: colors.at(ink.color), ink.text", "fill: white, ink.text"), /"label-1" must print "1"/],
-        ["leaves out the QR squares", (s) => s.replace("for ink in region.ink", 'for ink in if region.role == "qr" { () } else { region.ink }'), /^Page 381: the image has no QR code that can be read in its box\.$[^]*^Page 382: the image has no QR code/m],
-      ],
-      [
-        ["leaves out all filled squares", (s) => s.replace("fill: colors.at(ink.color), stroke: none", "fill: none, stroke: none"), /the image has no ink for a part of "mark-tl"/],
-        ["leaves out the outlines", (s) => s.replace("points(ink.width) + colors.at(ink.color)", "none"), /the image has no ink for a part of "answer-1"/],
-      ],
+    const PAIRS: readonly { pages?: () => PageModel[]; faults: readonly [Fault, Fault] }[] = [
+      {
+        // Full example pages so ink checks on late questions of the back page (question-8) are exercised end to end.
+        pages: goodPages,
+        faults: [
+          ["hides the text", (s) => s.replace("  it\n}", "  hide(it)\n}"), /^Page 381: "heading" must print "3-20 · Multiplying 2 digits by 1 digit" and the image has no ink there\.$[^]*^Page 382: "question-8" must print/m],
+          ["prints the QR code of the first page on each page", (s) => s.replace("for ink in region.ink {", 'for ink in if region.role == "qr" { model.pages.first().regions.last().ink.map(ink => { ink.rect.x += region.rect.x - model.pages.first().regions.last().rect.x; ink }) } else { region.ink } {'), /^Page 382: the QR code reads "https:\/\/unicalearning\.com\/tutor\/p\/example-front-381" and must read "https:\/\/unicalearning\.com\/tutor\/p\/example-back-382"\.$/m],
+        ],
+      },
+      {
+        faults: [
+          ["hides one text", (s) => s.replace("  it\n}", '  if it.text == "×" { hide(it) } else { it }\n}'), /^Page 381: "question-1" must print "×" and the image has no ink there\.$/m],
+          ["prints the QR code a second time", (s) => s.replace("      report(region.id)", '      report(region.id)\n      if region.role == "qr" { place(origin, dx: -points(region.rect.w) * 3, dy: -points(region.rect.h), block(width: points(region.rect.w), height: points(region.rect.h), for ink in region.ink { put(ink.rect, region.rect, drawers.at(ink.kind)(ink)) })) }'), /^Page 381: the image has a second QR code, which reads "https:\/\/unicalearning\.com\/tutor\/p\/example-front-381"\.$/m],
+        ],
+      },
+      {
+        faults: [
+          ["prints white text", (s) => s.replace("fill: colors.at(ink.color), ink.text", "fill: white, ink.text"), /"label-1" must print "1"/],
+          ["leaves out the QR squares", (s) => s.replace("for ink in region.ink", 'for ink in if region.role == "qr" { () } else { region.ink }'), /^Page 381: the image has no QR code that can be read in its box\.$[^]*^Page 382: the image has no QR code/m],
+        ],
+      },
+      {
+        faults: [
+          ["leaves out all filled squares", (s) => s.replace("fill: colors.at(ink.color), stroke: none", "fill: none, stroke: none"), /the image has no ink for a part of "mark-tl"/],
+          ["leaves out the outlines", (s) => s.replace("points(ink.width) + colors.at(ink.color)", "none"), /the image has no ink for a part of "answer-1"/],
+        ],
+      },
     ];
-    for (const faults of PAIRS) {
+    for (const { pages, faults } of PAIRS) {
       let problems: Promise<string> | undefined;
-      const all = () => problems ??= drawnProblems(faults);
+      const all = () => problems ??= drawnProblems(faults, pages ? pages() : smallPages());
       it.each(faults)("%s", async (_name, _change, problem) => { expect(await all()).toMatch(problem); });
     }
   });

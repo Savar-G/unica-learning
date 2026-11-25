@@ -54,14 +54,14 @@ A question has a list of `Step` (`contract.ts`): `text`, the line that a parent 
 | 3 × 2 = 6, plus 1 is 7 | write 7 at 2 |
 | 741 | |
 
-How a shape writes them (the harness checks each rule for an answer that is one whole number, `testing/step-marks.ts`):
+How a shape writes them (the harness checks each rule for an answer that is one whole number, `testing/steps-evaluator.ts` and `testing/step-marks.ts`):
 
+- Every working step follows a closed clause grammar, in strict order, separated by `", "`: an equation (`3 × 4 = 12`), an optional incoming carry addition (`plus 2 is 14`), a write clause (`write 4`; required before the last column, optional on the last column where it must write all digits of the column total), and an optional carry clause (`carry 1`; required before the last column when the total is 10 or more, forbidden on the last column). Unknown clauses, repeated clauses, out-of-order clauses, or wrong numbers fail.
 - All "write" marks together are the digits of the answer: each place one time.
 - A step that carries writes one digit and puts its "carry" mark one place above that digit. The next step writes that place and adds the same digit.
-- The words say the same as the marks: "write 4" is the digit that the step writes, "carry 1" its carry, and ", plus 1 is 7" adds the carry of the step before. A last column can write two digits with no "write" ("7 × 4 = 28").
-- No mark and no word says a carry of 0.
+- The words say the same as the marks, and no mark and no word says a carry of 0.
 
-A new kind of mark (a borrow, a digit crossed out) is a new word in `STEP_MARKS` and its rule in `testing/step-marks.ts`.
+What the marks cannot say yet: a borrow, a crossed-out digit, or rows and offsets for long division and two partial products. A later shape adds typed marks to `STEP_MARKS` (and its clause kind in the single list `CLAUSE_KINDS` in `testing/steps-evaluator.ts`, plus its check in `testing/step-marks.ts`) without changing the multiplication form or the shapes themselves.
 
 ## Limits and large spaces
 
@@ -77,14 +77,14 @@ A shape whose space is too large to list must not list it for each question. `mu
    - `read(rows)`: the answer, one feature for each limit, at least one width and every worked step with its marks (`step("2 × 4 = 8, write 8", "w8@0")`), computed from the printed rows in another way than the shape.
    - `space`: the list of every printed question, or the count and the ends for any limits. `listed` is a part of a large space whose questions are all inspected (2 and 3 digits of `mul.column`).
    - `cases` (the limits of each bank row must be one), `smallSpaces` with complete lists by hand, `witnesses` (for each limit a question inside and one that breaks only it), and the named lists.
-   - Steps: the harness compares the whole list of steps and marks with the list of the reader, checks the marks ("Steps" above), and reads each part of a step that holds "=" (parts end at `,` `.` `;` or `:`). Such a part must be one true equation, as in "3 × 4 = 12, write 2, carry 1". Any other part with "=" is refused.
+   - Steps: the harness compares the whole list of steps and marks with the list of the reader, checks every clause of each step against the closed grammar (`testing/steps-evaluator.ts`), and checks the marks against the clauses and answer ("Steps" above).
 3. Run `npm run workbook:v2:fingerprints`, then `npx vitest run src/lib/workbook-v2/shapes --sequence.shuffle`.
 
 `worstCase` is one question that is the widest in every width and in digit places. If the widths pull apart (99 - 4 leaves as much as 100 - 5 in fewer places), register the digit places as the width.
 
 The harness (`testing/shape-harness.ts`) takes 1,000 production seeds for each shape: `planBook` builds one book with both sides and all places of each template that fits any of the limits, and each generated question is compared with the reader, the rules, the second solver, the steps and the ranges. Limits come from fast-check with a fixed seed, so a failure comes back in the next run, and its message holds the call that repeats it. `testing/shape-harness.test.ts` holds a broken shape for each check. An answer with parts needs a new kind in `ANSWER_KINDS` and `Answer` (`contract.ts`) and its rule in `ANSWER_FORMS` (`testing/shape-checks.ts`); the rest compares whole answers.
 
-**Fingerprints:** `testing/shape-fingerprints.json` holds one SHA-256 for each version of a shape: every question of a listed space, or 1,000 questions of a large one, with the registered limits. A change of the output needs a new `version`, then the command. The file has one line for each shape, so that branches that change other shapes merge. A stored entry never changes: `scripts/shape-fingerprint-base.mjs` compares the file with the base of the branch, in the `scope` job of CI (the one job that always has the base) and in `npm run check:fast`.
+**Fingerprints:** `testing/fingerprints/<shape>.json` holds one file per shape, with one SHA-256 for each version of that shape: every question of a listed space, or every `listed` question and small space plus 1,000 seeded questions of a large one, with the registered limits. In a large space, questions outside `listed` and `smallSpaces` have sampled coverage only. A change of the output needs a new `version`, then the command. Parallel branches that add shapes merge cleanly because `.gitattributes` sets `merge=union` on `shapes/index.ts` and `testing/shape-registrations.ts`, and each shape has its own registration file and fingerprint file. A stored entry never changes: `scripts/shape-fingerprint-base.mjs` compares the folder with the base of the branch, in the `scope` job of CI (the one job that always has the base) and in `npm run check:fast`.
 
 ## Tests
 

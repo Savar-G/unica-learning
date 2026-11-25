@@ -87,8 +87,11 @@ describe("a sheet of 4 digits by 1 digit", () => {
   });
 
   it("leaves a work area beside each stack, outside the reach of its answer", () => {
+    expect(wide).toHaveLength(2);
     for (const page of wide) {
-      regions(page, "work").forEach(({ rect }, i) => {
+      const works = regions(page, "work");
+      expect(works).toHaveLength(8);
+      works.forEach(({ rect }, i) => {
         const reach = regions(page, "reach")[i].rect;
         expect(rect.x).toBeGreaterThan(reach.x + reach.w);
         expect([rect.w, rect.h]).toEqual([38, 140]);

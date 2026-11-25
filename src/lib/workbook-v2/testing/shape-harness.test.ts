@@ -12,6 +12,9 @@ import { shapeFingerprint } from "./shape-fingerprints";
 import { CHECKS, checkShape, checkShapes, runChecks, SEEDS, type Check, type HarnessOptions, type ShapeReport } from "./shape-harness";
 import { neverLimit, onlyLimit, rangeLimit, registryProblems, step, type LargeSpace, type Limits, type Rows, type ShapeRegistration } from "./shape-registration";
 import { readStep } from "./steps-evaluator";
+import { marksProblem } from "./step-marks";
+import { mulColumn } from "../shapes/mul-column";
+import { mulColumnRegistration } from "./registrations/mul-column";
 
 // Broken shapes. Every table row has one fault, and the harness must refuse it for that fault and no other.
 
@@ -138,7 +141,7 @@ function oneSpace(): Broken {
 /** A shape that says the steps of one question in another true way, only the second time after its fingerprint. */
 function changingSteps(): Broken {
   let calls = 0;
-  const shape = add({ steps: (question) => (same(question, { a: 22, b: 2 }) && ++calls === 2 ? [step("2 + 2 = 4", "w4@0"), step("20 + 4 = 24", "w2@1"), step("24")] : addShape.steps(question)) });
+  const shape = add({ steps: (question) => (same(question, { a: 22, b: 2 }) && ++calls === 2 ? [step("22 + 2 = 24", "w4@0 w2@1"), step("24")] : addShape.steps(question)) });
   const fingerprints = { "test.add": { 1: shapeFingerprint(shape, addRegistration) } };
   calls = 0;
   return { shape, options: { fingerprints }, seeds: SEEDS };
@@ -194,9 +197,9 @@ const REFUSED: readonly Refused[] = [
   ["inside", "a question outside the limits", () => ({ seeds: SEEDS, shape: add({ generate: (l, seed) => { const item = addShape.generate(l, seed); return same(l, addRegistration.cases[1].limits) && item.question.b === 9 ? addItem({ a: 11, b: 9 }) : item; } }) }), /gave \["11","\+9"\], which is outside the limits/],
   ["inside", "questions for limits that no question meets", readsOtherLimits, /which is outside the limits/],
   ["answer", "another answer for one seed of a small space", () => ({ shape: add({ generate: (l, seed) => { const item = addShape.generate(l, seed); return seed === "seed-0" ? { ...item, answer: whole("1") } : item; } }) }), /holds the answer .*"1".* and the shape answers/],
-  ["answer-form", "a word, in every part of the shape and in the reader", () => ({ shape: add(coordinated("ok", said("ok"))), registration: readQuiet({ answer: whole("ok"), steps: said("ok") }) }), /"ok"\} is no answer of the kind "whole-number"/],
-  ["answer-form", "a zero in front", () => ({ shape: add(coordinated("02", said("02"))), registration: readQuiet({ answer: whole("02"), steps: said("02") }) }), /"02"\} is no answer/],
-  ["independent-answer", "a wrong answer in every part of the shape", () => ({ shape: add(coordinated("23", said("It is 23.", "23"))), registration: readQuiet({ steps: said("It is 23.", "23") }) }), /the answer is .*"23".* and \["16","\+6"\] reads as .*"22"/],
+  ["answer-form", "a word, in every part of the shape and in the reader", () => ({ shape: add(coordinated("ok", [step("16 + 6 = 22", "w2@0 w2@1"), step("ok")])), registration: readQuiet({ answer: whole("ok"), steps: [step("16 + 6 = 22", "w2@0 w2@1"), step("ok")] }) }), /"ok"\} is no answer of the kind "whole-number"/],
+  ["answer-form", "a zero in front", () => ({ shape: add(coordinated("02", [step("1 + 1 = 2", "w2@0"), step("02")])), registration: readQuiet({ answer: whole("02"), steps: [step("1 + 1 = 2", "w2@0"), step("02")] }) }), /"02"\} is no answer/],
+  ["independent-answer", "a wrong answer in every part of the shape", () => ({ shape: add(coordinated("23", said("17 + 6 = 23", "23"))), registration: readQuiet({ steps: said("17 + 6 = 23", "23") }) }), /the answer is .*"23".* and \["16","\+6"\] reads as .*"22"/],
   ["printed", "a plus that the shape reads as a plus and the child as another sign", () => ({ shape: add({ face: onQuiet(addShape.face, { kind: "column", top: "16", sign: "×", bottom: "6" }), solveAgain: (rows) => addShape.solveAgain(rows.join() === "16,×6" ? ["16", "+6"] : rows) }) }), /the independent reader finds no question in \["16","×6"\]/],
   ["printed", "a sign that the fonts do not hold", () => ({ shape: add({ face: onQuiet(addShape.face, { kind: "column", top: "16", sign: "✚", bottom: "6" }), solveAgain: (rows) => addShape.solveAgain(rows.join() === "16,✚6" ? ["16", "+6"] : rows) }), registration: { read: (rows) => addRegistration.read(rows.join() === "16,✚6" ? ["16", "+6"] : rows) } }), /the fonts cannot print/],
   ["printed", "rows that are read as another question", () => ({ shape: add({ solveAgain: (rows) => (rows.join() === "16,+6" ? addItem({ a: 18, b: 6 }) : addShape.solveAgain(rows)) }) }), /\["16","\+6"\] is printed as \["18","\+6"\]/],
@@ -204,39 +207,43 @@ const REFUSED: readonly Refused[] = [
   ["solve-again", "another second answer for one question", () => ({ shape: add({ solveAgain: (rows) => (rows.join() === "16,+6" ? { question: QUIET, answer: whole("23") } : addShape.solveAgain(rows)) }) }), /solveAgain\(\["16","\+6"\]\) gave .*"23"/],
   ["steps-end", "an end that is not the answer", () => bothSay(...said("6 + 6 = 12", "12")), /the steps end in "12" and not in "22"/],
   ["steps-end", "no step", () => bothSay(), /the steps end in undefined/],
-  ["steps-end", "a step that the fonts cannot print", () => bothSay(...said("✚", "22")), /the step "✚" cannot be printed/],
+  ["steps-end", "a step that the fonts cannot print", () => bothSay(...said("22", "22").map((s, i) => (i === 0 ? step("16 + 6 = 22", "w2@0 w2@1") : { ...s, text: "✚" }))), /the step "✚" cannot be printed/],
   ["steps-true", "a false step that the reader says too", () => bothSay(...said("6 + 6 = 12", "10 + 12 = 23", "22")), /holds "10 \+ 12 = 23"/],
   ["steps-true", "a false step with a negative result that the reader says too", () => bothSay(...said("2 - 3 = -2", "22")), /holds "2 - 3 = -2"/],
   ["steps-true", "a step with an equals sign that nothing can read", () => bothSay(...said("6 and 6 = 12", "22")), /cannot read "6 and 6 = 12"/],
+  ["steps-true", "a step with an unknown prose clause that the reader says too", () => bothSay(step("6 + 6 = 12, as you know", "w2@0 w2@1"), step("22")), /cannot read "as you know"/],
+  ["steps-true", "a step with a repeated carry that the reader says too", () => bothSay(step("6 + 6 = 12, write 2, carry 1, carry 2", "w2@0 c1@1"), step("1 + 0 = 1, plus 1 is 2", "w2@1"), step("22")), /holds "carry 2"/],
+  ["steps-true", "a step with a wrong plus result that the reader says too", () => bothSay(step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@1"), step("1 + 0 = 1, plus 1 is 99", "w2@1"), step("22")), /holds "plus 1 is 99"/],
   ...([
-    ["a true equation of other numbers", "90 + 9 = 99"], ["a sentence that is false for this question and true for another", "The tens stay 1."],
-    ["a step that says nothing", "Think hard."], ["words beside an equation", "6 + 6 = 12, as you know"],
-  ].map(([fault, line]): Refused => ["steps-reader", fault, () => ({ shape: add({ steps: onQuiet(addShape.steps, said(line, "22")) }) }), /the steps are .* and must be .*"6 \+ 6 = 12".*"10 \+ 12 = 22"/])),
+    ["a valid one-step form", [step("16 + 6 = 22", "w2@0 w2@1"), step("22")]],
+    ["an explicit write on the last column", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@1"), step("1 + 0 = 1, plus 1 is 2, write 2", "w2@1"), step("22")]],
+    ["valid column steps of another question with the same answer", [step("5 + 7 = 12, write 2, carry 1", "w2@0 c1@1"), step("1 + 0 = 1, plus 1 is 2", "w2@1"), step("22")]],
+  ] as [string, Step[]][]).map(([fault, steps]): Refused => ["steps-reader", fault, () => ({ shape: add({ steps: onQuiet(addShape.steps, steps) }) }), /the steps are .* and must be .*"6 \+ 6 = 12, write 2, carry 1"/]),
   ...([
-    ["a place that no step writes", [step("6 + 6 = 12", "w2@0"), step("22")], /write "2" and not the answer "22"/],
-    ["a place that two steps write", [step("6 + 6 = 12", "w2@0"), step("10 + 12 = 22", "w2@1 w2@0"), step("22")], /write the place 0 more than once/],
-    ["another digit than the answer has", [step("6 + 6 = 12", "w2@0"), step("10 + 12 = 22", "w1@1"), step("22")], /write "12" and not the answer "22"/],
-    ["a place above the answer", [step("6 + 6 = 12", "w2@0"), step("10 + 12 = 22", "w2@2"), step("22")], /write "2\?2" and not the answer "22"/],
-    ["a last step that writes", [step("6 + 6 = 12", "w2@0"), step("22", "w2@1")], /the last step draws something/],
-    ["a mark of no kind", [{ text: "6 + 6 = 12", marks: [{ mark: "circle", place: 0, digit: "2" }] }, ...said("22")], /"6 \+ 6 = 12" holds a mark that is not one/],
-    ["a mark of two digits", [{ text: "6 + 6 = 12", marks: [{ mark: "write", place: 0, digit: "22" }] }, ...said("22")], /holds a mark that is not one/],
-    ["a mark at no place", [{ text: "6 + 6 = 12", marks: [{ mark: "write", place: -1, digit: "2" }] }, ...said("22")], /holds a mark that is not one/],
-    ["a mark with a field more", [{ text: "6 + 6 = 12", marks: [{ mark: "write", place: 0, digit: "2", color: "red" }] }, ...said("22")], /holds a mark that is not one/],
-    ["a step with a field more", [{ ...step("6 + 6 = 12", "w2@0 w2@1"), note: "" }, step("22")], /is not a text with marks/],
-    ["a step that says another digit than it writes", [step("6 + 6 = 12, write 3", "w2@0"), step("10 + 12 = 22", "w2@1"), step("22")], /says "write 3" and writes "2"/],
-    ["a carry that is not said", [step("6 + 6 = 12, write 2", "w2@0 c1@1"), step("1 + 0 = 1, plus 1 is 2", "w2@1"), step("22")], /says no carry and carries 1/],
+    ["a place that no step writes", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@1"), step("22")], /write "2" and not the answer "22"/],
+    ["a place that two steps write", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@1"), step("1 + 0 = 1, plus 1 is 2", "w2@1 w2@0"), step("22")], /write the place 0 more than once/],
+    ["another digit than the answer has", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@1"), step("1 + 0 = 1, plus 1 is 2", "w1@1"), step("22")], /write "12" and not the answer "22"/],
+    ["a place above the answer", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@1"), step("1 + 0 = 1, plus 1 is 2", "w2@2"), step("22")], /write "2\?2" and not the answer "22"/],
+    ["a last step that writes", [step("16 + 6 = 22", "w2@0"), step("22", "w2@1")], /the last step draws something/],
+    ["a mark of no kind", [{ text: "16 + 6 = 22", marks: [{ mark: "circle", place: 0, digit: "2" }] }, step("22")], /"16 \+ 6 = 22" holds a mark that is not one/],
+    ["a mark of two digits", [{ text: "16 + 6 = 22", marks: [{ mark: "write", place: 0, digit: "22" }] }, step("22")], /holds a mark that is not one/],
+    ["a mark at no place", [{ text: "16 + 6 = 22", marks: [{ mark: "write", place: -1, digit: "2" }] }, step("22")], /holds a mark that is not one/],
+    ["a mark with a field more", [{ text: "16 + 6 = 22", marks: [{ mark: "write", place: 0, digit: "2", color: "red" }] }, step("22")], /holds a mark that is not one/],
+    ["a step with a field more", [{ ...step("16 + 6 = 22", "w2@0 w2@1"), note: "" }, step("22")], /is not a text with marks/],
+    ["a step that writes another digit than its equation gives", [step("1 + 2 = 3, write 3", "w2@0"), step("2 + 0 = 2", "w2@1"), step("22")], /says "write 3" and must write "3"|writes "2" and must write "3"/],
+    ["a carry that is not said", [step("1 + 1 = 2, write 2", "w2@0 c1@1"), step("1 + 0 = 1, plus 1 is 2", "w2@1"), step("22")], /says no carry and carries 1/],
     ["a carry that is said and not drawn", [step("6 + 6 = 12, write 2, carry 1", "w2@0"), step("1 + 0 = 1, plus 1 is 2", "w2@1"), step("22")], /says "carry 1" and carries nothing/],
-    ["a carry of 0", [step("6 + 6 = 12, write 2, carry 0", "w2@0 c0@1"), step("1 + 1 = 2", "w2@1"), step("22")], /carries 0/],
+    ["a carry of 0", [step("1 + 1 = 2, write 2", "w2@0 c0@1"), step("2 + 0 = 2", "w2@1"), step("22")], /carries 0/],
     ["two carries of one step", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@1 c1@1"), step("1 + 0 = 1, plus 1 is 2", "w2@1"), step("22")], /has 2 carries/],
     ["a carry above its own column", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@0"), step("1 + 0 = 1, plus 1 is 2", "w2@1"), step("22")], /its carry stands at the place 0 and must stand at 1/],
     ["a carry two places above its column", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@2"), step("1 + 0 = 1, plus 1 is 2", "w2@1"), step("22")], /its carry stands at the place 2 and must stand at 1/],
-    ["a carry that the next column does not add", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@1"), step("1 + 1 = 2", "w2@1"), step("22")], /carries 1 and the next step adds nothing/],
-    ["a carry that the next column adds as another number", [step("6 + 6 = 12, write 2, carry 2", "w2@0 c2@1"), step("1 + 0 = 1, plus 1 is 2", "w2@1"), step("22")], /carries 2 and the next step adds 1/],
-    ["a column that adds a carry that no step made", [step("6 + 6 = 12, write 2", "w2@0"), step("1 + 0 = 1, plus 1 is 2", "w2@1"), step("22")], /carries nothing and the next step adds 1/],
-    ["a first column that adds a carry", [step("5 + 6 = 11, plus 1 is 12, write 2", "w2@0"), step("10 + 12 = 22", "w2@1"), step("22")], /the first step adds 1/],
-    ["a carry that the step of another place adds", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@1"), step("1 + 0 = 1, plus 1 is 2", ""), step("10 + 12 = 22", "w2@1"), step("22")], /and the next step does not write that place/],
+    ["a carry that the next column does not add", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@1"), step("1 + 1 = 2", "w2@1"), step("22")], /carries 1 and .* adds nothing/],
+    ["a carry that the next column adds as another number", [step("15 + 7 = 22, write 2, carry 2", "w2@0 c2@1"), step("1 + 0 = 1, plus 1 is 2", "w2@1"), step("22")], /carries 2 and .* adds 1/],
+    ["a column that adds a carry that no step made", [step("1 + 1 = 2, write 2", "w2@0"), step("1 + 0 = 1, plus 1 is 2", "w2@1"), step("22")], /carries nothing and .* adds 1/],
+    ["a first column that adds a carry", [step("1 + 0 = 1, plus 1 is 2, write 2", "w2@0"), step("2 + 0 = 2", "w2@1"), step("22")], /the first step adds 1/],
+    ["a carry that the step of another place adds", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@1"), step("1 + 0 = 1, plus 1 is 2, write 2", "w2@1"), step("0 + 0 = 0", ""), step("22")], /writes nothing/],
   ] as [string, Step[], RegExp][]).map(([fault, steps, message]): Refused => ["steps-marks", fault, () => bothSay(...steps), message]),
-  ["steps-reader", "another mark than the reader says", () => ({ shape: add({ steps: onQuiet(addShape.steps, [step("6 + 6 = 12", "w2@0 w2@1"), step("10 + 12 = 22"), step("22")]) }) }), /the steps are .* and must be /],
+  ["steps-reader", "another mark than the reader says", () => ({ shape: add({ steps: onQuiet(addShape.steps, [step("16 + 6 = 22", "w2@0 w2@1"), step("22")]) }) }), /the steps are .* and must be /],
   ["steps-reader", "other steps than the reader says", () => ({ shape: add(), registration: readQuiet({ steps: said("12 + 10 = 22", "22") }) }), /the steps are .* and must be .*"12 \+ 10 = 22"/],
   ["steps-reader", "a reader that says no steps", () => ({ shape: add(), registration: readQuiet({ steps: undefined }) }), /the steps are .* and must be undefined/],
   ["difficulty", "a score that is not a number", () => ({ shape: add({ difficulty: onQuiet(addShape.difficulty, Number.NaN), difficultyRange: addShape.difficultyRange }) }), /the score is NaN/],
@@ -250,7 +257,7 @@ const REFUSED: readonly Refused[] = [
     return { seeds: SEEDS, shape: { ...shape, worstCase: (l) => shape.worstCase({ a: { min: (l as PlusOneLimits).a.min, max: (l as PlusOneLimits).a.min } }) }, registration: { ...registration, space: large } };
   }, /needs 3 digit places, more than 2/],
   ["harder", "one score for all", () => ({ shape: add({ difficulty: () => 5, difficultyRange: () => ({ easiest: 5, hardest: 5 }) }) }), /"a carry": the score of .* is 5 and of .* is 5/],
-  ["examples", "other true steps than the example", () => ({ shape: add({ steps: ({ a, b }) => (a === 17 && b === 6 ? said("6 + 7 = 13", "10 + 13 = 23", "23") : addShape.steps({ a, b })) }), registration: { read: (rows) => { const p = addRegistration.read(rows); return p && rows.join() === "17,+6" ? { ...p, steps: said("6 + 7 = 13", "10 + 13 = 23", "23") } : p; } } }), /"a carry" gives .*6 \+ 7 = 13/],
+  ["examples", "other true steps than the example", () => ({ shape: add({ steps: ({ a, b }) => (a === 17 && b === 6 ? [step("6 + 7 = 13, write 3, carry 1", "w3@0 c1@1"), step("1 + 0 = 1, plus 1 is 2", "w2@1"), step("23")] : addShape.steps({ a, b })) }), registration: { read: (rows) => { const p = addRegistration.read(rows); return p && rows.join() === "17,+6" ? { ...p, steps: [step("6 + 7 = 13, write 3, carry 1", "w3@0 c1@1"), step("1 + 0 = 1, plus 1 is 2", "w2@1"), step("23")] } : p; } } }), /"a carry" gives .*6 \+ 7 = 13/],
   ["examples", "another answer in the registration", () => ({ shape: add(), registration: { examples: [{ ...addRegistration.examples[0], answer: whole("33") }] } }), /"a carry" gives .*"23"/],
   ["refused-rows", "a zero in front of a number", () => ({ shape: add({ solveAgain: (rows) => addShape.solveAgain(rows[0] === "017" ? ["17", rows[1]] : rows) }) }), /\["017","\+6"\]: the shape reads .* and the reader refuses it/],
   ["refused-rows", "named rows", () => ({ shape: add({ solveAgain: (rows) => (rows[0] === "31" ? addItem({ a: 30, b: 3 }) : addShape.solveAgain(rows)) }) }), /\["31","\+3"\]: the shape reads/],
@@ -351,6 +358,21 @@ describe("wrong shapes that touch more than one check", () => {
     const message = one.failures.find((f) => f.check === "inside")?.message ?? "";
     const [, limits, seed] = /generate\((\{.*\}), "([^"]*)"\)/.exec(message) ?? [];
     expect(broken.generate(JSON.parse(limits), seed)).toEqual(addItem({ a: 30, b: 8 }));
+  });
+
+  it("does not cache made limits across harness runs: a second shape with the same rule object and a slow generator fails its own limit", () => {
+    let slow = false;
+    const wrapped = addRegistration.limits.a.values.map((range) => {
+      if (slow) { const end = performance.now() + 20; while (performance.now() < end) { /* spin */ } }
+      return range;
+    }, (r) => r);
+    const rules = { ...addRegistration.limits, a: { ...addRegistration.limits.a, values: wrapped } };
+    const report = (id: string, timeLimitMs: number) =>
+      runChecks({ ...addShape, id } as Shape, { ...addRegistration, id, limits: rules }, 32, { fingerprints: {}, madeLimits: 25, timeLimitMs })
+        .failures.filter((f) => f.check === "arbitrary").map((f) => f.message);
+    expect(report("test.add", 1000)).toEqual([]);
+    slow = true;
+    expect(report("test.other", 1).join("\n")).toMatch(/timed out/i);
   });
 });
 
@@ -519,25 +541,23 @@ describe("the rules of limits", () => {
 describe("reading a worked step", () => {
   it.each<[string, string[]]>([
     ["3 × 4 = 12", []], ["3 × 4 = 13", ["3 × 4 = 13"]],
-    ["7 + 8 = 15, 20 + 15 = 35", []], ["7 + 8 = 15, 20 + 15 = 36", ["20 + 15 = 36"]],
     ["2 + 3 × 4 = 14", []], ["9 - 2 - 3 = 4", []], ["9 − 2 = 6", ["9 − 2 = 6"]], ["12 ÷ 4 = 3", []], ["7 ÷ 2 = 3", ["7 ÷ 2 = 3"]], ["5 ÷ 0 = 0", ["5 ÷ 0 = 0"]],
     ["1.5 + 2 = 3.5", []], ["0.1 + 0.2 = 0.3", []], ["0.1 + 0.2 = 0.30", []], ["1 ÷ 3 × 3 = 1", []],
     ["9007199254740992 + 1 = 9007199254740992", ["9007199254740992 + 1 = 9007199254740992"]], ["9007199254740992 + 1 = 9007199254740993", []],
     ["2 - 3 = -1", []], ["2 - 3 = -2", ["2 - 3 = -2"]], ["2 − 3 = −1", []], ["2 − 3 = −2", ["2 − 3 = −2"]], ["2 – 3 = –1", []], ["2 - 3 = 1", ["2 - 3 = 1"]],
     ["-3 + 4 = 1", []], ["-3 + 4 = 7", ["-3 + 4 = 7"]], ["2 - -3 = 5", []], ["-0.5 + 1 = 0.5", []], ["6 ÷ -4 = -1.5", []],
-    ["2 + 3 = 5.", []], ["2 + 3 = 5. 1 + 1 = 3.", ["1 + 1 = 3"]], ["2 + 3 = 5.1", ["2 + 3 = 5.1"]], ["2 + 3 = 5.1.", ["2 + 3 = 5.1"]],
-    ["Ones: 2 + 3 = 5; tens: 1 + 1 = 3", ["1 + 1 = 3"]],
+    ["2 + 3 = 5.1", ["2 + 3 = 5.1"]],
     ["3 × 4 = 12, write 2, carry 1", []], ["3 × 4 = 13, write 3, carry 1", ["3 × 4 = 13"]], ["3 × 2 = 6, plus 1 is 7", []],
-    ["plus 1 is 7", []], ["12", []], ["", []],
+    ["3 × 4 = 12, plus 2 is 14, write 4, carry 1", []], ["12", []],
   ])("%s", (step, wrong) => expect(readStep(step)).toEqual({ wrong, unread: [] }));
 
   it.each<[string, string[]]>([
     "3 × 4 = 10 + 2", "3 × 4 = 12 = 13", "3 x 4 = 12", "So 2 + 3 = 5", "2 + 3 = 5 more", "2 + 3 =5", "2+3=5", "= 5", "5 = 5", "2 + 3 = ", "2 - 3 = - 1", "1,000 + 1 = 1", "1 + 999 = 1,000",
-    "4 + 1 = 5½", "½ + ½ = 1", "2 · 3 = 6", "2 × (1 + 2) = 6", "7 ÷ 2 = 3 R 1", "x = 4", "-x + 2 = 5",
-  ].map((step): [string, string[]] => [step, [step.trim()]]))("cannot read %s", (step, unread) => expect(readStep(step)).toEqual({ wrong: [], unread }));
+    "4 + 1 = 5½", "½ + ½ = 1", "2 · 3 = 6", "2 × (1 + 2) = 6", "7 ÷ 2 = 3 R 1", "x = 4", "-x + 2 = 5", "", "Think hard.",
+  ].map((step): [string, string[]] => [step, [step]]))("cannot read %s", (step, unread) => expect(readStep(step)).toEqual({ wrong: [], unread }));
 
-  it("cannot read one part, and says of the others whether they are true", () => {
-    expect(readStep("2 + 2 = 5, so 3 + 3 = 6, 1 + 1 = 2")).toEqual({ wrong: ["2 + 2 = 5"], unread: ["so 3 + 3 = 6"] });
+  it("cannot read one clause, and says of the others whether they are true", () => {
+    expect(readStep("2 + 2 = 5, so 3 + 3 = 6")).toEqual({ wrong: ["2 + 2 = 5"], unread: ["so 3 + 3 = 6"] });
   });
 
   it("says of any sum, difference and product whether it is true", () => {
@@ -547,15 +567,138 @@ describe("reading a worked step", () => {
     }));
   });
 
-  // No step with an equals sign is left alone: each of its parts is read or refused.
-  it("leaves no equals sign unproven", () => {
-    const piece = fc.constantFrom("1", "2", "12", " ", " + ", " = ", "=", "-", "−", ",", ", ", ".", ". ", "½", "x", "write");
+  // No clause is left alone: every piece of a step that passes must be a known valid clause or plain answer.
+  it("leaves no clause unread", () => {
+    const piece = fc.constantFrom("1", "2", "12", " ", " + ", " = ", "=", "-", "−", ",", ", ", ".", ". ", "½", "x", "write", "carry", "plus");
     fc.assert(fc.property(fc.array(piece, { maxLength: 9 }), (pieces) => {
       const step = pieces.join("");
       const { wrong, unread } = readStep(step);
       if (wrong.length + unread.length > 0) return;
-      const proven = /^-?\d+(\.\d+)?( [+-] -?\d+(\.\d+)?)+ = -?\d+(\.\d+)?$/;
-      for (const part of step.replaceAll("−", "-").split(/[,.;:](?: |$)/)) if (part.includes("=")) expect(part.trim()).toMatch(proven);
+      if (/^(?:0|[1-9]\d*)$/.test(step)) return;
+      const clause = /^(?:-?(?:0|[1-9]\d*)(?:\.\d+)?(?: [+-] -?(?:0|[1-9]\d*)(?:\.\d+)?)+ = -?(?:0|[1-9]\d*)(?:\.\d+)?|plus [1-9]\d* is (?:0|[1-9]\d*)|write (?:0|[1-9]\d*)|carry [1-9]\d*)$/;
+      for (const part of step.replaceAll("−", "-").split(", ")) expect(part).toMatch(clause);
     }));
+  });
+});
+
+describe("closed grammar of worked steps and marks", () => {
+  // Base good steps for 247 × 3 = 741:
+  //   0: "3 × 7 = 21, write 1, carry 2"           w1@0 c2@1
+  //   1: "3 × 4 = 12, plus 2 is 14, write 4, carry 1"  w4@1 c1@2
+  //   2: "3 × 2 = 6, plus 1 is 7"                 w7@2
+  //   3: "741"                                    (no marks)
+  const good = mulColumn.steps({ a: 247, b: 3 });
+  const replaceText = (index: number, text: string): Step[] => good.map((s, i) => (i === index ? { ...s, text } : s));
+  const replaceMarks = (index: number, marks: string): Step[] => good.map((s, i) => (i === index ? step(s.text, marks) : s));
+
+  it.each<[string, Step[], string]>([
+    // Review reproductions
+    ["repeated carry in 15 × 2", [step("2 × 5 = 10, write 0, carry 1, carry 2", "w0@0 c1@1"), step("2 × 1 = 2, plus 1 is 3", "w3@1"), step("30")], "30"],
+    ["wrong plus sum in 15 × 2", [step("2 × 5 = 10, write 0, carry 1", "w0@0 c1@1"), step("2 × 1 = 2, plus 1 is 99", "w3@1"), step("30")], "30"],
+    // Wrong clause values (with marks right)
+    ["wrong equation product", replaceText(0, "3 × 7 = 22, write 1, carry 2"), "741"],
+    ["wrong plus carry value", replaceText(1, "3 × 4 = 12, plus 3 is 15, write 4, carry 1"), "741"],
+    ["wrong plus result", replaceText(1, "3 × 4 = 12, plus 2 is 15, write 4, carry 1"), "741"],
+    ["wrong plus result on last column", replaceText(2, "3 × 2 = 6, plus 1 is 99"), "741"],
+    ["wrong write digit", replaceText(0, "3 × 7 = 21, write 9, carry 2"), "741"],
+    ["wrong write on last column", replaceText(2, "3 × 2 = 6, plus 1 is 7, write 8"), "741"],
+    ["wrong carry digit", replaceText(0, "3 × 7 = 21, write 1, carry 3"), "741"],
+    ["carry of 0 in text", [step("3 × 2 = 6, write 6, carry 0", "w6@0"), step("3 × 3 = 9", "w9@1"), step("96")], "96"],
+    // Missing clauses (with marks right)
+    ["missing equation", replaceText(0, "write 1, carry 2"), "741"],
+    ["missing plus when carry came in", replaceText(1, "3 × 4 = 12, write 4, carry 1"), "741"],
+    ["missing write in non-last column", replaceText(0, "3 × 7 = 21, carry 2"), "741"],
+    ["missing write in non-last column without carry", [step("3 × 2 = 6", "w6@0"), step("3 × 3 = 9", "w9@1"), step("96")], "96"],
+    ["missing carry when total >= 10", replaceText(0, "3 × 7 = 21, write 1"), "741"],
+    ["plain number in working step", replaceText(0, "21"), "741"],
+    // Repeated clauses (with marks right)
+    ["repeated equation", replaceText(0, "3 × 7 = 21, 3 × 7 = 21, write 1, carry 2"), "741"],
+    ["repeated plus", replaceText(1, "3 × 4 = 12, plus 2 is 14, plus 2 is 14, write 4, carry 1"), "741"],
+    ["repeated write", replaceText(0, "3 × 7 = 21, write 1, write 1, carry 2"), "741"],
+    ["repeated carry", replaceText(0, "3 × 7 = 21, write 1, carry 2, carry 2"), "741"],
+    // Out of order clauses (with marks right)
+    ["carry before write", replaceText(0, "3 × 7 = 21, carry 2, write 1"), "741"],
+    ["write before plus", replaceText(1, "3 × 4 = 12, write 4, plus 2 is 14, carry 1"), "741"],
+    ["plus before equation", replaceText(1, "plus 2 is 14, 3 × 4 = 12, write 4, carry 1"), "741"],
+    ["write before equation", replaceText(0, "write 1, 3 × 7 = 21, carry 2"), "741"],
+    // Extra words / unknown clauses / two numbers (with marks right)
+    ["extra trailing words", replaceText(0, "3 × 7 = 21, write 1, carry 2, and remember it"), "741"],
+    ["extra words inside write", replaceText(0, "3 × 7 = 21, write 1 down, carry 2"), "741"],
+    ["extra words inside carry", replaceText(0, "3 × 7 = 21, write 1, carry 2 over"), "741"],
+    ["extra words inside plus", replaceText(2, "3 × 2 = 6, plus 1 is 7 total"), "741"],
+    ["two numbers in write", replaceText(0, "3 × 7 = 21, write 1 2, carry 2"), "741"],
+    ["two numbers in carry", replaceText(0, "3 × 7 = 21, write 1, carry 2 3"), "741"],
+    ["two numbers in plus", replaceText(2, "3 × 2 = 6, plus 1 is 7 8"), "741"],
+    ["semicolon separator", replaceText(0, "3 × 7 = 21; write 1, carry 2"), "741"],
+    ["trailing comma", replaceText(2, "3 × 2 = 6, plus 1 is 7,"), "741"],
+    ["leading zero in write", [step("2 × 0 = 0, write 00", "w0@0"), step("2 × 1 = 2", "w2@1"), step("20")], "20"],
+    // Unexpected clauses (with marks right)
+    ["carry on last column", [step("7 × 0 = 0, write 0", "w0@0"), step("7 × 4 = 28, write 8, carry 2", "w8@1 w2@2"), step("280")], "280"],
+    ["write ones only on last column with 2-digit total", [step("7 × 0 = 0, write 0", "w0@0"), step("7 × 4 = 28, write 8", "w8@1 w2@2"), step("280")], "280"],
+    ["write two digits on non-last column", [step("3 × 7 = 21, write 21", "w1@0 c2@1"), ...good.slice(1)], "741"],
+    // Reverse: right text, wrong marks
+    ["marks write wrong digit", replaceMarks(0, "w9@0 c2@1"), "741"],
+    ["marks omit write", replaceMarks(0, "c2@1"), "741"],
+    ["marks omit carry", replaceMarks(0, "w1@0"), "741"],
+    ["marks carry wrong digit", replaceMarks(0, "w1@0 c3@1"), "741"],
+    ["marks carry at wrong place", replaceMarks(0, "w1@0 c2@2"), "741"],
+    ["marks extra carry on no-carry step", [step("3 × 2 = 6, write 6", "w6@0 c1@1"), step("3 × 3 = 9", "w9@1"), step("96")], "96"],
+    ["marks write duplicate place", replaceMarks(1, "w4@0 c1@2"), "741"],
+    ["marks on final answer step", [...good.slice(0, -1), step("741", "w1@0")], "741"],
+  ])("refuses %s", (_name, steps, answer) => {
+    const stepTextBad = steps.some((s, i) => {
+      const r = readStep(s.text);
+      return i < steps.length - 1 && (r.wrong.length > 0 || r.unread.length > 0);
+    });
+    const marksBad = marksProblem(steps, answer) !== null;
+    expect(stepTextBad || marksBad).toBe(true);
+    expect(marksBad).toBe(true);
+  });
+
+  it("accepts a last column with an explicit full write clause", () => {
+    const withWrite = [step("7 × 0 = 0, write 0", "w0@0"), step("7 × 4 = 28, write 28", "w8@1 w2@2"), step("280")];
+    for (const s of withWrite) expect(readStep(s.text)).toEqual({ wrong: [], unread: [] });
+    expect(marksProblem(withWrite, "280")).toBeNull();
+  });
+
+  it("rejects any single number edit in the text of all 720 two-digit questions plus random 3- and 4-digit questions", () => {
+    const checkEdit = (a: number, b: number, stepIndex: number, matchIndex: number, delta: number) => {
+      const steps = mulColumn.steps({ a, b });
+      const answer = String(a * b);
+      const target = steps[stepIndex % steps.length];
+      const matches = [...target.text.matchAll(/\d+/g)];
+      const chosen = matches[matchIndex % matches.length];
+      const original = Number(chosen[0]);
+      const next = String(original + delta);
+      const editedText = `${target.text.slice(0, chosen.index)}${next}${target.text.slice((chosen.index ?? 0) + chosen[0].length)}`;
+      const editedSteps = steps.map((s, i) => (i === stepIndex % steps.length ? { ...s, text: editedText } : s));
+      // Every single number edit fails the full reader comparison; every edit except the multiplier in `b × 0 = 0` also fails the shape-free grammar + marks check alone.
+      const readerSteps = mulColumnRegistration.read([String(a), `×${b}`])?.steps;
+      expect(canonicalJson(editedSteps)).not.toBe(canonicalJson(readerSteps));
+      const isZeroMultiplier = (stepIndex % steps.length) < steps.length - 1 && (matchIndex % matches.length) === 0 && target.text.startsWith(`${b} × 0 = 0`);
+      if (!isZeroMultiplier) {
+        const endWrong = editedSteps.at(-1)?.text !== answer;
+        const evalWrong = readStep(editedText).wrong.length > 0 || readStep(editedText).unread.length > 0;
+        const marksWrong = marksProblem(editedSteps, answer) !== null;
+        expect(endWrong || evalWrong || marksWrong, `${a}×${b} step "${editedText}"`).toBe(true);
+      }
+    };
+    // All 720 two-digit questions, deterministic random edit of a number per question.
+    let state = 239;
+    const nextInt = (max: number) => { state = (Math.imul(state, 1664525) + 1013904223) >>> 0; return state % max; };
+    for (let a = 10; a <= 99; a++) {
+      for (let b = 2; b <= 9; b++) {
+        checkEdit(a, b, nextInt(10), nextInt(10), 1 + nextInt(8));
+      }
+    }
+    // Random 3- and 4-digit questions via fast-check.
+    fc.assert(fc.property(
+      fc.integer({ min: 100, max: 9999 }),
+      fc.integer({ min: 2, max: 9 }),
+      fc.nat(10),
+      fc.nat(10),
+      fc.integer({ min: 1, max: 9 }),
+      checkEdit,
+    ), { numRuns: 300 });
   });
 });

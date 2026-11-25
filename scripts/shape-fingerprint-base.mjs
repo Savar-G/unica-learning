@@ -3,6 +3,9 @@
  * Compares the committed fingerprints of the workbook shapes with those of the base of this branch. A stored fingerprint
  * says what a version of a shape gave; children have books of that version, so an entry never changes and never goes.
  *
+ * Each shape lives in its own JSON file under testing/fingerprints/ so parallel shape branches merge without conflict.
+ * Older base commits that still hold a single testing/shape-fingerprints.json file are read too.
+ *
  * In CI the base is the first parent of the commit, which is the base of the pull request in its merge commit. A push can
  * hold several commits, so there the base is the tip of main before the push (EVENT_BEFORE), which is fetched when the
  * checkout does not have it. The `scope` job runs this, because it is the job that always runs. A base that cannot be
@@ -10,11 +13,13 @@
  * It uses no package, so that it runs before `npm ci`.
  */
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-export const FINGERPRINTS = "src/lib/workbook-v2/testing/shape-fingerprints.json";
+export const FINGERPRINTS_DIR = "src/lib/workbook-v2/testing/fingerprints";
+export const LEGACY_FINGERPRINTS = "src/lib/workbook-v2/testing/shape-fingerprints.json";
+export const FINGERPRINTS = FINGERPRINTS_DIR;
 
 const isRecord = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 const isHash = (v) => typeof v === "string" && /^[0-9a-f]{64}$/.test(v);
@@ -50,6 +55,42 @@ function parse(text) {
   }
 }
 
+function mergeFiles(entries) {
+  const merged = {};
+  for (const [name, text] of entries) {
+    const parsed = parse(text);
+    if (!isRecord(parsed)) return null;
+    const keys = Object.keys(parsed);
+    if (keys.length !== 1 || `${keys[0].replaceAll(".", "-")}.json` !== name) return null;
+    merged[keys[0]] = parsed[keys[0]];
+  }
+  return merged;
+}
+
+function readDiskFingerprints(root) {
+  try {
+    const dir = join(root, FINGERPRINTS_DIR);
+    const files = readdirSync(dir).filter((name) => name.endsWith(".json")).sort();
+    return mergeFiles(files.map((name) => [name, readFileSync(join(dir, name), "utf8")]));
+  } catch {
+    return null;
+  }
+}
+
+function readGitFingerprints(root, base) {
+  const folderFiles = git(root, ["ls-tree", "-r", "--name-only", base, "--", FINGERPRINTS_DIR]);
+  if (folderFiles === null) return { status: "error" };
+  const jsonPaths = folderFiles.split("\n").filter((p) => p.endsWith(".json")).sort();
+  if (jsonPaths.length > 0) {
+    const entries = jsonPaths.map((p) => [p.slice(FINGERPRINTS_DIR.length + 1), git(root, ["show", `${base}:${p}`]) ?? ""]);
+    return { status: "found", data: mergeFiles(entries) };
+  }
+  const legacy = git(root, ["ls-tree", "--name-only", base, "--", LEGACY_FINGERPRINTS]);
+  if (legacy === null) return { status: "error" };
+  if (legacy !== "") return { status: "found", data: parse(git(root, ["show", `${base}:${LEGACY_FINGERPRINTS}`]) ?? "") };
+  return { status: "none" };
+}
+
 const commitOf = (root, name) => git(root, ["rev-parse", "--verify", "--quiet", `${name}^{commit}`]);
 
 /** The tip of the branch before a push. A new branch has none (zeros), and then the first parent is the base. */
@@ -68,16 +109,11 @@ export function checkBase(root, { ci, before = "" }) {
   if (!base) {
     return { ok: !ci, text: [`${ci ? "FAIL" : "Warning"}: this checkout does not have ${place}, so nothing proves that the stored shape fingerprints are still the same.`] };
   }
-  const listed = git(root, ["ls-tree", "--name-only", base, "--", FINGERPRINTS]);
-  if (listed === null) return { ok: false, text: [`FAIL: the files of ${base} cannot be listed.`] };
-  if (listed === "") return { ok: true, text: [`The base ${base.slice(0, 9)} has no shape fingerprints yet.`] };
-  let now = null;
-  try {
-    now = parse(readFileSync(join(root, FINGERPRINTS), "utf8"));
-  } catch {
-    // The problem list below says it.
-  }
-  const problems = changedFingerprints(parse(git(root, ["show", `${base}:${FINGERPRINTS}`]) ?? ""), now);
+  const stored = readGitFingerprints(root, base);
+  if (stored.status === "error") return { ok: false, text: [`FAIL: the files of ${base} cannot be listed.`] };
+  if (stored.status === "none") return { ok: true, text: [`The base ${base.slice(0, 9)} has no shape fingerprints yet.`] };
+  const now = readDiskFingerprints(root);
+  const problems = changedFingerprints(stored.data, now);
   return problems.length > 0 ? { ok: false, text: problems } : { ok: true, text: [`The stored shape fingerprints are those of ${place} (${base.slice(0, 9)}).`] };
 }
 

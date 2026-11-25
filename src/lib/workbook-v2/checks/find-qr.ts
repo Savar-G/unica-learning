@@ -67,13 +67,17 @@ const WHITE = 0xffffffff;
 /** Whether each line can hold dark pixels. It looks at four pixels at a time, because most of a page is white. */
 function linesWithInk({ width, height, grey }: PageImage): boolean[] {
   const lines = new Array<boolean>(height).fill(false);
-  const fours = new Uint32Array(grey.buffer, grey.byteOffset, grey.length >> 2);
-  for (let i = 0; i < fours.length; i++) {
+  const start = Math.min((4 - (grey.byteOffset & 3)) & 3, grey.length);
+  for (let i = 0; i < start; i++) if (grey[i] < DARK) lines[Math.floor(i / width)] = true;
+  const count = (grey.length - start) >> 2;
+  const fours = new Uint32Array(grey.buffer, grey.byteOffset + start, count);
+  for (let i = 0; i < count; i++) {
     if (fours[i] === WHITE) continue;
-    lines[Math.floor((4 * i) / width)] = true;
-    lines[Math.floor((4 * i + 3) / width)] = true;
+    const at = start + 4 * i;
+    const last = Math.floor((at + 3) / width);
+    for (let y = Math.floor(at / width); y <= last; y++) lines[y] = true;
   }
-  for (let i = 4 * fours.length; i < grey.length; i++) if (grey[i] < DARK) lines[Math.floor(i / width)] = true;
+  for (let i = start + 4 * count; i < grey.length; i++) if (grey[i] < DARK) lines[Math.floor(i / width)] = true;
   return lines;
 }
 

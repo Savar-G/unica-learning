@@ -58,11 +58,13 @@ export const addShape: Shape<AddLimits, AddQuestion> = {
     return { question: { a, b }, answer: whole(a - -b) };
   },
   steps({ a, b }) {
-    const [tens, ones] = [a - (a % 10), a % 10];
-    const more = String(a + b).slice(0, -1);
+    if (a < 10) return [{ text: `${a} + ${b} = ${a + b}`, marks: writing(String(a + b), 0) }, { text: String(a + b), marks: [] }];
+    const [tens, ones] = [Math.floor(a / 10), a % 10];
+    const low = ones + b;
+    const carry = Math.floor(low / 10);
     return [
-      { text: `${ones} + ${b} = ${ones + b}`, marks: writing(String((ones + b) % 10), 0) },
-      { text: ones + b >= 10 ? `${tens} + ${ones + b} = ${a + b}` : `The tens stay ${tens / 10}.`, marks: writing(more, 1) },
+      { text: `${ones} + ${b} = ${low}, write ${low % 10}${carry > 0 ? `, carry ${carry}` : ""}`, marks: [...writing(String(low % 10), 0), ...(carry > 0 ? [{ mark: "carry" as const, place: 1, digit: String(carry) }] : [])] },
+      { text: `${tens} + 0 = ${tens}${carry > 0 ? `, plus ${carry} is ${tens + carry}` : ""}`, marks: writing(String(tens + carry), 1) },
       { text: String(a + b), marks: [] },
     ];
   },
@@ -96,17 +98,20 @@ export const addRegistration: ShapeRegistration = {
     if (!found) return null;
     const [a, b] = [Number(found[1]), Number(found[2])];
     const sum = String(countUp(a, b));
-    const [tens, ones] = [found[1].slice(0, -1) || "0", found[1].slice(-1)];
+    const [tens, ones] = [found[1].slice(0, -1), found[1].slice(-1)];
     const low = String(countUp(Number(ones), b));
+    const steps: Step[] = tens === ""
+      ? [step(`${ones} + ${b} = ${sum}`, [...sum].reverse().map((d, i) => `w${d}@${i}`).join(" ")), step(sum)]
+      : [
+        step(`${ones} + ${b} = ${low}, write ${low.slice(-1)}${low.length > 1 ? `, carry ${low[0]}` : ""}`, `w${low.slice(-1)}@0${low.length > 1 ? ` c${low[0]}@1` : ""}`),
+        step(`${tens} + 0 = ${tens}${low.length > 1 ? `, plus ${low[0]} is ${sum.slice(0, -1)}` : ""}`, [...sum.slice(0, -1)].reverse().map((d, i) => `w${d}@${1 + i}`).join(" ")),
+        step(sum),
+      ];
     return {
       answer: { kind: "whole-number", value: sum },
       features: { a, b, sum: Number(sum), carry: low.length - 1, roundSum: sum.endsWith("0") },
       widths: { sum: Number(sum) },
-      steps: [
-        step(`${ones} + ${b} = ${low}`, `w${low.slice(-1)}@0`),
-        step(low.length === 1 ? `The tens stay ${tens}.` : `${tens === "0" ? "" : tens}0 + ${low} = ${sum}`, sum.length > 1 ? `w${sum[0]}@1` : ""),
-        step(sum),
-      ],
+      steps,
     };
   },
   space: Array.from({ length: 270 }, (_, i) => [String(1 + Math.floor(i / 9)), `+${1 + (i % 9)}`]),
@@ -124,8 +129,8 @@ export const addRegistration: ShapeRegistration = {
   ],
   harder: [{ name: "a carry", easier: q("12 +7"), harder: q("12 +8") }, { name: "a larger number", easier: q("12 +3"), harder: q("12 +4") }],
   examples: [
-    { name: "a carry", rows: q("17 +6"), answer: { kind: "whole-number", value: "23" }, steps: [step("7 + 6 = 13", "w3@0"), step("10 + 13 = 23", "w2@1"), step("23")] },
-    { name: "no carry", rows: q("12 +3"), answer: { kind: "whole-number", value: "15" }, steps: [step("2 + 3 = 5", "w5@0"), step("The tens stay 1.", "w1@1"), step("15")] },
+    { name: "a carry", rows: q("17 +6"), answer: { kind: "whole-number", value: "23" }, steps: [step("7 + 6 = 13, write 3, carry 1", "w3@0 c1@1"), step("1 + 0 = 1, plus 1 is 2", "w2@1"), step("23")] },
+    { name: "no carry", rows: q("12 +3"), answer: { kind: "whole-number", value: "15" }, steps: [step("2 + 3 = 5, write 5", "w5@0"), step("1 + 0 = 1", "w1@1"), step("15")] },
   ],
   refusedLimits: [
     { name: "not an object", raw: "bad", problem: "the limits must be an object" },

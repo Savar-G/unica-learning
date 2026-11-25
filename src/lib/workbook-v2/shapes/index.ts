@@ -16,4 +16,6 @@ export function shapeLibrary(shapes: readonly Shape[]): ShapeLibrary {
   }
   return library;
 }
-export const SHAPES: ShapeLibrary = shapeLibrary([mulColumn]);
+export const SHAPES: ShapeLibrary = shapeLibrary([
+  mulColumn,
+]);

@@ -1,42 +1,56 @@
 // npm run workbook:v2:fingerprints - records fingerprints for new shape versions and refuses to alter existing ones.
-import { readFile, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { SHAPES } from "@/lib/workbook-v2/shapes";
-import { addShapeFingerprints, fingerprintText } from "@/lib/workbook-v2/testing/shape-fingerprints";
+import { isRecord } from "@/lib/workbook-v2/shapes/shape";
+import { addShapeFingerprints, fingerprintFileName, fingerprintFileText, FINGERPRINTS_DIR, type ShapeFingerprints } from "@/lib/workbook-v2/testing/shape-fingerprints";
 import { SHAPE_REGISTRATIONS } from "@/lib/workbook-v2/testing/shape-registrations";
 
-const DEFAULT_FILE = "src/lib/workbook-v2/testing/shape-fingerprints.json";
-const USAGE = "Usage: npm run workbook:v2:fingerprints [-- --file PATH]";
+const USAGE = "Usage: npm run workbook:v2:fingerprints [-- --dir FOLDER]";
 
-function readFileArg(args: string[]): string {
+function readDirArg(args: string[]): string {
   try {
-    const { values } = parseArgs({ args, options: { file: { type: "string", multiple: true } } });
-    if (!values.file) return resolve(DEFAULT_FILE);
-    if (values.file.length !== 1 || values.file[0] === "") throw new Error(USAGE);
-    return resolve(values.file[0]);
+    const { values } = parseArgs({ args, options: { dir: { type: "string", multiple: true } } });
+    if (!values.dir) return resolve(FINGERPRINTS_DIR);
+    if (values.dir.length !== 1 || values.dir[0] === "") throw new Error(USAGE);
+    return resolve(values.dir[0]);
   } catch {
     throw new Error(USAGE);
   }
 }
 
-async function readExisting(file: string): Promise<unknown> {
+async function readExisting(dir: string): Promise<ShapeFingerprints> {
+  let files: string[];
   try {
-    const text = await readFile(file, "utf8");
-    return JSON.parse(text) as unknown;
+    files = (await readdir(dir)).filter((name) => name.endsWith(".json")).sort();
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") return {};
     throw error;
   }
+  const merged: ShapeFingerprints = {};
+  for (const file of files) {
+    const parsed: unknown = JSON.parse(await readFile(join(dir, file), "utf8"));
+    if (!isRecord(parsed)) throw new Error(`${file} must hold an object`);
+    const ids = Object.keys(parsed);
+    if (ids.length !== 1) throw new Error(`${file} must hold exactly one shape`);
+    const [id] = ids;
+    if (fingerprintFileName(id) !== file) throw new Error(`${file} holds "${id}" and must be named "${fingerprintFileName(id)}"`);
+    merged[id] = parsed[id] as Record<string, string>;
+  }
+  return merged;
 }
 
-const file = readFileArg(process.argv.slice(2));
-const existing = await readExisting(file);
+const dir = readDirArg(process.argv.slice(2));
+const existing = await readExisting(dir);
 const result = addShapeFingerprints(SHAPES, SHAPE_REGISTRATIONS, existing);
 if (!result.ok) throw new Error(result.problems.join("\n"));
 if (result.added.length === 0) {
-  console.log(`Fingerprints are up to date: ${file}`);
+  console.log(`Fingerprints are up to date: ${dir}`);
 } else {
-  await writeFile(file, fingerprintText(result.fingerprints), "utf8");
-  console.log(`Added fingerprints (${result.added.join(", ")}): ${file}`);
+  await mkdir(dir, { recursive: true });
+  for (const [id, versions] of Object.entries(result.fingerprints)) {
+    await writeFile(join(dir, fingerprintFileName(id)), fingerprintFileText(id, versions), "utf8");
+  }
+  console.log(`Added fingerprints (${result.added.join(", ")}): ${dir}`);
 }

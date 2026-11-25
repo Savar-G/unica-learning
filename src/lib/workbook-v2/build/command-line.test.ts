@@ -93,7 +93,7 @@ describe.skipIf(skipTypstTests()).concurrent("the command, with the real Typst",
     expect(bytes(ONE, "page-2.png").readUInt32BE(16)).toBe(1275);
     const answers = json(ONE, "answers.json") as { shape: string; shapeVersion?: unknown; answer: { value: string }; steps: Step[] }[];
     expect(answers).toHaveLength(16);
-    expect(answers.every((item) => item.shapeVersion === SHAPES.get(item.shape)?.version)).toBe(true);
+    expect(answers.every((item) => typeof item.shapeVersion === "number" && item.shapeVersion === SHAPES.get(item.shape)?.version)).toBe(true);
     for (const { answer, steps } of answers) expect(steps.at(-1)).toEqual({ text: answer.value, marks: [] });
     expect(json(ONE, "positions.json")).toEqual(expect.arrayContaining([{ id: "column-multiplication-1/1/front/answer-1", sheet: 1, rect: { x: 134, y: 178, w: 72, h: 42 } }]));
     expect(json(ONE, "record.json")).toMatchObject({ bookId: "example-book", typst: "0.15.1", program: hash, template: hash, fonts: { "Geist-Regular.ttf": hash, "Geist-SemiBold.ttf": hash } });
@@ -136,17 +136,29 @@ describe.skipIf(skipTypstTests()).concurrent("the command, with the real Typst",
     expect(readdirSync(place)).toEqual(["book"]);
   });
 
+  /** Independent single-process reference books for the race test (one for each book id). */
+  let otherBookFile = "";
+  let shortRefs: Promise<{ code: number; output: string }[]> | undefined;
+  const makeShortRefs = () => shortRefs ??= (() => {
+    otherBookFile = join(folder, "other-book.json");
+    writeFileSync(otherBookFile, readFileSync(fixture("book.json"), "utf8").replace("example-book", "other-book").replace("example-child", "other-child"));
+    return Promise.all([
+      build("ref-a/book", {}, { snapshot: short }),
+      build("ref-b/book", {}, { snapshot: short, book: otherBookFile }),
+    ]);
+  })();
+
   it.each(["new", "empty"])("two processes that publish into one %s folder at the same time: one book stays whole, and the other process stops", async (kind) => {
+    const refs = await makeShortRefs();
+    expect(refs.map((r) => r.code)).toEqual([0, 0]);
     const place = join(folder, `shared-${kind}`);
     mkdirSync(place);
     if (kind === "empty") mkdirSync(join(place, "book"));
-    const otherBook = join(folder, `other-${kind}.json`);
-    writeFileSync(otherBook, readFileSync(fixture("book.json"), "utf8").replace("example-book", "other-book").replace("example-child", "other-child"));
-    // Each process keeps a copy of its whole book, says that it is ready to publish and waits for the other one.
-    const meet = (me: string, peer: string) => hookOn("rename", `if (String(args[1]).endsWith("/book")) { await fs.cp(args[0], ${JSON.stringify(join(folder, `whole-${kind}-${me}`))}, { recursive: true }); writeFileSync(${JSON.stringify(join(folder, `${kind}-${me}`))}, ""); for (let i = 0; i < 1000 && !existsSync(${JSON.stringify(join(folder, `${kind}-${peer}`))}); i++) await new Promise((r) => setTimeout(r, 10)); }`);
+    // Each process says that it is ready to publish and waits for the other one.
+    const meet = (me: string, peer: string) => hookOn("rename", `if (String(args[1]).endsWith("/book")) { writeFileSync(${JSON.stringify(join(folder, `${kind}-${me}`))}, ""); for (let i = 0; i < 1000 && !existsSync(${JSON.stringify(join(folder, `${kind}-${peer}`))}); i++) await new Promise((r) => setTimeout(r, 10)); }`);
     const both = await Promise.all([
       build(`shared-${kind}/book`, {}, { snapshot: short, hook: meet("a", "b") }),
-      build(`shared-${kind}/book`, {}, { snapshot: short, hook: meet("b", "a"), book: otherBook }),
+      build(`shared-${kind}/book`, {}, { snapshot: short, hook: meet("b", "a"), book: otherBookFile }),
     ]);
     expect(both.map((b) => b.code).sort()).toEqual([0, 1]);
     const [winner, loser] = both[0].code === 0 ? [0, 1] : [1, 0];
@@ -155,8 +167,8 @@ describe.skipIf(skipTypstTests()).concurrent("the command, with the real Typst",
     expect(readdirSync(place)).toEqual(["book"]);
     expect(files(`shared-${kind}/book`)).toEqual(ALL_FILES);
     expect(json(`shared-${kind}/book`, "record.json")).toMatchObject({ bookId: ["example-book", "other-book"][winner] });
-    const whole = `whole-${kind}-${winner === 0 ? "a" : "b"}`;
-    for (const file of ALL_FILES) expect(Buffer.compare(bytes(whole, file), bytes(`shared-${kind}/book`, file)), file).toBe(0);
+    const reference = winner === 0 ? "ref-a/book" : "ref-b/book";
+    for (const file of ALL_FILES) expect(Buffer.compare(bytes(reference, file), bytes(`shared-${kind}/book`, file)), file).toBe(0);
   });
 
   it.each<[string, string, string]>([

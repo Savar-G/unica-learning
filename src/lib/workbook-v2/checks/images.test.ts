@@ -6,6 +6,7 @@ import { qrSquares } from "../layout/qr";
 import { blankPage, drawPage, paint, paintInk, pagePng, pngFile, toPng, type Canvas } from "../testing/raster";
 import { goodPages } from "../testing/sample";
 import { checkImages } from "./images";
+import { strayQrTexts } from "./find-qr";
 import { readPageImage } from "./page-image";
 
 const pages = goodPages();
@@ -100,6 +101,20 @@ describe("the QR code of a page image", () => {
   it("may stand on a page with marks that only look like a corner of a QR code", () => {
     const corner = (c: Canvas, x: number, y: number) => { paint(c, { x, y, w: 14, h: 14 }); paint(c, { x: x + 2, y: y + 2, w: 10, h: 10 }, 255); paint(c, { x: x + 4, y: y + 4, w: 6, h: 6 }); };
     expect(problemsWith(changed((c) => { corner(c, 300, 660); corner(c, 340, 660); corner(c, 300, 690); }))).toEqual([]);
+  });
+
+  it("reads stray QR codes when the pixel buffer starts at an unaligned byte offset", () => {
+    const canvas = drawPage(front);
+    paintQr(canvas, "stray-unaligned", 200, 300, 60);
+    for (const offset of [1, 2, 3]) {
+      const padded = new Uint8Array(canvas.grey.length + offset);
+      padded.set(canvas.grey, offset);
+      const view = padded.subarray(offset);
+      expect(view.byteOffset % 4).toBe(offset);
+      const qrBox = { left: Math.floor((qr.rect.x * 150) / 72), top: Math.floor((qr.rect.y * 150) / 72), right: Math.ceil(((qr.rect.x + qr.rect.w) * 150) / 72), bottom: Math.ceil(((qr.rect.y + qr.rect.h) * 150) / 72) };
+      expect(strayQrTexts({ width: canvas.width, height: canvas.height, grey: view }, qrBox)).toEqual(["stray-unaligned"]);
+      expect(strayQrTexts({ width: 10, height: 3, grey: new Uint8Array(30 + offset).fill(255).subarray(offset) }, { left: 0, top: 0, right: 0, bottom: 0 })).toEqual([]);
+    }
   });
 });
 

@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import fc from "fast-check";
@@ -8,10 +8,11 @@ import { canonicalJson, seedFrom } from "../hash";
 import { SHAPES, shapeLibrary, type Shape } from "../shapes";
 import { mulColumn } from "../shapes/mul-column";
 import { addItem, addQuestions, addRegistration, addShape, lessRegistration, lessShape, type AddLimits, type AddQuestion, type LessLimits, type LessQuestion } from "./example-shapes";
-import { addShapeFingerprints, fingerprintProblem, fingerprintText, shapeFingerprint, type ShapeFingerprints } from "./shape-fingerprints";
-import committed from "./shape-fingerprints.json";
+import { addShapeFingerprints, fingerprintFileName, fingerprintFileText, fingerprintProblem, FINGERPRINTS_DIR, readShapeFingerprints, shapeFingerprint, type ShapeFingerprints } from "./shape-fingerprints";
 import { step, type ShapeRegistration } from "./shape-registration";
 import { SHAPE_REGISTRATIONS } from "./shape-registrations";
+
+const committed = readShapeFingerprints();
 
 const add = (change: Partial<Shape<AddLimits, AddQuestion>> = {}): Shape => ({ ...addShape, ...change }) as Shape;
 const other = { steps: ({ a, b }: AddQuestion) => [step(`${b} + ${a} = ${a + b}`), step(String(a + b))] };
@@ -62,6 +63,18 @@ describe("the fingerprint of a shape", () => {
     const covered = [...questions].filter((_q, i) => i % 125 === 0);
     for (const key of [...covered, ...[[200, 5], [200, 6], [201, 5], [201, 6]].map(([a, b]) => canonicalJson({ a, b }))]) expect(changedAt(key)).not.toBe(base);
   });
+
+  it("also covers every listed question of a large space that no seed or small space hits", () => {
+    const listedRow: [string, string] = ["777", "-77"];
+    const listedKey = canonicalJson({ a: 777, b: 77 });
+    const regWithListed: ShapeRegistration = { ...lessRegistration, space: { ...(lessRegistration.space as Exclude<ShapeRegistration["space"], readonly unknown[]>), listed: [listedRow] } };
+    const seenBySeed = new Set<string>();
+    const watched = { ...lessShape, generate: (l: LessLimits, seed: string) => { const item = lessShape.generate(l, seed); seenBySeed.add(canonicalJson(item.question)); return item; } } as Shape;
+    const base = shapeFingerprint(watched, regWithListed);
+    expect(seenBySeed.has(listedKey)).toBe(false);
+    const mutated = { ...lessShape, steps: (q: LessQuestion) => (canonicalJson(q) === listedKey ? [step("?")] : lessShape.steps(q)) } as Shape;
+    expect(shapeFingerprint(mutated, regWithListed)).not.toBe(base);
+  });
 });
 
 describe("the version and the stored fingerprints of a shape", () => {
@@ -94,10 +107,11 @@ describe("adding fingerprints", () => {
     ["adds a new version and keeps the older ones, and other shapes", [library({ ...other, version: 2 }), [addRegistration], { ...first, "a.other": { 1: A } }], { ok: true, added: ["test.add@2"], fingerprints: { "a.other": { 1: A }, "test.add": { ...first["test.add"], 2: now(add({ ...other, version: 2 })) } } }],
   ])("%s", (_name, args, result) => expect(addShapeFingerprints(...args)).toEqual(result));
 
-  it("writes one line for each shape", () => {
-    const text = fingerprintText({ "a.one": { 1: A, 2: A }, "b.two": { 1: A } });
-    expect(text.split("\n")).toEqual(["{", `  "a.one": { "1": "${A}", "2": "${A}" },`, `  "b.two": { "1": "${A}" }`, "}", ""]);
-    expect(JSON.parse(text)).toEqual({ "a.one": { 1: A, 2: A }, "b.two": { 1: A } });
+  it("writes one file for each shape with its versions sorted", () => {
+    const text = fingerprintFileText("a.one", { 2: A, 1: A });
+    expect(text.split("\n")).toEqual(["{", `  "a.one": { "1": "${A}", "2": "${A}" }`, "}", ""]);
+    expect(JSON.parse(text)).toEqual({ "a.one": { 1: A, 2: A } });
+    expect(fingerprintFileName("a.one")).toBe("a-one.json");
   });
 
   it.each<[string, Parameters<typeof addShapeFingerprints>, RegExp]>([
@@ -117,21 +131,24 @@ describe("the command", () => {
   let dir = "";
   beforeAll(() => { dir = mkdtempSync(join(tmpdir(), "shape-fingerprints-")); });
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
-  const run = (file: string) => new Promise<{ code: number; output: string }>((done) => {
-    execFile(process.execPath, ["scripts/shape-fingerprints.mjs", "--file", file], (error, stdout, stderr) => done({ code: error ? 1 : 0, output: stdout + stderr }));
+  const run = (folder: string) => new Promise<{ code: number; output: string }>((done) => {
+    execFile(process.execPath, ["scripts/shape-fingerprints.mjs", "--dir", folder], (error, stdout, stderr) => done({ code: error ? 1 : 0, output: stdout + stderr }));
   });
   const current = String(mulColumn.version);
-  const older: ShapeFingerprints = { "mul.column": Object.fromEntries(Object.entries((committed as ShapeFingerprints)["mul.column"]).filter(([v]) => v !== current)) };
+  const olderVersions = Object.fromEntries(Object.entries(committed["mul.column"]).filter(([v]) => v !== current));
 
   it("adds what is missing, and changes no stored fingerprint", async () => {
-    const [missing, changed] = [join(dir, "missing.json"), join(dir, "changed.json")];
-    writeFileSync(missing, JSON.stringify(older));
-    writeFileSync(changed, JSON.stringify({ "mul.column": { ...older["mul.column"], [current]: A } }));
+    const [missing, changed] = [join(dir, "missing"), join(dir, "changed")];
+    mkdirSync(missing);
+    mkdirSync(changed);
+    const fileName = fingerprintFileName("mul.column");
+    writeFileSync(join(missing, fileName), fingerprintFileText("mul.column", olderVersions));
+    writeFileSync(join(changed, fileName), fingerprintFileText("mul.column", { ...olderVersions, [current]: A }));
     const [added, refused] = await Promise.all([run(missing), run(changed)]);
     expect(added).toEqual({ code: 0, output: expect.stringContaining(`mul.column@${current}`) as unknown });
-    expect(readFileSync(missing, "utf8")).toBe(readFileSync("src/lib/workbook-v2/testing/shape-fingerprints.json", "utf8"));
+    expect(readFileSync(join(missing, fileName), "utf8")).toBe(readFileSync(join(FINGERPRINTS_DIR, fileName), "utf8"));
     expect(refused).toEqual({ code: 1, output: expect.stringMatching(/a stored fingerprint never changes/) as unknown });
-    expect(readFileSync(changed, "utf8")).toContain(A);
+    expect(readFileSync(join(changed, fileName), "utf8")).toContain(A);
     expect(addShapeFingerprints(SHAPES, SHAPE_REGISTRATIONS, committed)).toEqual({ ok: true, added: [], fingerprints: committed });
   });
 });

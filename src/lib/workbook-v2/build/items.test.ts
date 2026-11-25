@@ -61,7 +61,7 @@ describe("the seed decides the numbers", () => {
             "one-carry-larger": top >= 12 && top <= 49 && bottom >= 2 && bottom <= 8 && carries && value <= 99,
             "past-one-hundred": top >= 21 && top <= 98 && bottom >= 3 && value >= 100,
           };
-          return !inside[item.rowId] || (i > 0 && item.difficulty < onSide[i - 1].difficulty);
+          return !inside[item.rowId] || !Number.isFinite(item.difficulty) || (i > 0 && !(item.difficulty >= onSide[i - 1].difficulty));
         });
         expect(wrong).toEqual([]);
       }
