@@ -217,11 +217,10 @@ describe("a division", () => {
   // Page 11 has brackets with a remainder, page 9 brackets with one area, page 7 lines with a remainder, page 1 lines.
   const good = divisionBook();
   const after = (number: number, change: (item: BookItem, regions: Region[]) => unknown): string => {
-    const book = structuredClone(good);
-    const item = book.items.find((i) => i.id === `${book.pages[number - 1].id}/1`);
-    if (!item) throw new Error("no item");
-    change(item, book.pages[number - 1].regions.filter((r) => r.item === item.id));
-    return problemsOf(book).join("\n");
+    const page = structuredClone(good.pages[number - 1]);
+    const items = structuredClone(good.items.filter((i) => i.id.startsWith(`${page.id}/`)));
+    change(items[0], page.regions.filter((r) => r.item === items[0].id));
+    return problemsOf({ pages: [page], items }).join("\n");
   };
   const question = (regions: Region[]) => regions.find((r) => r.role === "question")!;
   const textsOf = (regions: Region[]) => question(regions).ink.filter((i) => i.kind === "text");

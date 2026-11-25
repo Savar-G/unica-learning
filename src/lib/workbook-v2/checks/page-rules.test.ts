@@ -196,9 +196,9 @@ describe("a question in a bracket", () => {
     return found;
   };
   const problemsAfter = (number: number, change: (page: PageModel, items: GoodBook["items"]) => unknown): string => {
-    const { pages, items } = structuredClone(good);
-    const page = pages[number - 1];
-    change(page, items.filter((i) => i.id.startsWith(`${page.id}/`)));
+    const page = structuredClone(good.pages[number - 1]);
+    const items = structuredClone(good.items.filter((i) => i.id.startsWith(`${page.id}/`)));
+    change(page, items);
     return checkPage(page, items).join("\n");
   };
   /** The texts of the question: R, the number outside, the sign and the digits inside. */

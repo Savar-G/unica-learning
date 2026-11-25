@@ -60,7 +60,9 @@ describe("registered shapes", () => {
 });
 
 describe.skipIf(skipTypstTests())("one book with a sheet for each shape, with the real Typst", () => {
-  it("is built", async () => {
+  // The example book of divisions has a sheet for each shape and form of them, so that nothing is drawn two times.
+  it("is built, with the example book of divisions", async () => {
+    const drawn = new Set(divisionSnapshot.sheets.flatMap((s) => [...s.front.rows, ...s.back.rows].map((row) => row.shape)));
     const side = (name: string, shape: string, limits: unknown) => {
       const found = SHAPES.get(shape);
       if (!found) throw new Error("no shape");
@@ -69,12 +71,15 @@ describe.skipIf(skipTypstTests())("one book with a sheet for each shape, with th
       const template = [...TEMPLATES.values()].find((t) => fitProblem(t, face, worst.answer) === null);
       return { instruction: "Work it out.", template: template?.id, rows: [{ id: name, shape, limits, items: Math.min(template?.sides.front.places.length ?? 0, found.count(limits)) }] };
     };
-    const sheets = SHAPE_REGISTRATIONS.map(({ id, cases }, i) => ({ id: `sheet-${i}`, firstPage: 2 * i + 1, front: side("front", id, cases[0].limits), back: side("back", id, cases[cases.length - 1].limits) }));
+    const own = SHAPE_REGISTRATIONS.filter(({ id }) => !drawn.has(id)).map(({ id, cases }, i) => ({ id: `sheet-${i}`, front: side("front", id, cases[0].limits), back: side("back", id, cases[cases.length - 1].limits) }));
+    const sheets = [...own, ...divisionSnapshot.sheets].map((sheet, i) => ({ ...sheet, firstPage: 2 * i + 1 }));
     const ids = sheets.map((sheet) => sheet.id);
     const snapshot = { format: 1, id: "all-shapes", level: { id: "level", name: "1" }, topics: [{ id: "topic", code: "1-1", title: "All shapes", sheets: ids }], sheets };
     const book = { bookId: "all-shapes", childId: "child", sheets: ids.map((sheetId) => ({ sheetId, attempt: 1, qr: { front: `${sheetId}-front`, back: `${sheetId}-back` } })) };
     const result = await buildBook({ snapshot, book }, await openRenderer(testAssets()));
     expect(result).toMatchObject({ status: "built" });
-    if (result.status === "built") expect(new Set(result.items.map((item) => item.shape))).toEqual(new Set(SHAPES.keys()));
+    if (result.status !== "built") return;
+    expect(new Set(result.items.map((item) => item.shape))).toEqual(new Set(SHAPES.keys()));
+    expect(result.notices.filter((notice) => divisionSnapshot.sheets.some(({ id }) => notice.includes(`"${id}"`)))).toEqual([]);
   });
 });

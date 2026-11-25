@@ -2,17 +2,12 @@
 // against plain division, which question a seed picks, how hard whole kinds of questions are, and the form of a row.
 import { describe, expect, it } from "vitest";
 import { validateSnapshot, type SnapshotSheet } from "../bank/snapshot";
-import { buildBook } from "../build/build-book";
 import { repeatNotices, sheetItems } from "../build/items";
 import { answerLine, type Answer, type BookItem, type Side } from "../contract";
-import divisionRequest from "../fixtures/book-division.json";
-import divisionSnapshot from "../fixtures/snapshot-division.json";
 import { pick, seedFrom } from "../hash";
 import { needsOf } from "../layout/templates";
-import { openRenderer } from "../render/typst";
 import { divisionProblem } from "../testing/division-steps";
 import { divisionBook } from "../testing/sample";
-import { skipTypstTests, testAssets } from "../testing/typst";
 import { divLong, type DivLongLimits } from "./div-long";
 import { divRemainder, type DivRemainderLimits } from "./div-remainder";
 import { divFact } from "./div-fact";
@@ -164,10 +159,9 @@ describe("a sheet with both forms", () => {
   });
 });
 
-describe.skipIf(skipTypstTests())("the example book of divisions, with the real Typst", () => {
-  it("is built with no notice, and each side of each template of divisions has a question as large as it holds", async () => {
-    const result = await buildBook({ snapshot: divisionSnapshot, book: divisionRequest }, await openRenderer(testAssets()));
-    expect(result).toMatchObject({ status: "built", notices: [] });
+// shapes.test.ts draws this book with the real Typst.
+describe("the example book of divisions", () => {
+  it("has a question as large as it holds on each side of each template of divisions", () => {
     const { pages, items } = divisionBook();
     const largest = (template: string, side: Side) => {
       const ids = pages.filter((p) => p.template === template && p.side === side).map((p) => `${p.id}/`);
