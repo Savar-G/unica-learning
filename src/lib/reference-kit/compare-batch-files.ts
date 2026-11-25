@@ -1,28 +1,24 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  validateReferenceRecord,
+  isPlainObject,
+  parseStrictUtf8Json,
+  readRegularFileIfExists,
   writeSafeOutputFile,
-  type ReferenceRecord,
 } from "@/lib/reference-record";
-import { fileExists, finalFileKey, finalFileName } from "./checked-pages";
-import { pairDigest, type PairedPage } from "./compare-pairing";
+import { fileExists, finalFileKey, finalFileName, isDamagedFinalRecord, loadCheckedPages } from "./checked-pages";
+import { pairDigest, pairSourceRef, type PairedPage } from "./compare-pairing";
 import { PHOTOS_MANIFEST_FILE, type PhotosManifest } from "./prepare";
 
-export function readStoredSourceRef(filePath: string): string | null {
-  if (!existsSync(filePath)) return null;
+export { loadExistingFinalRecord } from "./checked-pages";
+
+function readStoredSourceRef(filePath: string): string | null {
+  const bytes = readRegularFileIfExists(filePath);
+  if (bytes === null) return null;
   try {
-    const parsed = JSON.parse(readFileSync(filePath, "utf8")) as unknown;
-    if (
-      typeof parsed === "object" &&
-      parsed !== null &&
-      !Array.isArray(parsed) &&
-      typeof (parsed as Record<string, unknown>).source_ref === "string"
-    ) {
-      return (parsed as Record<string, unknown>).source_ref as string;
-    }
-    return null;
+    const parsed = parseStrictUtf8Json(bytes);
+    return isPlainObject(parsed) && typeof parsed.source_ref === "string" ? parsed.source_ref : null;
   } catch {
     return null;
   }
@@ -32,14 +28,23 @@ export function sha256OfFile(filePath: string): string {
   return createHash("sha256").update(readFileSync(filePath)).digest("hex");
 }
 
-export function loadExistingFinalRecord(filePath: string): ReferenceRecord | null {
-  if (!existsSync(filePath)) return null;
-  try {
-    const parsed = JSON.parse(readFileSync(filePath, "utf8")) as unknown;
-    const check = validateReferenceRecord(parsed);
-    return check.ok ? check.record : null;
-  } catch {
-    return null;
+const FINAL_META_FILES: ReadonlySet<string> = new Set(["status.json", "report.json"]);
+
+// A damaged final record stays when its page is checked, or is in this run as an edited page. Else
+// compare would write over it or remove it as a file of no page, so it stops. A name in other letter
+// case is another file on some disks.
+function assertNoLostRecords(pairs: readonly PairedPage[], finalDir: string): void {
+  const { refs, reported } = loadCheckedPages(finalDir);
+  const inRun = pairs.map(pairSourceRef).filter((ref) => ref !== null);
+  const keptFiles = new Set([...refs, ...inRun.filter((ref) => typeof reported.get(ref)?.record === "string")].map(finalFileName));
+  for (const name of readdirSync(finalDir)) {
+    if (!name.endsWith(".json") || FINAL_META_FILES.has(name) || keptFiles.has(name)) continue;
+    const filePath = join(finalDir, name);
+    if (isDamagedFinalRecord(filePath)) {
+      throw new Error(
+        `Damaged final record ${filePath}: correct the file, or remove it when its page can be written again. Nothing was written`,
+      );
+    }
   }
 }
 
@@ -48,6 +53,7 @@ export function assertNoFileCollisions(
   existingRefs: ReadonlySet<string>,
   finalDir: string,
 ): void {
+  assertNoLostRecords(pairs, finalDir);
   const fileToRef = new Map<string, string>();
 
   for (const pair of pairs) {

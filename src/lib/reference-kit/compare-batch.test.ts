@@ -529,7 +529,7 @@ describe("compareWorkFolder", () => {
         reader: { family: "claude", model: "c1" },
         source: "sample",
         photos: [
-          { photo: "111111111111.jpg", photo_sha256: SHA_1, status: "ok", source_ref: "sample:M:3a", record_file: "sample-M-3a.json", notes: [] },
+          { photo: `${SHA_1.slice(0, 12)}.jpg`, photo_sha256: SHA_1, status: "ok", source_ref: "sample:M:3a", record_file: "sample-M-3a.json", notes: [] },
         ],
       }),
     );
@@ -540,7 +540,7 @@ describe("compareWorkFolder", () => {
         reader: { family: "codex", model: "x1" },
         source: "sample",
         photos: [
-          { photo: "111111111111.jpg", photo_sha256: SHA_1, status: "ok", source_ref: "sample:M:3a", record_file: "sample-M-3a.json", notes: [] },
+          { photo: `${SHA_1.slice(0, 12)}.jpg`, photo_sha256: SHA_1, status: "ok", source_ref: "sample:M:3a", record_file: "sample-M-3a.json", notes: [] },
         ],
       }),
     );

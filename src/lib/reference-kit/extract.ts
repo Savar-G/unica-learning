@@ -425,6 +425,13 @@ export async function extractFolder(opts: ExtractFolderOptions): Promise<Extract
 
   const workDir = prepareSafeOutputDir(opts.outDir, repoRoot);
   const finalDir = join(workDir, "final");
+  // Every note is read before the first write, so that a damaged one changes nothing.
+  const notes = {
+    manifest: readPhotosManifest(join(workDir, "photos")) ?? createEmptyManifest(),
+    entriesA: loadRunEntries(join(workDir, "reader-a"), readerA),
+    entriesB: loadRunEntries(join(workDir, "reader-b"), readerB),
+    checked: loadCheckedPages(finalDir),
+  };
   const preparedPhotosDir = prepareSafeOutputDir(join(workDir, "photos"), repoRoot);
   const slotDirA = prepareSafeOutputDir(join(workDir, "reader-a"), repoRoot);
   const slotDirB = prepareSafeOutputDir(join(workDir, "reader-b"), repoRoot);
@@ -439,10 +446,7 @@ export async function extractFolder(opts: ExtractFolderOptions): Promise<Extract
     preparedPhotosDir,
     slotDirA,
     slotDirB,
-    manifest: readPhotosManifest(preparedPhotosDir) ?? createEmptyManifest(),
-    entriesA: loadRunEntries(slotDirA, readerA),
-    entriesB: loadRunEntries(slotDirB, readerB),
-    checked: loadCheckedPages(finalDir),
+    ...notes,
   };
   // A work folder belongs to one source key. Old readings under another key would stay as they are.
   const foreign = [...ctx.entriesA, ...ctx.entriesB].find(

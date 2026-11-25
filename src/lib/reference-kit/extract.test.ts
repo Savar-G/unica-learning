@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -22,7 +23,7 @@ import { checkAndMarkPage } from "./check";
 import { compareWorkFolder } from "./compare-batch";
 import { extractFolder } from "./extract";
 import { PHOTOS_MANIFEST_FILE, preparePhoto } from "./prepare";
-import type { RunCli } from "./read";
+import type { ReaderFamily, RunCli } from "./read";
 
 const tempDirs: string[] = [];
 
@@ -277,11 +278,11 @@ describe("extractFolder (reference:extract)", () => {
       photosUploaded: 2,
     });
     expect(store.rows.get("sample:M:3a")).toMatchObject({
-      path: "sample/M/3a.jpg",
+      path: expect.stringMatching(/^sample\/M\/3a\.[0-9a-f]{16}\.jpg$/),
       transcript_status: "double_read",
     });
     expect(store.rows.get("sample:M:4a")).toMatchObject({
-      path: "sample/M/4a.jpg",
+      path: expect.stringMatching(/^sample\/M\/4a\.[0-9a-f]{16}\.jpg$/),
       transcript_status: "machine_read",
     });
   });
@@ -840,7 +841,7 @@ describe("extractFolder (reference:extract)", () => {
         if (failing.has(`${cmd} ${hash}`)) return { code: 1, stdout: "", stderr: "stopped" };
         return { code: 0, stdout: JSON.stringify(makeReaderPayload(sheets.get(hash) ?? "9a")), stderr: "" };
       };
-      const extract = (over: { force?: boolean } = {}) =>
+      const extract = (over: { force?: boolean; readerA?: ReaderFamily; readerB?: ReaderFamily } = {}) =>
         extractFolder({
           photosDir,
           outDir,
@@ -1022,7 +1023,7 @@ describe("extractFolder (reference:extract)", () => {
         } else {
           expect(result.problems, row.name).toEqual([]);
           expect(store.rows.get(REF)?.transcript_status, row.name).toBe("human_checked");
-          expect(await store.objectSha256("sample/M/3a.jpg"), row.name).toBe(w.shas[0]);
+          expect(await store.objectSha256(store.rows.get(REF)?.path ?? ""), row.name).toBe(w.shas[0]);
         }
       }
     });
@@ -1090,7 +1091,7 @@ describe("extractFolder (reference:extract)", () => {
           const { result, store } = await w.importAll();
           expect(result.problems, label).toEqual([]);
           expect(store.rows.get(REF)?.transcript_status, label).toBe("human_checked");
-          expect(await store.objectSha256("sample/M/3a.jpg"), label).toBe(w.shas[0]);
+          expect(await store.objectSha256(store.rows.get(REF)?.path ?? ""), label).toBe(w.shas[0]);
         }
       }
     });
@@ -1357,6 +1358,7 @@ describe("extractFolder (reference:extract)", () => {
         for (const slot of ["reader-a", "reader-b"]) {
           const path = join(w.outDir, slot, "run.json");
           writeFileSync(path, readFileSync(path, "utf8").replaceAll("sample:M:5a", "sample:m:3a"));
+          rmSync(join(w.outDir, slot, "sample-M-5a.json"));
         }
         const before = w.record();
         w.calls.length = 0;
@@ -1430,6 +1432,90 @@ describe("extractFolder (reference:extract)", () => {
       expect(w.status()).toBe("double_read");
     });
 
+    it("stops extract and compare, names the file and changes nothing when the notes of a reader have wrong links", async () => {
+      const w = await setUpCheckedWork();
+      const runPath = join(w.outDir, "reader-a", "run.json");
+      const good = JSON.parse(readFileSync(runPath, "utf8")) as { photos: Array<Record<string, unknown>> };
+      const [first, second] = good.photos;
+      const photos = (...list: Array<Record<string, unknown>>) => ({ ...good, photos: list });
+      const rows: Array<{ name: string; run: unknown; also?: () => void }> = [
+        { name: "two entries with one record_file", run: photos(first, { ...second, record_file: first.record_file }) },
+        { name: "two entries with one record_file, page id too", run: photos(first, { ...second, record_file: first.record_file, source_ref: first.source_ref }) },
+        { name: "one record_file in other letter case", run: photos(first, { ...second, record_file: String(first.record_file).toUpperCase().replace("JSON", "json") }) },
+        { name: "a record_file that is an invalid_file too", run: photos(first, { ...second, invalid_file: first.record_file }) },
+        { name: "two entries with one invalid_file", run: photos(...[first, second].map((e) => ({ ...e, invalid_file: "x.invalid.json" }))) },
+        { name: "record files changed over", run: photos({ ...first, record_file: second.record_file }, { ...second, record_file: first.record_file }) },
+        { name: "page ids changed over", run: photos({ ...first, source_ref: second.source_ref }, { ...second, source_ref: first.source_ref }) },
+        { name: "a reading with no page id", run: photos(first, { ...second, source_ref: undefined }) },
+        { name: "a reading with an empty page id", run: photos(first, { ...second, source_ref: "" }) },
+        { name: "a record_file that compare does not read", run: photos(first, { ...second, record_file: "x.invalid.json" }) },
+        { name: "another page id", run: photos({ ...first, source_ref: "sample:M:9a" }, second) },
+        { name: "photos changed over", run: photos({ ...first, photo: second.photo }, { ...second, photo: first.photo }) },
+        { name: "digests changed over", run: photos({ ...first, photo_sha256: second.photo_sha256 }, { ...second, photo_sha256: first.photo_sha256 }) },
+        ...["run.json", "reader.json", "Reader.JSON", "../final/status.json", "../../x.json", "x.txt", ""].flatMap((name) =>
+          ["record_file", "invalid_file"].map((key) => ({ name: `${key} "${name}"`, run: photos(first, { ...second, [key]: name }) })),
+        ),
+        ...["claude", "other"].map((family) => ({ name: `the family ${family}, and another in reader.json`, run: { ...good, reader: { family, model: "default" } } })),
+      ];
+      rmSync(join(w.photosDir, "06_page.jpg"));
+      const snapshot = () =>
+        readdirSync(w.root, { withFileTypes: true, recursive: true }).map((entry) => {
+          const file = join(entry.parentPath, entry.name);
+          return [file, entry.isFile() ? readFileSync(file, "base64") : "not a file"];
+        });
+      const commands: Array<[string, () => Promise<string>]> = [
+        ["extract", () => w.extract().then(() => "no error", (err: Error) => err.message)],
+        ["extract --force", () => w.extract({ force: true }).then(() => "no error", (err: Error) => err.message)],
+        ["compare", async () => stopOf(() => compareWorkFolder({ workDir: w.outDir, repoRoot: w.repo }))],
+      ];
+      for (const row of rows) {
+        writeFileSync(runPath, JSON.stringify(row.run));
+        const before = snapshot();
+        for (const [command, run] of commands) {
+          expect(await run(), `${command}, ${row.name}`).toContain(runPath);
+          expect(snapshot(), `${command}, ${row.name}`).toEqual(before);
+        }
+      }
+      expect(w.calls).toEqual([]);
+
+      // The control: the good links, and a reading file that is missing.
+      for (const isThere of [true, false]) {
+        const work = join(w.root, `control-${isThere}`);
+        cpSync(w.outDir, work, { recursive: true });
+        writeFileSync(join(work, "reader-a", "run.json"), JSON.stringify(good));
+        if (!isThere) rmSync(join(work, "reader-a", String(second.record_file)));
+        expect(stopOf(() => compareWorkFolder({ workDir: work, repoRoot: w.repo }))).toBe("no error");
+      }
+      writeFileSync(runPath, JSON.stringify(good));
+      expect(await commands[0][1]()).toBe("no error");
+    });
+
+    it("stops on a damaged run.json before it makes a folder, and reads each photo again when the file is missing", async () => {
+      const w = await setUpCheckedWork();
+      const runPath = join(w.outDir, "reader-a", "run.json");
+      const good = readFileSync(runPath);
+      writeFileSync(runPath, good.subarray(0, 20));
+      for (const name of ["photos", "reader-b"]) rmSync(join(w.outDir, name), { recursive: true });
+      const names = () => readdirSync(w.outDir, { recursive: true }).sort();
+      const before = names();
+      await expect(w.extract()).rejects.toThrow(runPath);
+      expect(names()).toEqual(before);
+      expect(w.calls).toEqual([]);
+
+      rmSync(runPath);
+      await w.extract();
+      expect(w.calls.filter((call) => call.photo === w.shas[1]).map((call) => call.cmd).sort()).toEqual(["claude", "codex"]);
+      expect(w.status()).toBe("human_checked");
+    });
+
+    it.each([true, false])("refuses the readings of another model family when reader.json is there: %s", async (isThere) => {
+      const w = await setUpCheckedWork();
+      for (const slot of ["reader-a", "reader-b"]) expect(existsSync(join(w.outDir, slot, "reader.json"))).toBe(true);
+      if (!isThere) for (const slot of ["reader-a", "reader-b"]) rmSync(join(w.outDir, slot, "reader.json"));
+      await expect(w.extract({ readerA: "claude", readerB: "codex" })).rejects.toThrow('holds readings from "codex"');
+      expect(w.calls).toEqual([]);
+    });
+
     it("stops each command, names the file and changes nothing when a note is damaged", async () => {
       const w = await setUpCheckedWork();
       const finalDir = join(w.outDir, "final");
@@ -1438,7 +1524,15 @@ describe("extractFolder (reference:extract)", () => {
         report: join(finalDir, "report.json"),
         digests: w.digestsPath,
         manifest: join(w.outDir, "photos", PHOTOS_MANIFEST_FILE),
+        runA: join(w.outDir, "reader-a", "run.json"),
+        runB: join(w.outDir, "reader-b", "run.json"),
+        readerA: join(w.outDir, "reader-a", "reader.json"),
+        readerB: join(w.outDir, "reader-b", "reader.json"),
+        prepare: join(w.outDir, "prepare.json"),
       };
+      // The commands that do not read a note, or that make it again.
+      const notReadBy = (note: string): string[] =>
+        note === "prepare" ? ["extract", "extract --force", "check", "import"] : /^(run|reader)/.test(note) ? ["check", "import"] : [];
       const readText = (file: string) => readFileSync(file, "utf8");
       const manifest = JSON.parse(readText(paths.manifest)) as { photos: Array<Record<string, unknown>> };
       const manifestWith = (over: unknown) =>
@@ -1448,6 +1542,21 @@ describe("extractFolder (reference:extract)", () => {
       // The files that "../../x" and "../x" would name from final/ and final-view/.
       const outside = ["x.json", "x.md"].flatMap((name) => [join(w.root, name), join(w.outDir, name)]);
       for (const file of outside) writeFileSync(file, "not a page");
+      const run = JSON.parse(readText(paths.runA)) as { photos: Array<Record<string, unknown>> };
+      const runWith = (over: object) => JSON.stringify({ ...run, photos: [{ ...run.photos[0], ...over }, ...run.photos.slice(1)] });
+      const runTexts = [
+        "{}",
+        ...[null, {}, "text", [null], ["text"], [[]]].map((photos) => JSON.stringify({ ...run, photos })),
+        ...["photo", "status", "source_ref", "record_file", "invalid_file", "original_name", "photo_sha256"].map((key) => runWith({ [key]: 7 })),
+        runWith({ status: "done" }),
+        runWith({ status: undefined }),
+        runWith({ photo_sha256: "abc" }),
+        ...["notes", "note_details"].flatMap((key) => [7, {}, "text"].map((value) => runWith({ [key]: value }))),
+        ...[null, "text", { kind: 7, path: "a" }, { kind: "unclear_filled" }].map((detail) => runWith({ note_details: [detail] })),
+        runWith({ notes: [7] }),
+        ...[7, {}, { family: "" }].map((reader) => JSON.stringify({ ...run, reader })),
+      ];
+      const readerTexts = ["{}", ...[7, null, ""].map((family) => JSON.stringify({ family, model: "default" }))];
       const badIds = ["../../x", "../x", "sample:M:../x", "", 7, null];
       const texts: Record<keyof typeof paths, string[]> = {
         status: [
@@ -1483,13 +1592,20 @@ describe("extractFolder (reference:extract)", () => {
           manifestWith(null),
           ...[" ", "", 7].map((id) => manifestWith({ ...photo, source_ref: id })),
         ],
+        runA: runTexts,
+        runB: runTexts,
+        readerA: readerTexts,
+        readerB: readerTexts,
+        prepare: ["too_small", "unreadable", "duplicates", "removed_photos"].flatMap((key) =>
+          [null, {}, "text", [null], ["text"], [{ original_name: 7 }]].map((value) => JSON.stringify({ version: 1, [key]: value })),
+        ),
       };
       type Note = keyof typeof paths;
       const changes = (Object.keys(paths) as Note[]).flatMap((note) => {
         const file = paths[note];
         const good = readText(file);
         // A bad byte in text that no rule looks at; status.json has no such text, so there it is in a page id.
-        const marked = note === "status" ? good : JSON.stringify({ ...(JSON.parse(good) as object), "sample:M:": "" });
+        const marked = note === "status" || note.startsWith("run") ? good : JSON.stringify({ ...(JSON.parse(good) as object), "sample:M:": "" });
         const at = Buffer.from(marked).indexOf("sample:M:") + "sample:M:".length;
         const badByte = Buffer.concat([Buffer.from(marked).subarray(0, at), Buffer.of(0xff), Buffer.from(marked).subarray(at)]);
         const write = (content: string | Buffer) => () => writeFileSync(file, content);
@@ -1545,19 +1661,30 @@ describe("extractFolder (reference:extract)", () => {
         change();
         const before = snapshot();
         for (const [command, run] of commands) {
+          if (notReadBy(note).includes(command)) continue;
           const label = `${command}, ${note}: ${name}`;
-          expect(await run(), label).toContain(paths[note].split("/").at(-1));
+          const stop = await run();
+          expect(stop, label).toContain(notReadBy(note).length > 0 ? paths[note] : paths[note].split("/").at(-1));
+          if (note.startsWith("run")) expect(stop, label).toContain("remove the file to read the photos again");
           expect(snapshot(), label).toEqual(before);
         }
         restore();
       }
       expect(w.calls).toEqual([]);
 
-      // The control: the same folder with good notes, and with a report that holds no pages list.
+      // The control: the same folder with good notes, and with a report that holds no pages list. A
+      // command changes the folder, so each command starts with the folder of the table.
+      const goodFolder = join(w.root, "good-folder");
+      cpSync(w.outDir, goodFolder, { recursive: true });
       for (const text of [readText(paths.report), "{}"]) {
-        writeFileSync(paths.report, text);
-        for (const [command, run] of commands) expect(await run(), command).toBe("no error");
-        expect(w.status()).toBe("human_checked");
+        for (const [command, run] of commands) {
+          rmSync(w.outDir, { recursive: true });
+          cpSync(goodFolder, w.outDir, { recursive: true });
+          writeFileSync(paths.report, text);
+          expect(readText(paths.report), command).toBe(text);
+          expect(await run(), command).toBe("no error");
+          expect(w.status(), command).toBe("human_checked");
+        }
       }
       for (const file of outside) expect(readText(file)).toBe("not a page");
     }, 60_000);
