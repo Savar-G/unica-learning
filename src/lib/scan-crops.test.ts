@@ -186,13 +186,36 @@ describe("refusals and books with no contract", () => {
     expect(m.filesOf(PHOTO)).toEqual([]);
   });
 
-  it("a photo with no marks is refused with no files, and the photo stays", async () => {
-    const blank = await photoJpeg(blankPage(800, 1000));
-    const m = setup({ bytes: blank });
+  it("records too few marks without exposing the details in the preview", async () => {
+    const sheet = blankPage(W, H);
+    for (const mark of ["tl", "br"] as const) drawMark(sheet, mark, POINTS[mark]);
+    const m = setup({ bytes: await photoJpeg(sheet) });
     expect(await runScanCrops(m.store, ref, token(1))).toEqual({ status: "refused", reason: "marks-missing" });
     expect(m.filesOf(PHOTO)).toEqual([]);
     expect(m.photos.get(PHOTO)!.state).toBe("saved");
+    expect(await m.store.calibration(ref)).toMatchObject({ state: "refused", result: {
+      reason: "marks-missing", details: { markCandidates: 2, qrRead: 0 },
+    } });
     expect(await readScanPreview(m.store, ref)).toEqual({ status: "refused", reason: "marks-missing" });
+  });
+
+  it("records where another page's QR was read without storing its link", async () => {
+    const sheet = drawn(true), size = { width: 1500, height: 1900 };
+    const code = { x: 1020, y: 1440, width: 170, height: 170 };
+    const other = pageUrl("other-page-token-001");
+    drawQr(sheet, code, other);
+    const bytes = await photoJpeg(photographed(sheet, size, uprightCorners(size, { width: W, height: H }, 70)));
+    const m = setup({ bytes });
+    expect(await runScanCrops(m.store, ref, token(1))).toEqual({ status: "refused", reason: "qr-mismatch" });
+    const saved = await m.store.calibration(ref);
+    expect(saved).toMatchObject({ state: "refused", result: {
+      reason: "qr-mismatch", details: {
+        qrRead: 1, placement: 1, marks: { found: [0, 1, 2, 3], hidden: [], missing: [] },
+        qrCorners: expect.arrayContaining([expect.objectContaining({ x: expect.any(Number), y: expect.any(Number) })]),
+        pageFit: expect.any(Number),
+      },
+    } });
+    expect(JSON.stringify(saved)).not.toContain(other);
   });
 
   it("refuses when the stored page image is not the one the contract fingerprints", async () => {
@@ -521,6 +544,22 @@ describe("readable QR with hidden marks", () => {
     const { result } = await scan(sheet);
     expect(result?.held).toEqual([{ number: 6, issue: "alignment" }]);
     expect(result?.crops?.map((c) => c.number)).toEqual([1, 2, 3, 4, 5]);
+  }, 30_000);
+
+  it("records the region and ring scores when a covered corner holds an answer", async () => {
+    const sheet = fixture(false, true), { box } = answers[5];
+    hideRight(sheet);
+    fillBox(sheet, box.x - 12, box.y - 66, box.width + 24, box.height + 76, 248);
+    const { preview, result } = await scan(sheet);
+    expect(preview.status).toBe("ready");
+    const held = [{ number: 3, issue: "covered" }, { number: 6, issue: "covered" }];
+    expect(result?.held).toEqual(held);
+    expect(result?.details).toMatchObject({
+      marks: { found: [0, 3], hidden: [1, 2], missing: [] },
+      qrRead: 2, placement: 2, qrPatches: expect.any(Number), pageFit: expect.any(Number),
+      covered: held.map(({ number }) => ({ question: number, region: 1, shown: 0, examined: 6, required: 5 })),
+    });
+    expect(result?.crops?.map((c) => c.number)).toEqual([1, 2, 4, 5]);
   }, 30_000);
 
   it("holds only the questions under a same-template sheet (#975)", async () => {

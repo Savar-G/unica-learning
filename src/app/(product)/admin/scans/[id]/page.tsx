@@ -14,6 +14,7 @@ import { when } from "@/lib/admin-view";
 import { Table } from "@/components/admin";
 import { AdminFrame } from "@/components/admin-frame";
 import { MarkHead, ResultChip, actorText, readText } from "@/components/admin-marking";
+import type { ScanCalibrationResult } from "@/lib/scan-crops";
 import { ScanPrivateImages } from "@/components/scan-private-images";
 import { PHOTO_CHECK_THRESHOLDS, PHOTO_PROBLEMS, readPhotoCheck, type PhotoCheck } from "@/lib/scan-photo-check";
 
@@ -45,6 +46,37 @@ const REJECT_REASON_TEXT: Record<ScanRejectReason, string> = {
   unexpected: "An unexpected error interrupted the upload.",
 };
 
+const CORNERS = ["top left", "top right", "bottom right", "bottom left"];
+const corners = (indices: number[]) => indices.map(i => CORNERS[i]).join(", ") || "None";
+
+function PageCheckDetails({ result }: { result: ScanCalibrationResult }) {
+  const { details, reason, review } = result;
+  if (!details) return null;
+  const { marks, markCandidates, qrRead, qrCorners, placement, qrPatches, pageFit, covered } = details;
+  return <>
+    <h3>Page alignment check</h3>
+    <dl>
+      {(reason || review) && <><dt>Reason</dt><dd>{reason ?? review}</dd></>}
+      {markCandidates !== undefined && <><dt>Possible marks</dt><dd>{markCandidates}</dd></>}
+      {marks && <>
+        <dt>Marks found</dt><dd>{corners(marks.found)}</dd>
+        <dt>Marks hidden</dt><dd>{corners(marks.hidden)}</dd>
+        <dt>Marks outside the photo</dt><dd>{corners(marks.missing)}</dd>
+      </>}
+      <dt>QR code</dt><dd>{qrRead === 2 ? "This page's code" : qrRead === 1 ? "Another code" : "No code read"}</dd>
+      {qrCorners && <><dt>QR corners in photo pixels</dt><dd>{qrCorners.map(({ x, y }) => `(${x}, ${y})`).join(", ")}</dd></>}
+      {placement !== undefined && <><dt>Placement method</dt><dd>{placement === 2 ? "QR code and print" : "Corner marks"}</dd></>}
+      {qrPatches !== undefined && <><dt>Matched print patches for QR placement</dt><dd>{qrPatches}</dd></>}
+      {pageFit !== undefined && <><dt>Page fit</dt><dd>{pageFit}</dd></>}
+    </dl>
+    {covered?.length ? <Table label="Covered answer regions" head={["Question", "Region", "Ring cells visible", "Ring cells checked", "Minimum visible"]} empty="No covered regions.">
+      {covered.map(({ question, region, shown, examined, required }) => <tr key={`${question}-${region}`}>
+        <td>{question}</td><td>{region}</td><td>{shown}</td><td>{examined}</td><td>{required}</td>
+      </tr>)}
+    </Table> : null}
+  </>;
+}
+
 // One marked page (D-313, D-315): the photo large, the answers for our team to mark beside it, every answer's reading as
 // a compact list, the mark changes as a timeline, and the raw data in a closed "Technical details" section.
 export default async function AdminScanPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ after?: string }> }) {
@@ -61,11 +93,12 @@ export default async function AdminScanPage({ params, searchParams }: { params: 
   const { parent_id: parent, state } = row.data;
   const rejected = state === "rejected";
   // Fetch separately so a missing reason column during rollout cannot hide existing photo details.
-  const [checkRow, rejection] = await Promise.all([
+  const [checkRow, rejection, pageCheck] = await Promise.all([
     db.from("scan_photos").select("photo_check").eq("id", id).eq("parent_id", parent).maybeSingle(),
     rejected
       ? db.from("scan_photos").select("reject_reason").eq("id", id).eq("parent_id", parent).maybeSingle()
       : null,
+    admin.db.from("scan_calibrations").select("result").eq("photo_id", id).eq("parent_id", parent).maybeSingle(),
   ]);
   const rejectReason = rejection?.data?.reject_reason;
   const photoCheck = checkRow.error || !checkRow.data ? null : readPhotoCheck(checkRow.data.photo_check);
@@ -141,6 +174,7 @@ export default async function AdminScanPage({ params, searchParams }: { params: 
     </section>
     <details className="adm-tech">
       <summary>Technical details</summary>
+      {pageCheck.data?.result && <PageCheckDetails result={pageCheck.data.result} />}
       <Table label="What the AI read and the result of each question" head={["Question", "What the AI read", "Result", "By / time", "Counts toward progress", "Learning event"]} empty="No readings yet.">
         {result.marks.map((m) => <tr key={m.expected.identity.itemId}>
           <td>{m.expected.number}</td><td>{m.observation.readAnswerText ?? "Not read"}</td>

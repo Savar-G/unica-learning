@@ -17,6 +17,7 @@
 // Pure TypeScript: no Next.js, React, network, database or clock. The caller decodes and encodes images.
 import jsQR from "jsqr";
 import { paperEdges } from "@/lib/scan-paper-edges";
+import { noteScanCode, noteScanMarks, type AnswerPlacement, type CalibrationRefusal, type ScanCalibrationDetails } from "@/lib/scan-calibration-details";
 import { snapPrint } from "@/lib/scan-answer-snap";
 import type { QuestionPackage } from "@/lib/question-package";
 import { markingRegions } from "@/lib/scan-marking-regions";
@@ -118,23 +119,11 @@ export function photoPoint(c: Pick<Calibration, "transform" | "bend" | "mesh">, 
   return applyTransform(c.transform, shape ? shape(p.x, p.y) : p);
 }
 
-/**
- * Why a photo has no calibration:
- * - marks-missing: the photo does not hold four shapes that line up as the page's scan marks;
- * - marks-inconsistent: they line up, but their arms do not fit the contract's rectangle once mapped;
- * - page-mismatch: the photo's ink does not follow the printed page's ink in any way up;
- * - ambiguous-page: more than one rectangle in the photo follows it, as with two copies of a page;
- * - orientation-unclear: two ways up fit about equally well;
- * - qr-mismatch: where the page printed its QR code, the photo's code is missing, moved, or another page's;
- * - corner-covered: a corner mark is hidden, and an answer near that corner is not shown as this page's own (something
- *   lies over it, or the corner is curled), so its crop could hold another sheet's writing (#966 review).
- */
-export type CalibrationRefusal = "marks-missing" | "marks-inconsistent" | "page-mismatch" | "ambiguous-page" | "orientation-unclear" | "qr-mismatch" | "corner-covered";
-
+export type { CalibrationRefusal } from "@/lib/scan-calibration-details";
 export type CalibrationResult =
-  | { status: "calibrated"; calibration: Calibration }
-  | { status: "review"; reason: CalibrationRefusal }
-  | { status: "refused"; reason: CalibrationRefusal }
+  | { status: "calibrated"; calibration: Calibration; details: ScanCalibrationDetails }
+  | { status: "review"; reason: CalibrationRefusal; details: ScanCalibrationDetails }
+  | { status: "refused"; reason: CalibrationRefusal; details: ScanCalibrationDetails }
   | { status: "unavailable"; reason: "no-contract" | "other-revision" };
 
 // ---------- Geometry ----------
@@ -1444,7 +1433,7 @@ function gridQr(photo: Raster, t: Transform, printed: FoundQr, grid: QrGrid | nu
  * Whether the photo holds this page's QR code, through a map, where the page printed it. The first read that finds a
  * code decides: its link must be this page's, and its corners where the page printed them.
  */
-function qrBound(photo: Raster, sheetMap: Transform, printed: FoundQr, grid: QrGrid | null, page: { width: number; height: number }, mesh?: Mesh): boolean {
+function qrBound(photo: Raster, sheetMap: Transform, printed: FoundQr, grid: QrGrid | null, page: { width: number; height: number }, mesh?: Mesh, details?: ScanCalibrationDetails): boolean {
   const b = boundsOf(printed.corners), size = Math.max(b.width, b.height);
   const x = Math.max(0, b.x - QR_WINDOW * size), y = Math.max(0, b.y - QR_WINDOW * size);
   const window = { x, y, width: Math.min(page.width, b.x + b.width + QR_WINDOW * size) - x, height: Math.min(page.height, b.y + b.height + QR_WINDOW * size) - y };
@@ -1454,8 +1443,10 @@ function qrBound(photo: Raster, sheetMap: Transform, printed: FoundQr, grid: QrG
   const t = mesh ? perspectiveTransform(corners, corners.map((p) => applyTransform(sheetMap, meshAt(mesh, p.x, p.y)))) ?? sheetMap : sheetMap;
   const inverse = invert(t);
   if (!inverse) return false;
-  const decides = (found: FoundQr | null, toPage: (c: Point) => Point) => found
-    && found.link === printed.link && found.corners.every((c, i) => distance(toPage(c), printed.corners[i]) <= QR_TOLERANCE * size);
+  const decides = (found: FoundQr | null, toPage: (c: Point) => Point) => {
+    if (found && details) noteScanCode(details, found.corners.map(c => applyTransform(t, toPage(c))), found.link === printed.link);
+    return found && found.link === printed.link && found.corners.every((c, i) => distance(toPage(c), printed.corners[i]) <= QR_TOLERANCE * size);
+  };
   // First the photo's own pixels around the place, with the code's corners taken back through the map.
   const seenAt = boundsOf([{ x: window.x, y: window.y }, { x: window.x + window.width, y: window.y }, { x: window.x + window.width, y: window.y + window.height }, { x: window.x, y: window.y + window.height }].map((p) => applyTransform(t, p)));
   const x0 = Math.max(0, Math.floor(seenAt.x)), y0 = Math.max(0, Math.floor(seenAt.y));
@@ -1566,9 +1557,12 @@ const MARK_WEIGHT = 10;
 interface QrPlacement { t: Transform; turns: 0 | 1 | 2 | 3; fit: number; mesh?: Mesh; marks: Point[]; missing: ScanMark[]; hidden: ScanMark[] }
 
 /** Place the page using its code, expanding print matches, and any reliable marks and paper edges. */
-function placedByQr(photo: Raster, printedQr: FoundQr, ink: PrintedInk, greySums: Uint32Array, shapes: readonly MarkShape[], stored: readonly Point[], page: { width: number; height: number }, qrGrid: PreparedPrinted["qrGrid"]): QrPlacement | null {
+function placedByQr(photo: Raster, printedQr: FoundQr, ink: PrintedInk, greySums: Uint32Array, shapes: readonly MarkShape[], stored: readonly Point[], page: { width: number; height: number }, qrGrid: PreparedPrinted["qrGrid"], details: ScanCalibrationDetails): QrPlacement | null {
   const code = photoQr(photo, printedQr.link);
   if (!code) return null;
+  details.placement = 2;
+  delete details.pageFit;
+  noteScanCode(details, code.corners, true);
   // The code is small: its corners say where it is, how large and which way up, and only the print can say more.
   let t = fitLinear(printedQr.corners, code.corners, "similarity");
   if (!t) return null;
@@ -1586,6 +1580,7 @@ function placedByQr(photo: Raster, printedQr: FoundQr, ink: PrintedInk, greySums
       if (Math.hypot(i * MESH_STEP * 2 - middle.x, j * MESH_STEP * 2 - middle.y) <= reach) nodes.push({ i, j, x: (i * MESH_STEP) / MESH_COARSE, y: (j * MESH_STEP) / MESH_COARSE });
     }
     const kept = agreeing(matchPatches(sa.g, sb.g, sa.w, sa.h, nodes, MESH_COARSE_PATCH, MESH_REACH, MESH_COARSE).anchors, MESH_AGREE_COARSE / MESH_COARSE);
+    details.qrPatches = kept.length;
     if (kept.length < QR_PLACE_MIN_PATCHES) return null;
     const by = MESH_COARSE * 2;
     pairs = kept.map((k) => {
@@ -1660,6 +1655,8 @@ function placedByQr(photo: Raster, printedQr: FoundQr, ink: PrintedInk, greySums
       }
     }
   }
+  details.pageFit = Math.round(fit * 1000) / 1000;
+  noteScanMarks(details, hidden, missing);
   if (fit < MIN_PAGE_FIT) return null;
   // Which way up: the page's own rightward direction in the photo, in clockwise quarter turns.
   const right = { x: applyTransform(placed, { x: page.width, y: page.height / 2 }).x - applyTransform(placed, { x: 0, y: page.height / 2 }).x, y: applyTransform(placed, { x: page.width, y: page.height / 2 }).y - applyTransform(placed, { x: 0, y: page.height / 2 }).y };
@@ -1670,17 +1667,7 @@ function placedByQr(photo: Raster, printedQr: FoundQr, ink: PrintedInk, greySums
 
 const photoPointOf = (t: Transform, mesh: Mesh | undefined, p: Point) => applyTransform(t, mesh ? meshAt(mesh, p.x, p.y) : p);
 
-/**
- * Finds the scan marks in a photo and maps it to the contract: the photo's own marks and the stored mark points only. A
- * photo with no contract, or of another revision (printContractForPhoto), gets none. `pageLink`: the page's own QR link.
- * `writing`: where a child writes on this page, which says nothing about which page it is. This says the sheet is this
- * page's by its marks, ink and code. Pages that differ by a few digits pass all three for each other, so the crop job then
- * asks sheetChecker about the child's other pages, a few at a time.
- *
- * A sheet that is not flat is aligned part by part (pageFit, #912). A photo whose four marks do not place the page, as when
- * the photo's edge cuts one off or a hand's shadow hides one, is placed by its QR code and print instead (placedByQr):
- * a hidden mark is never used and never replaced by another sheet's, and the print must still follow (#912).
- */
+/** Match this photo to its immutable print, using marks, code and print agreement. */
 export function calibratePhoto(o: { photo: Raster; printed: Raster; contract: PhotoContract; pageLink: string; writing?: readonly Box[] }): CalibrationResult {
   if (o.contract.status !== "available") return { status: "unavailable", reason: o.contract.reason };
   const { contract, revision } = o.contract;
@@ -1688,8 +1675,10 @@ export function calibratePhoto(o: { photo: Raster; printed: Raster; contract: Ph
   // The code the page image printed: where it sits comes from the image the contract fingerprints, never from a template.
   const prepared = preparedPrinted(printed);
   const printedQr = prepared.qr;
-  if (!printedQr || printedQr.link !== o.pageLink) return { status: "refused", reason: "qr-mismatch" };
+  const details: ScanCalibrationDetails = { qrRead: 0 };
+  if (!printedQr || printedQr.link !== o.pageLink) return { status: "refused", reason: "qr-mismatch", details };
   const { greySums, quads, shapes } = preparedPhoto(photo);
+  details.markCandidates = shapes.length;
   const ink = printedInk(prepared, [...(o.writing ?? []), boundsOf(printedQr.corners), ...markPrint(prepared.source)]);
   const stored = SCAN_MARKS.map((m) => contract.marks.points[m]);
   const pageSize = contract.coordinates.image;
@@ -1716,6 +1705,7 @@ export function calibratePhoto(o: { photo: Raster; printed: Raster; contract: Ph
     }).sort((a, b) => b.fit - a.fit);
     if (ways.length === 0) continue;
     const best = ways[0];
+    details.pageFit = Math.max(details.pageFit ?? 0, Math.round(best.fit * 1000) / 1000);
     if (best.fit < MIN_PAGE_FIT) { refusal = "page-mismatch"; continue; }
     followers.push({ ...best, next: ways[1]?.fit ?? null });
   }
@@ -1724,14 +1714,21 @@ export function calibratePhoto(o: { photo: Raster; printed: Raster; contract: Ph
   // a mark of the sheet below can stand in for one of the page's own (#912). Which marks are the page's is then decided
   // by its code and print below, never by the rectangles.
   const oneSheet = followers.length > 1 && followers.every((a, i) => followers.every((b, j) => j <= i || a.order.filter((m) => b.order.includes(m)).length >= 2));
-  const codeAt = (c: { t: Transform; mesh?: Mesh }) => qrBound(photo, c.t, printedQr, prepared.qrGrid, pageSize, c.mesh);
-  const unplaced = (reason: CalibrationRefusal, bound = false): CalibrationResult =>
-    bound || photoQr(photo, o.pageLink) ? { status: "review", reason } : { status: "refused", reason };
+  const codeAt = (c: { t: Transform; mesh?: Mesh }) => qrBound(photo, c.t, printedQr, prepared.qrGrid, pageSize, c.mesh, details);
+  const unplaced = (reason: CalibrationRefusal, bound = false): CalibrationResult => {
+    const match = !bound && photoQr(photo, o.pageLink);
+    const seen = match || wholeQrCache.get(photo) || photoQrCache.get(photo)?.found.values().next().value;
+    if (seen) noteScanCode(details, seen.corners, seen.link === o.pageLink);
+    return { status: bound || match ? "review" : "refused", reason, details };
+  };
   if (followers.length > 1 && !oneSheet) return unplaced("ambiguous-page", followers.some(codeAt));
   const calibration = (c: { t: Transform; turns: 0 | 1 | 2 | 3; fit: number; mesh?: Mesh; marks: Point[] }, more: Partial<Calibration> = {}): CalibrationResult => {
+    details.placement = more.placedBy === "qr" ? 2 : 1;
+    details.pageFit = Math.round(c.fit * 1000) / 1000;
+    noteScanMarks(details, more.hiddenMarks ?? [], more.missingMarks ?? []);
     if (!codeAt(c)) return unplaced("qr-mismatch");
     return {
-      status: "calibrated",
+      status: "calibrated", details,
       calibration: {
         version: CALIBRATION_VERSION, revision, photo: { width: photo.width, height: photo.height },
         marks: Object.fromEntries(SCAN_MARKS.map((m, i) => [m, c.marks[i]])) as Record<ScanMark, Point>,
@@ -1741,7 +1738,7 @@ export function calibratePhoto(o: { photo: Raster; printed: Raster; contract: Ph
     };
   };
   if (oneSheet || followers.length === 0) {
-    const placed = placedByQr(photo, printedQr, ink, greySums, shapes, stored, pageSize, prepared.qrGrid);
+    const placed = placedByQr(photo, printedQr, ink, greySums, shapes, stored, pageSize, prepared.qrGrid, details);
     if (!placed) return unplaced(oneSheet ? "ambiguous-page" : refusal);
     return calibration(placed, { placedBy: "qr", missingMarks: placed.missing, ...(placed.hidden.length ? { hiddenMarks: placed.hidden } : {}) });
   }
@@ -1776,7 +1773,7 @@ export function answerPlacement(o: { photo: Raster; printed: Raster; calibration
   let grids: { a: Float32Array; b: Float32Array } | undefined;
   const cellBox = (c: { x: number; y: number }): Box => ({ x: c.x * 2, y: c.y * 2, width: FIT_CELL * 2, height: FIT_CELL * 2 });
   const cells = visibleCells(ink.cells, photo, t, shape);
-  return (box: Box, checkPrint: boolean): { box: Box; offset: Point; issue?: "covered" | "alignment" } => {
+  return (box: Box, checkPrint: boolean): AnswerPlacement => {
     const near = cells.map((c) => ({ c, gap: boxDistance(box, cellBox(c)) })).filter(({ gap }) => gap <= ANSWER_TEXT_DISTANCE)
       .sort((a, b) => a.gap - b.gap);
     const nearest = near.filter(({ gap }) => gap <= (near[0]?.gap ?? 0) + 24).slice(0, 6).map(({ c }) => c);
@@ -1786,7 +1783,8 @@ export function answerPlacement(o: { photo: Raster; printed: Raster; calibration
       const { a, b } = grids;
       const local = shapedCells(a, width, nearest);
       const shown = local.filter((c) => cellShows(c, a, b, ink.ink, width, height)).length;
-      if ((checkPrint && local.length === 0) || shown < Math.ceil(local.length * 0.75)) return { ...original, issue: "covered" };
+      const required = Math.max(checkPrint ? 1 : 0, Math.ceil(local.length * 0.75));
+      if (shown < required) return { ...original, issue: "covered", ring: { shown, examined: local.length, required } };
     }
 
     const samples: { x: number; y: number; grey: number }[] = [];
