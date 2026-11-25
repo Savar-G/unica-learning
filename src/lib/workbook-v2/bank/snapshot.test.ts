@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import raw from "../fixtures/snapshot.json";
 import { TEMPLATES, type PageTemplate } from "../layout/templates";
+import { wholeNumber } from "../shapes/shape";
 import { SHAPES, shapeLibrary, type Shape } from "../shapes";
 import { validateSnapshot } from "./snapshot";
 
@@ -193,7 +194,7 @@ describe("the questions of a side fit its template", () => {
   it("refuses a row whose widest question is too wide for the template", () => {
     const mul = SHAPES.get("mul.column");
     if (!mul) throw new Error("no shape");
-    const wide: Shape = { ...mul, worstCase: () => ({ question: {}, answer: { kind: "whole-number", value: "1234" } }), face: () => ({ kind: "column", top: "617", sign: "×", bottom: "2" }) };
+    const wide: Shape = { ...mul, worstCase: () => ({ question: {}, answer: wholeNumber("1234") }), face: () => ({ kind: "column", top: "617", sign: "×", bottom: "2" }) };
     const result = validateSnapshot(copy(), shapeLibrary([wide]));
     expect(result).toMatchObject({ ok: false, problems: expect.arrayContaining([`${ROW}: the widest question, 617 × 2 = 1234, needs 4 digit places and the template "columns-2x4" has 3.`]) });
   });

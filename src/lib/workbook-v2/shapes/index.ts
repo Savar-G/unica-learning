@@ -1,4 +1,8 @@
+import { factAdd, factMul, factSub } from "./facts";
+import { missingAddend, missingFactor } from "./missing";
 import { mulColumn } from "./mul-column";
+import { repeatedAdd } from "./repeated-add";
+import { skipCount } from "./skip-count";
 import type { Shape } from "./shape";
 
 export type { Item, Shape } from "./shape";
@@ -18,4 +22,11 @@ export function shapeLibrary(shapes: readonly Shape[]): ShapeLibrary {
 }
 export const SHAPES: ShapeLibrary = shapeLibrary([
   mulColumn,
+  factAdd,
+  factSub,
+  factMul,
+  repeatedAdd,
+  skipCount,
+  missingFactor,
+  missingAddend,
 ]);

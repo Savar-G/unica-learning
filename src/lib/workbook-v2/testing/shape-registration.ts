@@ -28,7 +28,12 @@ export interface LimitRule {
   widen(one: unknown, other: unknown): unknown;
   /** Values that the shape must refuse. */
   bad: readonly unknown[];
+  /** The limit says how a row prints its questions, so that no question breaks it and it has no witness. */
+  printsOnly?: true;
 }
+
+/** An answer of one whole number in one answer area, as a reader finds it. */
+export const wholeAnswer = (value: string): Answer => ({ parts: [{ name: "answer", kind: "whole-number", value }] });
 
 const tenOutside = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
@@ -68,6 +73,28 @@ export const onlyLimit = (): LimitRule => ({
   bad: [undefined, null, true, "", "sometimes", "Only", "only ", ["only"]],
 });
 
+/** A set of whole numbers inside its bounds, in rising order. */
+export function setLimit(min: number, max: number): LimitRule {
+  const all = Array.from({ length: max - min + 1 }, (_, i) => min + i);
+  return {
+    values: fc.subarray(all, { minLength: 1 }),
+    allows: (feature, limit) => (limit as number[]).includes(feature as number),
+    widen: (one, other) => all.filter((n) => [...(one as number[]), ...(other as number[])].includes(n)),
+    bad: [undefined, null, "wide", [], { min, max }, [String(min)], [min + 0.5], [min, min], [max, min], [min - 1], [min, max + 1], [null], [min, [max]]],
+  };
+}
+
+/** One word of some, or a word that permits each of them. The feature is the word of the question. */
+export const choiceLimit = (words: readonly string[], all: string): LimitRule => ({
+  values: fc.constantFrom(...words, all),
+  allows: (feature, limit) => typeof feature === "string" && words.includes(feature) && (limit === all || limit === feature),
+  widen: (one, other) => (one === other ? one : all),
+  bad: [undefined, null, true, "", "other", `${all} `, all.toUpperCase(), [all]],
+});
+
+/** The order of a row: "mixed", or the order of its table. */
+export const orderLimit = (): LimitRule => ({ ...choiceLimit(["up", "down"], "mixed"), allows: () => true, printsOnly: true });
+
 /** The same limit, at its widest in three of four cases: with many limits, random values alone leave almost no question. */
 export const oftenWide = (rule: LimitRule, widest: unknown): LimitRule =>
   ({ ...rule, values: fc.oneof({ weight: 3, arbitrary: fc.constant(widest) }, { weight: 1, arbitrary: rule.values }) });
@@ -94,9 +121,15 @@ export function step(text: string, marks = ""): Step {
 
 export interface ShapeRegistration {
   id: string;
+  /** How a child works the answer: in columns, so that the steps draw each digit, or in lines that draw nothing. */
+  working: "columns" | "lines";
   limits: Readonly<Record<string, LimitRule>>;
   /** Null for rows that print no question of the shape. */
   read(rows: Rows): Printed | null;
+  /** Only a shape that prints rows in the order of a table: whether limits ask for one, and what comes after a question. */
+  ordered?: { asked(limits: Limits): boolean; next(rows: Rows, limits: Limits): Rows | null };
+  /** Only a shape with swapped forms: the printed swapped form, or null for a question that has none. */
+  swapped?(rows: Rows): Rows | null;
   /** Every printed question of the shape, or the facts of a space that is too large to list. */
   space: readonly Rows[] | LargeSpace;
   /** Limits that the bank can hold. The fingerprint covers them. */
@@ -132,8 +165,9 @@ const LISTS = ["cases", "smallSpaces", "witnesses", "harder", "examples", "refus
 function listProblems(registration: ShapeRegistration): string[] {
   const names = Object.keys(registration.limits);
   const found: string[] = [...LISTS.filter((list) => registration[list].length === 0), ...(names.length === 0 ? ["limits"] : [])].map((list) => `${list} must not be empty`);
+  if (names.some((n) => registration.limits[n].printsOnly) !== (registration.ordered !== undefined)) found.push("a limit that only says how a row prints needs the order of a row, and no order is without such a limit");
   if (Array.isArray(registration.space) && registration.space.length === 0) found.push("space must not be empty");
-  for (const name of names.filter((n) => !registration.witnesses.some((w) => w.limit === n))) found.push(`the limit "${name}" has no witness`);
+  for (const name of names.filter((n) => !registration.limits[n].printsOnly && !registration.witnesses.some((w) => w.limit === n))) found.push(`the limit "${name}" has no witness`);
   for (const name of names.filter((n) => registration.limits[n].bad.length === 0)) found.push(`the limit "${name}" has no bad value`);
   for (const { name, questions } of registration.smallSpaces) if (questions.length === 0) found.push(`the list of "${name}" must not be empty`);
   for (const { name, limits } of [...registration.cases, ...registration.smallSpaces, ...registration.witnesses.map((w) => ({ ...w, name: w.limit }))]) {

@@ -1,0 +1,115 @@
+{
+  "format": 1,
+  "id": "invented-level-2-facts-v1",
+  "level": {
+    "id": "level-2",
+    "name": "2"
+  },
+  "topics": [
+    {
+      "id": "topic-7",
+      "code": "2-7",
+      "title": "Number facts",
+      "sheets": ["times-facts", "add-and-take-away", "equal-groups", "missing-numbers", "long-counts"]
+    }
+  ],
+  "sheets": [
+    {
+      "id": "times-facts",
+      "firstPage": 121,
+      "front": {
+        "instruction": "Multiply.",
+        "template": "facts-2x10",
+        "rows": [
+          {"id": "table-of-5", "shape": "fact.mul", "items": 9, "limits": {"tables": [5], "second": {"min": 1, "max": 9}, "result": {"min": 0, "max": 100}, "order": "up"}},
+          {"id": "hard-tables", "shape": "fact.mul", "items": 11, "limits": {"tables": [6, 7, 8, 9], "second": {"min": 3, "max": 9}, "result": {"min": 0, "max": 100}, "order": "mixed"}}
+        ]
+      },
+      "back": {
+        "instruction": "Multiply.",
+        "template": "facts-2x10",
+        "rows": [
+          {"id": "table-of-4", "shape": "fact.mul", "items": 11, "limits": {"tables": [4], "second": {"min": 0, "max": 10}, "result": {"min": 0, "max": 100}, "order": "up"}},
+          {"id": "up-to-9-times-9", "shape": "fact.mul", "items": 9, "limits": {"tables": [2, 3, 4, 5, 6, 7, 8, 9], "second": {"min": 2, "max": 9}, "result": {"min": 0, "max": 100}, "order": "mixed"}}
+        ]
+      }
+    },
+    {
+      "id": "add-and-take-away",
+      "firstPage": 123,
+      "front": {
+        "instruction": "Add.",
+        "template": "facts-2x10",
+        "rows": [
+          {"id": "sums-to-10", "shape": "fact.add", "items": 11, "limits": {"tables": [1, 2, 3, 4, 5, 6, 7, 8, 9], "second": {"min": 1, "max": 9}, "result": {"min": 2, "max": 10}, "order": "mixed"}},
+          {"id": "table-of-6-down", "shape": "fact.add", "items": 9, "limits": {"tables": [6], "second": {"min": 1, "max": 9}, "result": {"min": 0, "max": 20}, "order": "down"}}
+        ]
+      },
+      "back": {
+        "instruction": "Take away.",
+        "template": "facts-2x10",
+        "rows": [
+          {"id": "from-12", "shape": "fact.sub", "items": 9, "limits": {"tables": [12], "second": {"min": 1, "max": 9}, "result": {"min": 0, "max": 20}, "order": "up"}},
+          {"id": "from-11-to-18", "shape": "fact.sub", "items": 11, "limits": {"tables": [11, 12, 13, 14, 15, 16, 17, 18], "second": {"min": 2, "max": 9}, "result": {"min": 2, "max": 9}, "order": "mixed"}}
+        ]
+      }
+    },
+    {
+      "id": "equal-groups",
+      "firstPage": 125,
+      "front": {
+        "instruction": "Add the equal numbers.",
+        "template": "sums-1x10",
+        "rows": [
+          {"id": "short", "shape": "add.repeated", "items": 5, "limits": {"number": {"min": 2, "max": 5}, "count": {"min": 3, "max": 5}}},
+          {"id": "long", "shape": "add.repeated", "items": 5, "limits": {"number": {"min": 2, "max": 10}, "count": {"min": 6, "max": 9}}}
+        ]
+      },
+      "back": {
+        "instruction": "Write the missing number.",
+        "template": "blanks-1x10",
+        "rows": [
+          {"id": "easy-tables", "shape": "missing.factor", "items": 5, "limits": {"tables": [2, 5, 10], "missing": {"min": 1, "max": 10}, "result": {"min": 0, "max": 100}, "blank": "second"}},
+          {"id": "more-tables", "shape": "missing.factor", "items": 5, "limits": {"tables": [2, 3, 4, 5, 6, 7, 8, 9], "missing": {"min": 2, "max": 9}, "result": {"min": 0, "max": 100}, "blank": "either"}}
+        ]
+      }
+    },
+    {
+      "id": "missing-numbers",
+      "firstPage": 127,
+      "front": {
+        "instruction": "Write the missing number.",
+        "template": "blanks-1x10",
+        "rows": [
+          {"id": "sums", "shape": "missing.addend", "items": 10, "limits": {"tables": [1, 2, 3, 4, 5, 6, 7, 8, 9], "missing": {"min": 1, "max": 9}, "result": {"min": 2, "max": 10}, "blank": "either"}}
+        ]
+      },
+      "back": {
+        "instruction": "Write the missing numbers from top to bottom.",
+        "template": "sequences-2x2",
+        "rows": [
+          {"id": "up", "shape": "count.skip", "items": 2, "limits": {"step": {"min": 2, "max": 5}, "direction": "up", "start": {"min": 0, "max": 30}, "offStep": "never", "terms": {"min": 5, "max": 5}, "blanks": {"min": 1, "max": 3}, "places": {"min": 3, "max": 10}}},
+          {"id": "down", "shape": "count.skip", "items": 2, "limits": {"step": {"min": 2, "max": 10}, "direction": "down", "start": {"min": 20, "max": 100}, "offStep": "never", "terms": {"min": 5, "max": 5}, "blanks": {"min": 2, "max": 3}, "places": {"min": 3, "max": 10}}}
+        ]
+      }
+    },
+    {
+      "id": "long-counts",
+      "firstPage": 129,
+      "front": {
+        "instruction": "Write the missing numbers from top to bottom.",
+        "template": "sequences-2x1",
+        "rows": [
+          {"id": "five-blanks", "shape": "count.skip", "items": 2, "limits": {"step": {"min": 2, "max": 10}, "direction": "up", "start": {"min": 0, "max": 100}, "offStep": "never", "terms": {"min": 10, "max": 10}, "blanks": {"min": 5, "max": 5}, "places": {"min": 3, "max": 10}}}
+        ]
+      },
+      "back": {
+        "instruction": "Write the missing numbers from top to bottom.",
+        "template": "sequences-2x1",
+        "rows": [
+          {"id": "down-between-steps", "shape": "count.skip", "items": 2, "limits": {"step": {"min": 2, "max": 10}, "direction": "down", "start": {"min": 0, "max": 100}, "offStep": "allowed", "terms": {"min": 10, "max": 10}, "blanks": {"min": 3, "max": 4}, "places": {"min": 3, "max": 10}}}
+        ]
+      }
+    }
+  ]
+}

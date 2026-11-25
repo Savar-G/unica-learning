@@ -2,7 +2,7 @@
 // other module can trust its ids, references, limits and item counts.
 import { PRINT_RULES, type Side } from "../contract";
 import { canonicalJson, sha256 } from "../hash";
-import { digitPlaces, TEMPLATES, type PageTemplate } from "../layout/templates";
+import { fitProblem, questionText, TEMPLATES, type PageTemplate } from "../layout/templates";
 import { SHAPES, type Shape, type ShapeLibrary } from "../shapes";
 import { isRecord } from "../shapes/shape";
 import { FieldReader, isId, type Fields } from "./fields";
@@ -70,9 +70,9 @@ function checkFit(r: FieldReader, place: string, side: Side, template: PageTempl
     const worst = row.shape.worstCase(row.limits);
     const face = row.shape.face(worst.question);
     const at = `${place}, row "${row.id}"`;
-    const needed = digitPlaces(face, worst.answer.value);
+    const problem = fitProblem(template, face, worst.answer);
     if (!template.faces.includes(face.kind)) r.problem(at, `the template "${template.id}" has no place for a ${face.kind} question`);
-    else if (needed > template.digits) r.problem(at, `the widest question, ${face.top} ${face.sign} ${face.bottom} = ${worst.answer.value}, needs ${needed} digit places and the template "${template.id}" has ${template.digits}`);
+    else if (problem) r.problem(at, `the widest question, ${questionText(face, worst.answer)}, ${problem}`);
   }
 }
 

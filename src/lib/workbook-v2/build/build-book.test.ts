@@ -6,7 +6,9 @@ import { sha256 } from "../hash";
 import { openRenderer } from "../render/typst";
 import { RenderError, type Renderer, type Rendering } from "../renderer";
 import { SHAPES, shapeLibrary } from "../shapes";
+import { wholeNumber } from "../shapes/shape";
 import { pagePng } from "../testing/raster";
+import { stackOf } from "../testing/sample";
 import { skipTypstTests, testAssets } from "../testing/typst";
 import { buildBook, type BuiltBook } from "./build-book";
 
@@ -72,11 +74,13 @@ describe("a good input", () => {
     expect(book.pages.map((p) => [p.model.page, p.model.side])).toEqual([[381, "front"], [382, "back"]]);
     expect(book.items).toHaveLength(16);
     for (const { face, answer, steps, shape, shapeVersion } of book.items) {
-      expect(answer).toEqual({ kind: "whole-number", value: String(Number(face.top) * Number(face.bottom)) });
-      expect(steps.at(-1)).toEqual({ text: answer.value, marks: [] });
+      const { top, bottom } = stackOf({ face });
+      const value = String(Number(top) * Number(bottom));
+      expect(answer).toEqual({ parts: [{ name: "answer", kind: "whole-number", value }] });
+      expect(steps.at(-1)).toEqual({ text: value, marks: [] });
       expect(shapeVersion).toBe(SHAPES.get(shape)?.version);
     }
-    expect(book.record).toMatchObject({ bookId: "example-book", engine: "2.0.0-s3", ...IDENTITY, snapshot: { id: "invented-level-3-v1" } });
+    expect(book.record).toMatchObject({ bookId: "example-book", engine: "2.0.0-s4", ...IDENTITY, snapshot: { id: "invented-level-3-v1" } });
     expect(book.record.snapshot.hash).toMatch(/^[0-9a-f]{64}$/);
     expect(book.record.inputHash).toMatch(/^[0-9a-f]{64}$/);
   });
@@ -147,7 +151,7 @@ describe("a build stops, draws nothing and says why", () => {
     const mul = SHAPES.get("mul.column");
     if (!mul) throw new Error("no shape");
     const renderer = fake();
-    const result = await buildBook(input(), renderer, shapeLibrary([{ ...mul, solveAgain: (rows) => { const r = mul.solveAgain(rows); return r && { ...r, answer: { ...r.answer, value: "7" } }; } }]));
+    const result = await buildBook(input(), renderer, shapeLibrary([{ ...mul, solveAgain: (rows) => { const r = mul.solveAgain(rows); return r && { ...r, answer: wholeNumber(7) }; } }]));
     expect(result.status).toBe("failed");
     if (result.status === "failed") expect(result.problems[0]).toMatch(/question 1 .* by one computation and "7" by another\.$/);
     expect(renderer.drawn).toEqual([]);
@@ -157,7 +161,7 @@ describe("a build stops, draws nothing and says why", () => {
     const mul = SHAPES.get("mul.column");
     if (!mul) throw new Error("no shape");
     const renderer = fake();
-    const result = await buildBook(input(), renderer, shapeLibrary([{ ...mul, face: (q) => { const f = mul.face(q); return { ...f, bottom: f.bottom === "9" ? "8" : String(Number(f.bottom) + 1) }; } }]));
+    const result = await buildBook(input(), renderer, shapeLibrary([{ ...mul, face: (q) => { const f = stackOf({ face: mul.face(q) }); return { ...f, bottom: f.bottom === "9" ? "8" : String(Number(f.bottom) + 1) }; } }]));
     expect(result.status).toBe("failed");
     if (result.status === "failed") expect(result.problems[0]).toMatch(/question 1 .* by one computation and "\d+" by another\.$/);
     expect(renderer.drawn).toEqual([]);
