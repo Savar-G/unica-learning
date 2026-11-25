@@ -11,6 +11,7 @@ import {
   type ReferenceRecord,
 } from "@/lib/reference-record";
 import { isAnswerBearingResponse } from "./answers";
+import { pairedSection } from "./compare-align";
 import type { RecordDifference } from "./compare-parts";
 
 export const ANSWER_DISAGREEMENT_REASON = "readers disagree on an answer" as const;
@@ -37,14 +38,14 @@ const EXAMPLE_PART_EXPR_RE = /^examples\[\d+\]\.parts\[\d+\]\.expr(?:$|[.\[])/;
 
 // Container paths whose diff payload (d.a or d.b) may contain an answer or an expression.
 const SECTIONS_LIST_RE = /^sections$/;
-const SECTION_PATH_RE = /^sections\[\d+\]$/;
+const SECTION_PATH_RE = /^sections\[(?:b:)?\d+\]$/;
 const ITEMS_LIST_RE = /^sections\[\d+\]\.items$/;
 const ITEM_PATH_RE = /^sections\[\d+\]\.items\[(?:n=)?\d+\]$/;
 const RESPONSE_PATH_RE = /^sections\[(\d+)\]\.items\[(n=)?(\d+)\]\.responses\[(\d+)\]$/;
 const EXAMPLES_LIST_RE = /^examples$/;
 const EXAMPLE_PATH_RE = /^examples\[(?:b:)?\d+\]$/;
 const EXAMPLE_PARTS_LIST_RE = /^examples\[\d+\]\.parts$/;
-const EXAMPLE_PART_PATH_RE = /^examples\[\d+\]\.parts\[\d+\]$/;
+const EXAMPLE_PART_PATH_RE = /^examples\[\d+\]\.parts\[(?:b:)?\d+\]$/;
 const EXAMPLE_STEPS_LIST_RE = /^examples\[\d+\]\.steps$/;
 const EXAMPLE_STEP_PATH_RE = /^examples\[\d+\]\.steps\[(?:n=|b:)?\d+\]$/;
 
@@ -166,16 +167,28 @@ function lookupPageItem(
   return byKeyN ? section.items.find((it) => it.n === num) : section.items[num];
 }
 
+// The item that a difference path names, in both readings. The path has reader a's section number.
+function lookupItemPair(
+  match: RegExpExecArray,
+  records?: { a?: ReferenceRecord | null; b?: ReferenceRecord | null },
+): { itemA: PageItem | undefined; itemB: PageItem | undefined } {
+  const sectionA = Number(match[1]);
+  const byKeyN = match[2] !== undefined;
+  const itemNum = Number(match[3]);
+  const { a, b } = records ?? {};
+  const sectionB = a?.kind === "page" && b?.kind === "page" ? pairedSection(a, b, sectionA) : sectionA;
+  return {
+    itemA: lookupPageItem(a, sectionA, byKeyN, itemNum),
+    itemB: sectionB === null ? undefined : lookupPageItem(b, sectionB, byKeyN, itemNum),
+  };
+}
+
 function isAnswerBearingSlotDiff(
   match: RegExpExecArray,
   records?: { a?: ReferenceRecord | null; b?: ReferenceRecord | null },
 ): boolean {
-  const sectionIdx = Number(match[1]);
-  const byKeyN = match[2] !== undefined;
-  const itemNum = Number(match[3]);
   const respIdx = Number(match[4]);
-  const itemA = lookupPageItem(records?.a, sectionIdx, byKeyN, itemNum);
-  const itemB = lookupPageItem(records?.b, sectionIdx, byKeyN, itemNum);
+  const { itemA, itemB } = lookupItemPair(match, records);
   const respA = itemA?.responses[respIdx];
   const respB = itemB?.responses[respIdx];
   if (!respA && !respB) return true;
@@ -204,11 +217,7 @@ function containerDiffMatches(
   }
   const responseMatch = pred.response ? RESPONSE_PATH_RE.exec(d.path) : null;
   if (responseMatch) {
-    const sectionIdx = Number(responseMatch[1]);
-    const byKeyN = responseMatch[2] !== undefined;
-    const itemNum = Number(responseMatch[3]);
-    const itemA = lookupPageItem(records?.a, sectionIdx, byKeyN, itemNum);
-    const itemB = lookupPageItem(records?.b, sectionIdx, byKeyN, itemNum);
+    const { itemA, itemB } = lookupItemPair(responseMatch, records);
     return responseMatches(d.a, pred, itemA) || responseMatches(d.b, pred, itemB);
   }
   if (EXAMPLES_LIST_RE.test(d.path)) {

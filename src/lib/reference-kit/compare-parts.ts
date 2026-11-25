@@ -7,6 +7,7 @@ import {
   type ScoreBand,
   type ScoreBands,
 } from "@/lib/reference-record";
+import { placeIdentity } from "./answers";
 import { normalizeNotationText, normalizeProseText } from "./normalize";
 
 // empty_answer: an answer place of the final record holds no answer and no "unclear" marker.
@@ -317,13 +318,25 @@ export function compareExpr(
   }
 }
 
+interface ResponsesOfReader {
+  list: readonly ItemResponse[];
+  // The place name that the scaffold of this reader gives each response.
+  scaffoldPlaces: readonly unknown[];
+}
+
+function samePlaceName(a: unknown, b: unknown): boolean {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  return (placeIdentity(a) ?? normalizeProseText(a)) === (placeIdentity(b) ?? normalizeProseText(b));
+}
+
 export function compareResponses(
   path: string,
-  aList: readonly ItemResponse[],
-  bList: readonly ItemResponse[],
+  readerA: ResponsesOfReader,
+  readerB: ResponsesOfReader,
   diffs: RecordDifference[],
   counts?: CompareCounts,
 ): void {
+  const [aList, bList] = [readerA.list, readerB.list];
   const maxLen = Math.max(aList.length, bList.length);
   for (let i = 0; i < maxLen; i += 1) {
     const rPath = `${path}[${i}]`;
@@ -333,10 +346,23 @@ export function compareResponses(
       recordDiff(diffs, { path: rPath, a: ra ?? null, b: rb ?? null, kind: "value" }, counts);
       continue;
     }
+    // An answer at another place is another answer: each reader has one that the other has not.
+    const scaffoldNames = [readerA.scaffoldPlaces[i], readerB.scaffoldPlaces[i]];
+    const placeA = placeIdentity(ra.place ?? scaffoldNames[0]);
+    const placeB = placeIdentity(rb.place ?? scaffoldNames[1]);
+    if (placeA !== null && placeB !== null && placeA !== placeB) {
+      recordDiff(diffs, { path: rPath, a: ra, b: rb, kind: "value" }, counts);
+      continue;
+    }
     compareField(`${rPath}.position`, ra.position, rb.position, {}, diffs, counts);
     compareField(`${rPath}.cue`, ra.cue, rb.cue, { teaching: true, mode: "prose" }, diffs, counts);
     compareField(`${rPath}.unit`, ra.unit, rb.unit, { teaching: true, mode: "prose" }, diffs, counts);
-    compareField(`${rPath}.place`, ra.place, rb.place, { teaching: true, mode: "prose" }, diffs, counts);
+    const onlyName = isEmptyField(ra.place) === isEmptyField(rb.place) ? null : (ra.place ?? rb.place);
+    if (onlyName !== null && scaffoldNames.every((name) => samePlaceName(name, onlyName))) {
+      recordMatch(counts);
+    } else {
+      compareField(`${rPath}.place`, ra.place, rb.place, { teaching: true, mode: "prose" }, diffs, counts);
+    }
     compareField(`${rPath}.answer`, ra.answer, rb.answer, {}, diffs, counts);
     // "reader" against "unchecked" or "computed" is no difference; an answer that one reader
     // reads as printed on the page and the other does not is one.

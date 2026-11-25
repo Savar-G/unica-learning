@@ -661,6 +661,8 @@ describe("formatCompareReportMarkdown", () => {
       ],
       answer_conflicts: ['sections[0].items[n=1].responses[0]: reader gave "6", computed "5"'],
       reader_answer_conflicts: ["sections[0].items[n=2].responses[0]"],
+      unproved_answers: ['final record: sections[0].items[n=1]: answer places hold "5", "6", computed "5"'],
+      printed_conflicts: ['reader b: sections[0].items[n=2].printed: page prints "2 + 3 =", expression is "2 × 3"'],
       answer_disagreements: ["sections[0].items[n=1].responses[0].answer"],
       expression_disagreements: ["sections[0].items[n=1].expr.operands[0]"],
       needs_person_read: true,
@@ -730,6 +732,7 @@ describe("formatCompareReportMarkdown", () => {
       "Run reference:check",
       "run reference:check",
       "Correct it",
+      "then correct the",
       "A person must read",
     ];
 
@@ -766,7 +769,7 @@ describe("formatCompareReportMarkdown", () => {
       expect(rest, status).not.toContain("a person changed the final record");
       expect(rest, status).not.toContain("`sections[0].scaffolds[]`");
       for (const phrase of REVIEW_INSTRUCTION_PHRASES) {
-        const onKeptRecord = ["look at the photo", "find the place", "write the value", "write the answer", "mark the page checked", "run reference:check"];
+        const onKeptRecord = ["look at the photo", "then correct the", "find the place", "write the value", "write the answer", "mark the page checked", "run reference:check"];
         if (status === "machine_read" && onKeptRecord.includes(phrase)) expect(rest, phrase).toContain(phrase);
         else expect(rest, `${status} must not contain "${phrase}"`).not.toContain(phrase);
       }
@@ -808,12 +811,17 @@ describe("formatCompareReportMarkdown", () => {
       expect(md, label).toContain("`topic.number`");
       expect(md, label).toContain("`sections[0].items[n=3].responses[0]`");
       expect(md, label).toContain("Answer conflicts");
+      expect(md, label).toContain('final record: `sections[0].items[n=1]`: answer places hold "5", "6", computed "5"');
+      expect(md, label).toContain('reader b: `sections[0].items[n=2].printed`: page prints "2 + 3 =", expression is "2 × 3"');
       expect(md, label).toContain("Reader answer conflicts");
       expect(md, label).toContain("Answer disagreements");
       expect(md, label).toContain("Expression disagreements");
       expect(md, label).toContain("Reader answer notes");
 
       if (cell.status === "machine_read") {
+        expect(md, label).toContain("then correct the answer or the expression");
+        expect(md, label).toContain("then correct the expression, the answer places or the answers");
+        expect(md, label).toContain("then correct the printed line or the expression");
         expect(md, label).toContain("look at the photo");
         expect(md, label).toContain("write the value");
         expect(md, label).toContain('write the answer from the photo, or "unclear"');

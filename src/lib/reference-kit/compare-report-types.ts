@@ -81,6 +81,8 @@ export interface PageCompareReport {
   result_reason?: string | null;
   answer_conflicts?: string[];
   reader_answer_conflicts?: string[];
+  unproved_answers?: string[];
+  printed_conflicts?: string[];
   answer_disagreements?: string[];
   expression_disagreements?: string[];
   only_in_reader: "a" | "b" | null;
