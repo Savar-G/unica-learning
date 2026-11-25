@@ -108,7 +108,7 @@ function formatScaffold(s: Scaffold): string {
   }
 }
 
-function formatExample(ex: Example, idx: number): string[] {
+export function formatExample(ex: Example, idx: number): string[] {
   const out: string[] = [];
   const header = `### Example ${idx + 1}${ex.label ? ` - ${ex.label}` : ""} (${ex.position}, ${ex.relation})`;
   out.push(header);

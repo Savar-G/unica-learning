@@ -236,14 +236,27 @@ async function readRecords(
   return { realRecordsDir, recordsRead: recordFiles.length, records, seenRefs, recordSha256ByRef };
 }
 
-export async function importReferenceRecords(options: ImportOptions): Promise<ImportResult> {
-  const dryRun = options.dryRun ?? false;
-  const replace = options.replace ?? false;
-  const problems: string[] = [];
-  const resolvedRecordsDir = resolve(options.recordsDir);
+export interface LoadedReferenceRecords {
+  recordsRead: number;
+  records: ReferenceRecord[];
+  statusByRef: ReadonlyMap<string, TranscriptStatus>;
+  // The file name of each source_ref.
+  fileByRef: Map<string, string>;
+  // Null when the folder cannot be read.
+  realRecordsDir: string | null;
+  // The bytes that were read.
+  recordSha256ByRef: Map<string, string>;
+  // False when status.json has a problem.
+  statusIsUsable: boolean;
+  problems: string[];
+}
 
+// Reads a folder of final records and its status.json with every check that an import needs: strict
+// text, valid records, one file for each source_ref, known statuses, and single_read lists that resolve.
+export async function loadReferenceRecords(recordsDir: string): Promise<LoadedReferenceRecords> {
+  const problems: string[] = [];
   const { realRecordsDir, recordsRead, records, seenRefs, recordSha256ByRef } = await readRecords(
-    resolvedRecordsDir,
+    resolve(recordsDir),
     problems,
   );
   const problemsBeforeStatus = problems.length;
@@ -258,6 +271,14 @@ export async function importReferenceRecords(options: ImportOptions): Promise<Im
   }
   const statusIsUsable = problems.length === problemsBeforeStatus;
   if (realRecordsDir && statusIsUsable) checkStatusSingleRead(records, statusByRef, problems);
+  return { recordsRead, records, statusByRef, fileByRef: seenRefs, realRecordsDir, recordSha256ByRef, statusIsUsable, problems };
+}
+
+export async function importReferenceRecords(options: ImportOptions): Promise<ImportResult> {
+  const dryRun = options.dryRun ?? false;
+  const replace = options.replace ?? false;
+  const loaded = await loadReferenceRecords(options.recordsDir);
+  const { recordsRead, records, statusByRef, realRecordsDir, recordSha256ByRef, statusIsUsable, problems } = loaded;
   const plannedPhotos = options.photosDir
     ? await readPlannedPhotos(options.photosDir, records, problems)
     : new Map<string, PlannedPhoto>();

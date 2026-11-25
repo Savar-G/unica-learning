@@ -4,15 +4,25 @@ const RECORD_JSON_PATH_RE =
   /^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*|\[(?:0|[1-9]\d*)\])*$/;
 const RECORD_JSON_PATH_TOKEN_RE = /([A-Za-z_][A-Za-z0-9_]*)|\[(\d+)\]/g;
 
+// The steps of a JSON path: a string is an object key and a number is a list index. Null when the
+// path is not well-formed.
+export function recordPathSteps(path: string): Array<string | number> | null {
+  if (!RECORD_JSON_PATH_RE.test(path)) return null;
+  return [...path.matchAll(RECORD_JSON_PATH_TOKEN_RE)].map(([, name, index]) =>
+    name !== undefined ? name : Number(index),
+  );
+}
+
 // True when a JSON path (like "topic.title" or "sections[0].items[1].printed") is well-formed
 // and resolves to an existing content node of the record (never metadata like "single_read").
 export function recordPathResolves(record: ReferenceRecord, path: string): boolean {
-  if (!RECORD_JSON_PATH_RE.test(path)) return false;
+  const steps = recordPathSteps(path);
+  if (steps === null) return false;
   let node: unknown = record;
   let isFirst = true;
-  for (const m of path.matchAll(RECORD_JSON_PATH_TOKEN_RE)) {
-    const [, name, index] = m;
-    if (name !== undefined) {
+  for (const step of steps) {
+    if (typeof step === "string") {
+      const name = step;
       if (isFirst && name === "single_read") return false;
       if (
         typeof node !== "object" ||
@@ -25,8 +35,8 @@ export function recordPathResolves(record: ReferenceRecord, path: string): boole
       const next = (node as Record<string, unknown>)[name];
       if (next === undefined) return false;
       node = next;
-    } else if (index !== undefined) {
-      const idx = Number(index);
+    } else {
+      const idx = step;
       if (!Array.isArray(node) || idx < 0 || idx >= node.length || node[idx] === undefined) {
         return false;
       }
