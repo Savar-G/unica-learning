@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { Step } from "../contract";
+import { answerLine, type Answer, type Step } from "../contract";
 import rawSnapshot from "../fixtures/snapshot.json";
 import { SHAPES } from "../shapes";
 import { fixture, skipTypstTests } from "../testing/typst";
@@ -91,12 +91,24 @@ describe.skipIf(skipTypstTests()).concurrent("the command, with the real Typst",
     expect(bytes(ONE, "book.pdf").subarray(0, 5).toString()).toBe("%PDF-");
     expect(bytes(ONE, "page-2.png").subarray(1, 4).toString()).toBe("PNG");
     expect(bytes(ONE, "page-2.png").readUInt32BE(16)).toBe(1275);
-    const answers = json(ONE, "answers.json") as { shape: string; shapeVersion?: unknown; answer: { value: string }; steps: Step[] }[];
+    const answers = json(ONE, "answers.json") as { shape: string; shapeVersion?: unknown; answer: Answer; steps: Step[] }[];
     expect(answers).toHaveLength(16);
     expect(answers.every((item) => typeof item.shapeVersion === "number" && item.shapeVersion === SHAPES.get(item.shape)?.version)).toBe(true);
-    for (const { answer, steps } of answers) expect(steps.at(-1)).toEqual({ text: answer.value, marks: [] });
+    for (const { answer, steps } of answers) expect(steps.at(-1)).toEqual({ text: answerLine(answer), marks: [] });
     expect(json(ONE, "positions.json")).toEqual(expect.arrayContaining([{ id: "column-multiplication-1/1/front/answer-1", sheet: 1, rect: { x: 134, y: 178, w: 72, h: 42 } }]));
     expect(json(ONE, "record.json")).toMatchObject({ bookId: "example-book", typst: "0.15.1", program: hash, template: hash, fonts: { "Geist-Regular.ttf": hash, "Geist-SemiBold.ttf": hash } });
+  });
+
+  it("says which rows of a good book repeat a question", async () => {
+    const file = join(folder, "repeats.json");
+    const snapshot = structuredClone(rawSnapshot);
+    const row = (id: string) => ({ id, shape: "fact.mul", items: 1, limits: { tables: [3], second: { min: 2, max: 2 }, result: { min: 0, max: 100 }, order: "up" } });
+    const [sheet] = snapshot.sheets;
+    writeFileSync(file, JSON.stringify({ ...snapshot, sheets: [{ ...sheet, front: { ...sheet.front, template: "facts-2x10", rows: [row("one")] }, back: { ...sheet.back, template: "facts-2x10", rows: [row("two")] } }] }));
+    const { code, output } = await build("repeats", {}, { snapshot: file });
+    expect(code).toBe(0);
+    expect(output).toContain('Notice: Sheet "column-multiplication-1", back side, row "two": 1 question is on the front side too.');
+    expect((await makeExample())[0].output).not.toContain("Notice");
   });
 
   it("writes into an empty folder and into a folder that is not there yet, and leaves nothing beside it", async () => {

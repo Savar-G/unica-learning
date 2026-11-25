@@ -4,9 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import fc from "fast-check";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { Face } from "../contract";
 import { canonicalJson, seedFrom } from "../hash";
 import { SHAPES, shapeLibrary, type Shape } from "../shapes";
 import { mulColumn } from "../shapes/mul-column";
+import { wholeNumber } from "../shapes/shape";
 import { addItem, addQuestions, addRegistration, addShape, lessRegistration, lessShape, type AddLimits, type AddQuestion, type LessLimits, type LessQuestion } from "./example-shapes";
 import { addShapeFingerprints, fingerprintFileName, fingerprintFileText, fingerprintProblem, FINGERPRINTS_DIR, readShapeFingerprints, shapeFingerprint, type ShapeFingerprints } from "./shape-fingerprints";
 import { step, type ShapeRegistration } from "./shape-registration";
@@ -28,9 +30,9 @@ describe("the fingerprint of a shape", () => {
     const all = addQuestions(addRegistration.cases[0].limits as unknown as AddLimits);
     const changes: ((question: AddQuestion) => Partial<Shape<AddLimits, AddQuestion>>)[] = [
       (one) => ({ steps: (q) => (canonicalJson(q) === canonicalJson(one) ? [step("?")] : addShape.steps(q)) }),
-      (one) => ({ answer: (q) => (canonicalJson(q) === canonicalJson(one) ? { kind: "whole-number", value: "0" } : addShape.answer(q)) }),
+      (one) => ({ answer: (q) => (canonicalJson(q) === canonicalJson(one) ? wholeNumber(0) : addShape.answer(q)) }),
       (one) => ({ difficulty: (q) => addShape.difficulty(q) + (canonicalJson(q) === canonicalJson(one) ? 1 : 0) }),
-      (one) => ({ face: (q) => ({ ...addShape.face(q), ...(canonicalJson(q) === canonicalJson(one) ? { sign: "-" } : {}) }) }),
+      (one) => ({ face: (q) => ({ ...addShape.face(q), ...(canonicalJson(q) === canonicalJson(one) ? { sign: "-" } : {}) }) as Face }),
       (one) => ({ solveAgain: (rows) => (rows.join() === `${one.a},+${one.b}` ? null : addShape.solveAgain(rows)) }),
     ];
     fc.assert(fc.property(fc.constantFrom(...all), fc.constantFrom(...changes), (question, change) => { expect(now(add(change(question)))).not.toBe(was); }), { numRuns: 60 });
@@ -41,10 +43,20 @@ describe("the fingerprint of a shape", () => {
     ["range", { difficultyRange: (l) => ({ ...addShape.difficultyRange(l), hardest: 500 }) }],
     ["worst case", { worstCase: () => addItem({ a: 1, b: 1 }) }],
     ["question of a seed", { generate: (l, seed) => addShape.generate(l, `${seed}.`) }],
-    ["answer of a seed", { generate: (l, seed) => ({ ...addShape.generate(l, seed), answer: { kind: "whole-number", value: "0" } }) }],
+    ["answer of a seed", { generate: (l, seed) => ({ ...addShape.generate(l, seed), answer: wholeNumber(0) }) }],
     ["id", { id: "test.other" }],
+    ["list", { list: () => [] }],
+    ["rows in order", { orderedRuns: () => null }],
+    ["forms", { forms: () => [addItem({ a: 30, b: 9 })] }],
     ["answer kind", { answerKind: "word" as "whole-number" }],
   ])("changes with the %s", (_name, change) => expect(now(add(change))).not.toBe(was));
+
+  it("changes with one swapped form, and with no answer in one area that is only written in another form", () => {
+    const swapping = (other: AddQuestion | null) => now(add({ list: (l) => addQuestions(l), swapped: ({ a, b }) => (a === 7 && b === 8 && !other ? null : { question: { a: b, b: a }, inLimits: true }) }));
+    expect(swapping(null)).not.toBe(swapping({ a: 8, b: 7 }));
+    const renamed = add({ answer: (q) => ({ parts: addShape.answer(q).parts.map((part) => ({ ...part, name: "sum" })) }) });
+    expect(now(renamed)).not.toBe(was);
+  });
 
   it.each<[string, Partial<ShapeRegistration>]>([
     ["cases", { cases: addRegistration.cases.slice(1) }],

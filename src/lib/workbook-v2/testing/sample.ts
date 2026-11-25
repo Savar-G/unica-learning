@@ -1,8 +1,11 @@
 // The example book of the fixtures, for tests.
 import { validateSnapshot } from "../bank/snapshot";
+import { planBook } from "../build/build-book";
 import { sheetItems } from "../build/items";
-import type { BookItem, PageModel, Region } from "../contract";
+import type { BookItem, ColumnFace, Face, PageModel, Region } from "../contract";
 import rawBook from "../fixtures/book.json";
+import factsRequest from "../fixtures/book-facts.json";
+import factsSnapshot from "../fixtures/snapshot-facts.json";
 import rawSnapshot from "../fixtures/snapshot.json";
 import { buildPages } from "../layout/build-pages";
 import { SHAPES, type ShapeLibrary } from "../shapes";
@@ -22,8 +25,21 @@ export function bookOf({ shapes = SHAPES, childId = rawBook.childId }: { shapes?
   return { pages: built.pages, items };
 }
 
+/** The example book of facts, equations with a blank inside and sequences. */
+export function factsBook(): GoodBook {
+  const plan = planBook({ snapshot: factsSnapshot, book: factsRequest });
+  if (!plan.ok) throw new Error(plan.problems.join("\n"));
+  return { pages: plan.pages, items: plan.items };
+}
+
 export const goodBook = (): GoodBook => bookOf();
 export const goodPages = (): PageModel[] => goodBook().pages;
+
+/** The stack of a question, for tests of a book that prints nothing else. */
+export function stackOf({ face }: { face: Face }): ColumnFace {
+  if (face.kind !== "column") throw new Error("not a stack");
+  return face;
+}
 
 const moved = (region: Region, dx: number, dy: number): Region =>
   ({ ...region, rect: { ...region.rect, x: region.rect.x + dx, y: region.rect.y + dy }, ink: region.ink.map((ink) => ({ ...ink, rect: { ...ink.rect, x: ink.rect.x + dx, y: ink.rect.y + dy } })) });

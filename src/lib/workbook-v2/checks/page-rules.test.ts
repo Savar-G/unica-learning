@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Ink, PageModel, Region, RegionRole } from "../contract";
-import { goodBook, type GoodBook } from "../testing/sample";
+import { factsBook, goodBook, type GoodBook } from "../testing/sample";
 import { checkPage } from "./page-rules";
 
 const find = (page: PageModel, role: RegionRole, index = 0): Region => {
@@ -94,5 +94,95 @@ describe("a page that breaks a rule", () => {
     const book = goodBook();
     breakPage(book.pages[1]);
     expect(problemsOf(book, 1).join("\n")).toMatch(problem);
+  });
+});
+
+describe("a question with blanks", () => {
+  // Page 8 has four sequences, and the first one has three blanks. Page 6 has a blank inside each line, page 1 one at the end.
+  const good = factsBook();
+  type Change = (page: PageModel, items: GoodBook["items"]) => unknown;
+  const problemsAfter = (index: number, change: Change): string => {
+    const { pages, items } = structuredClone(good);
+    change(pages[index], items.filter((i) => i.id.startsWith(`${pages[index].id}/`)));
+    return checkPage(pages[index], items).join("\n");
+  };
+  const named = (page: PageModel, name: string): Region => {
+    const found = page.regions.find((r) => r.id.endsWith(`/${name}`));
+    if (!found) throw new Error(`no ${name}`);
+    return found;
+  };
+  const drop = (page: PageModel, name: string) => { page.regions = page.regions.filter((r) => !r.id.endsWith(`/${name}`)); };
+  const exchange = (page: PageModel, one: string, two: string) => {
+    const [a, b] = [named(page, one), named(page, two)];
+    [a.rect, b.rect, a.ink, b.ink] = [b.rect, a.rect, b.ink, a.ink];
+  };
+  const write = (region: Region, text: string) => region.ink.push({ kind: "text", rect: region.rect, color: "black", text, size: 12, weight: 400, align: "center" });
+
+  it("breaks no rule on any page of the example book of facts, with full sides", () => {
+    expect(good.pages.flatMap((p) => checkPage(p, good.items))).toEqual([]);
+    expect(good.pages.map((p) => [p.template, p.regions.filter((r) => r.role === "slot").length])).toEqual([
+      ["facts-2x10", 20], ["facts-2x10", 20], ["facts-2x10", 20], ["facts-2x10", 20], ["sums-1x10", 10], ["blanks-1x10", 10], ["blanks-1x10", 10], ["sequences-2x2", 4], ["sequences-2x1", 2], ["sequences-2x1", 2],
+    ]);
+    expect(good.items.find((i) => i.id === `${good.pages[7].id}/1`)?.answer.parts.map((p) => p.name)).toEqual(["blank-1", "blank-2", "blank-3"]);
+  });
+
+  it.each<[string, number, Change, RegExp]>([
+    ["a part with no answer area", 7, (p) => drop(p, "answer-1-blank-2"), /question 1 has no "answer" rectangle for the part "blank-2"/],
+    ["a part with no reach", 7, (p) => drop(p, "reach-1-blank-2"), /question 1 has no "reach" rectangle for the part "blank-2"/],
+    ["two parts with one area", 7, (p) => { named(p, "answer-1-blank-2").rect = { ...named(p, "answer-1-blank-1").rect }; }, /"answer-1-blank-1" and "answer-1-blank-2" overlap/],
+    ["two areas for one part", 7, (p) => { named(p, "answer-1-blank-2").part = "blank-1"; }, /question 1 has 2 "answer" rectangles for the part "blank-1"/],
+    ["areas in another order than the parts", 7, (p) => { exchange(p, "answer-1-blank-1", "answer-1-blank-2"); exchange(p, "reach-1-blank-1", "reach-1-blank-2"); }, /"answer-1-blank-2" must come after "answer-1-blank-1"/],
+    ["parts in another order than the blanks", 7, (_p, items) => items[0].answer.parts.reverse(), /question 1 has the blanks blank-1, blank-2, blank-3 and the answer parts blank-3, blank-2, blank-1/],
+    ["a part too many", 7, (_p, items) => items[0].answer.parts.push({ name: "blank-4", kind: "whole-number", value: "5" }), /question 1 has no "answer" rectangle for the part "blank-4"/],
+    ["two parts with one name", 7, (_p, items) => { items[0].answer.parts[1].name = "blank-1"; }, /question 1 has two answer parts with one name/],
+    ["no part", 0, (_p, items) => { items[0].answer.parts = []; }, /question 1 has no answer part/],
+    ["an area of no part", 7, (p) => { named(p, "answer-1-blank-2").part = null; }, /"answer-1-blank-2" belongs to no answer part/],
+    ["a whole answer of no question", 7, (p) => p.regions.push({ id: `${p.id}/answer-9`, role: "answer", rect: { x: 300, y: 702, w: 72, h: 20 }, item: null, part: "ghost", ink: [] }), /"answer-9" belongs to no question of this page/],
+    ["a reach of no question", 7, (p) => p.regions.push({ id: `${p.id}/reach-9`, role: "reach", rect: { x: 300, y: 702, w: 72, h: 20 }, item: null, part: "ghost", ink: [] }), /"reach-9" belongs to no question of this page/],
+    ["a label of no question", 7, (p) => { named(p, "label-1").item = null; }, /"label-1" belongs to no question of this page/],
+    ["a work area of a question on another page", 7, (p) => { const label = named(p, "label-1"); p.regions.push({ ...label, id: `${p.id}/work-1`, role: "work", item: "x", ink: [], rect: { x: 300, y: 702, w: 72, h: 20 } }); }, /"work-1" belongs to no question of this page/],
+    ["a footer that belongs to a question", 7, (p, items) => { named(p, "footer").item = items[0].id; }, /"footer" must belong to no question/],
+    ["a heading with a part", 7, (p) => { named(p, "heading").part = "answer"; }, /"heading" must belong to no question/],
+    ["an area with the id of another page", 7, (p) => { const area = named(p, "answer-1-blank-2"); area.id = `foreign/${area.id}`; }, /"foreign\/[^"]*\/answer-1-blank-2" must be named "missing-numbers\/1\/back\/answer-1-blank-2"/],
+    ["a label with the id of another page", 7, (p) => { named(p, "label-1").id = "other/label-1"; }, /"other\/label-1" must be named "missing-numbers\/1\/back\/label-1"/],
+    ["a heading with the id of another page", 7, (p) => { named(p, "heading").id = "other/heading"; }, /"other\/heading" must be named "missing-numbers\/1\/back\/heading"/],
+    ["an answer area with no outline", 7, (p) => { named(p, "answer-1-blank-2").ink = []; }, /"answer-1-blank-2" must have one outline, which is its rectangle/],
+    ["an answer area of a line with no outline", 0, (p) => { named(p, "answer-1").ink = []; }, /"answer-1" must have one outline, which is its rectangle/],
+    ["an answer area with two outlines", 5, (p) => { const { ink } = named(p, "answer-1"); ink.push(structuredClone(ink[0])); }, /"answer-1" must have one outline, which is its rectangle/],
+    ["an outline that is smaller than its area", 5, (p) => { const [line] = named(p, "answer-1").ink; line.rect = { ...line.rect, w: line.rect.w - 2 }; }, /"answer-1" must have one outline, which is its rectangle/],
+    ["a thin outline", 5, (p) => { const [line] = named(p, "answer-1").ink; if (line.kind === "outline") line.width = 0.1; }, /"answer-1" must have one outline, which is its rectangle/],
+    ["an area of a part that is not there", 7, (p) => { named(p, "reach-1-blank-2").part = "quotient"; }, /"reach-1-blank-2" belongs to the answer part "quotient"/],
+    ["a question with a part", 7, (p) => { named(p, "question-1").part = "blank-1"; }, /"question-1" belongs to the answer part "blank-1"/],
+    ["an area with the name of another part", 7, (p) => { const area = named(p, "answer-1-blank-2"); area.id = area.id.replace("blank-2", "blank-9"); }, /answer-1-blank-9" must be named "missing-numbers\/1\/back\/answer-1-blank-2"/],
+    ["an area whose name does not say its part", 7, (p) => { const area = named(p, "answer-1-blank-2"); area.id = area.id.replace("-blank-2", ""); }, /\/answer-1" must be named "missing-numbers\/1\/back\/answer-1-blank-2"/],
+    ["two rectangles with one name", 7, (p) => { named(p, "answer-1-blank-2").id = named(p, "answer-1-blank-1").id; }, /two rectangles are named "answer-1-blank-1"/],
+    ["an answer area in the reach of another blank", 7, (p) => { const area = named(p, "answer-1-blank-2"); area.rect = { ...area.rect, y: area.rect.y - 12 }; }, /"answer-1-blank-2" enters the reach "reach-1-blank-1"/],
+    ["a reach over another reach", 7, (p) => { const reach = named(p, "reach-1-blank-1"); reach.rect = { ...reach.rect, h: reach.rect.h + 2 }; }, /"reach-1-blank-\d" enters the reach "reach-1-blank-\d"/],
+    ["a term over a reach", 7, (p) => { const term = named(p, "question-1").ink.find((i) => i.kind === "text" && i.text === "10"); if (term) term.rect = { ...term.rect, y: term.rect.y + 20 }; }, /"question-1" enters the reach "reach-1-blank-1"|"question-1" and "answer-1-blank-1" overlap/],
+    ["a number over a reach inside a line", 5, (p) => { const { ink } = named(p, "question-1"); ink[1].rect = { ...ink[1].rect, x: ink[1].rect.x + 4 }; }, /"question-1" enters the reach "reach-1"/],
+    ["an answer in a blank", 7, (p) => write(named(p, "answer-1-blank-2"), "20"), /"answer-1-blank-2" must be empty/],
+    ["an answer in the blank of a line", 5, (p) => write(named(p, "answer-1"), "1"), /"answer-1" must be empty/],
+    ["an answer area that is too small for its own part", 7, (_p, items) => { items[0].answer.parts[1].value = "123456"; }, /"answer-1-blank-2" is 72 by 42 points and needs 100\.8 by 42/],
+    ["a reach that is too small", 5, (p) => { const reach = named(p, "reach-1"); reach.rect = { ...reach.rect, w: reach.rect.w - 1 }; }, /"reach-1" does not leave enough space on the right of "answer-1"/],
+    ["an answer area below its line", 0, (p) => { for (const name of ["answer-1", "reach-1"]) move(named(p, name), 0, 30); }, /"answer-1" is not in the line of its question/],
+    ["an answer area far after its line", 0, (p) => { const question = named(p, "question-1"); question.rect = { ...question.rect, w: question.rect.w - 6 }; question.ink = question.ink.slice(0, 3); }, /"answer-1" is not in the line of its question/],
+    ["an answer area before its line", 0, (p) => { const [question, answer] = [named(p, "question-1"), named(p, "answer-1")]; question.rect = { ...question.rect, x: answer.rect.x + answer.rect.w + 4, w: 10 }; question.ink = []; }, /"answer-1" is not in the line of its question/],
+    ["three columns of blanks", 7, (p) => { for (const name of ["answer-1-blank-3", "reach-1-blank-3"]) move(named(p, name), 5, 0); }, /there are 3 answer columns and the limit is 2/],
+    ["a question that prints another sign", 0, (p) => { const ink = named(p, "question-1").ink[1]; if (ink.kind === "text") ink.text = "+"; }, /question 1 prints "5\+1=" and must print "5×1="/],
+    ["a blank that the face does not have", 0, (_p, items) => { items[0].face = { kind: "equation", tokens: [{ text: "5" }, { text: "×" }, { text: "1" }, { text: "=" }] }; }, /question 1 has the blanks  and the answer parts answer/],
+  ])("%s", (_name, index, change, problem) => {
+    expect(problemsAfter(index, change)).toMatch(problem);
+  });
+
+  it("is the same in a stack: one outline, which is the rectangle of the area", () => {
+    const book = goodBook();
+    find(book.pages[0], "answer").ink = [];
+    expect(problemsOf(book)).toEqual(['Page 381: "answer-1" must have one outline, which is its rectangle.']);
+  });
+
+  it("is the same in a stack: one area with the name of no other part", () => {
+    const book = goodBook();
+    find(book.pages[0], "answer").part = "quotient";
+    expect(problemsOf(book).join("\n")).toMatch(/question 1 has no "answer" rectangle for the part "answer"[^]*"answer-1" belongs to the answer part "quotient"/);
   });
 });

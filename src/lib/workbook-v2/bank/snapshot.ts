@@ -2,9 +2,9 @@
 // other module can trust its ids, references, limits and item counts.
 import { PRINT_RULES, type Side } from "../contract";
 import { canonicalJson, sha256 } from "../hash";
-import { digitPlaces, TEMPLATES, type PageTemplate } from "../layout/templates";
+import { fitProblem, questionText, TEMPLATES, type PageTemplate } from "../layout/templates";
 import { SHAPES, type Shape, type ShapeLibrary } from "../shapes";
-import { isRecord } from "../shapes/shape";
+import { formsOf, isRecord } from "../shapes/shape";
 import { FieldReader, isId, type Fields } from "./fields";
 import { plainCopy } from "./plain";
 
@@ -67,12 +67,14 @@ function checkFit(r: FieldReader, place: string, side: Side, template: PageTempl
   const places = template.sides[side].places.length;
   if (asked > places) r.problem(place, `${asked} questions do not fit the template "${template.id}", which has ${places} places`);
   for (const row of rows) {
-    const worst = row.shape.worstCase(row.limits);
-    const face = row.shape.face(worst.question);
     const at = `${place}, row "${row.id}"`;
-    const needed = digitPlaces(face, worst.answer.value);
-    if (!template.faces.includes(face.kind)) r.problem(at, `the template "${template.id}" has no place for a ${face.kind} question`);
-    else if (needed > template.digits) r.problem(at, `the widest question, ${face.top} ${face.sign} ${face.bottom} = ${worst.answer.value}, needs ${needed} digit places and the template "${template.id}" has ${template.digits}`);
+    for (const { question, answer } of formsOf(row.shape, row.limits)) {
+      const face = row.shape.face(question);
+      const problem = fitProblem(template, face, answer);
+      if (problem) r.problem(at, template.faces.includes(face.kind) ? `the widest question, ${questionText(face, answer)}, ${problem}` : `the template "${template.id}" has no place for ${face.kind === "equation" ? "an" : "a"} ${face.kind} question`);
+      // One form says what is wrong: a template that is too small is too small for many of them.
+      if (problem) break;
+    }
   }
 }
 

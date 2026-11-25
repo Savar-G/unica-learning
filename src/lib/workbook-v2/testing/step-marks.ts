@@ -1,6 +1,6 @@
 // What the marks and clauses of worked steps must be, for an answer that is one whole number. It knows no shape:
 // it parses each step with the closed clause grammar and compares marks, clauses, carries and the answer.
-import { STEP_MARKS, type Step, type StepMark } from "../contract";
+import { STEP_MARKS, type Answer, type Step, type StepMark } from "../contract";
 import { hasNames } from "./shape-registration";
 import { parseStep, type StepClause } from "./steps-evaluator";
 
@@ -70,6 +70,24 @@ function stepProblem(step: Step, index: number, isLast: boolean, incomingCarry: 
     return { problem: `${at}: its carry stands at the place ${carryMark.place} and must stand at ${writes[0].place + 1}`, carry: undefined };
   }
   return { problem: null, carry: carryMark };
+}
+
+/**
+ * What is wrong with the steps of a question that is not worked in columns, or null: each line before the answer is one
+ * true equation, nothing is drawn, and the lines come to the value of each part.
+ */
+export function linesProblem(steps: readonly Step[], { parts }: Answer): string | null {
+  const wrong = steps.find((s) => !hasNames(s, ["text", "marks"]) || !Array.isArray(s.marks) || s.marks.length > 0);
+  if (wrong) return `the step ${JSON.stringify(wrong)} is not a text that draws nothing`;
+  const results = new Set<string>();
+  for (const { text } of steps.slice(0, -1)) {
+    const { clauses, answerOnly, problem } = parseStep(text);
+    const [equation, ...more] = clauses;
+    if (problem || answerOnly || equation?.kind !== "equation" || equation.value === null || more.length > 0) return `the step "${text}" is not one equation with a whole number`;
+    results.add(String(equation.value));
+  }
+  const missing = parts.find((p) => !results.has(p.value));
+  return missing ? `no step comes to "${missing.value}", the value of the part "${missing.name}"` : null;
 }
 
 /** What is wrong with the marks and clauses of the steps of one question, or null. */

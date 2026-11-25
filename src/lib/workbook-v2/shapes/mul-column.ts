@@ -4,7 +4,7 @@
 import { pick } from "../hash";
 import type { Answer, Step, StepMark } from "../contract";
 import { chooseQuestion, countQuestions, scoreRange, widestQuestion, type Kind, type MulColumnLimits, type MulColumnQuestion } from "./mul-column-count";
-import { readLimitFields, type Item, type Shape } from "./shape";
+import { readLimitFields, wholeNumber, type Item, type Shape } from "./shape";
 
 export type { MulColumnLimits, MulColumnQuestion } from "./mul-column-count";
 
@@ -17,7 +17,7 @@ const RANGES = {
 const WORDS = { zeroInProduct: ["never", "allowed"], wholeTens: ["never", "allowed", "only"] };
 
 const product = ({ a, b }: MulColumnQuestion) => a * b;
-const answer = (q: MulColumnQuestion): Answer => ({ kind: "whole-number", value: String(product(q)) });
+const answer = (q: MulColumnQuestion): Answer => wholeNumber(product(q));
 const item = (question: MulColumnQuestion): Item<MulColumnQuestion> => ({ question, answer: answer(question) });
 
 /**
@@ -37,7 +37,7 @@ function solveAgain(rows: readonly string[]): Item<MulColumnQuestion> | null {
     written = text.slice(-1) + written;
     carry = Number(text.slice(0, -1));
   }
-  return { question: { a: Number(top), b: times }, answer: { kind: "whole-number", value: carry > 0 ? String(carry) + written : written } };
+  return { question: { a: Number(top), b: times }, answer: wholeNumber(carry > 0 ? String(carry) + written : written) };
 }
 
 /** One column: what it multiplies, the carry that it adds, what it writes and what it carries. */

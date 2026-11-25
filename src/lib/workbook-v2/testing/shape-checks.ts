@@ -1,14 +1,8 @@
 // The pure parts of the harness.
 import { plainCopy } from "../bank/plain";
-import type { Answer, AnswerKind } from "../contract";
+import { BLANK } from "../checks/printed-answers";
 import type { Shape } from "../shapes";
 import type { Rows } from "./shape-registration";
-
-/** What an answer of each kind must look like. A new kind needs its rule here. */
-const ANSWER_FORMS: Readonly<Record<AnswerKind, (answer: Answer) => boolean>> = {
-  "whole-number": ({ value, ...more }) => typeof value === "string" && /^(0|[1-9]\d*)$/.test(value) && Object.keys(more).join() === "kind",
-};
-export const hasAnswerForm = (answer: Answer): boolean => Object.hasOwn(ANSWER_FORMS, answer.kind) && ANSWER_FORMS[answer.kind](answer);
 
 export const isPlain = (value: unknown): boolean => plainCopy("value", value).ok;
 
@@ -27,6 +21,10 @@ export const onFrozenLimits = (shape: Shape): Shape => Object.assign(Object.crea
   count: (limits: unknown) => shape.count(frozen(limits)),
   difficultyRange: (limits: unknown) => shape.difficultyRange(frozen(limits)),
   worstCase: (limits: unknown) => shape.worstCase(frozen(limits)),
+  ...(shape.list && { list: (limits: unknown) => shape.list?.(frozen(limits)) }),
+  ...(shape.orderedRuns && { orderedRuns: (limits: unknown, items: number) => shape.orderedRuns?.(frozen(limits), items) }),
+  ...(shape.forms && { forms: (limits: unknown) => shape.forms?.(frozen(limits)) }),
+  ...(shape.swapped && { swapped: (question: unknown, limits: unknown) => shape.swapped?.(question, frozen(limits)) }),
 });
 
 /** The widest of each width. */
@@ -36,6 +34,6 @@ export const maxOf = (widths: readonly Readonly<Record<string, number>>[]): Reco
 /** Copies of good rows, each with one thing wrong or changed. */
 export const brokenRows = (good: readonly Rows[]): Rows[] => good.flatMap((rows) => [
   [], [...rows, ""], [...rows, rows[0]], [...rows].reverse(),
-  ...rows.flatMap((row, i) => ["", `0${row}`, ` ${row}`, `${row} `, `${row}0`, row.slice(1), row.slice(0, -1), `-${row}`, `${row}.0`, ...["+", "-", "×", "÷", "x"].map((sign) => row.replace(/[-+×÷]/, sign))]
+  ...rows.flatMap((row, i) => ["", `0${row}`, ` ${row}`, `${row} `, `${row}0`, row.slice(1), row.slice(0, -1), `-${row}`, `${row}.0`, ...["+", "-", "×", "÷", "x"].map((sign) => row.replace(/[-+×÷]/, sign)), ...(row.includes(BLANK) ? [`${row}${BLANK}`, row.replace(BLANK, "?")] : [])]
     .map((other) => rows.map((r, j) => (j === i ? other : r)))),
 ]);

@@ -3,6 +3,7 @@
 // scripts/shape-fingerprint-base.mjs compares the folder with the base of the branch.
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import type { Answer } from "../contract";
 import { canonicalJson, seedFrom, sha256 } from "../hash";
 import type { Item, Shape, ShapeLibrary } from "../shapes";
 import { isRecord } from "../shapes/shape";
@@ -18,6 +19,12 @@ export const fingerprintFileName = (id: string): string => `${id}.json`;
 const SEEDS_OF_A_LISTED_SPACE = 100;
 const SEEDS_OF_A_LARGE_SPACE = 1000;
 
+/** An answer in one area is its kind and value, as before answers had parts: the form of an answer is not the output of a shape. */
+function answerOf(answer: Answer): unknown {
+  const [{ name, ...value }, ...more] = answer.parts;
+  return name === "answer" && more.length === 0 ? value : answer;
+}
+
 /** The seeds have the form that the build makes. */
 const seeds = (count: number): string[] => Array.from({ length: count }, (_, i) => seedFrom("fingerprint", i));
 
@@ -27,8 +34,8 @@ export function shapeFingerprint(shape: Shape, registration: ShapeRegistration):
   const questions = new Map<string, unknown>();
   const add = ({ question, answer }: Item<unknown>): string => {
     const key = canonicalJson(question);
-    if (!questions.has(key)) questions.set(key, { question, answer: shape.answer(question), steps: shape.steps(question), difficulty: shape.difficulty(question), face: shape.face(question) });
-    return `${key} ${canonicalJson(answer)}`;
+    if (!questions.has(key)) questions.set(key, { question, answer: answerOf(shape.answer(question)), steps: shape.steps(question), difficulty: shape.difficulty(question), face: shape.face(question) });
+    return `${key} ${canonicalJson(answerOf(answer))}`;
   };
   const lines: string[] = [];
   const all = [...registration.cases, ...smallSpaces].map((c) => c.limits);
@@ -36,6 +43,11 @@ export function shapeFingerprint(shape: Shape, registration: ShapeRegistration):
   for (const limits of all) {
     lines.push(canonicalJson([limits, shape.count(limits), shape.difficultyRange(limits)]), add(shape.worstCase(limits)));
     for (const seed of seeds(perCase)) lines.push(add(shape.generate(limits, seed)));
+    // Only a shape that has them: what the builder takes when a question is used, the rows in order and the swapped forms.
+    if (shape.list) lines.push(canonicalJson(shape.list(limits)));
+    if (shape.orderedRuns) for (const items of [1, 2, 9]) lines.push(canonicalJson(shape.orderedRuns(limits, items)));
+    if (shape.forms) lines.push(canonicalJson(shape.forms(limits)));
+    if (shape.swapped && shape.list) lines.push(canonicalJson(shape.list(limits).map((question) => shape.swapped?.(question, limits) ?? null)));
   }
   // A large space covers its small spaces and every `listed` question in full; the rest of the large space has sampled coverage via the seeds above.
   const rows: readonly Rows[] = listed

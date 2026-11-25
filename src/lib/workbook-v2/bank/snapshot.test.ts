@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import raw from "../fixtures/snapshot.json";
 import { TEMPLATES, type PageTemplate } from "../layout/templates";
+import { wholeNumber } from "../shapes/shape";
 import { SHAPES, shapeLibrary, type Shape } from "../shapes";
 import { validateSnapshot } from "./snapshot";
 
@@ -190,10 +191,48 @@ describe("the questions of a side fit its template", () => {
     expect(validateSnapshot(copy(), SHAPES, new Map([[base.id, shorter(side)]]))).toEqual({ ok: false, problems: [problem] });
   });
 
+  describe("with a template that has not every form on both sides", () => {
+    const blanks = TEMPLATES.get("blanks-1x10");
+    const sequences = TEMPLATES.get("sequences-2x2");
+    if (!blanks || !sequences) throw new Error("no template");
+    type Place = Extract<PageTemplate["sides"]["front"]["places"][number], { forms: unknown }>;
+    const changed = (template: PageTemplate, side: "front" | "back", index: number, change: (place: Place) => Partial<Place>): PageTemplate =>
+      ({ ...template, sides: { ...template.sides, [side]: { ...template.sides[side], places: template.sides[side].places.map((place, i) => (i === index ? { ...place, ...change(place as Place) } : place)) } } });
+    const withRow = (template: PageTemplate, shape: string, limits: unknown) => {
+      const s = copy();
+      put(front(s), "template", template.id);
+      put(front(s), "rows", [{ id: "row", shape, items: 1, limits }]);
+      return validateSnapshot(s, SHAPES, new Map([...TEMPLATES, [template.id, template]]));
+    };
+    const factor = (blank: string) => ({ tables: [7], missing: { min: 2, max: 9 }, result: { min: 0, max: 100 }, blank });
+    const skip = (places: [number, number]) => ({ step: { min: 5, max: 5 }, direction: "up", start: { min: 0, max: 50 }, offStep: "never", terms: { min: 5, max: 5 }, blanks: { min: 1, max: 2 }, places: { min: places[0], max: places[1] } });
+    const AT = 'Sheet "column-multiplication-1", front side, row "row": the widest question, ';
+    const noForm = (id: string) => ` has its blanks where the template "${id}" has no answer area.`;
+    it.each<[string, PageTemplate, string, unknown, RegExp | null]>([
+      ["both forms", blanks, "missing.factor", factor("either"), null],
+      ["one form less, and limits that ask for both", changed(blanks, "front", 0, ({ forms }) => ({ forms: forms.slice(0, 1) })), "missing.factor", factor("either"), /7 × \[2\] = 14,/],
+      ["the other form less, and limits that ask for both", changed(blanks, "front", 0, ({ forms }) => ({ forms: forms.slice(1) })), "missing.factor", factor("either"), /\[2\] × 7 = 14,/],
+      ["one form less, and limits that do not ask for it", changed(blanks, "front", 0, ({ forms }) => ({ forms: forms.slice(0, 1) })), "missing.factor", factor("first"), null],
+      ["no form on the back", changed(blanks, "back", 0, () => ({ forms: [] })), "missing.factor", factor("first"), /\[2\] × 7 = 14,/],
+      ["no form at the last place of the back", changed(blanks, "back", 9, () => ({ forms: [] })), "missing.factor", factor("first"), /\[2\] × 7 = 14,/],
+      ["no answer area for the last term", changed(sequences, "back", 3, ({ forms }) => ({ forms: [forms[0].map((cell, i) => (i === 4 ? { ...cell, area: null } : cell))] })), "count.skip", skip([3, 5]), /has its blanks/],
+      ["no answer area for the last term, and limits with no blank there", changed(sequences, "back", 3, ({ forms }) => ({ forms: [forms[0].map((cell, i) => (i === 4 ? { ...cell, area: null } : cell))] })), "count.skip", skip([3, 4]), null],
+      ["no text for the second term", changed(sequences, "front", 0, ({ forms }) => ({ forms: [forms[0].map((cell, i) => (i === 1 ? { ...cell, text: null } : cell))] })), "count.skip", skip([3, 4]), /has its blanks/],
+    ])("%s", (_name, template, shape, limits, problem) => {
+      const result = withRow(template, shape, limits);
+      const text = result.ok ? "" : result.problems.join("\n");
+      // The back of the snapshot still has its stacks, so a fit problem of this row is the only one there can be.
+      if (problem === null) return expect(text).toBe("");
+      expect(text).toMatch(problem);
+      expect(text.startsWith(AT)).toBe(true);
+      expect(text.endsWith(noForm(template.id))).toBe(true);
+    });
+  });
+
   it("refuses a row whose widest question is too wide for the template", () => {
     const mul = SHAPES.get("mul.column");
     if (!mul) throw new Error("no shape");
-    const wide: Shape = { ...mul, worstCase: () => ({ question: {}, answer: { kind: "whole-number", value: "1234" } }), face: () => ({ kind: "column", top: "617", sign: "×", bottom: "2" }) };
+    const wide: Shape = { ...mul, worstCase: () => ({ question: {}, answer: wholeNumber("1234") }), face: () => ({ kind: "column", top: "617", sign: "×", bottom: "2" }) };
     const result = validateSnapshot(copy(), shapeLibrary([wide]));
     expect(result).toMatchObject({ ok: false, problems: expect.arrayContaining([`${ROW}: the widest question, 617 × 2 = 1234, needs 4 digit places and the template "columns-2x4" has 3.`]) });
   });
