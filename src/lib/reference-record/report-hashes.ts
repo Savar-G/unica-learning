@@ -1,6 +1,5 @@
 import { join } from "node:path";
-import { isPlainObject, parseStrictUtf8Json } from "./import-photos";
-import { readRegularFileIfExists } from "./read-file";
+import { isPlainObject, readJsonNote } from "./read-file";
 import { isSourceRef } from "./validate";
 
 export interface ReportDigests {
@@ -35,64 +34,49 @@ function mergeDigest(
   return value;
 }
 
-// The digests and checked pages that the report of the last compare gives. A malformed report is an
-// error: without its hashes, compare would write over a record that a person changed, and import
-// would send it under a machine status or miss a checked page whose digest file is missing.
-export function loadReportSummary(reportPath: string): ReportSummary {
+function parseReportSummary(report: unknown): ReportSummary {
   const digests = new Map<string, ReportDigests>();
   const checkedRefs = new Set<string>();
-  try {
-    const bytes = readRegularFileIfExists(reportPath);
-    if (bytes === null) return { digests, checkedRefs };
-    const parsed = parseStrictUtf8Json(bytes);
-    const report = parsed as { pages?: unknown; kept_human_checked?: unknown } | null;
-    const pages: unknown = report?.pages ?? [];
-    if (!Array.isArray(pages)) throw new Error("pages is not a list");
-    pages.forEach((page: unknown, index) => {
-      if (!isPlainObject(page)) throw new Error(`pages[${index}] has no source_ref`);
-      const ref = page.source_ref;
-      if (typeof ref !== "string") throw new Error(`pages[${index}] has no source_ref`);
-      const earlier = digests.get(ref);
-      const where = { index, ref };
-      digests.set(ref, {
-        record: mergeDigest(page.final_record_sha256, earlier?.record, "hash", where),
-        photo: mergeDigest(page.photo_sha256, earlier?.photo, "photo_sha256", where),
-        finalPhoto: mergeDigest(page.final_photo_sha256, earlier?.finalPhoto, "final_photo_sha256", where),
-      });
-      const problems = page.check_problems;
-      if (problems !== undefined && problems !== null) {
-        if (!Array.isArray(problems)) {
-          throw new Error(`pages[${index}] (${ref}) has check_problems that is not a list`);
-        }
-        if (problems.length > 0) checkedRefs.add(ref);
-      }
-    });
-    if (report && report.kept_human_checked !== undefined) {
-      if (!Array.isArray(report.kept_human_checked)) {
-        throw new Error("kept_human_checked is not a list");
-      }
-      report.kept_human_checked.forEach((entry: unknown, index) => {
-        if (!isPlainObject(entry) || !isSourceRef(entry.source_ref)) {
-          throw new Error(`kept_human_checked[${index}] has no valid source_ref`);
-        }
-        checkedRefs.add(entry.source_ref);
-      });
+  if (!isPlainObject(report)) throw new Error("expected an object");
+  const { pages = [], kept_human_checked: kept = [] } = report;
+  if (!Array.isArray(pages)) throw new Error("pages is not a list");
+  if (!Array.isArray(kept)) throw new Error("kept_human_checked is not a list");
+  pages.forEach((page: unknown, index) => {
+    if (!isPlainObject(page) || !isSourceRef(page.source_ref)) {
+      throw new Error(`pages[${index}] has no valid source_ref`);
     }
-  } catch (err) {
-    throw new Error(
-      `Malformed previous report ${reportPath}: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
+    const ref = page.source_ref;
+    const earlier = digests.get(ref);
+    const where = { index, ref };
+    digests.set(ref, {
+      record: mergeDigest(page.final_record_sha256, earlier?.record, "hash", where),
+      photo: mergeDigest(page.photo_sha256, earlier?.photo, "photo_sha256", where),
+      finalPhoto: mergeDigest(page.final_photo_sha256, earlier?.finalPhoto, "final_photo_sha256", where),
+    });
+    const problems = page.check_problems ?? [];
+    if (!Array.isArray(problems)) {
+      throw new Error(`pages[${index}] (${ref}) has check_problems that is not a list`);
+    }
+    if (problems.length > 0) checkedRefs.add(ref);
+  });
+  kept.forEach((entry: unknown, index) => {
+    if (!isPlainObject(entry) || !isSourceRef(entry.source_ref)) {
+      throw new Error(`kept_human_checked[${index}] has no valid source_ref`);
+    }
+    checkedRefs.add(entry.source_ref);
+  });
   return { digests, checkedRefs };
 }
 
-// The hash of each final record as the last compare wrote it. Another hash on disk means that a
-// person changed the file.
-export function loadPreviousHashes(reportPath: string): Map<string, string> {
-  return new Map(
-    [...loadReportSummary(reportPath).digests].flatMap(([ref, { record }]) =>
-      record === null ? [] : [[ref, record] as const],
-    ),
+// The digests and checked pages that the report of the last compare gives. A malformed report is an
+// error: without its hashes, compare would write over a record that a person changed, and import
+// would send it under a machine status or miss a checked page whose digest file is missing.
+export function loadReportSummary(finalDir: string): ReportSummary {
+  return (
+    readJsonNote(join(finalDir, "report.json"), parseReportSummary) ?? {
+      digests: new Map(),
+      checkedRefs: new Set(),
+    }
   );
 }
 
@@ -100,27 +84,15 @@ export function loadPreviousHashes(reportPath: string): Map<string, string> {
 // that would be sent with it must be the one that the readers read. The digests of now are those of
 // the bytes that the import read and would send. A human_checked page follows its own digests.
 export function checkMachineDigests(args: {
-  finalDir: string;
   statusByRef: ReadonlyMap<string, string>;
   recordSha256ByRef: ReadonlyMap<string, string>;
   plannedPhotos: ReadonlyMap<string, { sha256: string }>;
   problems: string[];
-  report?: ReportSummary;
+  report: ReportSummary;
 }): void {
-  let digests: Map<string, ReportDigests>;
-  if (args.report) {
-    digests = args.report.digests;
-  } else {
-    try {
-      digests = loadReportSummary(join(args.finalDir, "report.json")).digests;
-    } catch (err) {
-      args.problems.push(err instanceof Error ? err.message : String(err));
-      return;
-    }
-  }
   for (const [ref, recordSha256] of args.recordSha256ByRef) {
     if (args.statusByRef.get(ref) === "human_checked") continue;
-    const row = digests.get(ref);
+    const row = args.report.digests.get(ref);
     if (!row) continue;
     if (row.record !== null && row.record !== recordSha256) {
       args.problems.push(

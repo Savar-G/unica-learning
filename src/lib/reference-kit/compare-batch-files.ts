@@ -6,9 +6,9 @@ import {
   writeSafeOutputFile,
   type ReferenceRecord,
 } from "@/lib/reference-record";
-import { fileSlugFromRef } from "./answers";
+import { fileExists, finalFileKey, finalFileName } from "./checked-pages";
 import { pairDigest, type PairedPage } from "./compare-pairing";
-import { parsePhotosManifest, PHOTOS_MANIFEST_FILE, type PhotosManifest } from "./prepare";
+import { PHOTOS_MANIFEST_FILE, type PhotosManifest } from "./prepare";
 
 export function readStoredSourceRef(filePath: string): string | null {
   if (!existsSync(filePath)) return null;
@@ -45,7 +45,7 @@ export function loadExistingFinalRecord(filePath: string): ReferenceRecord | nul
 
 export function assertNoFileCollisions(
   pairs: readonly PairedPage[],
-  existingStatus: Record<string, string>,
+  existingRefs: ReadonlySet<string>,
   finalDir: string,
 ): void {
   const fileToRef = new Map<string, string>();
@@ -55,14 +55,15 @@ export function assertNoFileCollisions(
     if (!chosen) continue;
     const sourceRef = chosen.source_ref;
 
-    const fileName = `${fileSlugFromRef(sourceRef)}.json`;
-    const prior = fileToRef.get(fileName);
+    const fileName = finalFileName(sourceRef);
+    const key = finalFileKey(sourceRef);
+    const prior = fileToRef.get(key);
     if (prior && prior !== sourceRef) {
       throw new Error(
         `Refusing to write: "${sourceRef}" and "${prior}" both map to "${fileName}"`,
       );
     }
-    fileToRef.set(fileName, sourceRef);
+    fileToRef.set(key, sourceRef);
 
     const storedRef = readStoredSourceRef(join(finalDir, fileName));
     if (storedRef !== null && storedRef !== sourceRef) {
@@ -72,39 +73,32 @@ export function assertNoFileCollisions(
     }
   }
 
-  for (const existingRef of Object.keys(existingStatus)) {
-    const fileName = `${fileSlugFromRef(existingRef)}.json`;
-    const prior = fileToRef.get(fileName);
-    if (prior && prior !== existingRef) {
+  for (const existingRef of existingRefs) {
+    const fileName = finalFileName(existingRef);
+    const key = finalFileKey(existingRef);
+    const prior = fileToRef.get(key);
+    // In other letter case, a page whose record file is gone has nothing to lose.
+    if (
+      prior &&
+      prior !== existingRef &&
+      (finalFileName(prior) === fileName || fileExists(join(finalDir, fileName)))
+    ) {
       throw new Error(
         `Refusing to write: "${prior}" collides with existing "${existingRef}" on "${fileName}"`,
       );
     }
-    fileToRef.set(fileName, existingRef);
+    if (!prior) fileToRef.set(key, existingRef);
   }
 }
 
 // The manifest gives a page id only to the photo whose readings made the final record, so it holds
 // at most one entry for each page id. A kept page of a person with no current readings keeps the
-// page id it already has. Null when there is no manifest, or one of another shape (an error when
-// strict: a checked page needs its photo).
+// page id it already has.
 export function planManifestSourceRefs(
-  workDir: string,
+  before: PhotosManifest,
   winners: readonly PairedPage[],
   keptStaleRefs: ReadonlySet<string>,
-  opts: { strict: boolean },
-): { manifestPath: string; before: PhotosManifest; after: PhotosManifest } | null {
-  const manifestPath = join(workDir, "photos", PHOTOS_MANIFEST_FILE);
-  if (!existsSync(manifestPath)) return null;
-  let before: PhotosManifest;
-  try {
-    before = parsePhotosManifest(JSON.parse(readFileSync(manifestPath, "utf8")) as unknown);
-  } catch (err) {
-    if (!opts.strict) return null;
-    throw new Error(
-      `Damaged file ${manifestPath}: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
+): PhotosManifest {
   const refByDigest = new Map<string, string>();
   for (const pair of winners) {
     const digest = pairDigest(pair);
@@ -120,16 +114,17 @@ export function planManifestSourceRefs(
     assigned.add(ref);
     return { ...rest, source_ref: ref };
   });
-  return { manifestPath, before, after: { version: 1, photos } };
+  return { version: 1, photos };
 }
 
 export function writePlannedManifest(
-  plan: ReturnType<typeof planManifestSourceRefs>,
+  photosDir: string,
+  before: PhotosManifest,
+  after: PhotosManifest,
   repoRoot: string,
 ): void {
-  if (!plan) return;
-  const next = `${JSON.stringify(plan.after, null, 2)}\n`;
-  if (next !== `${JSON.stringify(plan.before, null, 2)}\n`) {
-    writeSafeOutputFile(plan.manifestPath, next, repoRoot);
+  const next = `${JSON.stringify(after, null, 2)}\n`;
+  if (next !== `${JSON.stringify(before, null, 2)}\n`) {
+    writeSafeOutputFile(join(photosDir, PHOTOS_MANIFEST_FILE), next, repoRoot);
   }
 }

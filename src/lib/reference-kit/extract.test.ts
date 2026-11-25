@@ -17,9 +17,10 @@ import { join, resolve } from "node:path";
 import sharp from "sharp";
 import { afterEach, describe, expect, it } from "vitest";
 import { CHECKED_DIGESTS_FILE, importReferenceRecords } from "@/lib/reference-record";
+import { MemoryReferenceStore } from "@/lib/reference-record/import-store.fixtures";
 import { checkAndMarkPage } from "./check";
+import { compareWorkFolder } from "./compare-batch";
 import { extractFolder } from "./extract";
-import { MemoryImportStore } from "./import-store.fixtures";
 import { PHOTOS_MANIFEST_FILE, preparePhoto } from "./prepare";
 import type { RunCli } from "./read";
 
@@ -31,6 +32,15 @@ afterEach(() => {
     if (dir) rmSync(dir, { recursive: true, force: true });
   }
 });
+
+function stopOf(run: () => unknown): string {
+  try {
+    run();
+    return "no error";
+  } catch (err) {
+    return (err as Error).message;
+  }
+}
 
 async function makePhotoBytes(width: number, height: number, seed: number): Promise<Buffer> {
   return sharp({
@@ -251,7 +261,7 @@ describe("extractFolder (reference:extract)", () => {
     expect(statSync(join(outDir, "photos", PHOTOS_MANIFEST_FILE)).mode & 0o777).toBe(0o600);
 
     // End-to-end compatibility with reference:import (--records <out>/final --photos <out>/photos)
-    const store = new MemoryImportStore();
+    const store = new MemoryReferenceStore();
     const imported = await importReferenceRecords({
       recordsDir: join(outDir, "final"),
       photosDir: join(outDir, "photos"),
@@ -689,7 +699,7 @@ describe("extractFolder (reference:extract)", () => {
     const refs = manifest.photos.map((p: { source_ref?: string }) => p.source_ref).filter(Boolean);
     expect(new Set(refs).size).toBe(refs.length);
 
-    const store = new MemoryImportStore();
+    const store = new MemoryReferenceStore();
     const imported = await importReferenceRecords({
       recordsDir: join(outDir, "final"),
       photosDir: join(outDir, "photos"),
@@ -741,7 +751,7 @@ describe("extractFolder (reference:extract)", () => {
     expect(reportMd).toContain("## Same page id for two photos");
     expect(reportMd).toContain("01_conflict.jpg");
 
-    const store = new MemoryImportStore();
+    const store = new MemoryReferenceStore();
     const imported = await importReferenceRecords({
       recordsDir: join(outDir, "final"),
       photosDir: join(outDir, "photos"),
@@ -807,8 +817,9 @@ describe("extractFolder (reference:extract)", () => {
     async function setUpCheckedWork() {
       const repo = mkdtempSync(join(tmpdir(), "ref-ext-chk-repo-"));
       const photosDir = mkdtempSync(join(tmpdir(), "ref-ext-chk-in-"));
-      const outDir = mkdtempSync(join(tmpdir(), "ref-ext-chk-out-"));
-      tempDirs.push(repo, photosDir, outDir);
+      const root = mkdtempSync(join(tmpdir(), "ref-ext-chk-out-"));
+      const outDir = join(root, "work");
+      tempDirs.push(repo, photosDir, root);
       const images = await Promise.all([91, 92, 93].map((seed) => makePhotoBytes(1600, 1200, seed)));
       const shas = await Promise.all(images.map(async (img) => (await preparePhoto(img)).sha256));
       writeFileSync(join(photosDir, "05_page.jpg"), images[0]);
@@ -819,11 +830,14 @@ describe("extractFolder (reference:extract)", () => {
         [shas[2], "3a"],
       ]);
       // Each reader call: the photo, and the final record of page 3a while the reader runs.
-      const calls: Array<{ photo: string; record: Buffer | null }> = [];
+      const calls: Array<{ cmd: string; photo: string; record: Buffer | null }> = [];
       const progress: string[] = [];
-      const runCli: RunCli = async (_cmd, _args, opts) => {
+      // The readers that fail, as "<command> <photo>".
+      const failing = new Set<string>();
+      const runCli: RunCli = async (cmd, _args, opts) => {
         const hash = createHash("sha256").update(readFileSync(join(opts.cwd, "page.jpg"))).digest("hex");
-        calls.push({ photo: hash, record: existsSync(recordPath) ? readFileSync(recordPath) : null });
+        calls.push({ cmd, photo: hash, record: existsSync(recordPath) ? readFileSync(recordPath) : null });
+        if (failing.has(`${cmd} ${hash}`)) return { code: 1, stdout: "", stderr: "stopped" };
         return { code: 0, stdout: JSON.stringify(makeReaderPayload(sheets.get(hash) ?? "9a")), stderr: "" };
       };
       const extract = (over: { force?: boolean } = {}) =>
@@ -843,7 +857,7 @@ describe("extractFolder (reference:extract)", () => {
       const statusPath = join(outDir, "final", "status.json");
       const status = () => (JSON.parse(readFileSync(statusPath, "utf8")) as Record<string, string>)[REF];
       const importAll = async () => {
-        const store = new MemoryImportStore();
+        const store = new MemoryReferenceStore();
         const result = await importReferenceRecords({
           recordsDir: join(outDir, "final"),
           photosDir: join(outDir, "photos"),
@@ -861,8 +875,8 @@ describe("extractFolder (reference:extract)", () => {
       calls.length = 0;
       progress.length = 0;
       return {
-        photosDir, outDir, images, shas, sheets, calls, progress, extract, check, recordPath, record,
-        statusPath, status, importAll, digestsPath,
+        repo, root, photosDir, outDir, images, shas, sheets, calls, progress, failing, extract, check,
+        recordPath, record, statusPath, status, importAll, digestsPath,
       };
     }
 
@@ -1171,6 +1185,210 @@ describe("extractFolder (reference:extract)", () => {
       }
     });
 
+    it("says checked by a person in the run output only when the report says so", async () => {
+      type Work = Awaited<ReturnType<typeof setUpCheckedWork>>;
+      const editManifest = (w: Work, over: Record<string, unknown>) => {
+        const path = join(w.outDir, "photos", PHOTOS_MANIFEST_FILE);
+        const manifest = JSON.parse(readFileSync(path, "utf8")) as { photos: Array<Record<string, unknown>> };
+        for (const p of manifest.photos) if (p.sha256 === w.shas[0]) Object.assign(p, over);
+        writeFileSync(path, JSON.stringify(manifest));
+      };
+      const editRuns = (w: Work, slots: string[], sourceRef: string | null) => {
+        for (const slot of slots) {
+          const dir = join(w.outDir, slot);
+          const run = JSON.parse(readFileSync(join(dir, "run.json"), "utf8")) as {
+            photos: Array<{ photo_sha256?: string; source_ref?: string; record_file?: string }>;
+          };
+          for (const entry of run.photos) {
+            if (entry.photo_sha256 !== w.shas[0] || !entry.record_file) continue;
+            const file = join(dir, entry.record_file);
+            if (sourceRef === null) {
+              rmSync(file);
+              continue;
+            }
+            entry.source_ref = sourceRef;
+            const record = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+            writeFileSync(file, JSON.stringify({ ...record, source_ref: sourceRef }));
+          }
+          if (sourceRef === null) run.photos = run.photos.filter((e) => e.photo_sha256 !== w.shas[0]);
+          writeFileSync(join(dir, "run.json"), JSON.stringify(run));
+        }
+      };
+      const both = ["reader-a", "reader-b"];
+      const rows: Array<{ name: string; change: (w: Work) => void; checked: boolean }> = [
+        { name: "no change", change: () => {}, checked: true },
+        { name: "reader b gives another id", change: (w) => editRuns(w, ["reader-b"], "sample:M:5a"), checked: true },
+        {
+          name: "the photo list gives another id, runs lost",
+          change: (w) => {
+            editRuns(w, both, null);
+            editManifest(w, { source_ref: "sample:M:5a" });
+          },
+          checked: false,
+        },
+        { name: "both readers give another id", change: (w) => editRuns(w, both, "sample:M:5a"), checked: false },
+        {
+          name: "a photo that is read after it takes the page id",
+          change: (w) => {
+            editRuns(w, ["reader-b"], null);
+            writeFileSync(join(w.photosDir, "09_page.jpg"), w.images[2]);
+          },
+          checked: false,
+        },
+        {
+          name: "record changed",
+          change: (w) => writeFileSync(w.recordPath, Buffer.concat([w.record(), Buffer.from("\n")])),
+          checked: false,
+        },
+      ];
+      for (const row of rows) {
+        for (const force of [false, true]) {
+          const label = `${row.name}, force=${force}`;
+          const w = await setUpCheckedWork();
+          row.change(w);
+          const { report } = await w.extract({ force });
+          const lines = w.progress.filter((line) => line.includes("05_page.jpg"));
+          expect(lines, label).toHaveLength(1);
+          expect(lines[0], label).toContain(
+            `05_page.jpg: kept: ${row.checked ? "checked by a person" : "a person must check this page again"} -> ${REF}`,
+          );
+          expect(w.status(), label).toBe(row.checked ? "human_checked" : "machine_read");
+          expect(report.pages_sent_to_person?.some((p) => p.source_ref === REF), label).toBe(!row.checked);
+        }
+      }
+    });
+
+    it("reads a photo of a checked page when it is not the photo of the check, or when its record is gone", async () => {
+      type Work = Awaited<ReturnType<typeof setUpCheckedWork>>;
+      const loseRuns = (w: Work) => {
+        for (const dir of ["reader-a", "reader-b"]) rmSync(join(w.outDir, dir), { recursive: true });
+      };
+      // The photo of the page is replaced, and reader b gives no reading of the new photo.
+      const newPhotoReadOnce = async (w: Work) => {
+        rmSync(join(w.photosDir, "05_page.jpg"));
+        writeFileSync(join(w.photosDir, "01_page.jpg"), w.images[2]);
+        for (const cmd of ["claude", "codex"]) w.failing.add(`${cmd} ${w.shas[2]}`);
+        w.failing.delete(`codex ${w.shas[2]}`);
+        writeFileSync(w.recordPath, Buffer.concat([w.record(), Buffer.from("\n")]));
+        await w.extract();
+        expect(w.status()).toBe("machine_read");
+        w.failing.clear();
+      };
+      const rows: Array<{ name: string; photo: number; change: (w: Work) => Promise<void> | void; reads: string[]; status: string }> = [
+        { name: "new photo, reader b missing", photo: 2, change: newPhotoReadOnce, reads: ["claude"], status: "machine_read" },
+        {
+          name: "new photo, reader b missing, page checked before the digests",
+          photo: 2,
+          change: async (w) => {
+            rmSync(w.digestsPath);
+            await newPhotoReadOnce(w);
+          },
+          reads: [],
+          status: "machine_read",
+        },
+        { name: "photo of the check, runs lost", photo: 0, change: loseRuns, reads: [], status: "human_checked" },
+        {
+          name: "record and runs gone",
+          photo: 0,
+          change: (w) => {
+            rmSync(w.recordPath);
+            loseRuns(w);
+          },
+          reads: ["claude", "codex"],
+          status: "double_read",
+        },
+        {
+          name: "record and runs gone, status lowered",
+          photo: 0,
+          change: (w) => {
+            writeFileSync(w.statusPath, readFileSync(w.statusPath, "utf8").replace("human_checked", "machine_read"));
+            rmSync(w.recordPath);
+            loseRuns(w);
+          },
+          reads: ["claude", "codex"],
+          status: "double_read",
+        },
+        { name: "record gone", photo: 0, change: (w) => rmSync(w.recordPath), reads: [], status: "double_read" },
+      ];
+      for (const row of rows) {
+        const w = await setUpCheckedWork();
+        await row.change(w);
+        const before = existsSync(w.recordPath) ? w.record() : null;
+        w.calls.length = 0;
+        await w.extract();
+        const reads = w.calls.filter((c) => c.photo === w.shas[row.photo]).map((c) => c.cmd).sort();
+        expect(reads, row.name).toEqual(row.reads);
+        expect(w.status(), row.name).toBe(row.status);
+        // A record that is there when the run starts is in place while each reader runs.
+        if (before) {
+          expect(w.record().equals(before), row.name).toBe(true);
+          for (const call of w.calls) expect(call.record?.equals(before), row.name).toBe(true);
+        }
+      }
+    });
+
+    it("keeps the prepared photo of the check when the photo, the photo list and the runs are lost", async () => {
+      for (const force of [false, true]) {
+        const w = await setUpCheckedWork();
+        rmSync(join(w.photosDir, "05_page.jpg"));
+        rmSync(join(w.outDir, "photos", PHOTOS_MANIFEST_FILE));
+        for (const dir of ["reader-a", "reader-b"]) rmSync(join(w.outDir, dir), { recursive: true });
+        const photosDir = join(w.outDir, "photos");
+        const prepared = `${w.shas[0].slice(0, 12)}.jpg`;
+        const leftOver = `${"0".repeat(12)}.jpg`;
+        writeFileSync(join(photosDir, leftOver), "no photo needs this file");
+        await w.extract({ force });
+        expect(readdirSync(photosDir)).toContain(prepared);
+        expect(readdirSync(photosDir)).not.toContain(leftOver);
+
+        // The person lets go of the record: the photo goes too.
+        rmSync(w.recordPath);
+        await w.extract({ force });
+        expect(readdirSync(photosDir)).not.toContain(prepared);
+      }
+    });
+
+    it("reads a photo whose old readings give the page id in other letter case, with the checked record in place", async () => {
+      for (const force of [false, true]) {
+        const w = await setUpCheckedWork();
+        w.sheets.set(w.shas[2], "5a");
+        writeFileSync(join(w.photosDir, "07_page.jpg"), w.images[2]);
+        await w.extract();
+        for (const slot of ["reader-a", "reader-b"]) {
+          const path = join(w.outDir, slot, "run.json");
+          writeFileSync(path, readFileSync(path, "utf8").replaceAll("sample:M:5a", "sample:m:3a"));
+        }
+        const before = w.record();
+        w.calls.length = 0;
+        await w.extract({ force });
+        const reads = w.calls.filter((c) => c.photo === w.shas[2]);
+        expect(reads).toHaveLength(2);
+        for (const call of reads) expect(call.record?.equals(before)).toBe(true);
+        expect(w.record().equals(before)).toBe(true);
+        expect(w.status()).toBe("human_checked");
+      }
+    });
+
+    it("makes a prepared photo that does not match the photo list again", async () => {
+      const w = await setUpCheckedWork();
+      writeFileSync(join(w.outDir, "photos", `${w.shas[0].slice(0, 12)}.jpg`), "other bytes");
+      const { pages_sent_to_person: sent } = compareWorkFolder({ workDir: w.outDir, repoRoot: w.repo });
+      expect(sent?.map((p) => [p.source_ref, p.reason])).toEqual([[REF, "photo does not match the photo list"]]);
+      expect(() => w.check()).toThrow(/does not match the photo list/);
+      await w.extract();
+      w.check();
+      expect(w.status()).toBe("human_checked");
+      expect((await w.importAll()).result.problems).toEqual([]);
+
+      // Also when the photo list gives another digest for the same file name.
+      const path = join(w.outDir, "photos", PHOTOS_MANIFEST_FILE);
+      const wrong = `${w.shas[0].slice(0, 12)}${"0".repeat(52)}`;
+      writeFileSync(path, readFileSync(path, "utf8").replace(w.shas[0], wrong));
+      await w.extract();
+      expect(w.status()).toBe("human_checked");
+      expect((await w.importAll()).result.problems).toEqual([]);
+    });
+
     it("gives a page that lost its photo a new photo again, or lets the page go with its record file", async () => {
       const wrongId = async () => {
         const w = await setUpCheckedWork();
@@ -1212,17 +1430,139 @@ describe("extractFolder (reference:extract)", () => {
       expect(w.status()).toBe("double_read");
     });
 
-    it("stops before it removes anything when the status or the digest file is damaged", async () => {
-      for (const file of ["statusPath", "digestsPath"] as const) {
-        const w = await setUpCheckedWork();
-        rmSync(join(w.photosDir, "05_page.jpg"));
-        writeFileSync(w[file], "{ bad");
-        const before = w.record();
-        const prepared = join(w.outDir, "photos", `${w.shas[0].slice(0, 12)}.jpg`);
-        await expect(w.extract(), file).rejects.toThrow(w[file].split("/").pop());
-        expect(w.record().equals(before), file).toBe(true);
-        expect(existsSync(prepared), file).toBe(true);
+    it("stops each command, names the file and changes nothing when a note is damaged", async () => {
+      const w = await setUpCheckedWork();
+      const finalDir = join(w.outDir, "final");
+      const paths = {
+        status: w.statusPath,
+        report: join(finalDir, "report.json"),
+        digests: w.digestsPath,
+        manifest: join(w.outDir, "photos", PHOTOS_MANIFEST_FILE),
+      };
+      const readText = (file: string) => readFileSync(file, "utf8");
+      const manifest = JSON.parse(readText(paths.manifest)) as { photos: Array<Record<string, unknown>> };
+      const manifestWith = (over: unknown) =>
+        JSON.stringify({ version: 1, photos: [...manifest.photos, over] });
+      const photo = { ...manifest.photos[1], source_ref: undefined };
+      const hash = "a".repeat(64);
+      // The files that "../../x" and "../x" would name from final/ and final-view/.
+      const outside = ["x.json", "x.md"].flatMap((name) => [join(w.root, name), join(w.outDir, name)]);
+      for (const file of outside) writeFileSync(file, "not a page");
+      const badIds = ["../../x", "../x", "sample:M:../x", "", 7, null];
+      const texts: Record<keyof typeof paths, string[]> = {
+        status: [
+          JSON.stringify({ [REF]: 1 }),
+          JSON.stringify({ [REF]: "human_checked", "sample:M:4a": null }),
+          JSON.stringify({ [REF]: "checked" }),
+          JSON.stringify({ [REF]: "toString" }),
+          ...["../../x", "../x"].map((id) => JSON.stringify({ [REF]: "human_checked", [id]: "machine_read" })),
+        ],
+        report: [
+          JSON.stringify({ pages: null }),
+          JSON.stringify({ pages: {} }),
+          JSON.stringify({ pages: [null] }),
+          JSON.stringify({ kept_human_checked: null }),
+          ...badIds.flatMap((id) => [
+            JSON.stringify({ pages: [{ source_ref: id, check_problems: ["photo changed after the check"] }] }),
+            JSON.stringify({ pages: [{ source_ref: id }] }),
+            JSON.stringify({ pages: [], kept_human_checked: [{ source_ref: id }] }),
+          ]),
+        ],
+        digests: badIds.flatMap((id) => [
+          JSON.stringify({ version: 1, pages: [], checked_before: [id] }),
+          JSON.stringify({
+            version: 1,
+            pages: [{ source_ref: id, record_sha256: hash, photo_sha256: hash }],
+            checked_before: [],
+          }),
+        ]),
+        manifest: [
+          "{}",
+          JSON.stringify({ version: 2, photos: [] }),
+          JSON.stringify({ version: 1, photos: {} }),
+          manifestWith(null),
+          ...[" ", "", 7].map((id) => manifestWith({ ...photo, source_ref: id })),
+        ],
+      };
+      type Note = keyof typeof paths;
+      const changes = (Object.keys(paths) as Note[]).flatMap((note) => {
+        const file = paths[note];
+        const good = readText(file);
+        const [left, right] = good.split("sample:M:4a");
+        const write = (content: string | Buffer) => () => writeFileSync(file, content);
+        const link = (target: string) => () => {
+          rmSync(file);
+          symlinkSync(target, file);
+        };
+        const copy = join(w.root, `${note}.copy`);
+        writeFileSync(copy, good);
+        return [
+          ...["{ bad", "", "null", "[]", '"text"', ...texts[note]].map((text) => ({ note, name: text, change: write(text) })),
+          ...(right === undefined
+            ? []
+            : [{
+                note,
+                name: "invalid UTF-8",
+                change: write(Buffer.concat([Buffer.from(`${left}sample:M:4a`), Buffer.of(0xff), Buffer.from(right)])),
+              }]),
+          { note, name: "link to a good file", change: link(copy) },
+          { note, name: "link to nothing", change: link(join(w.root, "nothing")) },
+          {
+            note,
+            name: "folder",
+            change: () => {
+              rmSync(file);
+              mkdirSync(file);
+            },
+          },
+        ].map((row) => ({ ...row, restore: () => {
+          rmSync(file, { recursive: true });
+          writeFileSync(file, good);
+        } }));
+      });
+      const snapshot = (): Record<string, string> =>
+        Object.fromEntries(
+          readdirSync(w.root, { withFileTypes: true, recursive: true }).map((entry) => {
+            const file = join(entry.parentPath, entry.name);
+            return [file, entry.isFile() ? readFileSync(file, "base64") : "not a file"];
+          }),
+        );
+      const commands: Array<[string, () => Promise<string>]> = [
+        ["extract", () => w.extract().then(() => "no error", (err: Error) => err.message)],
+        ["extract --force", () => w.extract({ force: true }).then(() => "no error", (err: Error) => err.message)],
+        ["compare", async () => stopOf(() => compareWorkFolder({ workDir: w.outDir, repoRoot: w.repo }))],
+        ["check", async () => stopOf(() => w.check())],
+        [
+          "import",
+          async () => {
+            const { result, store } = await w.importAll();
+            if (result.ok) return "no error";
+            expect([store.rows.size, store.objects.size]).toEqual([0, 0]);
+            return result.problems.join("\n");
+          },
+        ],
+      ];
+      // A removed photo: an extract that goes on would remove files.
+      rmSync(join(w.photosDir, "06_page.jpg"));
+      for (const { note, name, change, restore } of changes) {
+        change();
+        const before = snapshot();
+        for (const [command, run] of commands) {
+          const label = `${command}, ${note}: ${name}`;
+          expect(await run(), label).toContain(paths[note].split("/").at(-1));
+          expect(snapshot(), label).toEqual(before);
+        }
+        restore();
       }
-    });
+      expect(w.calls).toEqual([]);
+
+      // The control: the same folder with good notes, and with a report that holds no pages list.
+      for (const text of [readText(paths.report), "{}"]) {
+        writeFileSync(paths.report, text);
+        for (const [command, run] of commands) expect(await run(), command).toBe("no error");
+        expect(w.status()).toBe("human_checked");
+      }
+      for (const file of outside) expect(readText(file)).toBe("not a page");
+    }, 60_000);
   });
 });

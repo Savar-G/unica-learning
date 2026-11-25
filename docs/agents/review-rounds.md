@@ -8,7 +8,7 @@ For the agent that writes the briefs (the orchestrator). Use it when one agent b
 2. **Fix every finding** that is not declined. A finding in code that the branch did not change, and that is not part of the ticket, becomes a proposed ticket, not a change here. Check each fix and run the full done gate yourself.
 3. **Open the pull request.** CodeRabbit reviews it and CI runs.
 4. **Fix the CodeRabbit findings**, reply to each declined one with the reason, and push once. CodeRabbit reviews a push by itself; ask with the comment `@coderabbitai review` when it does not.
-5. **Merge** when CI passes and CodeRabbit has no open finding that can save wrong data, accept a wrong page, or expose private data. Follow the merge rule in `AGENTS.md`.
+5. **Merge** when CI passes, CodeRabbit has completed its review of the current head commit, and that review and the earlier ones have no open finding that can save wrong data, accept a wrong page, or expose private data. A review that is pending or that read an earlier commit does not count. Follow the merge rule in `AGENTS.md`.
 
 Do not start another Codex round unless Savar asks. Why: on UNI-150, Codex reviewed six times and gave 10/10, and then Greptile found two bugs in its first review. A second reviewer finds more than another round by the first one.
 

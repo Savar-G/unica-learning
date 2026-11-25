@@ -13,12 +13,10 @@ import {
   importReferenceRecords,
   MAX_REFERENCE_PHOTO_BYTES,
   TRANSCRIPT_STATUSES,
-  type ExistingReferenceRow,
-  type ReferenceRow,
-  type ReferenceStore,
   type TranscriptStatus,
 } from "./import";
 import { checkPathOwnership } from "./import-replace";
+import { MemoryReferenceStore, type StoredRow } from "./import-store.fixtures";
 import type { ContentsRecord, PageRecord } from "./types";
 
 function makePage(sourceRef: string, topicTitle = "Adding small numbers"): PageRecord {
@@ -70,102 +68,6 @@ function makeContents(sourceRef: string): ContentsRecord {
 
 function sha256Hex(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
-}
-
-// A stored row also has the columns the import never sends: id, created_at and updated_at.
-type StoredRow = Omit<ReferenceRow, "transcript_status"> & {
-  transcript_status: string;
-  id?: string;
-  created_at?: string;
-  updated_at?: string;
-};
-
-class MemoryReferenceStore implements ReferenceStore {
-  rows = new Map<string, StoredRow>();
-  objects = new Map<string, { bytes: Uint8Array; contentType: string }>();
-  calls: string[] = [];
-  // Injected clock: each write takes the next tick as its time.
-  private tick = 0;
-  private now(): string {
-    this.tick += 1;
-    return `t${this.tick}`;
-  }
-
-  async findExisting(sourceRefs: string[]): Promise<Map<string, ExistingReferenceRow>> {
-    this.calls.push(`findExisting:${sourceRefs.join(",")}`);
-    const out = new Map<string, ExistingReferenceRow>();
-    for (const ref of sourceRefs) {
-      const row = this.rows.get(ref);
-      if (row) {
-        out.set(ref, {
-          transcript: structuredClone(row.transcript),
-          path: row.path,
-          transcript_status: row.transcript_status,
-        });
-      }
-    }
-    return out;
-  }
-
-  async insertRow(row: ReferenceRow): Promise<boolean> {
-    this.calls.push(`insertRow:${row.source_ref}`);
-    if (this.rows.has(row.source_ref)) {
-      return false;
-    }
-    const at = this.now();
-    this.rows.set(row.source_ref, {
-      ...structuredClone(row),
-      id: `id-${row.source_ref}`,
-      created_at: at,
-      updated_at: at,
-    });
-    return true;
-  }
-
-  async updateRow(row: ReferenceRow): Promise<boolean> {
-    this.calls.push(`updateRow:${row.source_ref}`);
-    const prev = this.rows.get(row.source_ref);
-    if (!prev) return false;
-    this.rows.set(row.source_ref, {
-      ...prev,
-      kind: row.kind,
-      path: row.path,
-      transcript: structuredClone(row.transcript),
-      transcript_status: row.transcript_status,
-      updated_at: this.now(),
-    });
-    return true;
-  }
-
-  async replaceObject(path: string, bytes: Uint8Array, contentType: string): Promise<void> {
-    this.calls.push(`replaceObject:${path}`);
-    this.objects.set(path, { bytes: new Uint8Array(bytes), contentType });
-  }
-
-  async refsByPath(paths: string[]): Promise<Map<string, string[]>> {
-    this.calls.push(`refsByPath:${paths.join(",")}`);
-    const out = new Map<string, string[]>();
-    for (const row of this.rows.values()) {
-      if (row.path !== null && paths.includes(row.path)) {
-        out.set(row.path, [...(out.get(row.path) ?? []), row.source_ref]);
-      }
-    }
-    return out;
-  }
-
-  async objectSha256(path: string): Promise<string | null> {
-    this.calls.push(`objectSha256:${path}`);
-    const existing = this.objects.get(path);
-    return existing ? sha256Hex(existing.bytes) : null;
-  }
-
-  async uploadObject(path: string, bytes: Uint8Array, contentType: string): Promise<void> {
-    this.calls.push(`uploadObject:${path}`);
-    if (this.objects.has(path)) {
-      throw new Error(`Unexpected overwrite of existing object ${path}`);
-    }
-    this.objects.set(path, { bytes: new Uint8Array(bytes), contentType });
-  }
 }
 
 describe("deepEqualJson", () => {
@@ -709,18 +611,18 @@ describe("importReferenceRecords", () => {
         ["double_read", { edit: "one more byte" }, /sample:M:2a.*report\.json.*run reference:compare/],
         ["double_read", { hash: "" }, /sample:M:2a.*report\.json.*run reference:compare/],
         ["double_read", { hash: 7 }, /report\.json.*sample:M:2a.*hash that is not text/],
-        ["double_read", { rows: [{ final_record_sha256: otherHash }] }, /report\.json: pages\[0\] has no source_ref/],
-        ["double_read", { rows: [null] }, /report\.json: pages\[0\] has no source_ref/],
+        ["double_read", { rows: [{ final_record_sha256: otherHash }] }, /report\.json: pages\[0\] has no valid source_ref/],
+        ["double_read", { rows: [null] }, /report\.json: pages\[0\] has no valid source_ref/],
         [
           "double_read",
           { rows: [{ source_ref: checkedRef, final_record_sha256: otherHash }], addValidRow: true },
           /report\.json.*second hash for sample:M:2a/,
         ],
         ["double_read", { text: '{"pages":{}}' }, /report\.json: pages is not a list/],
-        ["double_read", { text: "{ bad" }, /Malformed previous report .*report\.json/],
-        ["double_read", { text: "" }, /Malformed previous report .*report\.json/],
-        ["double_read", { link: "to a report" }, /Malformed previous report .*report\.json.*symlink/],
-        ["double_read", { link: "to nothing" }, /Malformed previous report .*report\.json.*symlink/],
+        ["double_read", { text: "{ bad" }, /Damaged file .*report\.json/],
+        ["double_read", { text: "" }, /Damaged file .*report\.json/],
+        ["double_read", { link: "to a report" }, /symlink.*report\.json/],
+        ["double_read", { link: "to nothing" }, /symlink.*report\.json/],
       ] as Array<[string, Record<string, unknown>, RegExp]>
     ).flatMap(([status, change, expectedProblem]) =>
       [false, true].map((replace) => ({
@@ -925,7 +827,7 @@ describe("importReferenceRecords", () => {
           writeJson(outside, "status.json", { "sample:M:1a": "double_read" });
           symlinkSync(join(outside, "status.json"), join(recs, "status.json"));
         },
-        expectedProblem: /status\.json: refusing symlink/,
+        expectedProblem: /Refusing to read symlink: .*status\.json/,
       },
       {
         name: "invalid UTF-8 byte 0xff in status.json",
@@ -933,7 +835,7 @@ describe("importReferenceRecords", () => {
           const text = JSON.stringify({ "sample:M:1a": "MARKER" });
           writeFileSync(join(recs, "status.json"), withInvalidUtf8Byte(text, "MARKER"));
         },
-        expectedProblem: /status\.json:.*UTF-8/i,
+        expectedProblem: /Damaged file \(Invalid UTF-8 in .*status\.json\)/,
       },
       {
         name: "U+FFFD replacement character in status.json key",
@@ -943,7 +845,7 @@ describe("importReferenceRecords", () => {
             "sample:M:2\uFFFDa": "double_read",
           });
         },
-        expectedProblem: /status\.json: \$\.<key>:.*U\+FFFD/i,
+        expectedProblem: /status\.json: "sample:M:2\uFFFDa" is not a page id/,
       },
       {
         name: "NUL character in status.json key",
@@ -953,7 +855,7 @@ describe("importReferenceRecords", () => {
             "sample:M:2\u0000a": "double_read",
           });
         },
-        expectedProblem: /status\.json: \$\.<key>:.*cannot store/i,
+        expectedProblem: /status\.json: "sample:M:2\\u0000a" is not a page id/,
       },
       {
         name: "lone surrogate in status.json key",
@@ -963,14 +865,14 @@ describe("importReferenceRecords", () => {
             "sample:M:2\uD800a": "double_read",
           });
         },
-        expectedProblem: /status\.json: \$\.<key>:.*cannot store/i,
+        expectedProblem: /status\.json: "sample:M:2\\ud800a" is not a page id/,
       },
       {
         name: "invalid JSON in status.json",
         setup: ({ recs }) => {
           writeFileSync(join(recs, "status.json"), "{ bad", "utf8");
         },
-        expectedProblem: /status\.json: invalid JSON/,
+        expectedProblem: /Damaged file \(Invalid JSON in .*status\.json\)/,
       },
       {
         name: "non-object status.json",
@@ -997,9 +899,9 @@ describe("importReferenceRecords", () => {
           );
         },
         expectedProblems: [
-          /"__proto__" has no matching record file/,
-          /"constructor" has no matching record file/,
-          /"toString" has no matching record file/,
+          /"__proto__" is not a page id/,
+          /"constructor" is not a page id/,
+          /"toString" is not a page id/,
         ],
       },
       {
@@ -1128,7 +1030,7 @@ describe("importReferenceRecords", () => {
           writeJson(outside, "photos-manifest.json", { version: 1, photos: [] });
           symlinkSync(join(outside, "photos-manifest.json"), join(photos, "photos-manifest.json"));
         },
-        expectedProblem: /photos-manifest\.json: refusing symlink/,
+        expectedProblem: /Refusing to read symlink: .*photos-manifest\.json/,
       },
       {
         name: "invalid UTF-8 byte 0xff in photos-manifest.json",
@@ -1140,7 +1042,7 @@ describe("importReferenceRecords", () => {
           });
           writeFileSync(join(photos, "photos-manifest.json"), withInvalidUtf8Byte(text, "MARKER"));
         },
-        expectedProblem: /photos-manifest\.json:.*UTF-8/i,
+        expectedProblem: /Damaged file \(Invalid UTF-8 in .*photos-manifest\.json\)/,
       },
       {
         name: "U+FFFD replacement character in photos-manifest.json field",
@@ -1187,7 +1089,7 @@ describe("importReferenceRecords", () => {
         setup: ({ photos }) => {
           writeFileSync(join(photos, "photos-manifest.json"), "{ bad", "utf8");
         },
-        expectedProblem: /photos-manifest\.json: could not be read or parsed/,
+        expectedProblem: /Damaged file \(Invalid JSON in .*photos-manifest\.json\)/,
       },
       {
         name: "wrong shape photos-manifest.json",
@@ -1892,7 +1794,13 @@ describe("importReferenceRecords", () => {
       expect(up.statusLowered).toEqual([]);
       expect(rowOf("sample:M:3a").transcript_status).toBe("human_checked");
 
+      // A saved digest is checked under each status, so the run needs the photo of the check.
       writeJson(recordsDir, "status.json", { "sample:M:3a": "double_read" });
+      const noPhoto = await importReferenceRecords({ recordsDir, store, replace: true });
+      expect(noPhoto.problems.join("\n")).toMatch(/sample:M:3a.*photo of the check is missing/);
+
+      // The page was read again in a new folder: it has no digests there.
+      rmSync(join(recordsDir, CHECKED_DIGESTS_FILE));
       const down = await importReferenceRecords({ recordsDir, store, replace: true });
       expect(down.counts.replaced).toBe(1);
       expect(down.statusLowered).toEqual([
@@ -1904,9 +1812,7 @@ describe("importReferenceRecords", () => {
       );
 
       // A record left out of status.json is machine_read, which is also a change down.
-      // (The page was read again in a new folder: it has no digests there.)
       rmSync(join(recordsDir, "status.json"));
-      rmSync(join(recordsDir, CHECKED_DIGESTS_FILE));
       const dropped = await importReferenceRecords({ recordsDir, store, replace: true });
       expect(dropped.statusLowered).toEqual([
         { ref: "sample:M:3a", from: "double_read", to: "machine_read" },
@@ -2485,6 +2391,52 @@ describe("importReferenceRecords", () => {
       ).toBe(true);
     });
 
+    it("needs no photo to take a page back to machine_read when only single_read goes, and needs it for another text or a raise", async () => {
+      const ref = "sample:M:3a";
+      const single = { single_read: ["topic.title"] };
+      const otherTitle = makePage(ref, "Other title");
+      const otherAnswer = makePage(ref);
+      otherAnswer.sections[0].items[0].responses[0].answer = "8";
+      const rows: Array<{
+        name: string;
+        stored: PageRecord;
+        from: TranscriptStatus;
+        file: PageRecord;
+        to: TranscriptStatus;
+        problem?: RegExp;
+      }> = [
+        { name: "downgrade", stored: { ...makePage(ref), ...single }, from: "agreement_accepted", file: makePage(ref), to: "machine_read" },
+        { name: "same status, other single_read", stored: { ...makePage(ref), single_read: ["score_bands"] }, from: "agreement_accepted", file: { ...makePage(ref), ...single }, to: "agreement_accepted" },
+        { name: "downgrade, other title", stored: { ...makePage(ref), ...single }, from: "agreement_accepted", file: otherTitle, to: "machine_read", problem: /change the text.*--photos/ },
+        { name: "downgrade, other answer", stored: { ...makePage(ref), ...single }, from: "agreement_accepted", file: otherAnswer, to: "machine_read", problem: /change the text.*--photos/ },
+        { name: "raise, single_read added", stored: makePage(ref), from: "machine_read", file: { ...makePage(ref), ...single }, to: "agreement_accepted", problem: /raise the status.*--photos/ },
+        { name: "raise, single_read removed", stored: { ...makePage(ref), ...single }, from: "agreement_accepted", file: makePage(ref), to: "double_read", problem: /raise the status.*--photos/ },
+      ];
+      for (const row of rows) {
+        for (const dryRun of [false, true]) {
+          const label = `${row.name}, dry run ${dryRun}`;
+          const caseStore = new MemoryReferenceStore();
+          writeJson(recordsDir, "p1.json", row.file);
+          writeJson(recordsDir, "status.json", { [ref]: row.to });
+          caseStore.rows.set(ref, {
+            source_ref: ref,
+            kind: "page",
+            path: "sample/M/3a.jpg",
+            transcript: row.stored,
+            transcript_status: row.from,
+          });
+          const res = await importReferenceRecords({ recordsDir, store: caseStore, replace: true, dryRun });
+          const written = row.problem === undefined && !dryRun;
+          expect(res.ok, label).toBe(row.problem === undefined);
+          if (row.problem) expect(res.problems.join("\n"), label).toMatch(row.problem);
+          else expect(res.counts.replaced, label).toBe(1);
+          expect(writeCalls(caseStore), label).toEqual(written ? [`updateRow:${ref}`] : []);
+          expect(rowOf(ref, caseStore).transcript, label).toEqual(written ? row.file : row.stored);
+          expect(rowOf(ref, caseStore).path, label).toBe("sample/M/3a.jpg");
+        }
+      }
+    });
+
     it("matches the explicit state grid for G1, G2, and G4 across status x digests x report x planned photo", async () => {
       const ref = "sample:M:3a";
       type GridRow = {
@@ -2496,6 +2448,7 @@ describe("importReferenceRecords", () => {
       };
 
       // Existing row is machine_read with stored photo (oldImg) and same text, so:
+      // - A saved digest (digests=present) is checked under every status: photo=other and photo=none stop.
       // - G1 triggers when digests=missing and report=kept_checked (any status).
       // - G2 triggers on status raises (agreement_accepted, double_read) with photo=none.
       // - G4 triggers on machine statuses with report having final_photo_sha256 (photo_sha256=null) and photo=other.
@@ -2522,14 +2475,14 @@ describe("importReferenceRecords", () => {
 
         // agreement_accepted (raises stored machine_read)
         { status: "agreement_accepted", digests: "present", report: "machine", photo: "same", expected: "ok" },
-        { status: "agreement_accepted", digests: "present", report: "machine", photo: "other", expected: /another photo/ },
-        { status: "agreement_accepted", digests: "present", report: "machine", photo: "none", expected: /raise the status.*--photos/ },
+        { status: "agreement_accepted", digests: "present", report: "machine", photo: "other", expected: /photo changed after the check/ },
+        { status: "agreement_accepted", digests: "present", report: "machine", photo: "none", expected: /photo of the check is missing/ },
         { status: "agreement_accepted", digests: "present", report: "kept_checked", photo: "same", expected: "ok" },
-        { status: "agreement_accepted", digests: "present", report: "kept_checked", photo: "other", expected: /another photo/ },
-        { status: "agreement_accepted", digests: "present", report: "kept_checked", photo: "none", expected: /raise the status.*--photos/ },
+        { status: "agreement_accepted", digests: "present", report: "kept_checked", photo: "other", expected: /photo changed after the check/ },
+        { status: "agreement_accepted", digests: "present", report: "kept_checked", photo: "none", expected: /photo of the check is missing/ },
         { status: "agreement_accepted", digests: "present", report: "none", photo: "same", expected: "ok" },
-        { status: "agreement_accepted", digests: "present", report: "none", photo: "other", expected: "ok" },
-        { status: "agreement_accepted", digests: "present", report: "none", photo: "none", expected: /raise the status.*--photos/ },
+        { status: "agreement_accepted", digests: "present", report: "none", photo: "other", expected: /photo changed after the check/ },
+        { status: "agreement_accepted", digests: "present", report: "none", photo: "none", expected: /photo of the check is missing/ },
         { status: "agreement_accepted", digests: "missing", report: "machine", photo: "same", expected: "ok" },
         { status: "agreement_accepted", digests: "missing", report: "machine", photo: "other", expected: /another photo/ },
         { status: "agreement_accepted", digests: "missing", report: "machine", photo: "none", expected: /raise the status.*--photos/ },
@@ -2542,14 +2495,14 @@ describe("importReferenceRecords", () => {
 
         // double_read (raises stored machine_read)
         { status: "double_read", digests: "present", report: "machine", photo: "same", expected: "ok" },
-        { status: "double_read", digests: "present", report: "machine", photo: "other", expected: /another photo/ },
-        { status: "double_read", digests: "present", report: "machine", photo: "none", expected: /raise the status.*--photos/ },
+        { status: "double_read", digests: "present", report: "machine", photo: "other", expected: /photo changed after the check/ },
+        { status: "double_read", digests: "present", report: "machine", photo: "none", expected: /photo of the check is missing/ },
         { status: "double_read", digests: "present", report: "kept_checked", photo: "same", expected: "ok" },
-        { status: "double_read", digests: "present", report: "kept_checked", photo: "other", expected: /another photo/ },
-        { status: "double_read", digests: "present", report: "kept_checked", photo: "none", expected: /raise the status.*--photos/ },
+        { status: "double_read", digests: "present", report: "kept_checked", photo: "other", expected: /photo changed after the check/ },
+        { status: "double_read", digests: "present", report: "kept_checked", photo: "none", expected: /photo of the check is missing/ },
         { status: "double_read", digests: "present", report: "none", photo: "same", expected: "ok" },
-        { status: "double_read", digests: "present", report: "none", photo: "other", expected: "ok" },
-        { status: "double_read", digests: "present", report: "none", photo: "none", expected: /raise the status.*--photos/ },
+        { status: "double_read", digests: "present", report: "none", photo: "other", expected: /photo changed after the check/ },
+        { status: "double_read", digests: "present", report: "none", photo: "none", expected: /photo of the check is missing/ },
         { status: "double_read", digests: "missing", report: "machine", photo: "same", expected: "ok" },
         { status: "double_read", digests: "missing", report: "machine", photo: "other", expected: /another photo/ },
         { status: "double_read", digests: "missing", report: "machine", photo: "none", expected: /raise the status.*--photos/ },

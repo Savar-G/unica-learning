@@ -49,7 +49,7 @@ linear_gql() {
 ```
 
 - **Create an issue:** `mutation { issueCreate(input: { teamId: "41baea33-ebb0-4169-9d76-778f4cdb52d5", title: "...", description: "...", labelIds: ["<area-label-id>", ...], stateId: "<state-id>", parentId: "<optional-parent-uuid>", projectId: "<optional-project-uuid>" }) { success issue { id identifier url } } }`
-- **Read an issue:** `query { issue(id: "UNI-123") { id identifier title description state { name type } priority assignee { name email } labels { nodes { name } } project { name } parent { identifier title } children { nodes { identifier title state { name type } } } relations { nodes { type relatedIssue { identifier title state { name type } } } } inverseRelations { nodes { type issue { identifier title state { name type } } } } comments { nodes { body createdAt user { name } } } } }`
+- **Read an issue:** `query { issue(id: "UNI-123") { id identifier title description state { name type } priority assignee { name email } labels { nodes { name } } project { name } parent { identifier title } children(includeArchived: true) { nodes { identifier title state { name type } } } relations(includeArchived: true) { nodes { type relatedIssue { identifier title state { name type } } } } inverseRelations(includeArchived: true) { nodes { type issue { identifier title state { name type } } } } comments { nodes { body createdAt user { name } } } } }`
 - **List open issues (optionally filtered by Area or triage label):** `query { issues(filter: { team: { key: { eq: "UNI" } }, state: { type: { nin: ["completed", "canceled"] } }, labels: { name: { eq: "ready-for-agent" } } }, first: 100) { nodes { id identifier title state { name } labels { nodes { name } } assignee { name } } } }`
 - **Make an issue a sub-issue of a parent:** Pass `parentId: "<parent-uuid>"` on `issueCreate`, or call `issueUpdate(id: "<child-uuid>", input: { parentId: "<parent-uuid>" })`.
 - **Blocking (native Linear relations):** Add an edge with `mutation { issueRelationCreate(input: { type: blocks, issueId: "<blocker-uuid>", relatedIssueId: "<blocked-uuid>" }) { success } }`.
@@ -57,7 +57,7 @@ linear_gql() {
 - **Comment on an issue:** `mutation { commentCreate(input: { issueId: "<issue-uuid>", body: "..." }) { success } }`
 - **Apply / remove labels:** `mutation { issueUpdate(id: "<issue-uuid>", input: { addedLabelIds: ["..."], removedLabelIds: ["..."] }) { success } }`
 - **Close / change state:** Post a summary comment with `commentCreate`, then call `issueUpdate(id: "<issue-uuid>", input: { stateId: "<done-or-canceled-state-id>" })`.
-- **Archive when closed:** The free plan limits the number of issues. As soon as an issue is `Done`, `Canceled` or `Duplicate` and its last comment is posted, call `mutation { issueArchive(id: "<issue-uuid>") { success } }`. An archived issue keeps its links and can still be read by its id.
+- **Archive when closed:** The free plan limits the number of issues. As soon as an issue is `Done`, `Canceled` or `Duplicate` and its last comment is posted, call `mutation { issueArchive(id: "<issue-uuid>") { success } }`. An archived issue keeps its links and can still be read by its id. A list hides it without `includeArchived: true` (the read query above has it for the children and the relations). Before you edit or reopen an archived issue, restore it with `mutation { issueUnarchive(id: "<issue-uuid>") { success } }`. When it is closed again, archive it again.
 
 ## Pull requests as a triage surface
 

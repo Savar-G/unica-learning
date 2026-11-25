@@ -12,15 +12,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CHECKED_DIGESTS_FILE, importReferenceRecords, type PageRecord } from "@/lib/reference-record";
+import { MemoryReferenceStore } from "@/lib/reference-record/import-store.fixtures";
 import { checkAndMarkPage } from "./check";
 import { compareWorkFolder, countPageStatuses, formatPagesSentToPerson } from "./compare-batch";
-import { MemoryImportStore } from "./import-store.fixtures";
 import { addPreparedPhoto, fakePhoto } from "./photo.fixtures";
 
 const REF = "sample:M:3a";
 const RECORD_CHANGED = "record changed after the check";
 const PHOTO_CHANGED = "photo changed after the check";
 const PHOTO_MISSING = "photo of the check is missing";
+const PHOTO_MISMATCH = "photo does not match the photo list";
 const BEFORE_DIGESTS = "checked before the photo check was saved";
 const NOT_MARKED = "check does not count any more (check the page again)";
 
@@ -222,7 +223,26 @@ describe("a page checked by a person", () => {
       {
         name: "photo file has other bytes",
         change: () => writeFileSync(join(photosDir(), fakePhoto("p1").file), "other bytes"),
-        reasons: [PHOTO_CHANGED],
+        reasons: [PHOTO_MISMATCH],
+      },
+      {
+        name: "photo list gives another digest, photo file is the one of the check",
+        change: () => {
+          const path = join(photosDir(), "photos-manifest.json");
+          const { sha256 } = fakePhoto("p1");
+          writeFileSync(path, readFileSync(path, "utf8").replace(sha256, `${sha256.slice(0, 12)}${"0".repeat(52)}`));
+          // With no reading, the photo list alone names the photo of the page.
+          setReadings([{ photo: "p2", ref: "sample:M:4a" }]);
+        },
+        reasons: [PHOTO_MISMATCH],
+      },
+      {
+        name: "photo list gives the digest of the check, photo file has other bytes, record changed",
+        change: () => {
+          changeAnswer();
+          writeFileSync(join(photosDir(), fakePhoto("p1").file), "other bytes");
+        },
+        reasons: [RECORD_CHANGED, PHOTO_MISMATCH],
       },
       {
         name: "photo file is missing",
@@ -314,6 +334,100 @@ describe("a page checked by a person", () => {
     return statusMap()[ref];
   }
 
+  it("keeps its photo when the winning pair of readings names no photo, and only then", async () => {
+    const manifestRefs = () =>
+      (JSON.parse(readFileSync(join(work, "photos", "photos-manifest.json"), "utf8")) as {
+        photos: Array<{ sha256: string; source_ref?: string }>;
+      }).photos.filter((p) => p.source_ref === REF).map((p) => p.sha256);
+    const rows: Array<{ name: string; runs: string[]; photo: string; reasons: string[] }> = [
+      { name: "both runs lost", runs: ["a", "b"], photo: "p1", reasons: [] },
+      { name: "run of reader a lost", runs: ["a"], photo: "p1", reasons: [] },
+      { name: "run of reader b lost", runs: ["b"], photo: "p1", reasons: [] },
+      // Reader b's photo does not name the photo of reader a's text.
+      { name: "run of reader a lost, reader b read a new photo", runs: ["a"], photo: "p9", reasons: [] },
+      { name: "new photo", runs: [], photo: "p9", reasons: [PHOTO_CHANGED] },
+      { name: "new photo, run of reader b lost", runs: ["b"], photo: "p9", reasons: [PHOTO_CHANGED] },
+    ];
+    for (const { name, runs, photo, reasons } of rows) {
+      rmSync(work, { recursive: true });
+      mkdirSync(work);
+      const before = setUpChecked();
+      compare();
+      addPreparedPhoto(work, "p9");
+      setReadings([{ photo, ref: REF }, { photo: "p2", ref: "sample:M:4a" }]);
+      for (const slot of runs) rmSync(join(work, `reader-${slot}`, "run.json"));
+      for (let round = 1; round <= 2; round += 1) {
+        const report = compare();
+        expect(recordBytes().equals(before), name).toBe(true);
+        expect(manifestRefs(), name).toEqual([fakePhoto(reasons.length > 0 ? photo : "p1").sha256]);
+        if (reasons.length > 0) expectSentToPerson(report, reasons);
+        else expect(statusMap()[REF], name).toBe("human_checked");
+      }
+      if (reasons.length === 0) await expectImported("human_checked", "Corrected by a person", "p1", name);
+    }
+  });
+
+  it("is never written over or removed under a page id in other letter case", () => {
+    const ALIAS = "sample:m:3a";
+    const rows: Array<{ name: string; change: () => void }> = [
+      {
+        name: "a reader gives the id, and the checked record is not valid now",
+        change: () => {
+          writeFileSync(recordPath(), "{ not json");
+          setReadings([{ photo: "p1", ref: ALIAS }]);
+        },
+      },
+      { name: "a reader gives the id", change: () => setReadings([{ photo: "p1", ref: ALIAS }]) },
+      {
+        name: "status.json lists both ids",
+        change: () =>
+{
+          writeFileSync(finalPath("sample-m-3a.json"), recordBytes());
+          writeFileSync(finalPath("status.json"), JSON.stringify({ [REF]: "human_checked", [ALIAS]: "double_read" }));
+        },
+      },
+    ];
+    for (const row of rows) {
+      rmSync(work, { recursive: true });
+      mkdirSync(work);
+      setUpChecked();
+      compare();
+      row.change();
+      const before = recordBytes();
+      const status = readFileSync(finalPath("status.json"), "utf8");
+      expect(compare, row.name).toThrow(/Refusing to (write|overwrite).*sample-m-3a\.json/i);
+      expect(recordBytes().equals(before), row.name).toBe(true);
+      expect(readFileSync(finalPath("status.json"), "utf8"), row.name).toBe(status);
+    }
+
+    // After the person let go of the record, the page with the other id gets a record of its own.
+    rmSync(work, { recursive: true });
+    mkdirSync(work);
+    setUpChecked();
+    compare();
+    rmSync(recordPath());
+    setReadings([{ photo: "p1", ref: ALIAS }]);
+    for (let round = 1; round <= 2; round += 1) {
+      compare();
+      expect(statusMap()).toEqual({ [ALIAS]: "double_read" });
+      expect(JSON.parse(recordBytes(ALIAS).toString("utf8")).source_ref).toBe(ALIAS);
+      expect(existsSync(viewPath(ALIAS))).toBe(true);
+    }
+  });
+
+  it("keeps the record when its file name on disk has another letter case", () => {
+    const before = setUpChecked();
+    const alias = finalPath("sample-m-3a.json");
+    renameSync(recordPath(), alias);
+    // On a disk that sees two files here, the record file of the page is gone: the person let it go.
+    if (!existsSync(recordPath())) return;
+    for (let round = 1; round <= 2; round += 1) {
+      compare();
+      expect(recordBytes().equals(before)).toBe(true);
+      expect(statusMap()[REF]).toBe("human_checked");
+    }
+  });
+
   it("keeps both records when the photos of two checked pages swap their page ids", () => {
     addPreparedPhoto(work, "p1");
     addPreparedPhoto(work, "p2");
@@ -394,7 +508,7 @@ describe("a page checked by a person", () => {
   });
 
   async function importAll() {
-    const store = new MemoryImportStore();
+    const store = new MemoryReferenceStore();
     const result = await importReferenceRecords({
       recordsDir: join(work, "final"),
       photosDir: join(work, "photos"),

@@ -1,8 +1,6 @@
 import { join } from "node:path";
-import { isPlainObject, parseStrictUtf8Json } from "./import-photos";
 import { writeSafeOutputFile } from "./output-guard";
-import { readRegularFileIfExists } from "./read-file";
-import { loadReportSummary } from "./report-hashes";
+import { isPlainObject, readJsonNote } from "./read-file";
 import { isSourceRef } from "./validate";
 
 // The digests that tie a page checked by a person to its record and its photo. reference:check
@@ -14,6 +12,7 @@ export const CHECKED_DIGESTS_FILE = "checked-pages.digests";
 export const CHECK_RECORD_CHANGED_REASON = "record changed after the check" as const;
 export const CHECK_PHOTO_CHANGED_REASON = "photo changed after the check" as const;
 export const CHECK_PHOTO_MISSING_REASON = "photo of the check is missing" as const;
+export const CHECK_PHOTO_MISMATCH_REASON = "photo does not match the photo list" as const;
 export const CHECK_WITHOUT_DIGESTS_REASON = "checked before the photo check was saved" as const;
 export const CHECK_NOT_MARKED_REASON = "check does not count any more (check the page again)" as const;
 
@@ -22,6 +21,7 @@ export const CHECK_PROBLEM_REASONS = [
   CHECK_RECORD_CHANGED_REASON,
   CHECK_PHOTO_CHANGED_REASON,
   CHECK_PHOTO_MISSING_REASON,
+  CHECK_PHOTO_MISMATCH_REASON,
   CHECK_WITHOUT_DIGESTS_REASON,
   CHECK_NOT_MARKED_REASON,
 ] as const;
@@ -72,14 +72,12 @@ function parseCheckedDigests(raw: unknown): CheckedDigests {
 
 // A missing file is an older folder (no digests). A damaged file is an error that names the file.
 export function readCheckedDigests(finalDir: string): CheckedDigests {
-  const filePath = join(finalDir, CHECKED_DIGESTS_FILE);
-  const bytes = readRegularFileIfExists(filePath);
-  if (bytes === null) return { pages: new Map(), checkedBefore: new Set() };
-  try {
-    return parseCheckedDigests(parseStrictUtf8Json(bytes));
-  } catch (err) {
-    throw new Error(`Damaged file ${filePath}: ${err instanceof Error ? err.message : String(err)}`);
-  }
+  return (
+    readJsonNote(join(finalDir, CHECKED_DIGESTS_FILE), parseCheckedDigests) ?? {
+      pages: new Map(),
+      checkedBefore: new Set(),
+    }
+  );
 }
 
 function formatCheckedDigests(digests: CheckedDigests): string {
@@ -104,17 +102,22 @@ export function writeCheckedDigests(
   writeSafeOutputFile(join(finalDir, CHECKED_DIGESTS_FILE), formatCheckedDigests(digests), repoRoot);
 }
 
+// The photo of a page now: its digest, or why the page has no photo.
+export type PagePhoto =
+  | { sha256: string }
+  | { problem: typeof CHECK_PHOTO_MISSING_REASON | typeof CHECK_PHOTO_MISMATCH_REASON };
+
 // The one rule that decides if the check of a page still counts: both digests match what is there
 // now. Empty means that it counts.
 export function findCheckProblems(
   digest: CheckedDigest | undefined,
-  now: { recordSha256: string; photoSha256: string | null },
+  now: { recordSha256: string; photo: PagePhoto },
 ): CheckProblemReason[] {
   if (digest === undefined) return [CHECK_WITHOUT_DIGESTS_REASON];
   const problems: CheckProblemReason[] = [];
   if (now.recordSha256 !== digest.record_sha256) problems.push(CHECK_RECORD_CHANGED_REASON);
-  if (now.photoSha256 === null) problems.push(CHECK_PHOTO_MISSING_REASON);
-  else if (now.photoSha256 !== digest.photo_sha256) problems.push(CHECK_PHOTO_CHANGED_REASON);
+  if ("problem" in now.photo) problems.push(now.photo.problem);
+  else if (now.photo.sha256 !== digest.photo_sha256) problems.push(CHECK_PHOTO_CHANGED_REASON);
   return problems;
 }
 
@@ -129,7 +132,7 @@ export function checkCheckedPages(args: {
   recordSha256ByRef: ReadonlyMap<string, string>;
   plannedPhotos: ReadonlyMap<string, { sha256: string }>;
   problems: string[];
-  reportCheckedRefs?: ReadonlySet<string>;
+  reportCheckedRefs: ReadonlySet<string>;
 }): void {
   let digests: CheckedDigests;
   try {
@@ -138,31 +141,20 @@ export function checkCheckedPages(args: {
     args.problems.push(err instanceof Error ? err.message : String(err));
     return;
   }
-  let reportedChecked = args.reportCheckedRefs;
-  if (reportedChecked === undefined) {
-    try {
-      reportedChecked = loadReportSummary(join(args.finalDir, "report.json")).checkedRefs;
-    } catch (err) {
-      args.problems.push(err instanceof Error ? err.message : String(err));
-      return;
-    }
-  }
   for (const [ref, recordSha256] of args.recordSha256ByRef) {
     const status = args.statusByRef.get(ref) ?? "machine_read";
     const digest = digests.pages.get(ref);
     const checkedBefore =
-      digests.checkedBefore.has(ref) || (digest === undefined && reportedChecked.has(ref));
-    const lapsed =
-      status !== "human_checked" &&
-      (checkedBefore || (status === "machine_read" && digest !== undefined));
+      digests.checkedBefore.has(ref) || (digest === undefined && args.reportCheckedRefs.has(ref));
+    const lapsed = status !== "human_checked" && (checkedBefore || digest !== undefined);
     if (status !== "human_checked" && !lapsed) continue;
-    const photoSha256 = args.plannedPhotos.get(ref)?.sha256 ?? null;
+    const photo = args.plannedPhotos.get(ref);
     const causes = findCheckProblems(lapsed && checkedBefore ? undefined : digest, {
       recordSha256,
-      photoSha256,
+      photo: photo ?? { problem: CHECK_PHOTO_MISSING_REASON },
     });
     if (causes.length === 0) continue;
-    const photoHint = photoSha256 === null ? " (give the prepared photos with --photos)" : "";
+    const photoHint = photo === undefined ? " (give the prepared photos with --photos)" : "";
     const what = lapsed
       ? `a person checked this page before and its status is ${status} now`
       : "status.json says human_checked, but";

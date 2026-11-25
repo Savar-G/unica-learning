@@ -3156,6 +3156,10 @@ describe("compareWorkFolder", () => {
       ["pages = [null, valid]", (valid) => JSON.stringify({ pages: [null, valid] })],
       ['pages = "x"', () => JSON.stringify({ pages: "x" })],
       ["not JSON", () => "{ bad"],
+      ["root null", () => "null"],
+      ["root is a list", () => "[]"],
+      ["pages null", () => JSON.stringify({ pages: null })],
+      ["page id that is not a page id", (valid) => JSON.stringify({ pages: [{ ...valid, source_ref: "../../x" }] })],
       ["row is a number", () => JSON.stringify({ pages: [42] })],
       ["row is a list", () => JSON.stringify({ pages: [["sample:M:3a"]] })],
       ["hash with no source_ref", (valid) => JSON.stringify({ pages: [{ ...valid, source_ref: undefined }] })],
@@ -3183,9 +3187,7 @@ describe("compareWorkFolder", () => {
 
     // A report that can be read and names no hash does not stop the run.
     const continueCases: Array<[string, unknown]> = [
-      ["root null", null],
       ["pages absent", {}],
-      ["pages null", { pages: null }],
       ["pages empty", { pages: [] }],
       ["row without a hash", { pages: [{ source_ref: "sample:M:3a" }] }],
       ["row with a null hash", { pages: [{ source_ref: "sample:M:3a", final_record_sha256: null }] }],

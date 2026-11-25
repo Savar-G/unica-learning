@@ -2,13 +2,9 @@
 // planned row, and when it is not, write the photo (overwrite) and update the row in place.
 // Nothing here deletes a row or an object.
 import type { PlannedPhoto } from "./import-photos";
-import {
-  deepEqualJson,
-  TRANSCRIPT_STATUSES,
-  type ExistingReferenceRow,
-  type ReferenceStore,
-  type TranscriptStatus,
-} from "./import";
+import { deepEqualJson, type ExistingReferenceRow, type ReferenceStore } from "./import";
+import { isPlainObject } from "./read-file";
+import { TRANSCRIPT_STATUSES, type TranscriptStatus } from "./status-file";
 import type { ReferenceRecord } from "./types";
 
 export interface StatusLowered {
@@ -140,13 +136,22 @@ export function checkPathOwnership(
   return { problems, leftoverWaits };
 }
 
+// The text of a page: single_read only says how it was read.
+function withoutSingleRead(transcript: unknown): unknown {
+  return isPlainObject(transcript) ? { ...transcript, single_read: undefined } : transcript;
+}
+
 // A row that keeps its stored photo keeps its text too: the new text may belong to another photo.
 function keepsPhotoOfOtherText(
   record: ReferenceRecord,
   prev: ExistingReferenceRow,
   photo: PlannedPhoto | undefined,
 ): boolean {
-  return photo === undefined && prev.path !== null && !deepEqualJson(prev.transcript, record);
+  return (
+    photo === undefined &&
+    prev.path !== null &&
+    !deepEqualJson(withoutSingleRead(prev.transcript), withoutSingleRead(record))
+  );
 }
 
 // Without a planned photo, a row with a stored photo may keep or lower its status, never raise it.
@@ -169,7 +174,7 @@ export async function planReplaces(args: {
   records: ReferenceRecord[];
   existing: Map<string, ExistingReferenceRow>;
   plannedPhotos: Map<string, PlannedPhoto>;
-  statusByRef: Map<string, TranscriptStatus>;
+  statusByRef: ReadonlyMap<string, TranscriptStatus>;
   storedShaByRef: Map<string, string | null>;
 }): Promise<PathOwnershipCheck & { decisions: Map<string, ReplaceDecision> }> {
   const decisions = new Map<string, ReplaceDecision>();

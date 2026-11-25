@@ -4,20 +4,24 @@ import {
   assertOutsideRepo,
   assertSafeOutputFile,
   CHECKED_DIGESTS_FILE,
-  parseStrictUtf8Json,
+  formatStatusMap,
+  isPlainObject,
+  loadReportSummary,
+  parseJsonFileBytes,
   prepareSafeOutputDir,
   readCheckedDigests,
+  readJsonNote,
   readRegularFileIfExists,
+  readStatusMap,
   renderRecordToMarkdown,
   sha256Hex,
   validateReferenceRecord,
   writeCheckedDigests,
   writeSafeOutputFile,
 } from "@/lib/reference-record";
-import { isPlainObject } from "@/lib/reference-record/import-photos";
 import { applyComputedAnswers, fileSlugFromRef, findEmptyAnswers } from "./answers";
-import type { PageStatus } from "./compare";
-import { parsePhotosManifest, PHOTOS_MANIFEST_FILE } from "./prepare";
+import { finalFileKey, finalFileName } from "./checked-pages";
+import { PHOTOS_MANIFEST_FILE, readPhotosManifest } from "./prepare";
 
 export interface CheckPageResult {
   sourceRef: string;
@@ -44,39 +48,13 @@ function assertPlainFolders(workDir: string): void {
   }
 }
 
-// Undefined only when no file is there.
-function readStrictJsonIfExists(filePath: string): unknown {
-  const bytes = readRegularFileIfExists(filePath);
-  return bytes === null ? undefined : parseStrictJsonBytes(filePath, bytes);
-}
-
-function parseStrictJsonBytes(filePath: string, bytes: Uint8Array): unknown {
-  try {
-    return parseStrictUtf8Json(bytes);
-  } catch (err) {
-    const kind = err instanceof SyntaxError ? "Invalid JSON" : "Invalid UTF-8";
-    throw new Error(
-      `${kind} in ${filePath}: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-}
-
 // The photo of a page: the photos manifest names it; an older work folder may name it only in the
 // report. Without either, the photos folder is named.
 function describePagePhoto(workDir: string, page: string): string {
   const photosDir = join(workDir, "photos");
-  const manifestPath = join(photosDir, PHOTOS_MANIFEST_FILE);
-  const rawManifest = readStrictJsonIfExists(manifestPath);
-  if (rawManifest !== undefined) {
-    try {
-      const manifest = parsePhotosManifest(rawManifest);
-      const entry = manifest.photos.find((p) => p.source_ref === page);
-      if (entry) return `${join(photosDir, entry.file)} (original name ${entry.original_name})`;
-    } catch {
-      // Unrecognized manifest shape: try the report.
-    }
-  }
-  const rawReport = readStrictJsonIfExists(join(workDir, "final", "report.json"));
+  const listed = readPhotosManifest(photosDir)?.photos.find((p) => p.source_ref === page);
+  if (listed) return `${join(photosDir, listed.file)} (original name ${listed.original_name})`;
+  const rawReport = readJsonNote(join(workDir, "final", "report.json"), (raw) => raw);
   const pages = isPlainObject(rawReport) ? rawReport.pages : undefined;
   const entry = Array.isArray(pages)
     ? pages.find((p): p is Record<string, unknown> => isPlainObject(p) && p.source_ref === page)
@@ -96,15 +74,9 @@ function describePagePhoto(workDir: string, page: string): string {
 function readPagePhoto(workDir: string, page: string): { path: string; sha256: string } {
   const photosDir = join(workDir, "photos");
   const manifestPath = join(photosDir, PHOTOS_MANIFEST_FILE);
-  const manifestBytes = readRegularFileIfExists(manifestPath);
-  if (manifestBytes === null) {
+  const manifest = readPhotosManifest(photosDir);
+  if (manifest === null) {
     throw new Error(`Missing ${manifestPath}. Run reference:extract first. Nothing was written.`);
-  }
-  let manifest;
-  try {
-    manifest = parsePhotosManifest(parseStrictJsonBytes(manifestPath, manifestBytes));
-  } catch (err) {
-    throw new Error(`${manifestPath}: ${err instanceof Error ? err.message : String(err)}`);
   }
   const entries = manifest.photos.filter((p) => p.source_ref === page);
   if (entries.length !== 1) {
@@ -163,29 +135,25 @@ export function checkAndMarkPage(opts: {
 
   const finalDir = join(workDir, "final");
   const statusPath = join(finalDir, "status.json");
-  const rawStatus = readStrictJsonIfExists(statusPath);
-  if (rawStatus === undefined) {
+  const statusMap = readStatusMap(finalDir);
+  if (statusMap === null) {
     throw new Error(`Missing status.json in ${finalDir}. Run reference:compare first.`);
   }
-  if (!isPlainObject(rawStatus)) {
-    throw new Error(`Invalid status map in ${statusPath}: expected a JSON object`);
-  }
-  const statusMap = rawStatus as Record<string, PageStatus>;
-  if (!Object.prototype.hasOwnProperty.call(statusMap, page)) {
+  if (!statusMap.has(page)) {
     throw new Error(`Page "${page}" is not listed in ${statusPath}. Run reference:compare first.`);
   }
 
   const slug = fileSlugFromRef(page);
-  const fileToRef = new Map<string, string>();
-  for (const existingRef of Object.keys(statusMap)) {
-    const fileName = `${fileSlugFromRef(existingRef)}.json`;
-    const prior = fileToRef.get(fileName);
-    if (prior && prior !== existingRef) {
+  const keyToRef = new Map<string, string>();
+  for (const existingRef of statusMap.keys()) {
+    const key = finalFileKey(existingRef);
+    const prior = keyToRef.get(key);
+    if (prior) {
       throw new Error(
-        `Refusing to write: "${existingRef}" and "${prior}" both map to "${fileName}"`,
+        `Refusing to write: "${existingRef}" and "${prior}" both map to "${finalFileName(existingRef)}"`,
       );
     }
-    fileToRef.set(fileName, existingRef);
+    keyToRef.set(key, existingRef);
   }
 
   const recordPath = join(finalDir, `${slug}.json`);
@@ -193,7 +161,7 @@ export function checkAndMarkPage(opts: {
   if (recordBytes === null) {
     throw new Error(`Final record not found for "${page}" at ${recordPath}`);
   }
-  const parsed = parseStrictJsonBytes(recordPath, recordBytes);
+  const parsed = parseJsonFileBytes(recordPath, recordBytes);
 
   if (
     typeof parsed === "object" &&
@@ -263,8 +231,8 @@ export function checkAndMarkPage(opts: {
     );
   }
   const digests = readCheckedDigests(finalDir);
-  // A report that is a link or no plain file stops the check too, like each file that it reads.
-  readRegularFileIfExists(join(finalDir, "report.json"));
+  // A report that compare would refuse stops the check too.
+  loadReportSummary(finalDir);
   // Each destination is looked at before the first write.
   for (const path of [
     recordPath,
@@ -282,17 +250,20 @@ export function checkAndMarkPage(opts: {
   const recordOut = Buffer.from(`${JSON.stringify(recheck.record, null, 2)}\n`, "utf8");
   writeSafeOutputFile(finalRecordPath, recordOut, repoRoot);
 
-  // The digests come before the status: a stop between the two leaves a page that is not checked.
+  const viewPath = join(safeViewDir, `${slug}.md`);
+  writeSafeOutputFile(viewPath, viewText, repoRoot);
+
+  // The last write makes the check count: the status, or the digests when the page already has the
+  // status (its old digests do not match a record or photo that changed).
   digests.pages.set(page, { record_sha256: sha256Hex(recordOut), photo_sha256: photo.sha256 });
   digests.checkedBefore.delete(page);
   writeCheckedDigests(safeFinalDir, digests, repoRoot);
 
   const safeStatusPath = join(safeFinalDir, "status.json");
-  statusMap[page] = "human_checked";
-  writeSafeOutputFile(safeStatusPath, `${JSON.stringify(statusMap, null, 2)}\n`, repoRoot);
-
-  const viewPath = join(safeViewDir, `${slug}.md`);
-  writeSafeOutputFile(viewPath, viewText, repoRoot);
+  if (statusMap.get(page) !== "human_checked") {
+    statusMap.set(page, "human_checked");
+    writeSafeOutputFile(safeStatusPath, formatStatusMap(statusMap), repoRoot);
+  }
 
   return {
     sourceRef: page,

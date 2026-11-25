@@ -2,16 +2,21 @@ import { lstatSync } from "node:fs";
 import { join } from "node:path";
 import {
   CHECK_NOT_MARKED_REASON,
+  CHECK_PHOTO_MISMATCH_REASON,
+  CHECK_PHOTO_MISSING_REASON,
   findCheckProblems,
   loadReportSummary,
-  parseStrictUtf8Json,
   readCheckedDigests,
   readRegularFileIfExists,
   readRegularFileNoFollow,
+  readStatusMap,
   sha256Hex,
   writeCheckedDigests,
   type CheckedDigests,
   type CheckProblemReason,
+  type PagePhoto,
+  type ReportDigests,
+  type TranscriptStatus,
 } from "@/lib/reference-record";
 import { fileSlugFromRef } from "./answers";
 import type { PhotosManifest } from "./prepare";
@@ -19,52 +24,47 @@ import type { PhotosManifest } from "./prepare";
 // The pages whose final record a person checked, now or before. Compare and extract never write
 // over, move or delete such a record; human_checked counts only while its digests match.
 export interface CheckedPages {
-  status: Record<string, string>;
+  status: ReadonlyMap<string, TranscriptStatus>;
   digests: CheckedDigests;
   refs: Set<string>;
-}
-
-function readStrictJson(filePath: string): unknown {
-  const bytes = readRegularFileIfExists(filePath);
-  if (bytes === null) return undefined;
-  try {
-    return parseStrictUtf8Json(bytes);
-  } catch (err) {
-    throw new Error(`Damaged file ${filePath}: ${err instanceof Error ? err.message : String(err)}`);
-  }
-}
-
-function readStatusMap(finalDir: string): Record<string, string> {
-  const filePath = join(finalDir, "status.json");
-  const raw = readStrictJson(filePath);
-  if (raw === undefined) return {};
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    throw new Error(`Damaged file ${filePath}: expected an object`);
-  }
-  for (const [ref, value] of Object.entries(raw)) {
-    if (typeof value !== "string") throw new Error(`Damaged file ${filePath}: ${ref} has no text status`);
-  }
-  return raw as Record<string, string>;
+  // What the report of the last compare gives for each page.
+  reported: ReadonlyMap<string, ReportDigests>;
 }
 
 export function loadCheckedPages(finalDir: string): CheckedPages {
-  const status = readStatusMap(finalDir);
+  const status = readStatusMap(finalDir) ?? new Map<string, TranscriptStatus>();
   const digests = readCheckedDigests(finalDir);
-  const reported = loadReportSummary(join(finalDir, "report.json")).checkedRefs;
+  const report = loadReportSummary(finalDir);
   const refs = new Set<string>([
-    ...Object.keys(status).filter((ref) => status[ref] === "human_checked"),
+    ...[...status.keys()].filter((ref) => status.get(ref) === "human_checked"),
     ...digests.pages.keys(),
     ...digests.checkedBefore,
-    ...reported,
+    ...report.checkedRefs,
   ]);
-  return { status, digests, refs };
+  return { status, digests, refs, reported: report.digests };
+}
+
+// The final record file of a page.
+export function finalFileName(ref: string): string {
+  return `${fileSlugFromRef(ref)}.json`;
+}
+
+// Some disks see one file in two names that differ only in letter case.
+export function finalFileKey(ref: string): string {
+  return finalFileName(ref).toLowerCase();
+}
+
+// Tells if the final files of a page are those of one of these pages.
+export function finalFileGuard(refs: Iterable<string>): (ref: string) => boolean {
+  const keys = new Set([...refs].map(finalFileKey));
+  return (ref) => keys.has(finalFileKey(ref));
 }
 
 function finalRecordPath(finalDir: string, ref: string): string {
-  return join(finalDir, `${fileSlugFromRef(ref)}.json`);
+  return join(finalDir, finalFileName(ref));
 }
 
-function fileExists(filePath: string): boolean {
+export function fileExists(filePath: string): boolean {
   try {
     lstatSync(filePath);
     return true;
@@ -79,6 +79,12 @@ export function keptCheckedRefs(finalDir: string, checked: CheckedPages): Set<st
   return new Set([...checked.refs].filter((ref) => fileExists(finalRecordPath(finalDir, ref))));
 }
 
+// The photos of the saved checks whose record is still in final/.
+export function keptPhotoDigests(finalDir: string, checked: CheckedPages): string[] {
+  const kept = keptCheckedRefs(finalDir, checked);
+  return [...checked.digests.pages].filter(([ref]) => kept.has(ref)).map(([, d]) => d.photo_sha256);
+}
+
 // Saved checks whose photo_sha256 equals this photo and whose record is still in final/.
 export function checkedRefsForPhoto(
   finalDir: string,
@@ -89,23 +95,6 @@ export function checkedRefsForPhoto(
   return [...checked.digests.pages]
     .filter(([ref, d]) => d.photo_sha256 === photoSha256 && kept.has(ref))
     .map(([ref]) => ref);
-}
-
-// True for the photo of a page that a person checked and whose record is still there: the photo of
-// the saved check, or each photo with this page id when no digest is saved. extract --force does not
-// read it again.
-export function isPhotoOfCheck(opts: {
-  finalDir: string;
-  checked: CheckedPages;
-  ref: string;
-  photoSha256: string;
-}): boolean {
-  const { finalDir, checked, ref, photoSha256 } = opts;
-  const digest = checked.digests.pages.get(ref);
-  return (
-    keptCheckedRefs(finalDir, checked).has(ref) &&
-    (digest === undefined || digest.photo_sha256 === photoSha256)
-  );
 }
 
 // Before compare takes human_checked out of status.json, the digest file remembers each kept page.
@@ -128,16 +117,14 @@ export function rememberKeptPages(
   if (!same) writeCheckedDigests(finalDir, next, repoRoot);
 }
 
-// The SHA-256 of the photo that import would send with this page, or null when there is none.
-export function pagePhotoSha256(
-  photosDir: string,
-  manifest: PhotosManifest | null,
-  ref: string,
-): string | null {
-  const entry = manifest?.photos.find((p) => p.source_ref === ref);
-  if (!entry) return null;
-  const bytes = readRegularFileIfExists(join(photosDir, entry.file));
-  return bytes === null ? null : sha256Hex(bytes);
+// The photo that import would send with this page. Import refuses a file whose bytes are not the
+// ones that the photo list gives, so the page has no photo then.
+export function pagePhoto(photosDir: string, manifest: PhotosManifest, ref: string): PagePhoto {
+  const entry = manifest.photos.find((p) => p.source_ref === ref);
+  const bytes = entry ? readRegularFileIfExists(join(photosDir, entry.file)) : null;
+  if (!entry || bytes === null) return { problem: CHECK_PHOTO_MISSING_REASON };
+  const sha256 = sha256Hex(bytes);
+  return sha256 === entry.sha256 ? { sha256 } : { problem: CHECK_PHOTO_MISMATCH_REASON };
 }
 
 // Why the check of a kept page does not count. Empty means that the page is human_checked.
@@ -145,26 +132,15 @@ export function pageCheckProblems(opts: {
   finalDir: string;
   checked: CheckedPages;
   ref: string;
-  photoSha256: string | null;
+  photo: PagePhoto;
 }): CheckProblemReason[] {
-  const { finalDir, checked, ref, photoSha256 } = opts;
+  const { finalDir, checked, ref, photo } = opts;
   const problems = findCheckProblems(checked.digests.pages.get(ref), {
     recordSha256: sha256Hex(readRegularFileNoFollow(finalRecordPath(finalDir, ref))),
-    photoSha256,
+    photo,
   });
   // Only reference:check makes a page human_checked: compare never raises a status to it.
-  const marked = Object.hasOwn(checked.status, ref) && checked.status[ref] === "human_checked";
+  const marked = checked.status.get(ref) === "human_checked";
   return problems.length === 0 && !marked ? [CHECK_NOT_MARKED_REASON] : problems;
 }
 
-// True when the page is human_checked for this photo: its status is marked and both digests match.
-export function isCheckedForPhoto(opts: {
-  finalDir: string;
-  checked: CheckedPages;
-  ref: string;
-  photoSha256: string;
-}): boolean {
-  return (
-    fileExists(finalRecordPath(opts.finalDir, opts.ref)) && pageCheckProblems(opts).length === 0
-  );
-}

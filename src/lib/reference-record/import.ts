@@ -3,11 +3,8 @@ import { join, resolve } from "node:path";
 import { checkCheckedPages } from "./checked-digests";
 import {
   buildReferencePhotoPath,
-  decodeStrictUtf8,
   findUnstorableTextPath,
-  isPlainObject,
   parseImportJson,
-  parseStrictUtf8Json,
   readPlannedPhotos,
   readRegularFileNoFollow,
   type PlannedPhoto,
@@ -19,32 +16,25 @@ import {
   type ReplaceDecision,
   type StatusLowered,
 } from "./import-replace";
-import { sha256Hex } from "./read-file";
+import { isPlainObject, sha256Hex } from "./read-file";
 import { checkStatusSingleRead } from "./record-path";
 import { checkMachineDigests, loadReportSummary, type ReportSummary } from "./report-hashes";
+import { readStatusMap, type TranscriptStatus } from "./status-file";
 import type { ReferenceRecord } from "./types";
 import { validateReferenceRecord } from "./validate";
 
-export { buildReferencePhotoPath, decodeStrictUtf8, findUnstorableTextPath, parseStrictUtf8Json };
-export type { StatusLowered };
+export { buildReferencePhotoPath, findUnstorableTextPath };
+export type { StatusLowered, TranscriptStatus };
+export { TRANSCRIPT_STATUSES } from "./status-file";
 export { MAX_REFERENCE_PHOTO_BYTES } from "./import-photos";
 
 export const REFERENCE_RECORD_KINDS = ["page", "contents"] as const;
 export type ReferenceRecordKind = (typeof REFERENCE_RECORD_KINDS)[number];
 
-export const TRANSCRIPT_STATUSES = [
-  "machine_read",
-  "agreement_accepted",
-  "double_read",
-  "human_checked",
-] as const;
-export type TranscriptStatus = (typeof TRANSCRIPT_STATUSES)[number];
-
 export const REFERENCE_TABLE = "bank_reference_images" as const;
 export const REFERENCE_BUCKET = "curriculum-reference" as const;
 
 const RESERVED_RECORD_FILES = new Set(["status.json", "report.json"]);
-const TRANSCRIPT_STATUS_SET = new Set<string>(TRANSCRIPT_STATUSES);
 
 export interface ReferenceRow {
   source_ref: string;
@@ -107,10 +97,6 @@ export interface ImportResult {
   statusLowered: StatusLowered[];
   leftoverPhotos: string[];
   problems: string[];
-}
-
-function isTranscriptStatus(value: unknown): value is TranscriptStatus {
-  return typeof value === "string" && TRANSCRIPT_STATUS_SET.has(value);
 }
 
 export function deepEqualJson(a: unknown, b: unknown): boolean {
@@ -250,57 +236,6 @@ async function readRecords(
   return { realRecordsDir, recordsRead: recordFiles.length, records, seenRefs, recordSha256ByRef };
 }
 
-async function readStatusMap(
-  recordsDir: string,
-  seenRefs: Map<string, string>,
-  problems: string[],
-): Promise<Map<string, TranscriptStatus>> {
-  const statusByRef = new Map<string, TranscriptStatus>();
-  const statusPath = join(recordsDir, "status.json");
-
-  const statusRead = await readRegularFileNoFollow(statusPath);
-  if (!statusRead.ok) {
-    if (statusRead.kind === "missing") {
-      return statusByRef;
-    }
-    const detail =
-      statusRead.kind === "symlink"
-        ? "refusing symlink"
-        : statusRead.kind === "not_file"
-          ? "not a regular file"
-          : `could not be read (${statusRead.message})`;
-    problems.push(`status.json: ${detail}`);
-    return statusByRef;
-  }
-
-  const parsedResult = parseImportJson("status.json", statusRead.bytes, problems);
-  if (!parsedResult.ok) {
-    return statusByRef;
-  }
-  const parsed = parsedResult.value;
-
-  if (!isPlainObject(parsed)) {
-    problems.push("status.json: must be a JSON object mapping source_ref to transcript_status");
-    return statusByRef;
-  }
-
-  for (const [ref, value] of Object.entries(parsed)) {
-    if (!isTranscriptStatus(value)) {
-      problems.push(
-        `status.json: unknown status for "${ref}": ${JSON.stringify(value)} (expected ${TRANSCRIPT_STATUSES.join(", ")})`,
-      );
-    }
-    if (!seenRefs.has(ref)) {
-      problems.push(`status.json: "${ref}" has no matching record file`);
-    }
-    if (isTranscriptStatus(value) && seenRefs.has(ref)) {
-      statusByRef.set(ref, value);
-    }
-  }
-
-  return statusByRef;
-}
-
 export async function importReferenceRecords(options: ImportOptions): Promise<ImportResult> {
   const dryRun = options.dryRun ?? false;
   const replace = options.replace ?? false;
@@ -312,9 +247,15 @@ export async function importReferenceRecords(options: ImportOptions): Promise<Im
     problems,
   );
   const problemsBeforeStatus = problems.length;
-  const statusByRef = realRecordsDir
-    ? await readStatusMap(realRecordsDir, seenRefs, problems)
-    : new Map<string, TranscriptStatus>();
+  let statusByRef: ReadonlyMap<string, TranscriptStatus> = new Map();
+  try {
+    if (realRecordsDir) statusByRef = readStatusMap(realRecordsDir) ?? statusByRef;
+  } catch (err) {
+    problems.push(err instanceof Error ? err.message : String(err));
+  }
+  for (const ref of statusByRef.keys()) {
+    if (!seenRefs.has(ref)) problems.push(`status.json: "${ref}" has no matching record file`);
+  }
   const statusIsUsable = problems.length === problemsBeforeStatus;
   if (realRecordsDir && statusIsUsable) checkStatusSingleRead(records, statusByRef, problems);
   const plannedPhotos = options.photosDir
@@ -324,12 +265,12 @@ export async function importReferenceRecords(options: ImportOptions): Promise<Im
     const finalDir = realRecordsDir;
     let report: ReportSummary | undefined;
     try {
-      report = loadReportSummary(join(finalDir, "report.json"));
+      report = loadReportSummary(finalDir);
     } catch (err) {
       problems.push(err instanceof Error ? err.message : String(err));
     }
     if (statusIsUsable && report) {
-      checkMachineDigests({ finalDir, statusByRef, recordSha256ByRef, plannedPhotos, problems, report });
+      checkMachineDigests({ statusByRef, recordSha256ByRef, plannedPhotos, problems, report });
     }
     checkCheckedPages({
       finalDir,

@@ -1,10 +1,10 @@
-import { extname, isAbsolute, relative, resolve } from "node:path";
+import { extname, isAbsolute, join, relative, resolve } from "node:path";
 import sharp from "sharp";
-import { readRegularFileNoFollow, sha256Hex } from "@/lib/reference-record/read-file";
+import { parsePhotoList, PHOTOS_MANIFEST_FILE } from "@/lib/reference-record/import-photos";
+import { readJsonNote, readRegularFileNoFollow, sha256Hex } from "@/lib/reference-record/read-file";
 
-export { readRegularFileNoFollow, sha256Hex };
+export { PHOTOS_MANIFEST_FILE, readRegularFileNoFollow, sha256Hex };
 
-export const PHOTOS_MANIFEST_FILE = "photos-manifest.json";
 export const PREPARE_REPORT_FILE = "prepare.json";
 export const MIN_LONG_SIDE_PX = 1600;
 export const MIN_SHORT_SIDE_PX = 600;
@@ -142,18 +142,7 @@ export function createEmptyManifest(): PhotosManifest {
 }
 
 export function parsePhotosManifest(raw: unknown): PhotosManifest {
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    throw new Error("Invalid photos manifest: expected an object");
-  }
-  const obj = raw as Record<string, unknown>;
-  if (obj.version !== 1 || !Array.isArray(obj.photos)) {
-    throw new Error("Invalid photos manifest: expected version 1 with a photos array");
-  }
-  const photos: PhotosManifestEntry[] = obj.photos.map((entry, idx) => {
-    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
-      throw new Error(`Invalid manifest photo entry at index ${idx}`);
-    }
-    const e = entry as Record<string, unknown>;
+  const photos: PhotosManifestEntry[] = parsePhotoList(raw).map((e, idx) => {
     if (
       typeof e.file !== "string" ||
       typeof e.sha256 !== "string" ||
@@ -179,12 +168,17 @@ export function parsePhotosManifest(raw: unknown): PhotosManifest {
       width: e.width,
       height: e.height,
     };
-    if (typeof e.source_ref === "string" && e.source_ref.length > 0) {
+    if (typeof e.source_ref === "string") {
       parsed.source_ref = e.source_ref;
     }
     return parsed;
   });
   return { version: 1, photos };
+}
+
+// The photo list of a work folder. Null only when no file is there.
+export function readPhotosManifest(photosDir: string): PhotosManifest | null {
+  return readJsonNote(join(photosDir, PHOTOS_MANIFEST_FILE), parsePhotosManifest);
 }
 
 export function upsertManifestPhoto(

@@ -1,9 +1,8 @@
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, unlinkSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
   assertOutsideRepo,
-  loadPreviousHashes,
   prepareSafeOutputDir,
   renderRecordToMarkdown,
   writeSafeOutputFile,
@@ -18,10 +17,13 @@ import {
   fileSlugFromRef,
 } from "./answers";
 import {
+  finalFileGuard,
+  finalFileKey,
+  finalFileName,
   keptCheckedRefs,
   loadCheckedPages,
   pageCheckProblems,
-  pagePhotoSha256,
+  pagePhoto,
   rememberKeptPages,
 } from "./checked-pages";
 import {
@@ -46,7 +48,6 @@ import {
   writePlannedManifest,
 } from "./compare-batch-files";
 import {
-  loadOriginalNamesByDigest,
   loadPrepareReport,
   loadSlot,
   pairDigest,
@@ -55,6 +56,8 @@ import {
   pickPageWinners,
   type PairedPage,
 } from "./compare-pairing";
+import { createEmptyManifest, readPhotosManifest } from "./prepare";
+import { unlinkChild } from "./extract-state";
 import {
   countPageStatuses,
   formatCompareReportMarkdown,
@@ -116,7 +119,9 @@ export function compareWorkFolder(opts: {
   const workDir = resolve(opts.workDir);
   assertOutsideRepo(workDir, repoRoot);
 
-  const originalNamesByDigest = loadOriginalNamesByDigest(workDir);
+  const photosDir = join(workDir, "photos");
+  const manifest = readPhotosManifest(photosDir) ?? createEmptyManifest();
+  const originalNamesByDigest = new Map(manifest.photos.map((p) => [p.sha256, p.original_name]));
   const prepareReport = loadPrepareReport(workDir);
   const slotA = loadSlot(join(workDir, "reader-a"));
   const slotB = loadSlot(join(workDir, "reader-b"));
@@ -128,30 +133,25 @@ export function compareWorkFolder(opts: {
   const viewDir = prepareSafeOutputDir(join(workDir, "final-view"), repoRoot);
 
   const checked = loadCheckedPages(finalDir);
-  const previousHashes = loadPreviousHashes(join(finalDir, "report.json"));
   // A kept page that status.json does not list is still an existing page.
-  const existingStatus: Record<string, string> = {
-    ...Object.fromEntries([...checked.refs].map((ref) => [ref, "machine_read"])),
-    ...checked.status,
-  };
+  const existingRefs = new Set([...checked.refs, ...checked.status.keys()]);
 
-  assertNoFileCollisions(pairs, existingStatus, finalDir);
+  assertNoFileCollisions(pairs, existingRefs, finalDir);
 
   // The check of a page counts only for the record on disk and the photo that the manifest gives
   // the page after this run. Every file is looked at before the first write.
   const keptRefs = keptCheckedRefs(finalDir, checked);
-  const batchRefs = new Set(pairs.map(pairSourceRef));
-  const manifestPlan = planManifestSourceRefs(
-    workDir,
+  // Another photo takes the page id of a kept page only when the readings name that photo.
+  const refsWithPhoto = new Set(pairs.filter((pair) => pairDigest(pair) !== null).map(pairSourceRef));
+  const plannedManifest = planManifestSourceRefs(
+    manifest,
     pairs,
-    new Set([...keptRefs].filter((ref) => !batchRefs.has(ref))),
-    { strict: keptRefs.size > 0 },
+    new Set([...keptRefs].filter((ref) => !refsWithPhoto.has(ref))),
   );
   const checkProblems = new Map<string, CheckProblemReason[]>();
   for (const ref of keptRefs) {
-    const photosDir = join(workDir, "photos");
-    const photoSha256 = pagePhotoSha256(photosDir, manifestPlan?.after ?? null, ref);
-    checkProblems.set(ref, pageCheckProblems({ finalDir, checked, ref, photoSha256 }));
+    const photo = pagePhoto(photosDir, plannedManifest, ref);
+    checkProblems.set(ref, pageCheckProblems({ finalDir, checked, ref, photo }));
   }
   rememberKeptPages(finalDir, checked, keptRefs, repoRoot);
 
@@ -245,10 +245,10 @@ export function compareWorkFolder(opts: {
 
     // A final record that a person changed since the last compare is kept until the person
     // checks it. The page is then not double_read or agreement_accepted.
-    const previousHash = previousHashes.get(sourceRef);
+    const previousHash = checked.reported.get(sourceRef)?.record ?? null;
     const editedByPerson =
       keptProblems === undefined &&
-      previousHash !== undefined &&
+      previousHash !== null &&
       existsSync(finalRecordPath) &&
       sha256OfFile(finalRecordPath) !== previousHash;
     const keepsRecord = editedByPerson || keptProblems !== undefined;
@@ -400,7 +400,7 @@ export function compareWorkFolder(opts: {
       photo_sha256: pair.photoSha256,
       final_photo_sha256: keepsRecord ? null : pairDigest(pair),
       final_record_sha256: keepsRecord
-        ? (previousHash ?? null)
+        ? previousHash
         : createHash("sha256").update(finalText, "utf8").digest("hex"),
       ...(editedByPerson ? { edited_by_person: true } : {}),
       ...(problems.length > 0 ? { check_problems: problems } : {}),
@@ -431,12 +431,11 @@ export function compareWorkFolder(opts: {
   }
 
   const handledStaleFiles = new Set<string>(keptFinalFiles);
-  for (const staleRef of Object.keys(existingStatus)) {
+  const isFinalOfThisRun = finalFileGuard([...seenFinalRefs, ...keptRefs]);
+  for (const staleRef of existingRefs) {
     if (seenFinalRefs.has(staleRef)) continue;
     const slug = fileSlugFromRef(staleRef);
     const recordFile = `${slug}.json`;
-    const recordPath = join(finalDir, recordFile);
-    const viewPath = join(viewDir, `${slug}.md`);
     handledStaleFiles.add(recordFile);
 
     const problems = checkProblems.get(staleRef);
@@ -462,26 +461,33 @@ export function compareWorkFolder(opts: {
         ...(problems.length > 0 ? { check_problems: problems } : {}),
       });
     } else {
-      if (existsSync(recordPath)) unlinkSync(recordPath);
-      if (existsSync(viewPath)) unlinkSync(viewPath);
+      if (!isFinalOfThisRun(staleRef)) {
+        unlinkChild(finalDir, recordFile);
+        unlinkChild(viewDir, `${slug}.md`);
+      }
       removedStalePages.push(staleRef);
     }
   }
 
-  for (const name of readdirSync(finalDir)) {
+  const names = new Set(readdirSync(finalDir));
+  // The kept records that the disk has under a name with other letter case.
+  const renamedKept = new Set(
+    [...keptRefs].filter((ref) => !names.has(finalFileName(ref))).map(finalFileKey),
+  );
+  for (const name of names) {
     if (!name.endsWith(".json") || FINAL_META_FILES.has(name) || handledStaleFiles.has(name)) {
       continue;
     }
+    if (renamedKept.has(name.toLowerCase())) continue;
     const recordPath = join(finalDir, name);
     const rec = loadExistingFinalRecord(recordPath);
     const label = rec?.source_ref ?? name;
-    const viewPath = join(viewDir, name.replace(/\.json$/, ".md"));
-    if (existsSync(recordPath)) unlinkSync(recordPath);
-    if (existsSync(viewPath)) unlinkSync(viewPath);
+    unlinkChild(finalDir, name);
+    unlinkChild(viewDir, name.replace(/\.json$/, ".md"));
     removedStalePages.push(label);
   }
 
-  writePlannedManifest(manifestPlan, repoRoot);
+  writePlannedManifest(photosDir, manifest, plannedManifest, repoRoot);
 
   const report: CompareWorkReport = {
     reader_a: slotA.meta,

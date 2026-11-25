@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { writeSafeOutputFile } from "@/lib/reference-record";
 import { fileSlugFromRef } from "./answers";
-import { keptCheckedRefs, loadCheckedPages } from "./checked-pages";
+import { finalFileGuard, keptCheckedRefs, loadCheckedPages } from "./checked-pages";
 import { readRegularFileNoFollow, resolveSafeChildPath } from "./prepare";
 
 // While a reader of one photo digest runs, no reading, final record, or view of that page may be in
@@ -78,9 +78,7 @@ function stripDigestFromRun(runPath: string, sha256: string, repoRoot: string): 
 // Also in other letter case: some disks see one file there.
 function assertNoCheckedRecord(workDir: string, refs: readonly string[]): void {
   const finalDir = join(workDir, "final");
-  const slug = (ref: string): string => fileSlugFromRef(ref).toLowerCase();
-  const kept = new Set([...keptCheckedRefs(finalDir, loadCheckedPages(finalDir))].map(slug));
-  const checked = refs.find((ref) => kept.has(slug(ref)));
+  const checked = refs.find(finalFileGuard(keptCheckedRefs(finalDir, loadCheckedPages(finalDir))));
   if (checked !== undefined) {
     throw new Error(`Refusing to move the final record of ${checked}: a person checked this page.`);
   }

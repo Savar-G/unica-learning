@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   CHECKED_DIGESTS_FILE,
   findCheckProblems,
+  type PagePhoto,
   readCheckedDigests,
   writeCheckedDigests,
 } from "./checked-digests";
@@ -126,8 +127,11 @@ describe("checked digests", () => {
       [undefined, A, B, ["checked before the photo check was saved"]],
       [undefined, A, null, ["checked before the photo check was saved"]],
     ];
-    for (const [d, recordSha256, photoSha256, expected] of rows) {
-      expect(findCheckProblems(d, { recordSha256, photoSha256 })).toEqual(expected);
+    for (const [d, recordSha256, sha256, expected] of rows) {
+      const photo: PagePhoto = sha256 === null ? { problem: "photo of the check is missing" } : { sha256 };
+      expect(findCheckProblems(d, { recordSha256, photo })).toEqual(expected);
     }
+    const mismatch = { problem: "photo does not match the photo list" } as const;
+    expect(findCheckProblems(digest, { recordSha256: A, photo: mismatch })).toEqual([mismatch.problem]);
   });
 });
