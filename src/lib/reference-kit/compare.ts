@@ -1,5 +1,7 @@
 import {
+  CHECK_PROBLEM_REASONS,
   NOT_STATED,
+  type CheckProblemReason,
   type ContentsRecord,
   type Expr,
   type PageItem,
@@ -61,6 +63,7 @@ export const PAGE_IDENTITY_DISAGREEMENT_REASON = "readers disagree on the page" 
 const PAGE_IDENTITY_PATHS: ReadonlySet<string> = new Set(["source_ref", "kind"]);
 
 export const PAGE_STOP_REASONS = [
+  ...CHECK_PROBLEM_REASONS,
   "edited by a person (not checked yet)",
   "missing reader",
   "different photo digest",
@@ -366,6 +369,8 @@ export interface DecideStatusInput {
   hasReaderAnswerConflict?: boolean;
   needsPersonRead?: boolean;
   editedByPerson?: boolean;
+  // Why the check of a page that a person checked does not count now.
+  checkProblems?: readonly CheckProblemReason[];
   recordA?: ReferenceRecord | null;
   recordB?: ReferenceRecord | null;
   answerDisagreements?: readonly string[];
@@ -378,7 +383,7 @@ export interface PageDecision {
 }
 
 export function decidePageOutcome(input: DecideStatusInput): PageDecision {
-  const stopReasons: PageStopReason[] = [];
+  const stopReasons: PageStopReason[] = [...(input.checkProblems ?? [])];
   if (input.editedByPerson) stopReasons.push("edited by a person (not checked yet)");
   if (!input.hasA || !input.hasB) {
     stopReasons.push("missing reader");

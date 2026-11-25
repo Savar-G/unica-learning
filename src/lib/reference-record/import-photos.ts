@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import { lstat, open, realpath, stat } from "node:fs/promises";
 import { extname, isAbsolute, join, resolve } from "node:path";
+import { isPlainObject, parseStrictUtf8Json, readJsonNote } from "./read-file";
 import type { ReferenceRecord } from "./types";
 
 const PATH_SEGMENT_RE = /^[A-Za-z0-9_-]+$/;
@@ -19,17 +20,8 @@ export const MAX_REFERENCE_PHOTO_BYTES = 20 * 1024 * 1024;
 
 const NOFOLLOW_FLAG = typeof fsConstants.O_NOFOLLOW === "number" ? fsConstants.O_NOFOLLOW : 0;
 const NONBLOCK_FLAG = typeof fsConstants.O_NONBLOCK === "number" ? fsConstants.O_NONBLOCK : 0;
-const STRICT_UTF8_DECODER = new TextDecoder("utf-8", { fatal: true });
 // A high surrogate with no low surrogate after it, or a low surrogate with no high surrogate before it.
 const UNPAIRED_SURROGATE_RE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
-
-export function decodeStrictUtf8(bytes: Uint8Array): string {
-  return STRICT_UTF8_DECODER.decode(bytes);
-}
-
-export function parseStrictUtf8Json(bytes: Uint8Array): unknown {
-  return JSON.parse(decodeStrictUtf8(bytes)) as unknown;
-}
 
 function isUnstorableText(text: string): boolean {
   return text.includes("\u0000") || text.includes("\uFFFD") || UNPAIRED_SURROGATE_RE.test(text);
@@ -56,29 +48,51 @@ export function findUnstorableTextPath(value: unknown, path = "$"): string | nul
   return null;
 }
 
+// What is wrong with the text of a value that the import cannot store, or null.
+function unstorableTextProblem(value: unknown): string | null {
+  const badPath = findUnstorableTextPath(value);
+  return badPath === null
+    ? null
+    : `${badPath}: text holds a null character, half of a split character, or U+FFFD replacement character, which the import cannot store`;
+}
+
 export function parseImportJson(
   fileName: string,
   bytes: Uint8Array,
   problems: string[],
-  jsonErrorLabel = "invalid JSON",
 ): { ok: true; value: unknown } | { ok: false } {
   let parsed: unknown;
   try {
     parsed = parseStrictUtf8Json(bytes);
   } catch (err) {
-    const kind = err instanceof SyntaxError ? jsonErrorLabel : "invalid UTF-8";
+    const kind = err instanceof SyntaxError ? "invalid JSON" : "invalid UTF-8";
     const msg = err instanceof Error ? err.message : String(err);
     problems.push(`${fileName}: ${kind} (${msg})`);
     return { ok: false };
   }
-  const badPath = findUnstorableTextPath(parsed);
-  if (badPath !== null) {
-    problems.push(
-      `${fileName}: ${badPath}: text holds a null character, half of a split character, or U+FFFD replacement character, which the import cannot store`,
-    );
+  const textProblem = unstorableTextProblem(parsed);
+  if (textProblem !== null) {
+    problems.push(`${fileName}: ${textProblem}`);
     return { ok: false };
   }
   return { ok: true, value: parsed };
+}
+
+export const PHOTOS_MANIFEST_FILE = "photos-manifest.json";
+
+// The entries of the photo list, for every command. An entry with no source_ref is not identified yet.
+export function parsePhotoList(raw: unknown): Array<Record<string, unknown>> {
+  if (!isPlainObject(raw) || raw.version !== 1 || !Array.isArray(raw.photos)) {
+    throw new Error("invalid photos manifest: must be an object with version: 1 and a photos array");
+  }
+  return raw.photos.map((entry: unknown, i) => {
+    if (!isPlainObject(entry)) throw new Error(`photos[${i}] must be an object`);
+    const ref = entry.source_ref ?? undefined;
+    if (ref !== undefined && (typeof ref !== "string" || ref.trim() === "")) {
+      throw new Error(`photos[${i}].source_ref must be a non-empty string`);
+    }
+    return entry;
+  });
 }
 
 export interface PlannedPhoto {
@@ -95,10 +109,6 @@ export type SafeReadResult =
       kind: "missing" | "symlink" | "not_file" | "too_large" | "error";
       message: string;
     };
-
-export function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 export function isPlainFileName(fileName: string): boolean {
   if (fileName.length === 0 || fileName.trim() !== fileName) return false;
@@ -234,55 +244,27 @@ export async function readPlannedPhotos(
     return planned;
   }
 
-  const manifestPath = join(realPhotosDir, "photos-manifest.json");
-  const manifestRead = await readRegularFileNoFollow(manifestPath);
-  if (!manifestRead.ok) {
-    const detail =
-      manifestRead.kind === "symlink"
-        ? "refusing symlink"
-        : manifestRead.kind === "not_file"
-          ? "not a regular file"
-          : `could not be read (${manifestRead.message})`;
-    problems.push(`photos-manifest.json: ${detail}`);
+  let entries: Array<Record<string, unknown>> | null;
+  try {
+    entries = readJsonNote(join(realPhotosDir, PHOTOS_MANIFEST_FILE), (raw) => {
+      const textProblem = unstorableTextProblem(raw);
+      if (textProblem !== null) throw new Error(textProblem);
+      return parsePhotoList(raw);
+    });
+  } catch (err) {
+    problems.push(err instanceof Error ? err.message : String(err));
     return planned;
   }
-
-  const parsedResult = parseImportJson(
-    "photos-manifest.json",
-    manifestRead.bytes,
-    problems,
-    "could not be read or parsed",
-  );
-  if (!parsedResult.ok) {
-    return planned;
-  }
-  const parsedManifest = parsedResult.value;
-
-  if (
-    !isPlainObject(parsedManifest) ||
-    parsedManifest.version !== 1 ||
-    !Array.isArray(parsedManifest.photos)
-  ) {
-    problems.push("photos-manifest.json: must be an object with version: 1 and a photos array");
+  if (entries === null) {
+    problems.push(`${PHOTOS_MANIFEST_FILE}: could not be read (missing file)`);
     return planned;
   }
 
   const entriesByRef = new Map<string, Record<string, unknown>>();
-  for (let i = 0; i < parsedManifest.photos.length; i += 1) {
-    const entry = parsedManifest.photos[i];
-    if (!isPlainObject(entry)) {
-      problems.push(`photos-manifest.json: photos[${i}] must be an object`);
-      continue;
-    }
-    if (entry.source_ref === undefined || entry.source_ref === null) {
-      continue;
-    }
-    if (typeof entry.source_ref !== "string" || entry.source_ref.trim() === "") {
-      problems.push(`photos-manifest.json: photos[${i}].source_ref must be a non-empty string`);
-      continue;
-    }
+  for (const entry of entries) {
+    if (typeof entry.source_ref !== "string") continue;
     if (entriesByRef.has(entry.source_ref)) {
-      problems.push(`photos-manifest.json: duplicate source_ref "${entry.source_ref}"`);
+      problems.push(`${PHOTOS_MANIFEST_FILE}: duplicate source_ref "${entry.source_ref}"`);
       continue;
     }
     entriesByRef.set(entry.source_ref, entry);

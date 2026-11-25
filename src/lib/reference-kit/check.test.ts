@@ -1,20 +1,43 @@
+import { execFile, execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import type { PageRecord } from "@/lib/reference-record";
+import { promisify } from "node:util";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { CHECKED_DIGESTS_FILE, type PageRecord } from "@/lib/reference-record";
 import { checkAndMarkPage } from "./check";
+import { compareWorkFolder } from "./compare-batch";
+import { addPreparedPhoto } from "./photo.fixtures";
+
+// Runs before a written file takes its place. A test that throws here stops the command there.
+const fsHook = vi.hoisted(() => ({ rename: null as ((to: string) => void) | null }));
+
+vi.mock("node:fs", async (importOriginal) => {
+  const real = await importOriginal<{ renameSync: (from: string, to: string) => void }>();
+  return {
+    ...real,
+    renameSync: (from: string, to: string) => {
+      fsHook.rename?.(to);
+      real.renameSync(from, to);
+    },
+  };
+});
 
 const tempDirs: string[] = [];
 
 afterEach(() => {
+  fsHook.rename = null;
   while (tempDirs.length > 0) {
     const dir = tempDirs.pop();
     if (dir) rmSync(dir, { recursive: true, force: true });
@@ -87,6 +110,8 @@ describe("checkAndMarkPage", () => {
       JSON.stringify({ "sample:M:3a": "machine_read" }, null, 2),
     );
 
+    addPreparedPhoto(work, "photo 3a", "sample:M:3a");
+
     const result = checkAndMarkPage({ workDir: work, page: "sample:M:3a", repoRoot: repo, photoCompared: true });
     expect(result.sourceRef).toBe("sample:M:3a");
     expect(result.notes).toEqual([]);
@@ -103,7 +128,10 @@ describe("checkAndMarkPage", () => {
     expect(viewMd).toContain("**23** (computed)");
   });
 
-  function setUpWork(page: PageRecord): { repo: string; work: string; finalDir: string } {
+  function setUpWork(
+    page: PageRecord,
+    opts: { photo?: boolean } = {},
+  ): { repo: string; work: string; finalDir: string } {
     const repo = mkdtempSync(join(tmpdir(), "ref-chk-repo-"));
     const work = mkdtempSync(join(tmpdir(), "ref-chk-work-"));
     tempDirs.push(repo, work);
@@ -114,6 +142,7 @@ describe("checkAndMarkPage", () => {
       join(finalDir, "status.json"),
       JSON.stringify({ "sample:M:3a": "machine_read" }, null, 2),
     );
+    if (opts.photo !== false) addPreparedPhoto(work, "photo 3a", "sample:M:3a");
     return { repo, work, finalDir };
   }
 
@@ -124,7 +153,7 @@ describe("checkAndMarkPage", () => {
   }
 
   it("refuses without --photo-compared, names the photo of the page, and writes nothing", () => {
-    const { repo, work, finalDir } = setUpWork(makeFinalPage());
+    const { repo, work, finalDir } = setUpWork(makeFinalPage(), { photo: false });
     const before = readFileSync(join(finalDir, "sample-M-3a.json"), "utf8");
 
     // No manifest and no report: the photos folder is named.
@@ -405,6 +434,7 @@ describe("checkAndMarkPage", () => {
       join(finalDir, "status.json"),
       JSON.stringify({ "sample:M:3a": "machine_read" }, null, 2),
     );
+    addPreparedPhoto(work, "photo 3a", "sample:M:3a");
 
     checkAndMarkPage({ workDir: work, page: "sample:M:3a", repoRoot: repo, photoCompared: true });
     const saved = JSON.parse(readFileSync(join(finalDir, "sample-M-3a.json"), "utf8"));
@@ -426,6 +456,7 @@ describe("checkAndMarkPage", () => {
       single_read: ["topic.title", "sections[0].items[0].printed"],
     };
     writeFileSync(join(finalDir, "sample-M-3a.json"), JSON.stringify(acceptedPage, null, 2));
+    addPreparedPhoto(work, "photo 3a", "sample:M:3a");
     writeFileSync(
       join(finalDir, "status.json"),
       JSON.stringify({ "sample:M:3a": "agreement_accepted" }, null, 2),
@@ -478,6 +509,15 @@ describe("checkAndMarkPage", () => {
 
     const statusAfter = JSON.parse(readFileSync(join(finalDir, "status.json"), "utf8"));
     expect(statusAfter["demo-x:M:3a"]).toBe("machine_read");
+
+    // Some disks see one file in two names that differ only in letter case.
+    addPreparedPhoto(work, "photo 3a", "demo-x:M:3a");
+    const aliases = JSON.stringify({ "demo-x:M:3a": "machine_read", "demo-x:m:3a": "machine_read" });
+    writeFileSync(join(finalDir, "status.json"), aliases);
+    expect(() =>
+      checkAndMarkPage({ workDir: work, page: "demo-x:M:3a", repoRoot: repo, photoCompared: true }),
+    ).toThrow(/both map to/);
+    expect(readFileSync(join(finalDir, "status.json"), "utf8")).toBe(aliases);
   });
 
   it("allows reference:check to mark a page whose worked-example shown_answer differs from its expr (a person decides)", () => {
@@ -501,6 +541,7 @@ describe("checkAndMarkPage", () => {
     };
     writeFileSync(join(finalDir, "sample-M-3a.json"), JSON.stringify(rec, null, 2));
     writeFileSync(join(finalDir, "status.json"), JSON.stringify({ "sample:M:3a": "machine_read" }, null, 2));
+    addPreparedPhoto(work, "photo 3a", "sample:M:3a");
 
     const res = checkAndMarkPage({ workDir: work, page: "sample:M:3a", repoRoot: repo, photoCompared: true });
     const saved = JSON.parse(readFileSync(res.recordPath, "utf8")) as PageRecord;
@@ -571,10 +612,9 @@ describe("checkAndMarkPage", () => {
     expect(existsSync(join(work, "final-view"))).toBe(false);
   });
 
-  it("falls back to the folder hint without --photo-compared on malformed report.json or manifest shapes, while stopping on invalid UTF-8 or JSON", () => {
+  it("falls back to the folder hint without --photo-compared on malformed report.json shapes, while stopping on a damaged photo list, invalid UTF-8 or JSON", () => {
     const fallbackCases: Array<{
       name: string;
-      manifest?: unknown;
       report?: unknown;
       expectedPhotoPattern?: RegExp;
     }> = [
@@ -614,27 +654,11 @@ describe("checkAndMarkPage", () => {
         },
         expectedPhotoPattern: /333333333333\.jpg\nRecord:/,
       },
-      { name: "manifest root is null", manifest: null },
-      { name: "manifest root is an array", manifest: [] },
-      { name: "manifest photos is not a list", manifest: { version: 1, photos: "bad" } },
-      { name: "manifest photos contains null", manifest: { version: 1, photos: [null] } },
-      {
-        name: "bad manifest shape falls back to valid report",
-        manifest: { version: 2, photos: "bad" },
-        report: {
-          pages: [{ source_ref: "sample:M:3a", photo: "222222222222.jpg", original_name: "02.jpg" }],
-        },
-        expectedPhotoPattern: /222222222222\.jpg \(original name 02\.jpg\)/,
-      },
     ];
 
     for (const c of fallbackCases) {
-      const { repo, work, finalDir } = setUpWork(makeFinalPage());
+      const { repo, work, finalDir } = setUpWork(makeFinalPage(), { photo: false });
       const before = readFileSync(join(finalDir, "sample-M-3a.json"), "utf8");
-      if ("manifest" in c) {
-        mkdirSync(join(work, "photos"), { recursive: true });
-        writeFileSync(join(work, "photos", "photos-manifest.json"), JSON.stringify(c.manifest));
-      }
       if ("report" in c) {
         writeFileSync(join(finalDir, "report.json"), JSON.stringify(c.report));
       }
@@ -678,10 +702,18 @@ describe("checkAndMarkPage", () => {
         bytes: Buffer.from("{ bad", "utf8"),
         expected: /Invalid JSON in .*photos-manifest\.json/i,
       },
+      ...["null", "[]", '{"version":1,"photos":"bad"}', '{"version":1,"photos":[null]}', '{"version":2,"photos":[]}'].map(
+        (text) => ({
+          name: `photo list of another shape ${text}`,
+          relPath: join("photos", "photos-manifest.json"),
+          bytes: Buffer.from(text, "utf8"),
+          expected: /Damaged file .*photos-manifest\.json/,
+        }),
+      ),
     ];
 
     for (const c of strictFailCases) {
-      const { repo, work, finalDir } = setUpWork(makeFinalPage());
+      const { repo, work, finalDir } = setUpWork(makeFinalPage(), { photo: false });
       const before = readFileSync(join(finalDir, "sample-M-3a.json"), "utf8");
       mkdirSync(join(work, "photos"), { recursive: true });
       writeFileSync(join(work, c.relPath), c.bytes);
@@ -696,6 +728,393 @@ describe("checkAndMarkPage", () => {
         c.name,
       ).toThrow(c.expected);
       expectNothingWritten(finalDir, before);
+    }
+  });
+
+  // Everything under the work folder, with the bytes of each file, to prove that a stopped check
+  // wrote nothing.
+  function snapshotFiles(dir: string): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const entry of readdirSync(dir, { withFileTypes: true, recursive: true })) {
+      const path = join(entry.parentPath, entry.name);
+      out[path] = entry.isFile() ? readFileSync(path).toString("base64") : "not a file";
+    }
+    return out;
+  }
+
+  function sha256(bytes: Uint8Array): string {
+    return createHash("sha256").update(bytes).digest("hex");
+  }
+
+  const check = (work: string, repo: string, beforeWrite?: () => void) =>
+    checkAndMarkPage({ workDir: work, page: "sample:M:3a", repoRoot: repo, photoCompared: true, beforeWrite });
+
+  it("saves the SHA-256 of the record bytes that it wrote and of the photo, and a new check replaces them", () => {
+    const { repo, work, finalDir } = setUpWork(makeFinalPage());
+    const digestsPath = join(finalDir, CHECKED_DIGESTS_FILE);
+    const recordPath = join(finalDir, "sample-M-3a.json");
+    const photo = addPreparedPhoto(work, "photo 3a", "sample:M:3a");
+    const saved = () => JSON.parse(readFileSync(digestsPath, "utf8")) as { pages: unknown[] };
+
+    const res = check(work, repo);
+    expect(res.photoPath).toBe(photo.path);
+    expect(saved()).toEqual({
+      version: 1,
+      pages: [
+        {
+          source_ref: "sample:M:3a",
+          record_sha256: sha256(readFileSync(recordPath)),
+          photo_sha256: sha256(readFileSync(photo.path)),
+        },
+      ],
+      checked_before: [],
+    });
+
+    // The page is marked in status.json, which stays a map of text.
+    expect(JSON.parse(readFileSync(join(finalDir, "status.json"), "utf8"))).toEqual({
+      "sample:M:3a": "human_checked",
+    });
+
+    // The person corrects the record, and a page of an earlier check stays in the file.
+    writeFileSync(
+      digestsPath,
+      JSON.stringify({
+        version: 1,
+        pages: [
+          ...saved().pages,
+          { source_ref: "sample:M:4a", record_sha256: "a".repeat(64), photo_sha256: "b".repeat(64) },
+        ],
+        checked_before: ["sample:M:3a", "sample:M:5a"],
+      }),
+    );
+    const corrected = makeFinalPage();
+    corrected.topic.title = "Corrected title";
+    writeFileSync(recordPath, JSON.stringify(corrected));
+    const before = sha256(readFileSync(recordPath));
+    check(work, repo);
+    const after = sha256(readFileSync(recordPath));
+    expect(after).not.toBe(before);
+    expect(saved()).toEqual({
+      version: 1,
+      pages: [
+        { source_ref: "sample:M:3a", record_sha256: after, photo_sha256: photo.sha256 },
+        { source_ref: "sample:M:4a", record_sha256: "a".repeat(64), photo_sha256: "b".repeat(64) },
+      ],
+      checked_before: ["sample:M:5a"],
+    });
+  });
+
+  it("stops and writes nothing when the photo or the record changes between its read and the write, or when there is no photo to tie", () => {
+    const recordOf = (work: string) => join(work, "final", "sample-M-3a.json");
+    const manifestOf = (work: string) => join(work, "photos", "photos-manifest.json");
+    const photoOf = (work: string) => addPreparedPhoto(work, "photo 3a", "sample:M:3a").path;
+
+    // The change happens after the command read both files.
+    const during: Array<{ name: string; change: (work: string) => void; expected: RegExp }> = [
+      {
+        name: "record changed",
+        change: (work) => writeFileSync(recordOf(work), JSON.stringify({ ...makeFinalPage(), readers: ["x:y"] })),
+        expected: /record .*sample-M-3a\.json changed while the check ran/i,
+      },
+      { name: "record removed", change: (work) => rmSync(recordOf(work)), expected: /changed while the check ran/i },
+      {
+        name: "photo changed",
+        change: (work) => writeFileSync(photoOf(work), "other bytes"),
+        expected: /photo .*\.jpg/i,
+      },
+      { name: "photo removed", change: (work) => rmSync(photoOf(work)), expected: /photo .*\.jpg/i },
+      {
+        name: "the photo list names another photo",
+        change: (work) => {
+          rmSync(manifestOf(work));
+          addPreparedPhoto(work, "another photo", "sample:M:3a");
+        },
+        expected: /photo of sample:M:3a changed while the check ran/i,
+      },
+    ];
+    for (const c of during) {
+      const { repo, work } = setUpWork(makeFinalPage());
+      let afterChange: Record<string, string> = {};
+      expect(
+        () =>
+          check(work, repo, () => {
+            c.change(work);
+            afterChange = snapshotFiles(work);
+          }),
+        c.name,
+      ).toThrow(c.expected);
+      expect(snapshotFiles(work), c.name).toEqual(afterChange);
+    }
+
+    // There is no photo, or the photo is not the one that the photo list names.
+    const before: Array<{ name: string; set: (work: string) => void; expected: RegExp }> = [
+      { name: "no manifest", set: (work) => rmSync(manifestOf(work)), expected: /photos-manifest\.json/ },
+      {
+        name: "manifest names no photo for the page",
+        set: (work) => {
+          rmSync(manifestOf(work));
+          addPreparedPhoto(work, "photo 4a", "sample:M:4a");
+        },
+        expected: /no photo for sample:M:3a/,
+      },
+      {
+        name: "manifest names two photos for the page",
+        set: (work) => {
+          addPreparedPhoto(work, "second", "sample:M:3a");
+        },
+        expected: /more than one photo for sample:M:3a/,
+      },
+      {
+        name: "malformed manifest",
+        set: (work) => writeFileSync(manifestOf(work), JSON.stringify({ version: 2 })),
+        expected: /photos-manifest\.json/,
+      },
+      { name: "photo file missing", set: (work) => rmSync(photoOf(work)), expected: /missing/i },
+      {
+        name: "photo file replaced by hand",
+        set: (work) => writeFileSync(photoOf(work), "other bytes"),
+        expected: /does not match the photo list/i,
+      },
+      {
+        name: "photo is a link",
+        set: (work) => {
+          const path = photoOf(work);
+          renameSync(path, join(work, "elsewhere.jpg"));
+          symlinkSync(join(work, "elsewhere.jpg"), path);
+        },
+        expected: /symlink/i,
+      },
+      {
+        name: "record is a link",
+        set: (work) => {
+          renameSync(recordOf(work), join(work, "elsewhere.json"));
+          symlinkSync(join(work, "elsewhere.json"), recordOf(work));
+        },
+        expected: /symlink/i,
+      },
+      {
+        name: "digest file is damaged",
+        set: (work) => writeFileSync(join(work, "final", CHECKED_DIGESTS_FILE), "{ bad"),
+        expected: new RegExp(CHECKED_DIGESTS_FILE.replace(".", "\\.")),
+      },
+    ];
+    for (const c of before) {
+      const { repo, work } = setUpWork(makeFinalPage());
+      c.set(work);
+      const start = snapshotFiles(work);
+      expect(() => check(work, repo), c.name).toThrow(c.expected);
+      expect(snapshotFiles(work), c.name).toEqual(start);
+    }
+  });
+
+  // The command in a process of its own. A reader that waits for a writer of a pipe is killed.
+  async function runCheckCommand(work: string, flags: string[]): Promise<{ killed: boolean; stderr: string }> {
+    try {
+      await promisify(execFile)(
+        process.execPath,
+        ["scripts/reference-check.mjs", "--work", work, "--page", "sample:M:3a", ...flags],
+        { timeout: 45_000, killSignal: "SIGKILL" },
+      );
+      return { killed: false, stderr: "" };
+    } catch (err) {
+      const { killed, stderr } = err as { killed: boolean; stderr: string };
+      return { killed, stderr };
+    }
+  }
+
+  it("refuses a link, a folder or a pipe in the place of any file that it reads or writes, and writes nothing", async () => {
+    const files = [
+      "final/status.json",
+      "final/sample-M-3a.json",
+      "final/report.json",
+      `final/${CHECKED_DIGESTS_FILE}`,
+      "final-view/sample-M-3a.md",
+      "photos/photos-manifest.json",
+      "photos/PHOTO",
+    ];
+    const kinds: Array<[string, (path: string, away: string) => void]> = [
+      [
+        "link",
+        (path, away) => {
+          renameSync(path, away);
+          symlinkSync(away, path);
+        },
+      ],
+      [
+        "link to nothing",
+        (path, away) => {
+          rmSync(path);
+          symlinkSync(away, path);
+        },
+      ],
+      [
+        "folder",
+        (path) => {
+          rmSync(path);
+          mkdirSync(path);
+        },
+      ],
+    ];
+    const setUpChecked = () => {
+      const { repo, work } = setUpWork(makeFinalPage());
+      const photo = addPreparedPhoto(work, "photo 3a", "sample:M:3a");
+      writeFileSync(join(work, "final", "report.json"), JSON.stringify({ pages: [] }));
+      check(work, repo);
+      // A new check would write each file again with other bytes.
+      writeFileSync(
+        join(work, "final", "sample-M-3a.json"),
+        JSON.stringify({ ...makeFinalPage(), topic: { title: "Corrected by a person" } }),
+      );
+      writeFileSync(join(work, "final", "status.json"), JSON.stringify({ "sample:M:3a": "machine_read" }));
+      return { repo, work, photo };
+    };
+    for (const file of files) {
+      for (const [kind, change] of kinds) {
+        const name = `${file} is a ${kind}`;
+        const { repo, work, photo } = setUpChecked();
+        change(join(work, file.replace("PHOTO", photo.file)), join(work, "away"));
+        const start = snapshotFiles(work);
+        expect(() => check(work, repo), name).toThrow(/symlink|non-regular/i);
+        expect(snapshotFiles(work), name).toEqual(start);
+        // Without --photo-compared the command names the photo: it reads the photo list and the report.
+        if (!/manifest/.test(file) && !/report/.test(file)) continue;
+        if (/report/.test(file)) rmSync(join(work, "photos"), { recursive: true });
+        expect(
+          () => checkAndMarkPage({ workDir: work, page: "sample:M:3a", repoRoot: repo, photoCompared: false }),
+          name,
+        ).toThrow(/symlink|non-regular/i);
+      }
+    }
+
+    await Promise.all(
+      files.flatMap((file) => {
+        const hint = /manifest|report/.test(file) ? [[]] : [];
+        return [["--photo-compared"], ...hint].map(async (flags) => {
+          const name = `${file} is a pipe ${flags.join("")}`;
+          const { work, photo } = setUpChecked();
+          const path = join(work, file.replace("PHOTO", photo.file));
+          rmSync(path);
+          execFileSync("mkfifo", [path]);
+          if (flags.length === 0 && /report/.test(file)) rmSync(join(work, "photos"), { recursive: true });
+          const start = snapshotFiles(work);
+          const { killed, stderr } = await runCheckCommand(work, flags);
+          expect(killed, name).toBe(false);
+          expect(stderr, name).toMatch(/non-regular/);
+          expect(snapshotFiles(work), name).toEqual(start);
+        });
+      }),
+    );
+
+    for (const folder of ["final", "final-view", "photos"]) {
+      const { repo, work } = setUpChecked();
+      renameSync(join(work, folder), join(work, "away"));
+      symlinkSync(join(work, "away"), join(work, folder));
+      const start = snapshotFiles(work);
+      expect(() => check(work, repo), `${folder} is a link`).toThrow(/not a plain folder/);
+      expect(snapshotFiles(work), `${folder} is a link`).toEqual(start);
+    }
+    const { repo, work } = setUpChecked();
+    rmSync(join(work, "final-view"), { recursive: true });
+    writeFileSync(join(work, "final-view"), "a file");
+    const start = snapshotFiles(work);
+    expect(() => check(work, repo)).toThrow(/not a plain folder/);
+    expect(snapshotFiles(work)).toEqual(start);
+  }, 90_000);
+
+  it("is not checked when the command stops at any write, and stays as before when nothing changed", () => {
+    const REF = "sample:M:3a";
+    const steps = ["sample-M-3a.json", "sample-M-3a.md", CHECKED_DIGESTS_FILE, "status.json"];
+    // The page is already human_checked: the digests are the write that makes the new check count.
+    const recheckSteps = steps.slice(0, 3);
+    const rows: Array<{ name: string; steps: string[]; setUp: (work: string, repo: string) => void; after: string }> = [
+      { name: "first check", steps, setUp: () => {}, after: "machine_read" },
+      {
+        name: "first check of a record that the person corrected",
+        steps,
+        setUp: (work) =>
+          writeFileSync(
+            join(work, "final", "sample-M-3a.json"),
+            JSON.stringify({ ...makeFinalPage(), topic: { title: "Corrected by a person" } }),
+          ),
+        after: "machine_read",
+      },
+      { name: "checked page, nothing changed", steps: recheckSteps, setUp: check, after: "human_checked" },
+      {
+        name: "checked page, view lost",
+        steps: recheckSteps,
+        setUp: (work, repo) => {
+          check(work, repo);
+          rmSync(join(work, "final-view", "sample-M-3a.md"));
+        },
+        after: "human_checked",
+      },
+      {
+        name: "checked page, record changed",
+        steps: recheckSteps,
+        setUp: (work, repo) => {
+          check(work, repo);
+          const path = join(work, "final", "sample-M-3a.json");
+          writeFileSync(path, readFileSync(path, "utf8").replace("Adding Numbers", "Corrected later"));
+        },
+        after: "machine_read",
+      },
+      {
+        name: "checked page, new photo",
+        steps: recheckSteps,
+        setUp: (work, repo) => {
+          check(work, repo);
+          rmSync(join(work, "photos"), { recursive: true });
+          addPreparedPhoto(work, "new photo 3a", REF);
+        },
+        after: "machine_read",
+      },
+      {
+        name: "checked page, record changed, after compare",
+        steps,
+        setUp: (work, repo) => {
+          check(work, repo);
+          const path = join(work, "final", "sample-M-3a.json");
+          writeFileSync(path, readFileSync(path, "utf8").replace("Adding Numbers", "Corrected later"));
+          compareWorkFolder({ workDir: work, repoRoot: repo });
+        },
+        after: "machine_read",
+      },
+    ];
+    for (const row of rows) {
+      for (const stopAt of [...row.steps, null]) {
+        const label = `${row.name}, stop at ${stopAt}`;
+        const { repo, work, finalDir } = setUpWork(makeFinalPage());
+        // The readers read the same page, so that compare keeps a page that is not checked.
+        for (const [slot, family] of [["a", "codex"], ["b", "claude"]]) {
+          const dir = join(work, `reader-${slot}`);
+          mkdirSync(dir);
+          writeFileSync(join(dir, "reader.json"), JSON.stringify({ family, model: "m1" }));
+          writeFileSync(join(dir, "sample-M-3a.json"), JSON.stringify(makeFinalPage()));
+        }
+        row.setUp(work, repo);
+        const recordPath = join(finalDir, "sample-M-3a.json");
+        const viewPath = join(work, "final-view", "sample-M-3a.md");
+        const order: string[] = [];
+        fsHook.rename = (to) => {
+          const name = to.split("/").at(-1) ?? "";
+          order.push(name);
+          if (name === stopAt) throw new Error("stopped");
+        };
+        if (stopAt) expect(() => check(work, repo), label).toThrow("stopped");
+        else check(work, repo);
+        fsHook.rename = null;
+        expect(order, label).toEqual(stopAt ? row.steps.slice(0, row.steps.indexOf(stopAt) + 1) : row.steps);
+
+        const viewNow = existsSync(viewPath) ? readFileSync(viewPath, "utf8") : null;
+        compareWorkFolder({ workDir: work, repoRoot: repo });
+        const status = JSON.parse(readFileSync(join(finalDir, "status.json"), "utf8")) as Record<string, string>;
+        expect(status[REF], label).toBe(stopAt ? row.after : "human_checked");
+        // A check that is complete has the view of its record.
+        if (stopAt === null) {
+          const { title } = (JSON.parse(readFileSync(recordPath, "utf8")) as PageRecord).topic;
+          expect(viewNow, label).toContain(title as string);
+        }
+      }
     }
   });
 });

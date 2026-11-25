@@ -6,10 +6,9 @@ import {
   writeSafeOutputFile,
   type ReferenceRecord,
 } from "@/lib/reference-record";
-import { fileSlugFromRef } from "./answers";
-import type { PageStatus } from "./compare";
-import { pairDigest, readJsonIfExists, type PairedPage } from "./compare-pairing";
-import { parsePhotosManifest, PHOTOS_MANIFEST_FILE } from "./prepare";
+import { fileExists, finalFileKey, finalFileName } from "./checked-pages";
+import { pairDigest, type PairedPage } from "./compare-pairing";
+import { PHOTOS_MANIFEST_FILE, type PhotosManifest } from "./prepare";
 
 export function readStoredSourceRef(filePath: string): string | null {
   if (!existsSync(filePath)) return null;
@@ -44,36 +43,9 @@ export function loadExistingFinalRecord(filePath: string): ReferenceRecord | nul
   }
 }
 
-// The hash of each final record as the last compare wrote it. Another hash on disk means that a
-// person changed the file. A malformed report stops the run: without its hashes, compare would
-// write over a record that a person changed.
-export function loadPreviousHashes(reportPath: string): Map<string, string> {
-  const hashes = new Map<string, string>();
-  try {
-    const pages: unknown = readJsonIfExists<{ pages?: unknown }>(reportPath)?.pages ?? [];
-    if (!Array.isArray(pages)) throw new Error("pages is not a list");
-    pages.forEach((page: unknown, i) => {
-      const row = (page ?? {}) as { source_ref?: unknown; final_record_sha256?: unknown };
-      const hash = row.final_record_sha256 ?? null;
-      if (typeof row.source_ref !== "string") throw new Error(`pages[${i}] has no source_ref`);
-      if (hash === null) return;
-      if (typeof hash !== "string") throw new Error(`pages[${i}] has a hash that is not text`);
-      if ((hashes.get(row.source_ref) ?? hash) !== hash) {
-        throw new Error(`pages[${i}] gives a second hash for ${row.source_ref}`);
-      }
-      hashes.set(row.source_ref, hash);
-    });
-  } catch (err) {
-    throw new Error(
-      `Malformed previous report ${reportPath}: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-  return hashes;
-}
-
 export function assertNoFileCollisions(
   pairs: readonly PairedPage[],
-  existingStatus: Record<string, PageStatus>,
+  existingRefs: ReadonlySet<string>,
   finalDir: string,
 ): void {
   const fileToRef = new Map<string, string>();
@@ -83,14 +55,15 @@ export function assertNoFileCollisions(
     if (!chosen) continue;
     const sourceRef = chosen.source_ref;
 
-    const fileName = `${fileSlugFromRef(sourceRef)}.json`;
-    const prior = fileToRef.get(fileName);
+    const fileName = finalFileName(sourceRef);
+    const key = finalFileKey(sourceRef);
+    const prior = fileToRef.get(key);
     if (prior && prior !== sourceRef) {
       throw new Error(
         `Refusing to write: "${sourceRef}" and "${prior}" both map to "${fileName}"`,
       );
     }
-    fileToRef.set(fileName, sourceRef);
+    fileToRef.set(key, sourceRef);
 
     const storedRef = readStoredSourceRef(join(finalDir, fileName));
     if (storedRef !== null && storedRef !== sourceRef) {
@@ -100,35 +73,32 @@ export function assertNoFileCollisions(
     }
   }
 
-  for (const existingRef of Object.keys(existingStatus)) {
-    const fileName = `${fileSlugFromRef(existingRef)}.json`;
-    const prior = fileToRef.get(fileName);
-    if (prior && prior !== existingRef) {
+  for (const existingRef of existingRefs) {
+    const fileName = finalFileName(existingRef);
+    const key = finalFileKey(existingRef);
+    const prior = fileToRef.get(key);
+    // In other letter case, a page whose record file is gone has nothing to lose.
+    if (
+      prior &&
+      prior !== existingRef &&
+      (finalFileName(prior) === fileName || fileExists(join(finalDir, fileName)))
+    ) {
       throw new Error(
         `Refusing to write: "${prior}" collides with existing "${existingRef}" on "${fileName}"`,
       );
     }
-    fileToRef.set(fileName, existingRef);
+    if (!prior) fileToRef.set(key, existingRef);
   }
 }
 
 // The manifest gives a page id only to the photo whose readings made the final record, so it holds
-// at most one entry for each page id. A kept human_checked page with no current readings keeps the
+// at most one entry for each page id. A kept page of a person with no current readings keeps the
 // page id it already has.
-export function syncManifestSourceRefs(
-  workDir: string,
+export function planManifestSourceRefs(
+  before: PhotosManifest,
   winners: readonly PairedPage[],
   keptStaleRefs: ReadonlySet<string>,
-  repoRoot: string,
-): void {
-  const manifestPath = join(workDir, "photos", PHOTOS_MANIFEST_FILE);
-  if (!existsSync(manifestPath)) return;
-  let manifest;
-  try {
-    manifest = parsePhotosManifest(JSON.parse(readFileSync(manifestPath, "utf8")) as unknown);
-  } catch {
-    return;
-  }
+): PhotosManifest {
   const refByDigest = new Map<string, string>();
   for (const pair of winners) {
     const digest = pairDigest(pair);
@@ -136,7 +106,7 @@ export function syncManifestSourceRefs(
     if (digest && ref && !refByDigest.has(digest)) refByDigest.set(digest, ref);
   }
   const assigned = new Set<string>();
-  const photos = manifest.photos.map((entry) => {
+  const photos = before.photos.map((entry) => {
     const { source_ref: oldRef, ...rest } = entry;
     const winnerRef = refByDigest.get(entry.sha256);
     const ref = winnerRef ?? (oldRef && keptStaleRefs.has(oldRef) ? oldRef : undefined);
@@ -144,8 +114,17 @@ export function syncManifestSourceRefs(
     assigned.add(ref);
     return { ...rest, source_ref: ref };
   });
-  const next = `${JSON.stringify({ version: 1, photos }, null, 2)}\n`;
-  if (next !== `${JSON.stringify(manifest, null, 2)}\n`) {
-    writeSafeOutputFile(manifestPath, next, repoRoot);
+  return { version: 1, photos };
+}
+
+export function writePlannedManifest(
+  photosDir: string,
+  before: PhotosManifest,
+  after: PhotosManifest,
+  repoRoot: string,
+): void {
+  const next = `${JSON.stringify(after, null, 2)}\n`;
+  if (next !== `${JSON.stringify(before, null, 2)}\n`) {
+    writeSafeOutputFile(join(photosDir, PHOTOS_MANIFEST_FILE), next, repoRoot);
   }
 }

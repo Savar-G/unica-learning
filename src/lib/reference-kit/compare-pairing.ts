@@ -4,10 +4,8 @@ import { validateReferenceRecord, type ReferenceRecord } from "@/lib/reference-r
 import type { StoredAnswerNote } from "./answers";
 import type { DigestMismatchInfo, FailedPhotoReport, SamePageIdConflict } from "./compare-report";
 import {
-  PHOTOS_MANIFEST_FILE,
   PREPARE_REPORT_FILE,
   type DuplicatePhotoReport,
-  type PhotosManifest,
   type PrepareReportFile,
   type RemovedPhotoReport,
   type TooSmallPhotoReport,
@@ -50,20 +48,6 @@ const SKIP_JSON_FILES = new Set(["reader.json", "run.json"]);
 export function readJsonIfExists<T>(filePath: string): T | null {
   if (!existsSync(filePath)) return null;
   return JSON.parse(readFileSync(filePath, "utf8")) as T;
-}
-
-export function loadOriginalNamesByDigest(workDir: string): Map<string, string> {
-  const map = new Map<string, string>();
-  const manifestPath = join(workDir, "photos", PHOTOS_MANIFEST_FILE);
-  const raw = readJsonIfExists<Partial<PhotosManifest>>(manifestPath);
-  if (raw && Array.isArray(raw.photos)) {
-    for (const p of raw.photos) {
-      if (typeof p.sha256 === "string" && typeof p.original_name === "string") {
-        map.set(p.sha256, p.original_name);
-      }
-    }
-  }
-  return map;
 }
 
 export function loadPrepareReport(workDir: string): {
@@ -352,9 +336,10 @@ export function pairSourceRef(pair: PairedPage): string | null {
   return (pair.recA ?? pair.recB)?.source_ref ?? null;
 }
 
-// The photo digest that a pair's final record belongs to.
+// The photo digest that a pair's final record belongs to (reader A's when A has a record, else reader B's).
 export function pairDigest(pair: PairedPage): string | null {
-  return pair.photoSha256 ?? pair.digestMismatch?.a ?? pair.digestMismatch?.b ?? null;
+  if (pair.recA) return pair.digestMismatch ? pair.digestMismatch.a : pair.photoSha256;
+  return pair.photoSha256;
 }
 
 function compareByOriginalName(x: PairedPage, y: PairedPage): number {

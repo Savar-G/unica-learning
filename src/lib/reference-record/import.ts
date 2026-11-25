@@ -1,12 +1,10 @@
 import { readdir, realpath } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { checkCheckedPages } from "./checked-digests";
 import {
   buildReferencePhotoPath,
-  decodeStrictUtf8,
   findUnstorableTextPath,
-  isPlainObject,
   parseImportJson,
-  parseStrictUtf8Json,
   readPlannedPhotos,
   readRegularFileNoFollow,
   type PlannedPhoto,
@@ -18,30 +16,25 @@ import {
   type ReplaceDecision,
   type StatusLowered,
 } from "./import-replace";
+import { isPlainObject, sha256Hex } from "./read-file";
 import { checkStatusSingleRead } from "./record-path";
+import { checkMachineDigests, loadReportSummary, type ReportSummary } from "./report-hashes";
+import { readStatusMap, type TranscriptStatus } from "./status-file";
 import type { ReferenceRecord } from "./types";
 import { validateReferenceRecord } from "./validate";
 
-export { buildReferencePhotoPath, decodeStrictUtf8, findUnstorableTextPath, parseStrictUtf8Json };
-export type { StatusLowered };
+export { buildReferencePhotoPath, findUnstorableTextPath };
+export type { StatusLowered, TranscriptStatus };
+export { TRANSCRIPT_STATUSES } from "./status-file";
 export { MAX_REFERENCE_PHOTO_BYTES } from "./import-photos";
 
 export const REFERENCE_RECORD_KINDS = ["page", "contents"] as const;
 export type ReferenceRecordKind = (typeof REFERENCE_RECORD_KINDS)[number];
 
-export const TRANSCRIPT_STATUSES = [
-  "machine_read",
-  "agreement_accepted",
-  "double_read",
-  "human_checked",
-] as const;
-export type TranscriptStatus = (typeof TRANSCRIPT_STATUSES)[number];
-
 export const REFERENCE_TABLE = "bank_reference_images" as const;
 export const REFERENCE_BUCKET = "curriculum-reference" as const;
 
 const RESERVED_RECORD_FILES = new Set(["status.json", "report.json"]);
-const TRANSCRIPT_STATUS_SET = new Set<string>(TRANSCRIPT_STATUSES);
 
 export interface ReferenceRow {
   source_ref: string;
@@ -106,10 +99,6 @@ export interface ImportResult {
   problems: string[];
 }
 
-function isTranscriptStatus(value: unknown): value is TranscriptStatus {
-  return typeof value === "string" && TRANSCRIPT_STATUS_SET.has(value);
-}
-
 export function deepEqualJson(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (a === null || b === null || typeof a !== "object" || typeof b !== "object") {
@@ -166,6 +155,8 @@ async function readRecords(
   recordsRead: number;
   records: ReferenceRecord[];
   seenRefs: Map<string, string>;
+  // SHA-256 of the file bytes of each record.
+  recordSha256ByRef: Map<string, string>;
 }> {
   let realRecordsDir: string;
   let entries;
@@ -175,7 +166,13 @@ async function readRecords(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     problems.push(`records folder "${recordsDir}" could not be read: ${msg}`);
-    return { realRecordsDir: null, recordsRead: 0, records: [], seenRefs: new Map() };
+    return {
+      realRecordsDir: null,
+      recordsRead: 0,
+      records: [],
+      seenRefs: new Map(),
+      recordSha256ByRef: new Map(),
+    };
   }
 
   const recordFiles = entries
@@ -190,6 +187,7 @@ async function readRecords(
 
   const records: ReferenceRecord[] = [];
   const seenRefs = new Map<string, string>();
+  const recordSha256ByRef = new Map<string, string>();
 
   for (const fileName of recordFiles) {
     const filePath = join(realRecordsDir, fileName);
@@ -231,69 +229,25 @@ async function readRecords(
     }
 
     seenRefs.set(ref, fileName);
+    recordSha256ByRef.set(ref, sha256Hex(fileRead.bytes));
     records.push(check.record);
   }
 
-  return { realRecordsDir, recordsRead: recordFiles.length, records, seenRefs };
-}
-
-async function readStatusMap(
-  recordsDir: string,
-  seenRefs: Map<string, string>,
-  problems: string[],
-): Promise<Map<string, TranscriptStatus>> {
-  const statusByRef = new Map<string, TranscriptStatus>();
-  const statusPath = join(recordsDir, "status.json");
-
-  const statusRead = await readRegularFileNoFollow(statusPath);
-  if (!statusRead.ok) {
-    if (statusRead.kind === "missing") {
-      return statusByRef;
-    }
-    const detail =
-      statusRead.kind === "symlink"
-        ? "refusing symlink"
-        : statusRead.kind === "not_file"
-          ? "not a regular file"
-          : `could not be read (${statusRead.message})`;
-    problems.push(`status.json: ${detail}`);
-    return statusByRef;
-  }
-
-  const parsedResult = parseImportJson("status.json", statusRead.bytes, problems);
-  if (!parsedResult.ok) {
-    return statusByRef;
-  }
-  const parsed = parsedResult.value;
-
-  if (!isPlainObject(parsed)) {
-    problems.push("status.json: must be a JSON object mapping source_ref to transcript_status");
-    return statusByRef;
-  }
-
-  for (const [ref, value] of Object.entries(parsed)) {
-    if (!isTranscriptStatus(value)) {
-      problems.push(
-        `status.json: unknown status for "${ref}": ${JSON.stringify(value)} (expected ${TRANSCRIPT_STATUSES.join(", ")})`,
-      );
-    }
-    if (!seenRefs.has(ref)) {
-      problems.push(`status.json: "${ref}" has no matching record file`);
-    }
-    if (isTranscriptStatus(value) && seenRefs.has(ref)) {
-      statusByRef.set(ref, value);
-    }
-  }
-
-  return statusByRef;
+  return { realRecordsDir, recordsRead: recordFiles.length, records, seenRefs, recordSha256ByRef };
 }
 
 export interface LoadedReferenceRecords {
   recordsRead: number;
   records: ReferenceRecord[];
-  statusByRef: Map<string, TranscriptStatus>;
+  statusByRef: ReadonlyMap<string, TranscriptStatus>;
   // The file name of each source_ref.
   fileByRef: Map<string, string>;
+  // Null when the folder cannot be read.
+  realRecordsDir: string | null;
+  // The bytes that were read.
+  recordSha256ByRef: Map<string, string>;
+  // False when status.json has a problem.
+  statusIsUsable: boolean;
   problems: string[];
 }
 
@@ -301,28 +255,53 @@ export interface LoadedReferenceRecords {
 // text, valid records, one file for each source_ref, known statuses, and single_read lists that resolve.
 export async function loadReferenceRecords(recordsDir: string): Promise<LoadedReferenceRecords> {
   const problems: string[] = [];
-  const { realRecordsDir, recordsRead, records, seenRefs } = await readRecords(
+  const { realRecordsDir, recordsRead, records, seenRefs, recordSha256ByRef } = await readRecords(
     resolve(recordsDir),
     problems,
   );
   const problemsBeforeStatus = problems.length;
-  const statusByRef = realRecordsDir
-    ? await readStatusMap(realRecordsDir, seenRefs, problems)
-    : new Map<string, TranscriptStatus>();
-  if (problems.length === problemsBeforeStatus) {
-    checkStatusSingleRead(records, statusByRef, problems);
+  let statusByRef: ReadonlyMap<string, TranscriptStatus> = new Map();
+  try {
+    if (realRecordsDir) statusByRef = readStatusMap(realRecordsDir) ?? statusByRef;
+  } catch (err) {
+    problems.push(err instanceof Error ? err.message : String(err));
   }
-  return { recordsRead, records, statusByRef, fileByRef: seenRefs, problems };
+  for (const ref of statusByRef.keys()) {
+    if (!seenRefs.has(ref)) problems.push(`status.json: "${ref}" has no matching record file`);
+  }
+  const statusIsUsable = problems.length === problemsBeforeStatus;
+  if (realRecordsDir && statusIsUsable) checkStatusSingleRead(records, statusByRef, problems);
+  return { recordsRead, records, statusByRef, fileByRef: seenRefs, realRecordsDir, recordSha256ByRef, statusIsUsable, problems };
 }
 
 export async function importReferenceRecords(options: ImportOptions): Promise<ImportResult> {
   const dryRun = options.dryRun ?? false;
   const replace = options.replace ?? false;
   const loaded = await loadReferenceRecords(options.recordsDir);
-  const { recordsRead, records, statusByRef, problems } = loaded;
+  const { recordsRead, records, statusByRef, realRecordsDir, recordSha256ByRef, statusIsUsable, problems } = loaded;
   const plannedPhotos = options.photosDir
     ? await readPlannedPhotos(options.photosDir, records, problems)
     : new Map<string, PlannedPhoto>();
+  if (realRecordsDir) {
+    const finalDir = realRecordsDir;
+    let report: ReportSummary | undefined;
+    try {
+      report = loadReportSummary(finalDir);
+    } catch (err) {
+      problems.push(err instanceof Error ? err.message : String(err));
+    }
+    if (statusIsUsable && report) {
+      checkMachineDigests({ statusByRef, recordSha256ByRef, plannedPhotos, problems, report });
+    }
+    checkCheckedPages({
+      finalDir,
+      statusByRef,
+      recordSha256ByRef,
+      plannedPhotos,
+      problems,
+      reportCheckedRefs: report?.checkedRefs ?? new Set(),
+    });
+  }
 
   if (problems.length > 0) {
     return refusedResult(recordsRead, dryRun, problems);
