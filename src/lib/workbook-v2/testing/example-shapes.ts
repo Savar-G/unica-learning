@@ -3,7 +3,9 @@
 import type { Step } from "../contract";
 import { pick } from "../hash";
 import type { Item, Shape } from "../shapes";
+import { subColumn } from "../shapes/sub-column";
 import { readLimitFields, type Range } from "../shapes/shape";
+import { subColumnRegistration } from "./registrations/sub-column";
 import { neverLimit, rangeLimit, step, type Limits, type Rows, type ShapeRegistration } from "./shape-registration";
 
 const r = (min: number, max: number): Range => ({ min, max });
@@ -175,7 +177,8 @@ export const lessShape: Shape<LessLimits, LessQuestion> = {
     const [a, b] = [Number(top), Number(low.slice(1))];
     return { question: { a, b }, answer: whole(a + -b) };
   },
-  steps: ({ a, b }) => [{ text: `${a} - ${b} = ${a - b}`, marks: writing(String(a - b), 0) }, { text: String(a - b), marks: [] }],
+  // The harness works a subtraction in columns on its paper, so the steps and those of the reader come from sub.column.
+  steps: (question) => subColumn.steps(question),
   difficulty: ({ b }) => b,
   difficultyRange: (limits) => ({ easiest: lowersOf(limits)[0], hardest: lowersOf(limits).at(-1) ?? 0 }),
   worstCase(limits) {
@@ -205,7 +208,7 @@ export const lessRegistration: ShapeRegistration = {
     if (!found) return null;
     let left = Number(found[1]);
     for (let i = 0; i < Number(found[2]); i++) left -= 1;
-    return { answer: { kind: "whole-number", value: String(left) }, features: { a: Number(found[1]), b: Number(found[2]), left }, widths: { left }, steps: [step(`${found[1]} - ${found[2]} = ${left}`, [...String(left)].map((d, i, all) => `w${d}@${all.length - 1 - i}`).reverse().join(" ")), step(String(left))] };
+    return { answer: { kind: "whole-number", value: String(left) }, features: { a: Number(found[1]), b: Number(found[2]), left }, widths: { left }, steps: subColumnRegistration.read(rows)?.steps ?? [] };
   },
   space: {
     count: (l) => pairsOf(l).reduce((sum, { low, high }) => sum + high - low + 1, 0),
@@ -221,7 +224,7 @@ export const lessRegistration: ShapeRegistration = {
     { limit: "left", limits: { ...LESS_WIDE, left: r(1, 195) }, inside: q("200 -5"), outside: q("200 -4") },
   ],
   harder: [{ name: "a larger number", easier: q("200 -5"), harder: q("200 -6") }],
-  examples: [{ name: "over a hundred", rows: q("200 -5"), answer: { kind: "whole-number", value: "195" }, steps: [step("200 - 5 = 195", "w5@0 w9@1 w1@2"), step("195")] }],
+  examples: [{ name: "over a hundred", rows: q("200 -5"), answer: { kind: "whole-number", value: "195" }, steps: [step("borrow 1 hundred, 2 hundreds become 1 hundred", "x2@2 b1@2 b10@1"), step("borrow 1 ten, 10 tens become 9 tens", "x10@1 b9@1 b10@0"), step("10 - 5 = 5, write 5", "w5@0"), step("9, write 9", "w9@1"), step("1, write 1", "w1@2"), step("195")] }],
   refusedLimits: [{ name: "a number that is too large", raw: { ...LESS_WIDE, a: r(100, 1000) }, problem: "a must be from 100 to 999" }],
   refusedRows: [{ name: "another sign", rows: ["200", "+5"] }],
 };

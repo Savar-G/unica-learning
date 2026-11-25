@@ -5,16 +5,24 @@ const NUMBER = String.raw`-?(?:0|[1-9]\d*)(?:\.\d+)?`;
 const EQUATION = new RegExp(String.raw`^(${NUMBER}(?: [-+×÷] ${NUMBER})+) = (${NUMBER})$`);
 const WHOLE = /^(?:0|[1-9]\d*)$/;
 const PLUS = /^plus ([1-9]\d*) is (0|[1-9]\d*)$/;
-const WRITE = /^write (0|[1-9]\d*)$/;
+const WRITE = /^write (nothing|0|[1-9]\d*)$/;
 const CARRY = /^carry (0|[1-9]\d*)$/;
+const BORROW = /^borrow 1 (ten|hundred|thousand)$/;
+const BECOMES = /^([1-9]|10) (ten|hundred|thousand)(s?) (become|becomes) (\d) \2(s?)$/;
+/** The units that a place can give, by place. */
+export const UNITS = ["one", "ten", "hundred", "thousand"] as const;
 
 /** The closed list of clause kinds in a working step, in strict order. Later shapes add kinds here. */
-export const CLAUSE_KINDS = ["equation", "plus", "write", "carry"] as const;
+export const CLAUSE_KINDS = ["borrow", "becomes", "equation", "digit", "plus", "write", "carry"] as const;
 export type ClauseKind = (typeof CLAUSE_KINDS)[number];
 
 export type StepClause =
-  | { kind: "equation"; text: string; ok: boolean; value: bigint | null }
+  | { kind: "borrow"; text: string; unit: string }
+  | { kind: "becomes"; text: string; unit: string; from: number; ok: boolean }
+  | { kind: "equation"; text: string; left: string; ok: boolean; value: bigint | null }
+  | { kind: "digit"; text: string }
   | { kind: "plus"; text: string; added: bigint; result: bigint }
+  /** No digits for "write nothing". */
   | { kind: "write"; text: string; digits: string }
   | { kind: "carry"; text: string; digit: string };
 
@@ -56,11 +64,23 @@ const isTrue = (left: string, right: string): boolean => {
 
 const CLAUSE_PARSERS: readonly ((part: string) => StepClause | null)[] = [
   (part) => {
+    const found = BORROW.exec(part);
+    return found ? { kind: "borrow", text: part, unit: found[1] } : null;
+  },
+  (part) => {
+    const found = BECOMES.exec(part);
+    if (!found) return null;
+    const [from, to] = [Number(found[1]), Number(found[5])];
+    const ok = to === from - 1 && (found[3] === "s") === (from !== 1) && (found[4] === "become") === (from !== 1) && (found[6] === "s") === (to !== 1);
+    return { kind: "becomes", text: part, unit: found[2], from, ok };
+  },
+  (part) => (/^\d$/.test(part) ? { kind: "digit", text: part } : null),
+  (part) => {
     // The minus sign and the en dash are a minus too.
     const found = EQUATION.exec(part.replace(/[−–]/g, "-"));
     if (!found) return null;
     const ok = isTrue(found[1], found[2]);
-    return { kind: "equation", text: part, ok, value: ok && WHOLE.test(found[2]) ? BigInt(found[2]) : null };
+    return { kind: "equation", text: part, left: found[1], ok, value: ok && WHOLE.test(found[2]) ? BigInt(found[2]) : null };
   },
   (part) => {
     const found = PLUS.exec(part);
@@ -68,7 +88,7 @@ const CLAUSE_PARSERS: readonly ((part: string) => StepClause | null)[] = [
   },
   (part) => {
     const found = WRITE.exec(part);
-    return found ? { kind: "write", text: part, digits: found[1] } : null;
+    return found ? { kind: "write", text: part, digits: found[1] === "nothing" ? "" : found[1] } : null;
   },
   (part) => {
     const found = CARRY.exec(part);
@@ -98,6 +118,40 @@ export interface ParsedStep extends ReadStep {
   problem: string | null;
 }
 
+/** The clause of a kind, if a step has it. */
+export function clauseOf<K extends ClauseKind>(clauses: readonly StepClause[], kind: K): Extract<StepClause, { kind: K }> | undefined {
+  return clauses.find((c): c is Extract<StepClause, { kind: K }> => c.kind === kind);
+}
+
+/** The first clause that does not go with the others of its step. */
+function clauseProblem(clauses: readonly StepClause[]): { text: string; reason: string } | null {
+  const [borrow, becomes, eq, digit] = [clauseOf(clauses, "borrow"), clauseOf(clauses, "becomes"), clauseOf(clauses, "equation"), clauseOf(clauses, "digit")];
+  const problem = (text: string, reason: string) => ({ text, reason });
+  if (borrow || becomes) {
+    if (!borrow || !becomes) return problem("", "must say what it borrows and what that becomes");
+    if (borrow.unit !== becomes.unit) return problem(becomes.text, `"${becomes.text}" does not go with "${borrow.text}"`);
+    return clauses.length > 2 ? problem(clauses[2].text, `"${clauses[2].text}" follows a borrow in the same step`) : null;
+  }
+  if (!eq && !digit) return problem("", "has no equation");
+  if (eq && digit) return problem(digit.text, `"${digit.text}" follows an equation`);
+  const [plus, write, carry] = [clauseOf(clauses, "plus"), clauseOf(clauses, "write"), clauseOf(clauses, "carry")];
+  const value = eq ? eq.value : BigInt(digit?.text ?? 0);
+  if (value === null) {
+    const extra = plus ?? write ?? carry;
+    return extra ? problem(extra.text, "follows an equation that is not a whole number") : null;
+  }
+  if (plus && value + plus.added !== plus.result) return problem(plus.text, `"${plus.text}" does not match ${value} + ${plus.added}`);
+  const total = plus ? plus.result : value;
+  if (carry) {
+    if (carry.digit === "0") return problem(carry.text, "carries 0");
+    if (!write) return problem(carry.text, "carries without writing a digit");
+    if (write.digits !== String(total % BigInt(10))) return problem(write.text, `"${write.text}" is not the ones digit of ${total}`);
+    return carry.digit === String(total / BigInt(10)) ? null : problem(carry.text, `"${carry.text}" is not the carry of ${total}`);
+  }
+  const isZero = eq !== undefined && !plus && total === BigInt(0);
+  return write && write.digits !== String(total) && !(write.digits === "" && isZero) ? problem(write.text, `"${write.text}" does not match ${total}`) : null;
+}
+
 /** Parses one step against the closed clause grammar and checks its internal arithmetic. */
 export function parseStep(step: string): ParsedStep {
   if (WHOLE.test(step)) return { clauses: [], answerOnly: true, wrong: [], unread: [], problem: null };
@@ -122,37 +176,12 @@ export function parseStep(step: string): ParsedStep {
     else {
       lastOrder = order;
       clauses.push(clause);
-      if (clause.kind === "equation" && !clause.ok) fail(wrong, part, `holds "${part}"`);
+      if ((clause.kind === "equation" || clause.kind === "becomes") && !clause.ok) fail(wrong, part, `holds "${part}"`);
     }
   }
   if (unread.length > 0 || wrong.length > 0) return { clauses, answerOnly: false, wrong, unread, problem };
-  const eq = clauses[0];
-  if (eq?.kind !== "equation") {
-    fail(wrong, step, "has no equation");
-    return { clauses, answerOnly: false, wrong, unread, problem };
-  }
-  const plus = clauses.find((c): c is Extract<StepClause, { kind: "plus" }> => c.kind === "plus");
-  const write = clauses.find((c): c is Extract<StepClause, { kind: "write" }> => c.kind === "write");
-  const carry = clauses.find((c): c is Extract<StepClause, { kind: "carry" }> => c.kind === "carry");
-  if ((plus || write || carry) && eq.value === null) {
-    const extra = plus ?? write ?? carry;
-    if (extra) fail(wrong, extra.text, "follows an equation that is not a whole number");
-    return { clauses, answerOnly: false, wrong, unread, problem };
-  }
-  if (eq.value !== null) {
-    if (plus && eq.value + plus.added !== plus.result) fail(wrong, plus.text, `"${plus.text}" does not match ${eq.value} + ${plus.added}`);
-    const total = plus ? plus.result : eq.value;
-    if (carry) {
-      if (carry.digit === "0") fail(wrong, carry.text, "carries 0");
-      else if (!write) fail(wrong, carry.text, "carries without writing a digit");
-      else {
-        if (write.digits !== String(total % BigInt(10))) fail(wrong, write.text, `"${write.text}" is not the ones digit of ${total}`);
-        if (carry.digit !== String(total / BigInt(10))) fail(wrong, carry.text, `"${carry.text}" is not the carry of ${total}`);
-      }
-    } else if (write && write.digits !== String(total)) {
-      fail(wrong, write.text, `"${write.text}" does not match ${total}`);
-    }
-  }
+  const inside = clauseProblem(clauses);
+  if (inside) fail(wrong, inside.text || step, inside.reason);
   return { clauses, answerOnly: false, wrong, unread, problem };
 }
 

@@ -1,6 +1,6 @@
 # Workbook engine v2
 
-The v2 engine turns a bank snapshot file into a book: page models, answers, a PDF, page images and the position of each rectangle. It is in `src/lib/workbook-v2/`, apart from the v1 generator, and it is not connected to the app yet. It holds one shape (`mul.column`: 2, 3 or 4 digits by 1 digit), two page templates and two invented sheets.
+The v2 engine turns a bank snapshot file into a book: page models, answers, a PDF, page images and the position of each rectangle. It is in `src/lib/workbook-v2/`, apart from the v1 generator, and it is not connected to the app yet. It holds three shapes (`mul.column`: 2, 3 or 4 digits by 1 digit; `add.column` and `sub.column`: two numbers of 1 to 4 digits), two page templates and four invented sheets.
 
 ## Use it
 
@@ -13,7 +13,7 @@ Run it from the repository root. The build uses no network. The output folder mu
 
 The command writes the whole book into a hidden folder beside the output folder and renames it in one step. The system refuses that step when the output folder holds something: of two processes one wins and the other stops. An error removes the hidden folder; a process that is killed can leave one (`.workbook-v2-*`), which is safe to delete.
 
-`snapshot-4-digits.json` and `book-4-digits.json` in the same folder are a sheet of the wide template.
+`snapshot-4-digits.json` and `book-4-digits.json` in the same folder are a sheet of the wide template. `snapshot-add-sub.json` and `book-add-sub.json` are a sheet of `add.column` and one of `sub.column`, each with a side of both templates.
 
 The snapshot file holds the content of one level. The book file holds the book id, the child id, and for each sheet the attempt and the text of the two QR codes. The caller makes all of these; the engine makes none. Both must be plain JSON data: the build reads a copy, and the hashes cover exactly that copy. An inherited, hidden or computed value is refused. A level name is a number, and a page number and the next one must be exact whole numbers.
 
@@ -45,7 +45,7 @@ The snapshot file holds the content of one level. The book file holds the book i
 
 ## Steps
 
-A question has a list of `Step` (`contract.ts`): `text`, the line that a parent reads, and `marks`, what the step puts on the paper. A `StepMark` is one digit at one place: place 0 is the ones, place 1 the tens, and so on. The last step is the answer, with no marks. 247 × 3 has these steps:
+A question has a list of `Step` (`contract.ts`): `text`, the line that a parent reads, and `marks`, what the step puts on the paper. A `StepMark` is one number at one place: place 0 is the ones, place 1 the tens, and so on. The last step is the answer, with no marks. 247 × 3 has these steps:
 
 | Text | Marks |
 |---|---|
@@ -54,20 +54,41 @@ A question has a list of `Step` (`contract.ts`): `text`, the line that a parent 
 | 3 × 2 = 6, plus 1 is 7 | write 7 at 2 |
 | 741 | |
 
+A subtraction has two more marks, both with `row: "top"`: "cross-out" strikes the number that a place shows now, and "borrow" writes the new one above it. 302 - 147 has these steps:
+
+| Text | Marks |
+|---|---|
+| borrow 1 hundred, 3 hundreds become 2 hundreds | cross-out 3 at 2, borrow 2 at 2, borrow 10 at 1 |
+| borrow 1 ten, 10 tens become 9 tens | cross-out 10 at 1, borrow 9 at 1, borrow 12 at 0 |
+| 12 - 7 = 5, write 5 | write 5 at 0 |
+| 9 - 4 = 5, write 5 | write 5 at 1 |
+| 2 - 1 = 1 | write 1 at 2 |
+| 155 | |
+
 How a shape writes them (the harness checks each rule for an answer that is one whole number, `testing/steps-evaluator.ts` and `testing/step-marks.ts`):
 
-- Every working step follows a closed clause grammar, in strict order, separated by `", "`: an equation (`3 × 4 = 12`), an optional incoming carry addition (`plus 2 is 14`), a write clause (`write 4`; required before the last column, optional on the last column where it must write all digits of the column total), and an optional carry clause (`carry 1`; required before the last column when the total is 10 or more, forbidden on the last column). Unknown clauses, repeated clauses, out-of-order clauses, or wrong numbers fail.
+- Every working step follows a closed clause grammar, in strict order, separated by `", "`: an equation (`3 × 4 = 12`) or, in a column whose lower number has no digit there, only the top digit (`3, plus 1 is 4`; a last column with nothing to add says `3, write 3`), an optional incoming carry addition (`plus 2 is 14`), a write clause (`write 4`; required before the last column, optional on the last column where it must write all digits of the column total), and an optional carry clause (`carry 1`; required before the last column when the total is 10 or more, forbidden on the last column). Unknown clauses, repeated clauses, out-of-order clauses, or wrong numbers fail.
 - All "write" marks together are the digits of the answer: each place one time.
 - A step that carries writes one digit and puts its "carry" mark one place above that digit. The next step writes that place and adds the same digit.
 - The words say the same as the marks, and no mark and no word says a carry of 0.
 
-What the marks cannot say yet: a borrow, a crossed-out digit, or rows and offsets for long division and two partial products. A later shape adds typed marks to `STEP_MARKS` (and its clause kind in the single list `CLAUSE_KINDS` in `testing/steps-evaluator.ts`, plus its check in `testing/step-marks.ts`) without changing the multiplication form or the shapes themselves.
+- A step that borrows has exactly two clauses, `borrow 1 ten` and `4 tens become 3 tens`, with the right unit and singular or plural words ("1 ten becomes 0 tens").
+
+When the printed rows are a subtraction in columns, the checker also works on the paper (`subtractionProblem` in `testing/step-marks.ts`). It starts from the two printed rows, applies each step in order, and refuses a step that does not follow from what the paper shows then:
+
+- A borrow is for the column that is next, and only when that column has too little. It comes from the nearest place above that is not 0, crosses out the number that this place shows, writes one less, and shows ten more in the place just below. Over zeros the next borrow then hands the ten on, place by place.
+- A column says exactly what the paper shows (`12 - 7`, or only the top number when nothing is below), and writes the digit that is left at its own place.
+- A zero in front of the answer is not written: the step says `write nothing` and has no marks. A first digit that became 0 with nothing below it has no step. Any other column with no step is refused.
+
+What the marks cannot say yet: rows and offsets for long division and two partial products. A later shape adds typed marks to `STEP_MARKS` (and its clause kind in the single list `CLAUSE_KINDS` in `testing/steps-evaluator.ts`, plus its check in `testing/step-marks.ts`) without changing the forms above or the shapes themselves.
 
 ## Limits and large spaces
 
 Limits are ranges and words with no default, so that one meaning has one form (`readLimitFields` in `shapes/shape.ts` reads them). The limits of `mul.column` are in `shapes/mul-column-count.ts`. A carry is a carry into the next written column: `carryIntoTens`, `carryIntoHundreds` and `carryIntoThousands` are ranges of the carry itself (0 is none), and `carries` counts the columns that get one. What the last column makes is written, not carried.
 
-A shape whose space is too large to list must not list it for each question. `mul.column` has 79,920 questions: `shapes/mul-column-count.ts` counts them by place and finds the question at one place of the order, with no list and nothing kept between calls. A question takes about 0.1 ms or less, and the choice is the same as from the whole list.
+`add.column` and `sub.column` share `shapes/column-count.ts`. A carry of the last column is written, not carried, so `carries` and `carryIntoTens` to `carryIntoThousands` (0 or 1) count only carries into written columns; `borrows` and `borrowFromTens` to `borrowFromThousands` say the same of the places that give a ten. `carryChain` is a carry that a column makes only because it gets one. `acrossZero` and `acrossTwoZeros` are a borrow that one zero, or two, of the top number must get first. A zero in a place of a number (`aZeroInTens`, `bZeroInOnes`, ...) is after its first digit. Numbers start at 1, and the top number never has fewer digits than the lower one. Contradicting limits have the count 0, and `readLimits` names each limit that alone could be wider to have some.
+
+A shape whose space is too large to list must not list it for each question. `mul.column` has 79,920 questions: `shapes/mul-column-count.ts` counts them by place and finds the question at one place of the order, with no list and nothing kept between calls. A question takes about 0.1 ms or less, and the choice is the same as from the whole list. `add.column` (90,899,091 questions) and `sub.column` (49,995,000) take 0.1 to 0.4 ms. They fill the columns from the ones up and keep, for each thing that the columns so far can change above, in how many ways it comes. Their registrations count from the first column down (`testing/column-facts.ts`), and read a difference as the sum that it undoes.
 
 ## Adding a shape
 

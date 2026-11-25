@@ -14,6 +14,7 @@ import { neverLimit, onlyLimit, rangeLimit, registryProblems, step, type LargeSp
 import { readStep } from "./steps-evaluator";
 import { marksProblem } from "./step-marks";
 import { mulColumn } from "../shapes/mul-column";
+import { subColumn } from "../shapes/sub-column";
 import { mulColumnRegistration } from "./registrations/mul-column";
 
 // Broken shapes. Every table row has one fault, and the harness must refuse it for that fault and no other.
@@ -570,15 +571,146 @@ describe("reading a worked step", () => {
 
   // No clause is left alone: every piece of a step that passes must be a known valid clause or plain answer.
   it("leaves no clause unread", () => {
-    const piece = fc.constantFrom("1", "2", "12", " ", " + ", " = ", "=", "-", "−", ",", ", ", ".", ". ", "½", "x", "write", "carry", "plus");
+    const piece = fc.constantFrom("1", "2", "12", " ", " + ", " = ", "=", "-", "−", ",", ", ", ".", ". ", "½", "x", "write", "carry", "plus", "nothing", "borrow ", "ten", "tens", "become", " become ");
     fc.assert(fc.property(fc.array(piece, { maxLength: 9 }), (pieces) => {
       const step = pieces.join("");
       const { wrong, unread } = readStep(step);
       if (wrong.length + unread.length > 0) return;
       if (/^(?:0|[1-9]\d*)$/.test(step)) return;
-      const clause = /^(?:-?(?:0|[1-9]\d*)(?:\.\d+)?(?: [+-] -?(?:0|[1-9]\d*)(?:\.\d+)?)+ = -?(?:0|[1-9]\d*)(?:\.\d+)?|plus [1-9]\d* is (?:0|[1-9]\d*)|write (?:0|[1-9]\d*)|carry [1-9]\d*)$/;
+      const clause = /^(?:-?(?:0|[1-9]\d*)(?:\.\d+)?(?: [+-] -?(?:0|[1-9]\d*)(?:\.\d+)?)+ = -?(?:0|[1-9]\d*)(?:\.\d+)?|\d|plus [1-9]\d* is (?:0|[1-9]\d*)|write (?:nothing|0|[1-9]\d*)|carry [1-9]\d*|borrow 1 ten|\d+ tens? becomes? \d tens?)$/;
       for (const part of step.replaceAll("−", "-").split(", ")) expect(part).toMatch(clause);
     }));
+  });
+});
+
+describe("the clauses of columns that borrow or have one digit", () => {
+  it.each([
+    "3, write 3", "0, write 0", "3, plus 1 is 4, write 4", "9, plus 1 is 10, write 0, carry 1", "9, plus 1 is 10", "2, plus 1 is 3",
+    "borrow 1 ten, 4 tens become 3 tens", "borrow 1 ten, 2 tens become 1 ten", "borrow 1 ten, 1 ten becomes 0 tens", "borrow 1 ten, 10 tens become 9 tens",
+    "borrow 1 hundred, 3 hundreds become 2 hundreds", "borrow 1 thousand, 1 thousand becomes 0 thousands", "3 - 3 = 0, write nothing",
+  ])("reads %s", (text) => expect(readStep(text)).toEqual({ wrong: [], unread: [] }));
+
+  it.each([
+    "3, write 4", "3, plus 1 is 5, write 5", "12, write 12", "3, 4 + 1 = 5", "3 + 4 = 7, 5, write 7", "3, 3, write 3", "3, carry 1", "write 3",
+    "borrow 1 ten, 4 tens become 2 tens", "borrow 1 ten, 4 tens become 4 tens", "borrow 1 ten, 0 tens become 9 tens", "borrow 1 ten, 11 tens become 10 tens",
+    "borrow 1 ten, 1 tens become 0 tens", "borrow 1 ten, 1 tens becomes 0 tens", "borrow 1 ten, 4 ten become 3 tens", "borrow 1 ten, 1 ten become 0 tens", "borrow 1 ten, 2 tens become 1 tens", "borrow 1 ten, 1 ten becomes 0 ten", "borrow 1 ten, 4 tens becomes 3 tens",
+    "borrow 1 ten, 4 hundreds become 3 hundreds", "borrow 1 hundred, 4 hundreds become 3 tens", "borrow 2 tens, 4 tens become 2 tens", "borrow 1 one, 4 ones become 3 ones",
+    "borrow 1 ten", "4 tens become 3 tens", "4 tens become 3 tens, borrow 1 ten", "borrow 1 ten, 4 tens become 3 tens, write 3", "borrow 1 ten, 4 tens become 3 tens, 12 - 7 = 5", "borrow 1 ten, 12 - 7 = 5, write 5",
+    "borrow 1 ten, borrow 1 ten, 4 tens become 3 tens", "4 - 3 = 1, write nothing", "3, plus 1 is 4, write nothing", "3, write nothing", "10 - 10 = 0, write nothing, carry 1", "write nothing",
+  ])("refuses %s", (text) => {
+    const { wrong, unread } = readStep(text);
+    expect(wrong.length + unread.length).toBeGreaterThan(0);
+  });
+});
+
+describe("the paper of a subtraction in columns", () => {
+  /** Steps as lines: "text | marks". The last line is the answer. */
+  const paper = (...lines: string[]): Step[] => lines.map((line) => step(...(line.split(" | ") as [string, string?])));
+  const problem = (rows: string, steps: Step[]) => marksProblem(steps, steps[steps.length - 1].text, rows.split(" "));
+  const TEN = "borrow 1 ten, 4 tens become 3 tens | x4@1 b3@1 b12@0";
+  const GOOD = [TEN, "12 - 7 = 5, write 5 | w5@0", "3 - 1 = 2 | w2@1", "25"];
+  const ACROSS = [
+    "borrow 1 hundred, 3 hundreds become 2 hundreds | x3@2 b2@2 b10@1", "borrow 1 ten, 10 tens become 9 tens | x10@1 b9@1 b12@0",
+    "12 - 7 = 5, write 5 | w5@0", "9 - 4 = 5, write 5 | w5@1", "2 - 1 = 1 | w1@2", "155",
+  ];
+  const SHORT = ["borrow 1 ten, 2 tens become 1 ten | x2@1 b1@1 b15@0", "15 - 8 = 7, write 7 | w7@0", "1 - 1 = 0, write nothing", "3 - 3 = 0, write nothing", "7"];
+  /** Good steps with one line changed, or left out. */
+  const but = (good: string[], at: number, ...lines: string[]): string[] => [...good.slice(0, at), ...lines, ...good.slice(at + 1)];
+
+  it.each<[string, string, string[]]>([
+    ["no borrow", "54 -21", ["4 - 1 = 3, write 3 | w3@0", "5 - 2 = 3 | w3@1", "33"]],
+    ["one borrow", "42 -17", GOOD],
+    ["a last column that says what it writes", "42 -17", but(GOOD, 2, "3 - 1 = 2, write 2 | w2@1")],
+    ["a borrow that makes the next one", "325 -158", ["borrow 1 ten, 2 tens become 1 ten | x2@1 b1@1 b15@0", "15 - 8 = 7, write 7 | w7@0", "borrow 1 hundred, 3 hundreds become 2 hundreds | x3@2 b2@2 b11@1", "11 - 5 = 6, write 6 | w6@1", "2 - 1 = 1 | w1@2", "167"]],
+    ["a borrow across a zero", "302 -147", ACROSS],
+    ["a first digit that becomes 0", "12 -7", ["borrow 1 ten, 1 ten becomes 0 tens | x1@1 b0@1 b12@0", "12 - 7 = 5, write 5 | w5@0", "5"]],
+    ["zeros in front that nobody writes", "325 -318", SHORT],
+    ["the answer 0", "45 -45", ["5 - 5 = 0, write 0 | w0@0", "4 - 4 = 0, write nothing", "0"]],
+    ["columns with no digit below", "345 -7", ["borrow 1 ten, 4 tens become 3 tens | x4@1 b3@1 b15@0", "15 - 7 = 8, write 8 | w8@0", "3, write 3 | w3@1", "3, write 3 | w3@2", "338"]],
+  ])("accepts %s", (_name, rows, lines) => expect(problem(rows, paper(...lines))).toBeNull());
+
+  it.each<[string, string, string[], RegExp]>([
+    ["a digit crossed out that is not there", "42 -17", but(GOOD, 0, "borrow 1 ten, 5 tens become 4 tens | x5@1 b4@1 b12@0"), /shows 4 and not 5/],
+    ["a mark that crosses out another digit than the words", "42 -17", but(GOOD, 0, TEN.replace("x4", "x5")), /marks/],
+    ["a wrong new digit", "42 -17", but(GOOD, 0, TEN.replace("b3@1", "b2@1")), /marks/],
+    ["a wrong ten more", "42 -17", but(GOOD, 0, TEN.replace("b12", "b13")), /marks/],
+    ["a ten more without the digit that was there", "42 -17", but(GOOD, 0, TEN.replace("b12", "b10")), /marks/],
+    ["no mark that crosses out", "42 -17", but(GOOD, 0, TEN.replace("x4@1 ", "")), /marks/],
+    ["no mark of the ten more", "42 -17", but(GOOD, 0, TEN.replace(" b12@0", "")), /marks/],
+    ["marks in another order", "42 -17", but(GOOD, 0, TEN.replace("x4@1 b3@1", "b3@1 x4@1")), /marks/],
+    ["a borrow that writes a digit of the answer", "42 -17", [`${TEN} w5@0`, "12 - 7 = 5, write 5", "3 - 1 = 2 | w2@1", "25"], /marks/],
+    ["the marks of a borrow one place too far", "42 -17", but(GOOD, 0, "borrow 1 ten, 4 tens become 3 tens | x4@2 b3@2 b12@1"), /marks/],
+    ["a borrow of another unit than its place", "42 -17", but(GOOD, 0, "borrow 1 hundred, 4 hundreds become 3 hundreds | x4@1 b3@1 b12@0"), /hundred/],
+    ["a borrow from a place that is not on the paper", "42 -17", ["borrow 1 thousand, 4 thousands become 3 thousands | x4@3 b3@3 b10@2", ...GOOD], /thousand/],
+    ["a borrow that is not needed", "58 -23", ["borrow 1 ten, 5 tens become 4 tens | x5@1 b4@1 b18@0", "18 - 3 = 15, write 5 | w5@0", "4 - 2 = 2 | w3@1", "35"], /needs no borrow/],
+    ["a borrow two times", "42 -17", [TEN, "borrow 1 ten, 3 tens become 2 tens | x3@1 b2@1 b22@0", ...GOOD.slice(1)], /not one|needs no borrow/],
+    ["a borrow after the last column", "42 -17", but(GOOD, 3, "borrow 1 ten, 3 tens become 2 tens | x3@1 b2@1 b10@0", "25"), /after its last column/],
+    ["a borrow that is forgotten", "42 -17", GOOD.slice(1), /needs a borrow/],
+    ["the digit from before the borrow", "42 -17", but(GOOD, 1, "7 - 2 = 5, write 5 | w5@0"), /the paper shows 12 - 7/],
+    ["a place that gave and still has its old digit", "53 -19", ["borrow 1 ten, 5 tens become 4 tens | x5@1 b4@1 b13@0", "13 - 9 = 4, write 4 | w4@0", "5 - 2 = 3 | w3@1", "34"], /the paper shows 4 - 1/],
+    ["a zero crossed in the other order", "302 -147", [ACROSS[1], ACROSS[0], ...ACROSS.slice(2)], /shows 0 and not 10|from the hundreds/],
+    ["a zero crossed with one move left out", "302 -147", ACROSS.slice(1), /from the hundreds|shows 0 and not 10/],
+    ["a zero crossed and the ten not given on", "302 -147", but(ACROSS, 1), /needs a borrow/],
+    ["a borrow that skips a place that can give", "342 -157", ["borrow 1 hundred, 3 hundreds become 2 hundreds | x3@2 b2@2 b14@1", "borrow 1 ten, 14 tens become 13 tens | x14@1 b13@1 b12@0", "12 - 7 = 5, write 5 | w5@0", "13 - 5 = 8, write 8 | w8@1", "2 - 1 = 1 | w1@2", "185"], /from the tens|cannot read|not one/],
+    ["a write that the words leave out", "42 -17", but(GOOD, 1, "12 - 7 = 5 | w5@0"), /misses "write 5"/],
+    ["a digit written in another place", "42 -17", but(GOOD, 1, "12 - 7 = 5, write 5 | w5@1"), /more than once|marks/],
+    ["a zero written in front", "325 -318", but(SHORT, 2, "1 - 1 = 0, write 0 | w0@1"), /the place 1/],
+    ["a zero in front that the words write", "325 -318", but(SHORT, 2, "1 - 1 = 0, write 0"), /must say "write nothing"/],
+    ["a zero in front with no word of it", "325 -318", but(SHORT, 3, "3 - 3 = 0"), /must say "write nothing"/],
+    ["a column left out", "325 -318", but(SHORT, 3), /has no step/],
+    ["nothing written for the only digit", "45 -45", ["5 - 5 = 0, write nothing", "4 - 4 = 0, write nothing | w0@0", "0"], /must say "write 0"|marks/],
+    ["a column too many", "42 -17", but(GOOD, 3, "0 - 0 = 0, write nothing", "25"), /after its last column/],
+    ["an equation for a column with no digit below", "45 -3", ["5 - 3 = 2, write 2 | w2@0", "4 - 0 = 4 | w4@1", "42"], /the paper shows 4/],
+    ["only the top digit for a column with a digit below", "45 -40", ["5, write 5 | w5@0", "4 - 4 = 0, write nothing", "5"], /the paper shows 5 - 0/],
+    ["a carry", "42 -17", but(GOOD, 1, "12 - 7 = 5, write 5 | w5@0 c1@1"), /marks/],
+    ["an added number", "42 -17", but(GOOD, 2, "1 - 0 = 1, plus 1 is 2 | w2@1"), /the paper shows 3 - 1|adds/],
+    ["one equation for the whole question", "200 -5", ["200 - 5 = 195 | w5@0 w9@1 w1@2", "195"], /needs a borrow|the paper shows/],
+    ["a borrow on an addition", "42 +17", ["borrow 1 ten, 4 tens become 3 tens | x4@1 b3@1 b12@0", "2 + 7 = 9, write 9 | w9@0", "4 + 1 = 5 | w5@1", "59"], /borrows and the printed rows are no subtraction/],
+    ["marks of a borrow on an addition", "42 +17", ["2 + 7 = 9, write 9 | w9@0 x4@1", "4 + 1 = 5 | w5@1", "59"], /borrows and the printed rows are no subtraction/],
+    ["a borrow with rows that are no column", "42", GOOD, /borrows and the printed rows are no subtraction/],
+  ])("refuses %s", (_name, rows, lines, message) => expect(problem(rows, paper(...lines))).toMatch(message));
+
+  it.each<[string, Record<string, unknown>]>([
+    ["another row", { mark: "cross-out", row: "bottom", place: 1, digit: "4" }], ["no row", { mark: "borrow", place: 1, digit: "3" }], ["a row on a written digit", { mark: "write", row: "top", place: 0, digit: "5" }],
+    ["19 above a place", { mark: "borrow", row: "top", place: 0, digit: "19" }], ["a zero in front", { mark: "borrow", row: "top", place: 0, digit: "02" }], ["no digit", { mark: "cross-out", row: "top", place: 0, digit: "" }],
+    ["two digits in the answer", { mark: "write", place: 0, digit: "12" }], ["a place below the ones", { mark: "borrow", row: "top", place: -1, digit: "3" }], ["one name more", { mark: "borrow", row: "top", place: 1, digit: "3", at: 2 }],
+  ])("refuses a mark with %s", (_name, mark) => {
+    const steps = paper(...GOOD);
+    expect(marksProblem([{ ...steps[0], marks: [...steps[0].marks, mark as never] }, ...steps.slice(1)], "25", ["42", "-17"])).toMatch(/holds a mark that is not one/);
+  });
+
+  it("refuses any other number in the words or the marks of any subtraction", () => {
+    const digits = fc.integer({ min: 1, max: 9999 });
+    fc.assert(fc.property(digits, digits, fc.nat(), fc.nat(), fc.integer({ min: 1, max: 9 }), (one, other, at, which, more) => {
+      const [a, b] = [Math.max(one, other), Math.min(one, other)];
+      const rows = [String(a), `-${b}`];
+      const good = subColumn.steps({ a, b });
+      expect(marksProblem(good, String(a - b), rows)).toBeNull();
+      const index = at % good.length;
+      const numbers = [...good[index].text.matchAll(/\d+/g)];
+      const found = numbers[which % numbers.length];
+      const text = `${good[index].text.slice(0, found.index)}${Number(found[0]) + more}${good[index].text.slice(found.index + found[0].length)}`;
+      expect(marksProblem(good.map((s, i) => (i === index ? { ...s, text } : s)), String(a - b), rows), text).not.toBeNull();
+      const withMarks = good.flatMap((s, i) => (s.marks.length > 0 ? [i] : []));
+      const marked = withMarks[at % withMarks.length];
+      const changed = good[marked].marks.map((m, i) => (i === which % good[marked].marks.length ? { ...m, digit: String((Number(m.digit) + more) % 10) } : m));
+      expect(marksProblem(good.map((s, i) => (i === marked ? { ...s, marks: changed } : s)), String(a - b), rows)).not.toBeNull();
+      expect(marksProblem(good.filter((_, i) => i !== marked), String(a - b), rows)).not.toBeNull();
+    }), { numRuns: 80 });
+  });
+});
+
+describe("the paper of an addition in columns", () => {
+  it.each<[string, string[], string[], string | null]>([
+    ["a column with no digit below", ["195", "+8"], ["5 + 8 = 13, write 3, carry 1 | w3@0 c1@1", "9, plus 1 is 10, write 0, carry 1 | w0@1 c1@2", "1, plus 1 is 2 | w2@2", "203"], null],
+    ["only the top digit of a column with a digit below", ["15", "+20"], ["5, write 5 | w5@0", "1 + 2 = 3 | w3@1", "35"], "has a digit below"],
+    ["another top digit than the paper", ["45", "+3"], ["5 + 3 = 8, write 8 | w8@0", "3, write 3 | w3@1", "38"], "shows 4 and not 3"],
+    ["a digit with no paper", ["45"], ["5 + 3 = 8, write 8 | w8@0", "4, write 4 | w4@1", "48"], "has no equation"],
+  ])("with %s", (_name, rows, lines, message) => {
+    const steps = lines.map((line) => step(...(line.split(" | ") as [string, string?])));
+    const found = marksProblem(steps, steps[steps.length - 1].text, rows);
+    if (message === null) expect(found).toBeNull();
+    else expect(found).toContain(message);
   });
 });
 
@@ -651,7 +783,7 @@ describe("closed grammar of worked steps and marks", () => {
       const r = readStep(s.text);
       return i < steps.length - 1 && (r.wrong.length > 0 || r.unread.length > 0);
     });
-    const marksBad = marksProblem(steps, answer) !== null;
+    const marksBad = marksProblem(steps, answer, []) !== null;
     expect(stepTextBad || marksBad).toBe(true);
     expect(marksBad).toBe(true);
   });
@@ -659,7 +791,7 @@ describe("closed grammar of worked steps and marks", () => {
   it("accepts a last column with an explicit full write clause", () => {
     const withWrite = [step("7 × 0 = 0, write 0", "w0@0"), step("7 × 4 = 28, write 28", "w8@1 w2@2"), step("280")];
     for (const s of withWrite) expect(readStep(s.text)).toEqual({ wrong: [], unread: [] });
-    expect(marksProblem(withWrite, "280")).toBeNull();
+    expect(marksProblem(withWrite, "280", ["40", "×7"])).toBeNull();
   });
 
   it("rejects any single number edit in the text of all 720 two-digit questions plus random 3- and 4-digit questions", () => {
@@ -680,7 +812,7 @@ describe("closed grammar of worked steps and marks", () => {
       if (!isZeroMultiplier) {
         const endWrong = editedSteps.at(-1)?.text !== answer;
         const evalWrong = readStep(editedText).wrong.length > 0 || readStep(editedText).unread.length > 0;
-        const marksWrong = marksProblem(editedSteps, answer) !== null;
+        const marksWrong = marksProblem(editedSteps, answer, [String(a), `×${b}`]) !== null;
         expect(endWrong || evalWrong || marksWrong, `${a}×${b} step "${editedText}"`).toBe(true);
       }
     };

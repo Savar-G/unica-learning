@@ -18,10 +18,16 @@ export interface Answer { kind: AnswerKind; value: string }
 export interface ColumnFace { kind: "column"; top: string; sign: string; bottom: string }
 export type Face = ColumnFace;
 
-/** What a step puts on the paper. "write" is a digit of the answer; "carry" is the small digit above the next column. */
-export const STEP_MARKS = ["write", "carry"] as const;
-/** One digit of the working. Place 0 is the ones, place 1 the tens, and so on. */
-export interface StepMark { mark: (typeof STEP_MARKS)[number]; place: number; digit: string }
+/**
+ * What a step puts on the paper. "write" is a digit of the answer; "carry" is the small digit above the next column.
+ * "cross-out" strikes the number that a place of a printed row shows now, and "borrow" writes the new one above it: 3
+ * above the 4 tens that gave 1, then 12 above the 2 ones that got it.
+ */
+export const STEP_MARKS = ["write", "carry", "cross-out", "borrow"] as const;
+/** One mark of the working. Place 0 is the ones, place 1 the tens, and so on. A digit has two figures only from 10 to 18. */
+export type StepMark =
+  | { mark: "write" | "carry"; place: number; digit: string }
+  | { mark: "cross-out" | "borrow"; row: "top"; place: number; digit: string };
 
 /** One worked step: the line that a parent reads, and what it draws. The last step is the answer, with no marks. */
 export interface Step { text: string; marks: StepMark[] }

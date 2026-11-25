@@ -178,13 +178,13 @@ class Harness {
     const solved = this.guard("solve-again", () => canonicalJson(shape.solveAgain(rows)));
     if (solved !== `{"answer":${answerJson},"question":${key}}`) this.tell("solve-again", `${at}: solveAgain(${show(rows)}) gave ${solved}`);
     const steps = shape.steps(question);
-    this.checkSteps(steps, answer, printed, at);
+    this.checkSteps(steps, answer, printed, rows, at);
     const score = shape.difficulty(question);
     if (!Number.isFinite(score)) this.tell("difficulty", `${at}: the score is ${score}`);
     return { question, rows, printed, answer: answerJson, steps: canonicalJson(steps), score, places };
   }
 
-  private checkSteps(steps: readonly Step[], answer: Answer, printed: Printed, at: string): void {
+  private checkSteps(steps: readonly Step[], answer: Answer, printed: Printed, rows: Rows, at: string): void {
     const bad = steps.find(({ text }) => typeof text !== "string" || text === "" || !isPrintable(text));
     if (bad !== undefined) this.tell("steps-end", `${at}: the step ${JSON.stringify(bad.text)} cannot be printed`);
     const end = steps.at(-1)?.text;
@@ -203,7 +203,7 @@ class Harness {
       }
     }
     // Wrong answers, ends and unreadable steps have their own checks; the marks are compared with a good step list.
-    const marks = textOk && answer.kind === "whole-number" && hasAnswerForm(answer) && end === answer.value ? marksProblem(steps, answer.value) : null;
+    const marks = textOk && answer.kind === "whole-number" && hasAnswerForm(answer) && end === answer.value ? marksProblem(steps, answer.value, rows) : null;
     if (marks) this.tell("steps-marks", `${at}: ${marks}`);
     const said = canonicalJson(steps);
     const wanted = canonicalJson(printed.steps);
