@@ -4,7 +4,7 @@
 import { BRACKET_SIGN, PRINT_RULES, type BracketFace, type ColumnFace, type Face, type FaceToken, type Ink, type Rect, type Region } from "../contract";
 import { bottom, near, right } from "./rects";
 
-const { cell: CELL, line: LINE, textHeight: TEXT_HEIGHT, bracket: BRACKET } = PRINT_RULES;
+const { cell: CELL, line: LINE, textHeight: TEXT_HEIGHT, questionSize: SIZE, bracket: BRACKET } = PRINT_RULES;
 
 /** The tokens of a face: of its line, of its sequence, or of what stands above its bracket. A stack has none. */
 export const faceTokens = (face: Face): readonly FaceToken[] => (face.kind === "column" ? [] : face.kind === "bracket" ? face.above : face.tokens);
@@ -91,7 +91,7 @@ function facePrint(face: Face, question: Region, areas: ReadonlyMap<string, Area
 }
 
 const isPrint = ({ text: wanted, rect }: Print, ink: Ink): boolean => {
-  const isKind = wanted === null ? ink.kind === "fill" : ink.kind === "text" && ink.text === wanted;
+  const isKind = wanted === null ? ink.kind === "fill" : ink.kind === "text" && ink.text === wanted && ink.size >= SIZE.min && ink.size <= SIZE.max;
   return isKind && near(ink.rect.x, rect.x) && near(ink.rect.y, rect.y) && near(ink.rect.w, rect.w) && near(ink.rect.h, rect.h);
 };
 const round = (n: number) => Math.round(n * 100) / 100;

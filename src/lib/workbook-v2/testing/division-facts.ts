@@ -95,7 +95,7 @@ type Remainder = string | { min: number; max: number };
 const toRange = (limit: Remainder) => (typeof limit === "string" ? WORDS[limit] : limit);
 const toLimit = ({ min, max }: { min: number; max: number }): Remainder => Object.keys(WORDS).find((w) => WORDS[w].min === min && WORDS[w].max === max) ?? { min, max };
 
-/** "none" prints no area for it; a word or a range prints one for each question. The feature is the remainder and the number of areas. */
+/** "none" prints no area for it; a word or a range prints one for each question. The feature is the remainder and the number of areas. No limit permits one area and two: a wider one than "none" and another has two. */
 export function remainderLimit(): LimitRule {
   const ranges = rangeLimit(0, 8);
   return {

@@ -279,6 +279,7 @@ describe("what a question prints", () => {
     ["shorter on the left", (ink) => ({ ...ink, rect: { ...ink.rect, x: ink.rect.x + 1, w: ink.rect.w - 1 } })],
     ["thinner", (ink) => ({ ...ink, rect: { ...ink.rect, h: ink.rect.h - 0.6 } })],
     ["longer", (ink) => ({ ...ink, rect: { ...ink.rect, w: ink.rect.w + 1 } })],
+    ...[0, -22, 15.9, Number.NaN, 30.1].map((size): [string, (ink: Ink) => Ink | null] => [`in size ${size}`, (ink) => (ink.kind === "text" ? { ...ink, size } : null)]),
     ["with a character less", (ink) => (ink.kind === "text" ? { ...ink, text: ink.text.slice(0, -1) } : null)],
     ["of another kind", (ink) => (ink.kind === "fill" ? { kind: "outline", rect: ink.rect, color: ink.color, width: 0.75 } : null)],
   ];

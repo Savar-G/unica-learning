@@ -143,6 +143,8 @@ export const PRINT_RULES = {
   /** The place of one digit of a stack or inside a bracket, and the height of a text that stands in a line. */
   cell: { w: 24, h: 28 },
   textHeight: 28,
+  /** The smallest and the largest size of a text of a question. */
+  questionSize: { min: 16, max: 30 },
   /** A line of a question, and its distance to the digits that it belongs to. */
   line: { height: 1.2, gap: 2 },
   /** The widths of the number outside a bracket and of its sign. */

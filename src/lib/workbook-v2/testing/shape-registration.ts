@@ -24,7 +24,7 @@ export interface Printed {
 export interface LimitRule {
   values: fc.Arbitrary<unknown>;
   allows(feature: unknown, limit: unknown): boolean;
-  /** A value that permits all that both permit. */
+  /** A value that permits all that both permit, or, for a limit that also decides the form, all of one form. */
   widen(one: unknown, other: unknown): unknown;
   /** Values that the shape must refuse. */
   bad: readonly unknown[];
