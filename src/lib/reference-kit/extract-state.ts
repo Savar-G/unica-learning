@@ -7,20 +7,21 @@ import {
   writeSafeOutputFile,
 } from "@/lib/reference-record";
 import { fileSlugFromRef } from "./answers";
-import { finalFileGuard, checkedRefsForPhoto, keptPhotoDigests, type CheckedPages } from "./checked-pages";
+import {
+  checkedRefsForPhoto,
+  finalFileGuard,
+  keptCheckedRefs,
+  keptPhotoDigests,
+  type CheckedPages,
+} from "./checked-pages";
 import {
   preparedFileNameForHash,
   resolveSafeChildPath,
   type PhotosManifest,
   type RemovedPhotoReport,
 } from "./prepare";
-import type {
-  PhotoRunEntry,
-  ReaderFamily,
-  ReaderMeta,
-  ReadPhotoResult,
-  ReadRunReport,
-} from "./read";
+import type { PhotoRunEntry, ReaderFamily, ReadPhotoResult } from "./read";
+import { loadReaderNotes } from "./reader-notes";
 
 // The saved state of a work folder between runs: the run.json entries of each reader, the
 // record files they name, and the cleanup of photos that left the photos folder.
@@ -55,17 +56,12 @@ export function unlinkChild(dir: string, name: string | undefined): void {
 // Loads the run.json entries of one reader folder. A folder that holds readings of another
 // model family is refused, because the two families must not mix in one reader folder.
 export function loadRunEntries(slotDir: string, expectedFamily: ReaderFamily): PhotoRunEntry[] {
-  const run = readJsonIfExists<Partial<ReadRunReport>>(join(slotDir, "run.json"));
-  const entries = Array.isArray(run?.photos)
-    ? run.photos.filter(
-        (e): e is PhotoRunEntry =>
-          typeof e === "object" && e !== null && typeof e.photo_sha256 === "string",
-      )
-    : [];
-  const meta = readJsonIfExists<Partial<ReaderMeta>>(join(slotDir, "reader.json"));
-  if (meta?.family && meta.family !== expectedFamily && entries.length > 0) {
+  const { meta, run } = loadReaderNotes(slotDir);
+  const entries = (run?.photos ?? []).filter((e) => e.photo_sha256 !== undefined);
+  const family = meta?.family ?? run?.reader?.family;
+  if (family && family !== expectedFamily && entries.length > 0) {
     throw new Error(
-      `${slotDir} holds readings from "${meta.family}", not "${expectedFamily}". Use the same reader or a new --out folder.`,
+      `${slotDir} holds readings from "${family}", not "${expectedFamily}". Use the same reader or a new --out folder.`,
     );
   }
   return entries;
@@ -173,9 +169,11 @@ function removeFinalPages(
 // in the photos folder is a removed photo. Its prepared file, manifest entry, readings, and final
 // record and view are deleted. The photo of a saved check is kept with its readings while the record
 // of the check is there, and so is each photo of a page that was checked before the digests existed.
+// A person who removes the record lets the page go with its photos.
 export function pruneRemovedPhotos(opts: PruneRemovedPhotosOptions): PruneRemovedPhotosResult {
   const { presentDigests, manifest, entriesA, entriesB, checked } = opts;
   const finalDir = join(opts.workDir, "final");
+  const keptRefs = keptCheckedRefs(finalDir, checked);
   // Prepared files that a photo of the folder or the photo of a check needs.
   const keptFiles = new Set(
     [...presentDigests, ...keptPhotoDigests(finalDir, checked)].map(preparedFileNameForHash),
@@ -202,7 +200,7 @@ export function pruneRemovedPhotos(opts: PruneRemovedPhotosOptions): PruneRemove
     const photo = manifestEntry?.file ?? anyEntry?.photo ?? preparedFileNameForHash(sha);
     const checkedRef =
       checkedRefsForPhoto(finalDir, checked, sha)[0] ??
-      refs.find((ref) => checked.refs.has(ref) && !checked.digests.pages.has(ref));
+      refs.find((ref) => keptRefs.has(ref) && !checked.digests.pages.has(ref));
     const ref = checkedRef ?? refs[0];
     removedPhotos.push({
       original_name: manifestEntry?.original_name ?? anyEntry?.original_name ?? photo,
@@ -213,12 +211,12 @@ export function pruneRemovedPhotos(opts: PruneRemovedPhotosOptions): PruneRemove
     });
     if (checkedRef !== undefined) {
       // Also a photo that only the readings know.
-      keptFiles.add(photo).add(preparedFileNameForHash(sha));
+      keptFiles.add(preparedFileNameForHash(sha));
       continue;
     }
     dropped.add(sha);
     for (const droppedRef of refs) droppedRefs.add(droppedRef);
-    droppedFiles.add(photo);
+    droppedFiles.add(preparedFileNameForHash(sha));
   }
   // Two digests can share a file name, so nothing is removed before every kept photo is known.
   for (const file of droppedFiles) if (!keptFiles.has(file)) unlinkChild(opts.preparedPhotosDir, file);

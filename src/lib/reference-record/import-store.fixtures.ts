@@ -1,6 +1,11 @@
 import type { ExistingReferenceRow, ReferenceRow, ReferenceStore } from "./import";
 import { sha256Hex } from "./read-file";
 
+// The path that a new photo of a page gets.
+export function contentPath(sourceRef: string, ext: string, bytes: Uint8Array): string {
+  return `${sourceRef.replaceAll(":", "/")}.${sha256Hex(bytes).slice(0, 16)}.${ext}`;
+}
+
 // A stored row also has the columns the import never sends: id, created_at and updated_at.
 export type StoredRow = Omit<ReferenceRow, "transcript_status"> & {
   transcript_status: string;
@@ -31,6 +36,7 @@ export class MemoryReferenceStore implements ReferenceStore {
           transcript: structuredClone(row.transcript),
           path: row.path,
           transcript_status: row.transcript_status,
+          updated_at: row.updated_at ?? "",
         });
       }
     }
@@ -52,10 +58,17 @@ export class MemoryReferenceStore implements ReferenceStore {
     return true;
   }
 
-  async updateRow(row: ReferenceRow): Promise<boolean> {
+  async updateRow(row: ReferenceRow, seen: ExistingReferenceRow): Promise<boolean> {
     this.calls.push(`updateRow:${row.source_ref}`);
     const prev = this.rows.get(row.source_ref);
-    if (!prev) return false;
+    if (
+      prev === undefined ||
+      prev.path !== seen.path ||
+      prev.transcript_status !== seen.transcript_status ||
+      (prev.updated_at ?? "") !== seen.updated_at
+    ) {
+      return false;
+    }
     this.rows.set(row.source_ref, {
       ...prev,
       kind: row.kind,
@@ -65,11 +78,6 @@ export class MemoryReferenceStore implements ReferenceStore {
       updated_at: this.now(),
     });
     return true;
-  }
-
-  async replaceObject(path: string, bytes: Uint8Array, contentType: string): Promise<void> {
-    this.calls.push(`replaceObject:${path}`);
-    this.objects.set(path, { bytes: new Uint8Array(bytes), contentType });
   }
 
   async refsByPath(paths: string[]): Promise<Map<string, string[]>> {
