@@ -35,6 +35,14 @@ function extractExcludes(line) {
   return [...line.matchAll(/--exclude=(?:'([^']+)'|"([^"]+)"|(\S+))/g)].map((m) => m[1] ?? m[2] ?? m[3]);
 }
 
+/** The test files the scan matrix job names, one for each runner of its matrix. */
+function scaleTargets(scaleJob) {
+  const listed = scaleJob.match(/\n {6}matrix:\n {8}file: \[([^\]]*)\]\n/);
+  assert.ok(listed, "scan-binding-scale must list its files in matrix.file");
+  const line = scaleJob.split("\n").find((l) => l.includes("npm test --"));
+  return listed[1].split(",").map((f) => line.match(/npm test -- (\S+?\$\{\{ matrix\.file \}\}\S*)/)[1].replace("${{ matrix.file }}", f.trim()));
+}
+
 function matchesAny(file, patterns) {
   return patterns.some((pattern) => path.posix.matchesGlob(file, pattern));
 }
@@ -73,8 +81,8 @@ test("every engine test file is owned by exactly one job in full mode and in aff
   const prUnitTestLine = prUnitJob.split("\n").find((l) => l.includes("npm test --"));
   const engineTestLine = engineJob.split("\n").find((l) => l.includes("npm test --"));
   const mayaTestLine = mayaJob.split("\n").find((l) => l.includes("npm test --"));
-  const scaleTestLine = scaleJob.split("\n").find((l) => l.includes("npm test --"));
-  assert.ok(unitTestLine && prUnitTestLine && engineTestLine && mayaTestLine && scaleTestLine);
+  assert.ok(unitTestLine && prUnitTestLine && engineTestLine && mayaTestLine);
+  const scaleFiles = scaleTargets(scaleJob);
 
   const unitExcludes = extractExcludes(unitTestLine);
   const prUnitExcludes = extractExcludes(prUnitTestLine);
@@ -93,7 +101,8 @@ test("every engine test file is owned by exactly one job in full mode and in aff
     if (!matchesAny(file, unitExcludes)) owners.push("unit");
     if (inEngineJob(file)) owners.push("engine");
     if (mayaTestLine.includes(file)) owners.push("maya-behaviour");
-    if (scaleTestLine.includes(file)) owners.push("scan-binding-scale");
+    // Vitest takes each argument as a part of a path, so a name that is part of another would run that file twice.
+    for (const target of scaleFiles) if (file.includes(target)) owners.push("scan-binding-scale");
     assert.equal(owners.length, 1, `full mode: ${file} must have exactly 1 owner, got ${JSON.stringify(owners)}`);
     if (file.startsWith("src/lib/workbook-v2/")) {
       assert.deepEqual(owners, ["engine"]);
@@ -115,6 +124,26 @@ test("every engine test file is owned by exactly one job in full mode and in aff
       assert.deepEqual(owners, ["engine"], `affected mode (${changedFiles.join(", ")}): ${file} must run only in engine`);
     }
   }
+});
+
+test("every file of the scan matrix runs on its own runner in full mode and only in pr-unit in affected mode", () => {
+  const workflow = readWorkflow();
+  const scaleJob = getJobBlock(workflow, "scan-binding-scale");
+  const onDisk = walkTests(path.join(ROOT, "src/lib")).filter((f) => f.includes("/scan-binding-scale"));
+  assert.equal(onDisk.length, 3);
+  assert.deepEqual(scaleTargets(scaleJob).sort(), onDisk);
+  assert.match(scaleJob, /\n {4}if: needs\.scope\.outputs\.mode == 'full'\n/);
+  assert.match(scaleJob, /\n {6}fail-fast: false\n/);
+  for (const weaker of ["continue-on-error", "--retry", "--passWithNoTests", "--testTimeout", "--bail", "exclude:", "|| true"]) {
+    assert.equal(scaleJob.includes(weaker), false, `scan-binding-scale must not use ${weaker}`);
+  }
+
+  // Affected mode: the scan matrix job does not run, and nothing keeps its files out of pr-unit.
+  const prUnitLine = getJobBlock(workflow, "pr-unit").split("\n").find((l) => l.includes("--changed="));
+  const scope = classifyScope({ eventName: "pull_request", changedFiles: ["src/lib/scan-calibration.ts"] });
+  assert.equal(scope.mode, "affected");
+  assert.equal(scope.runChangedUnit, true);
+  for (const file of onDisk) assert.equal(matchesAny(file, extractExcludes(prUnitLine)), false, file);
 });
 
 test("the required test job shell fails when engine is required and does not succeed, or runs when not required", () => {
@@ -213,6 +242,11 @@ test("the required test job shell fails when engine is required and does not suc
       assert.notEqual(runGate({ ...skip, [`RUN_${job}`]: flagValue, [`${job}_RESULT`]: "success" }).status, 0, `skip ${job} ${flagValue}`);
     }
   }
+
+  // The scan matrix: required in full mode (one failed or cancelled part makes the job's result not success), never run otherwise.
+  for (const bad of ["failure", "cancelled", "skipped"]) assert.notEqual(runGate({ ...full, SCAN_BINDING_RESULT: bad }).status, 0, `full scan matrix ${bad}`);
+  assert.notEqual(runGate({ SCAN_BINDING_RESULT: "success" }).status, 0);
+  assert.notEqual(runGate({ ...skip, SCAN_BINDING_RESULT: "success" }).status, 0);
 
   // Guard against silent empty/typo flags or unknown mode.
   assert.notEqual(runGate({ RUN_ENGINE: "", ENGINE_RESULT: "skipped" }).status, 0);
