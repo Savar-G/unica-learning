@@ -6,7 +6,7 @@ import { validateSnapshot, type TemplateLibrary } from "../bank/snapshot";
 import { checkImages } from "../checks/images";
 import { checkPage } from "../checks/page-rules";
 import { checkPositions, checkTexts } from "../checks/positions";
-import { checkPrintedAnswers } from "../checks/printed-answers";
+import { checkAnswerForms, checkPrintedAnswers } from "../checks/printed-answers";
 import { checkRendering } from "../checks/rendering";
 import { ENGINE_VERSION, type BookItem, type PageModel, type Position } from "../contract";
 import { canonicalJson, sha256 } from "../hash";
@@ -77,6 +77,8 @@ export function planBook(input: BuildInput, shapes: ShapeLibrary = SHAPES, templ
 
   const sheets = book.sheets.map((s) => ({ ...s, items: sheetItems(s.sheet, book.childId, s.attempt), levelName: bank.snapshot.level.name }));
   const items = sheets.flatMap((s) => s.items);
+  const formless = checkAnswerForms(items, shapes);
+  if (formless.length > 0) return stop(formless);
   const layout = buildPages(sheets);
   if (!layout.ok) return layout;
   const { pages } = layout;

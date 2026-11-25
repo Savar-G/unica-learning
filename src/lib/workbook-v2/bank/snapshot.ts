@@ -71,7 +71,7 @@ function checkFit(r: FieldReader, place: string, side: Side, template: PageTempl
     for (const { question, answer } of formsOf(row.shape, row.limits)) {
       const face = row.shape.face(question);
       const problem = fitProblem(template, face, answer);
-      if (problem) r.problem(at, template.faces.includes(face.kind) ? `the widest question, ${questionText(face, answer)}, ${problem}` : `the template "${template.id}" has no place for a ${face.kind} question`);
+      if (problem) r.problem(at, template.faces.includes(face.kind) ? `the widest question, ${questionText(face, answer)}, ${problem}` : `the template "${template.id}" has no place for ${face.kind === "equation" ? "an" : "a"} ${face.kind} question`);
       // One form says what is wrong: a template that is too small is too small for many of them.
       if (problem) break;
     }

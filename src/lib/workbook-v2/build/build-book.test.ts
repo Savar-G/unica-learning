@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { PageModel } from "../contract";
+import type { Answer, PageModel } from "../contract";
 import rawBook from "../fixtures/book.json";
 import rawSnapshot from "../fixtures/snapshot.json";
 import { sha256 } from "../hash";
 import { openRenderer } from "../render/typst";
 import { RenderError, type Renderer, type Rendering } from "../renderer";
-import { SHAPES, shapeLibrary } from "../shapes";
+import { SHAPES, shapeLibrary, type Shape } from "../shapes";
 import { wholeNumber } from "../shapes/shape";
 import { pagePng } from "../testing/raster";
 import { stackOf } from "../testing/sample";
@@ -161,6 +161,24 @@ describe("a build stops, draws nothing and says why", () => {
     const result = await buildBook(input(), renderer, shapeLibrary([{ ...mul, solveAgain: (rows) => { const r = mul.solveAgain(rows); return r && { ...r, answer: wholeNumber(7) }; } }]));
     expect(result.status).toBe("failed");
     if (result.status === "failed") expect(result.problems[0]).toMatch(/question 1 .* by one computation and "7" by another\.$/);
+    expect(renderer.drawn).toEqual([]);
+  });
+
+  it.each<[string, unknown, RegExp]>([
+    ["an empty value", { name: "answer", kind: "whole-number", value: "" }, /the part "answer" has the value "", which is no whole-number\.$/],
+    ["a part that is nothing", null, /has a part that is not a name, a kind and a value\.$/],
+    ["a name that marking does not know", { name: "total", kind: "whole-number", value: "72" }, /the name "total", which is not known\.$/],
+  ])("an answer with %s in both computations, before the layout reads it", async (_name, part, problem) => {
+    const mul = SHAPES.get("mul.column");
+    if (!mul) throw new Error("no shape");
+    const bad = <T extends { answer: Answer }>(item: T): T => ({ ...item, answer: { parts: [part as Answer["parts"][number]] } });
+    const renderer = fake();
+    const shape: Shape = { ...mul, generate: (l, seed) => bad(mul.generate(l, seed)), solveAgain: (rows) => { const r = mul.solveAgain(rows); return r && bad(r); } };
+    const result = await buildBook(input(), renderer, shapeLibrary([shape]));
+    if (result.status !== "failed") throw new Error("the book was built");
+    expect(result.problems).toHaveLength(16);
+    expect(result.problems[0]).toMatch(/^Sheet "column-multiplication-1", front side, question 1: the answer /);
+    for (const text of result.problems) expect(text).toMatch(problem);
     expect(renderer.drawn).toEqual([]);
   });
 

@@ -23,7 +23,11 @@ export interface SkipCountQuestion { start: number; step: number; terms: number;
 const BOUNDS = { step: { min: 2, max: 10 }, start: { min: 0, max: 100 }, terms: { min: 5, max: 10 }, blanks: { min: 1, max: 5 }, places: { min: 1, max: 10 } };
 const WORDS = { direction: ["up", "down", "either"], offStep: ["never", "allowed"] };
 
-const termsOf = ({ start, step, terms }: SkipCountQuestion): number[] => Array.from({ length: terms }, (_, i) => start + i * step);
+function termsOf({ start, step, terms }: SkipCountQuestion): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < terms; i++) out.push(start + i * step);
+  return out;
+}
 /** The answer of the blanks at these places. */
 const partsOf = (values: readonly number[], blanks: readonly number[]): Answer =>
   ({ parts: blanks.map((place, i) => ({ name: `blank-${i + 1}`, kind: "whole-number", value: String(values[place - 1]) })) });

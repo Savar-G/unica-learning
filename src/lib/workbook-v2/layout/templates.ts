@@ -224,14 +224,11 @@ const ALL: readonly PageTemplate[] = [
 ];
 export const TEMPLATES: ReadonlyMap<string, PageTemplate> = new Map(ALL.map((t) => [t.id, t]));
 
-const longest = (texts: readonly string[]): number => Math.max(0, ...texts.map((t) => t.length));
-const textsOf = (tokens: readonly FaceToken[]): string[] => tokens.flatMap((t) => ("text" in t ? [t.text] : []));
-
 /** How large a question is with its answer. A stack has its sign in the place left of the bottom line. */
 export function needsOf(face: Face, { parts }: Answer): Needs {
-  const answer = longest(parts.map((p) => p.value));
+  const answer = parts.reduce((most, p) => Math.max(most, p.value.length), 0);
   if (face.kind === "column") return { "digit places": Math.max(face.top.length, face.sign.length + face.bottom.length, answer) };
-  const characters = Math.max(longest(textsOf(face.tokens)), answer);
+  const characters = face.tokens.reduce((most, t) => ("text" in t ? Math.max(most, t.text.length) : most), answer);
   return face.kind === "equation" ? { "places in its line": face.tokens.length, "characters in a number": characters } : { terms: face.tokens.length, "characters in a number": characters };
 }
 

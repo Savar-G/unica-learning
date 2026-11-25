@@ -68,12 +68,23 @@ export function regionsByItem(pages: readonly PageModel[]): Map<string, Region[]
   return found;
 }
 
+const placeOf = (item: BookItem): string => `Sheet "${item.sheetId}", ${item.side} side, question ${item.number}`;
+
+/** What is wrong with the form of the first computation. The layout reads these answers, so the build asks before it. */
+export function checkAnswerForms(items: readonly BookItem[], shapes: ShapeLibrary): string[] {
+  return items.flatMap((item) => {
+    const shape = shapes.get(item.shape);
+    const problem = shape && answerProblem(item.answer, shape.answerKind);
+    return problem ? [`${placeOf(item)}: the answer ${problem}.`] : [];
+  });
+}
+
 /** What is wrong with the answers of a book, in plain words. */
 export function checkPrintedAnswers(pages: readonly PageModel[], items: readonly BookItem[], shapes: ShapeLibrary): string[] {
   const regions = regionsByItem(pages);
   return items.flatMap((item) => {
     const rows = questionRows(regions.get(item.id) ?? []);
     const problem = problemOf(item, rows, shapes.get(item.shape));
-    return problem ? [`Sheet "${item.sheetId}", ${item.side} side, question ${item.number} (${rows.join(" ")}): ${problem}.`] : [];
+    return problem ? [`${placeOf(item)} (${rows.join(" ")}): ${problem}.`] : [];
   });
 }

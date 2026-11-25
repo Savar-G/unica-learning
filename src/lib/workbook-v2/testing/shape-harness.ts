@@ -84,8 +84,11 @@ interface Listed { rows: Rows; printed: Printed; asked: Inspected | null }
 /** All that the checks know about one set of limits. */
 interface Space { limits: Limits; json: string; count: number; easiest: number; hardest: number; widths: Readonly<Record<string, number>>; needs: Needs }
 
+/** A question as the fit check sees it. */
+interface Formed { face: Face; answer: Answer; form: string; needs: Needs }
+
 /** Where the blanks of a question stand. */
-const formOf = (face: Face): string => (face.kind === "equation" || face.kind === "sequence" ? `${face.kind} ${face.tokens.map((t) => ("blank" in t ? "_" : "t")).join("")}` : face.kind);
+const formOf = (face: Face): string => (face.kind === "equation" || face.kind === "sequence" ? face.tokens.reduce((form, t) => form + ("blank" in t ? "_" : "t"), `${face.kind} `) : face.kind);
 
 /** What the layout printed, cached inside one harness run only. */
 function layoutRows(template: PageTemplate, face: Face, answer: Answer, cache: WeakMap<PageTemplate, Map<string, Rows>>): Rows {
@@ -114,7 +117,7 @@ class Harness {
   private readonly madeLimitsCache = new Map<number, readonly Limits[]>();
   private readonly printedCache = new WeakMap<PageTemplate, Map<string, Rows>>();
   private readonly fits = new Map<string, boolean>();
-  private readonly forms = new Map<string, Map<string, Needs>>();
+  private readonly forms = new Map<string, Map<string, Formed>>();
   private every: Listed[] | null = null;
   readonly shape: Shape;
   /** The shape as the build gets it: its `generate` checks each question. */
@@ -153,14 +156,15 @@ class Harness {
   private print(question: unknown, answer: Answer): { rows: Rows; needs: Needs; kind: Face["kind"]; form: string } {
     const face = this.shape.face(question);
     const { kind } = face;
-    const template = this.templates.find((t) => this.fitsOn(t, face, answer));
+    const asked = { face, answer, form: formOf(face), needs: needsOf(face, answer) };
+    const template = this.templates.find((t) => this.fitsOn(t, asked));
     if (!template) throw new Error(`no template takes a ${kind} question like ${canonicalJson(face)}`);
-    return { rows: layoutRows(template, face, answer, this.printedCache), needs: needsOf(face, answer), kind, form: formOf(face) };
+    return { rows: layoutRows(template, face, answer, this.printedCache), needs: asked.needs, kind, form: asked.form };
   }
 
   /** The fit check of the bank, one time for all questions of one form and size. */
-  private fitsOn(template: PageTemplate, face: Face, answer: Answer): boolean {
-    const key = `${template.id} ${formOf(face)} ${JSON.stringify(needsOf(face, answer))}`;
+  private fitsOn(template: PageTemplate, { face, answer, form, needs }: Formed): boolean {
+    const key = `${template.id} ${form} ${Object.values(needs).join()}`;
     const known = this.fits.get(key);
     if (known !== undefined) return known;
     const fits = fitProblem(template, face, answer) === null;
@@ -168,16 +172,16 @@ class Harness {
     return fits;
   }
 
-  /** The size of the widest question of each form of some limits, as the shape says it. */
-  private formsOf({ limits, json }: Space): Map<string, Needs> {
+  /** The widest question of each form of some limits, as the shape says it. */
+  private formsOf({ limits, json }: Space): Map<string, Formed> {
     const known = this.forms.get(json);
     if (known) return known;
-    const found = new Map<string, Needs>();
+    const found = new Map<string, Formed>();
     for (const { question, answer } of formsOf(this.shape, limits)) {
       const face = this.shape.face(question);
       const form = formOf(face);
       if (found.has(form)) this.tell("forms", `the forms of ${json} have "${form}" twice`);
-      found.set(form, needsOf(face, answer));
+      found.set(form, { face, answer, form, needs: needsOf(face, answer) });
     }
     this.forms.set(json, found);
     return found;
@@ -185,7 +189,7 @@ class Harness {
 
   /** A question has one of the forms of its limits, and is no larger than the widest one of that form. */
   private checkForm({ rows, form, needs }: Inspected, space: Space, at: () => string): void {
-    const widest = this.formsOf(space).get(form);
+    const widest = this.formsOf(space).get(form)?.needs;
     if (!widest) return void this.tell("forms", `${at()} gave ${show(rows)}, and the form "${form}" is not one of the forms of ${space.json}`);
     // With one form, the worst case is the widest question, and its own checks say so.
     const large = this.shape.forms && Object.keys(needs).find((name) => !(needs[name] <= widest[name]));
@@ -558,8 +562,8 @@ class Harness {
     const used = this.wantedSeeds < SEEDS ? largest.slice(0, 2 * Math.max(1, Math.ceil(this.wantedSeeds / 16))) : largest;
     // The templates of some limits are found one time, for the book and for the check that it fills them.
     const fitting = new Map(largest.map((space) => {
-      const forms = formsOf(this.shape, space.limits).map(({ question, answer }) => ({ face: this.shape.face(question), answer }));
-      return [space, this.templates.filter((t) => forms.every(({ face, answer }) => this.fitsOn(t, face, answer)))] as const;
+      const forms = [...this.formsOf(space).values()];
+      return [space, this.templates.filter((t) => forms.every((one) => this.fitsOn(t, one)))] as const;
     }));
     const withTemplates = (space: Space) => ({ limits: space.limits, count: space.count, fitting: fitting.get(space) ?? [] });
     const { input, limitsOf } = sampleBook(this.shape.id, used.map(withTemplates), this.wantedSeeds);
