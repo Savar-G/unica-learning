@@ -24,11 +24,28 @@ export function request(image: Uint8Array, local: readonly RequestRegion[]): AiJ
   };
 }
 
+const FIRST_LOOK = " Labeled close-ups are magnified views of those same answer reaches. Check the close-up when deciding whether ink is an additional digit or a printed line.";
+
+export function firstLook(image: Uint8Array, local: readonly RequestRegion[]): AiJsonRequest {
+  const read = request(image, local);
+  read.system += FIRST_LOOK;
+  return read;
+}
+
+export async function firstLookRequest(image: Uint8Array, local: readonly RequestRegion[], zoom?: MarkingReachCrop): Promise<AiJsonRequest> {
+  const read = firstLook(image, local);
+  return addReachCrops(read, image, local.filter(region => region.kind === "number"), (item, region) => `Close-up of item ${item}, region ${region}`, zoom);
+}
+
 const SECOND_LOOK = " This is a second look at answers another reader could not read. Read them freshly from the page and any labeled zooms of the same reach. In a number, fraction or text region, a value struck through with a line, with one clear value written beside, above or below it inside the same answer area, is a correction: transcribe only the clear value. If more than one value is left unstruck, or you cannot tell which value is final, report uncertain with issue multiple-marks.";
 
 export async function secondLookRequest(image: Uint8Array, local: readonly RequestRegion[], zoom?: MarkingReachCrop): Promise<AiJsonRequest> {
   const read = request(image, local);
   read.system += SECOND_LOOK;
+  return addReachCrops(read, image, local, (item, region) => `Zoomed reach for item ${item}, region ${region}:`, zoom);
+}
+
+async function addReachCrops(read: AiJsonRequest, image: Uint8Array, local: readonly RequestRegion[], caption: (item: string, region: string) => string, zoom?: MarkingReachCrop): Promise<AiJsonRequest> {
   if (!zoom) return read;
   for (const { reach, item, region } of local) {
     if (!reach) continue;
@@ -36,7 +53,7 @@ export async function secondLookRequest(image: Uint8Array, local: readonly Reque
     try { crop = await zoom(image, reach); }
     catch { continue; }
     if (!crop) continue;
-    read.content.push({ type: "text", text: `Zoomed reach for item ${item}, region ${region}:` },
+    read.content.push({ type: "text", text: caption(item, region) },
       { type: "image", mediaType: "image/jpeg", data: crop });
   }
   return read;

@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import type { AiClient, AiJsonRequest } from "@/lib/ai-client";
 import { expectedItems, firstObservation, waitsForTeam, itemKey, markingEvent, MAX_READ_TEXT, MODEL_READING_ISSUES, pageCompletion, PHOTO_ISSUES, readingIssueText, type ReadingIssue, type RegionReading, type ExpectedItem, type MarkResult, type Observation, type PageForObservation } from "@/lib/scan-observation";
 import { answerReach } from "@/lib/scan-answer-reach";
-import { MAX_VERDICT_REASON, request, secondLookRequest, type MarkingReachCrop } from "@/lib/scan-marking-request";
+import { MAX_VERDICT_REASON, firstLook, firstLookRequest, secondLookRequest, type MarkingReachCrop } from "@/lib/scan-marking-request";
 import { markingRegions, type MarkingRegion } from "@/lib/scan-marking-regions";
 import { checkFractionReading } from "@/lib/scan-marking-fractions";
 import { checkMethodReading, differentStrategies, METHOD_JUDGMENTS, type MethodJudgment } from "@/lib/scan-marking-methods";
@@ -17,7 +17,7 @@ import type { SkillMark } from "@/lib/assessment/skill-state";
 import type { HelpMark } from "@/lib/needs-help";
 import type { ScanCleanFailure } from "@/lib/scan-states";
 
-export const MARKING_PROMPT_VERSION = "whole-page-scalar-readings-v10";
+export const MARKING_PROMPT_VERSION = "whole-page-scalar-readings-v11";
 export const MARKING_MODEL = "anthropic/claude-sonnet-5.5";
 /**
  * The second look (decision 2026-11-13): the answers MARKING_MODEL leaves unsure are read once more by this model, on the
@@ -218,7 +218,7 @@ export function mergeSecondLook(first: readonly Observation[], second: readonly 
   return { observations, decided };
 }
 export function markingRequest(frame: MarkingFrame, image: Uint8Array): AiJsonRequest {
-  return request(image, aliases(frame, expectedItems(frame)).filter(a => a.expected.method === "code" && !heldIssue(frame, a.expected.number)));
+  return firstLook(image, aliases(frame, expectedItems(frame)).filter(a => a.expected.method === "code" && !heldIssue(frame, a.expected.number)));
 }
 /** Strict comparison acceptance. Production recovery can still preserve partial uncertain readings. */
 export function validMarkingOutput(frame: MarkingFrame, output: unknown): boolean {
@@ -462,7 +462,7 @@ export async function runScanMarking(store: MarkingStore, ref: MarkingRef, token
         if (timeout === null) { await store.pause(ref, token, "pending"); return "pending"; }
         deadline = clockMs() + timeout;
         callSignal = options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(timeout)]) : AbortSignal.timeout(timeout);
-        const output = await transport.client.json(request(image, local), callSignal);
+        const output = await transport.client.json(await firstLookRequest(image, local, store.cropReach), callSignal);
         // Use the complete local alias set when reading: aliases do not change when only pending items were requested.
         observations = readMarkingOutput(frame, output);
       } catch (e) {
