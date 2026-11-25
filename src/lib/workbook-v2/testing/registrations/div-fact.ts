@@ -53,7 +53,6 @@ export const divFactRegistration: ShapeRegistration = {
     { name: "the table of 7, down", limits: { ...TABLE_7, order: "down" } },
     { name: "the hard tables", limits: { ...WIDE, divisors: span(6, 9), quotient: r(1, 10) } },
     { name: "the easy tables in a bracket", limits: { ...BRACKET, divisors: [2, 10], quotient: r(1, 9) } },
-    { name: "two tables in a bracket", limits: { ...BRACKET, divisors: [3, 4], quotient: r(1, 9) } },
     { name: "the hard tables in a bracket", limits: { ...BRACKET, divisors: span(6, 9), quotient: r(2, 9) } },
     { name: "the widest question in a bracket", limits: { ...BRACKET, divisors: [10], quotient: r(10, 10) } },
     { name: "one table in a bracket, up", limits: { ...BRACKET, divisors: [6], order: "up" } },

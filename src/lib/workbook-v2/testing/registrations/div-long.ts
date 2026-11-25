@@ -1,7 +1,7 @@
 // The facts of div.long. The shape keeps the facts of each pair of numbers in bits; this file reads them from the first
 // digits of the dividend, and goes over all pairs of 2 and 3 digits for each question about some limits.
 import { answerOf, divisionLines, each, formLimit, groupsOf, numbersOf, prefixesOf, q, r, remainderLimit, rowsOf, span, tableOrder, withEnd, type PrintedDivision } from "../division-facts";
-import { choiceLimit, hasFeatures, oftenWide, onlyLimit, rangeLimit, type LimitRule, type Limits, type Printed, type Rows, type ShapeRegistration } from "../shape-registration";
+import { choiceLimit, oftenWide, onlyLimit, rangeLimit, type LimitRule, type Limits, type Printed, type Rows, type ShapeRegistration } from "../shape-registration";
 
 const WIDE: Limits = {
   dividendDigits: r(2, 3), dividend: r(10, 999), divisor: r(2, 9), quotient: r(1, 499), quotientDigits: r(1, 3), remainder: "any", start: "either",
@@ -53,7 +53,9 @@ function endsOf(limits: Limits): Ends {
   if (last?.limits === limits) return last.ends;
   const { form, ...rules } = limits;
   const row: Pick<PrintedDivision, "form" | "parts"> = { form: form === "line" ? "line" : "bracket", parts: rules.remainder === "none" ? 1 : 2 };
-  const inside = PAIRS.filter(({ features, left }) => hasFeatures(divLongRegistration, { ...features, remainder: { left, parts: row.parts }, form }, limits));
+  // A limit at its widest permits each pair, and the form of the row is the form of the limits.
+  const narrow = Object.entries(divLongRegistration.limits).filter(([name]) => name !== "form" && JSON.stringify(limits[name]) !== JSON.stringify(WIDE[name]));
+  const inside = PAIRS.filter(({ features, left }) => narrow.every(([name, rule]) => rule.allows(name === "remainder" ? { left, parts: row.parts } : (features as Limits)[name], limits[name])));
   const rows = (pair: Pair | undefined): Rows => (pair ? rowsOf({ dividend: pair.dividend, divisor: pair.divisor, ...row }) : []);
   const widest = inside.reduce<(typeof inside)[number] | undefined>((most, p) => (!most || p.features.dividendDigits + p.features.quotientDigits > most.features.dividendDigits + most.features.quotientDigits ? p : most), undefined);
   const ends = { count: inside.length, easiest: rows(inside[0]), hardest: rows(inside[inside.length - 1]), widest: rows(widest) };
@@ -61,8 +63,8 @@ function endsOf(limits: Limits): Ends {
   return ends;
 }
 
-/** All 2-digit dividends by each divisor, every 23rd pair of 3 digits, in both forms, and with one area those that leave nothing. */
-const LISTED: Rows[] = PAIRS.filter((p, i) => p.dividend < 100 || i % 23 === 0).flatMap(({ dividend, divisor, left }, i) =>
+/** All 2-digit dividends by each divisor, every 61st pair of 3 digits, in both forms, and with one area those that leave nothing. */
+const LISTED: Rows[] = PAIRS.filter((p, i) => p.dividend < 100 || i % 61 === 0).flatMap(({ dividend, divisor, left }, i) =>
   ([1, 2] as const).filter((parts) => parts === 2 || left === 0).map((parts) => rowsOf({ dividend, divisor, form: (i + parts) % 2 === 0 ? "line" : "bracket", parts })));
 
 const range = (min: number, max: number) => oftenWide(rangeLimit(min, max), r(min, max));

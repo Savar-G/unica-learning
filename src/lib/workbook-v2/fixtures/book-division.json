@@ -19,7 +19,7 @@
       }
     },
     {
-      "sheetId": "more-facts-in-brackets",
+      "sheetId": "remainders",
       "attempt": 1,
       "qr": {
         "front": "https://unicalearning.com/tutor/p/example-division-5",
@@ -27,7 +27,7 @@
       }
     },
     {
-      "sheetId": "remainders",
+      "sheetId": "exact-in-brackets",
       "attempt": 1,
       "qr": {
         "front": "https://unicalearning.com/tutor/p/example-division-7",
@@ -35,7 +35,7 @@
       }
     },
     {
-      "sheetId": "exact-in-brackets",
+      "sheetId": "remainders-in-brackets",
       "attempt": 1,
       "qr": {
         "front": "https://unicalearning.com/tutor/p/example-division-9",
@@ -43,7 +43,7 @@
       }
     },
     {
-      "sheetId": "remainders-in-brackets",
+      "sheetId": "long-division",
       "attempt": 1,
       "qr": {
         "front": "https://unicalearning.com/tutor/p/example-division-11",
@@ -51,7 +51,7 @@
       }
     },
     {
-      "sheetId": "long-division",
+      "sheetId": "long-exact-in-brackets",
       "attempt": 1,
       "qr": {
         "front": "https://unicalearning.com/tutor/p/example-division-13",
@@ -59,19 +59,11 @@
       }
     },
     {
-      "sheetId": "long-exact-in-brackets",
+      "sheetId": "long-in-brackets",
       "attempt": 1,
       "qr": {
         "front": "https://unicalearning.com/tutor/p/example-division-15",
         "back": "https://unicalearning.com/tutor/p/example-division-16"
-      }
-    },
-    {
-      "sheetId": "long-in-brackets",
-      "attempt": 1,
-      "qr": {
-        "front": "https://unicalearning.com/tutor/p/example-division-17",
-        "back": "https://unicalearning.com/tutor/p/example-division-18"
       }
     }
   ]
