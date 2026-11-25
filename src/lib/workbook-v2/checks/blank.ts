@@ -3,7 +3,6 @@
 import { IMAGE_PIXELS_PER_INCH, PRINT_RULES, type Ink, type PageModel, type Rect, type Region } from "../contract";
 import type { PageImage } from "./page-image";
 import { regionName } from "./page-rules";
-import { inside } from "./rects";
 
 const SCALE = IMAGE_PIXELS_PER_INCH / 72;
 /** A pixel with a part of its colour below this is ink, also a light grey or a light colour. */
