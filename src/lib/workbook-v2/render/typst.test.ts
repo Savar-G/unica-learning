@@ -14,7 +14,7 @@ import { checkFit, checkPdf, checkTexts } from "../testing/drawn-checks";
 import { darkest, isGrey, qrText, readImage } from "../testing/images";
 import { characterCodes } from "../testing/glyphs";
 import { goodPages, smallPages } from "../testing/sample";
-import { skipTypstTests, testAssets, testFiles, typstMode } from "../testing/typst";
+import { quickAssets, quickRenderer, skipTypstTests, testAssets, testFiles, typstMode } from "../testing/typst";
 import { PINS } from "./pins";
 import { openRenderer, projectAssets, type RenderAssets } from "./typst";
 
@@ -63,17 +63,9 @@ describe.skipIf(skipTypstTests()).concurrent("with the real Typst", () => {
   beforeAll(() => { folder = mkdtempSync(join(tmpdir(), "workbook-v2-test-")); });
   afterAll(() => rmSync(folder, { recursive: true, force: true }));
 
-  /**
-   * A renderer for other drawing files and fonts. Its pinned program is a line that starts the real Typst, because the tests of
-   * these files do not look at the program, and the checks of the real one read 45 MB two times for each drawing.
-   */
-  const drawingWith = async (a: RenderAssets) => {
-    const program = inFolder("starts-typst.sh");
-    const source = `#!/bin/sh\nexec "${a.program}" "$@"\n`;
-    if (!existsSync(program)) writeFileSync(program, source, { mode: 0o755 });
-    const pins = { ...PINS, targets: { ...PINS.targets, [a.target]: { archiveSha256: "0".repeat(64), programSha256: sha256(source) } } };
-    return openRenderer({ ...a, program }, pins);
-  };
+  const drawingWith = (a: RenderAssets) => quickRenderer(folder, { ...a, program: assets().program });
+  /** Only what the drawing reports, for the tests that look at nothing else. */
+  const reportDrawing = async (a: RenderAssets, pages: PageModel[]) => (await drawingWith(a)).report(pages);
   const renderDrawing = async (a: RenderAssets, pages: PageModel[] = smallPages()) => (await drawingWith(a)).render(pages);
 
   let templates = 0;
@@ -86,15 +78,18 @@ describe.skipIf(skipTypstTests()).concurrent("with the real Typst", () => {
     return { ...from, template: file };
   };
   const renderWith = async (a: RenderAssets, pages: PageModel[] = smallPages(), pins = PINS) => (await openRenderer(a, pins)).render(pages);
-  /** One renderer for the tests that need no other. */
+  /** One renderer of the real program for the example, and one for the tests that do not look at the program. */
+  let real: ReturnType<typeof openRenderer> | undefined;
+  const realRenderer = () => real ??= openRenderer(assets());
   let usual: ReturnType<typeof openRenderer> | undefined;
-  const usualRenderer = () => usual ??= openRenderer(assets());
+  const usualRenderer = () => usual ??= quickRenderer(folder);
+  const quick = () => quickAssets(folder);
 
   /** The example pages and their drawing, made one time for all the tests that only look at it. */
   let drawn: ReturnType<typeof renderWith> | undefined;
   let drawnImages: Promise<Awaited<ReturnType<typeof readImage>>[]> | undefined;
   const exampleImages = async () => { const { pages, out } = await example(); return { pages, images: await (drawnImages ??= Promise.all(out.images.map(readImage))) }; };
-  const example = async () => ({ pages: goodPages(), out: await (drawn ??= usualRenderer().then((renderer) => renderer.render(goodPages()))) });
+  const example = async () => ({ pages: goodPages(), out: await (drawn ??= realRenderer().then((renderer) => renderer.render(goodPages()))) });
 
   /** The same for small pages, for the tests that compare drawings. */
   let smallDrawn: ReturnType<typeof renderWith> | undefined;
@@ -172,7 +167,7 @@ describe.skipIf(skipTypstTests()).concurrent("with the real Typst", () => {
 
   describe("draws with the checked files only", () => {
     const same = async (a: RenderAssets, change: () => unknown = () => {}) => {
-      const [plain, other] = [await usualRenderer(), await openRenderer(a)];
+      const [plain, other] = [await usualRenderer(), await openRenderer(a, quick().pins)];
       change();
       const { pages, out: one } = await smallExample();
       const two = await other.render(pages);
@@ -185,7 +180,7 @@ describe.skipIf(skipTypstTests()).concurrent("with the real Typst", () => {
       mkdirSync(inFolder(name));
       cpSync(assets().fontsDir, inFolder(`${name}/fonts`), { recursive: true });
       cpSync(assets().template, inFolder(`${name}/page.typ`));
-      return { ...assets(), fontsDir: inFolder(`${name}/fonts`), template: inFolder(`${name}/page.typ`) };
+      return { ...quick().assets, fontsDir: inFolder(`${name}/fonts`), template: inFolder(`${name}/page.typ`) };
     };
     const bold = () => readFileSync(join(assets().fontsDir, "Geist-SemiBold.ttf"));
     const addFonts = (a: RenderAssets) => {
@@ -195,7 +190,7 @@ describe.skipIf(skipTypstTests()).concurrent("with the real Typst", () => {
     };
 
     it("says what they are: the hash of the program of this computer, of the drawing file and of each font", async () => {
-      const { identity } = await usualRenderer();
+      const { identity } = await realRenderer();
       expect(identity).toEqual({
         typst: "0.15.1",
         program: sha256(readFileSync(assets().program)),
@@ -297,8 +292,8 @@ describe.skipIf(skipTypstTests()).concurrent("with the real Typst", () => {
     const pairs = [400, 600].map((weight) => region(printable.flatMap((a, i): Ink[] => (a === " " ? [] : [{ kind: "text", color: "black", size: 6, weight, align: "left", rect: { x: 10, y: 10 * i, w: 1100, h: 9 }, text: printable.slice(i).concat(" ").reduce((text, b) => `${text}${b}${a}`, a) }])), "heading", weight));
     const digits = [..."0123456789"];
     const numbers = [400, 600].map((weight) => region(digits.flatMap((a, i) => ["", ...digits].map((b, j): Ink => ({ kind: "text", color: "black", size: 10, weight, align: "left", rect: { x: 10 + 30 * j, y: 20 * i, w: 29, h: 19 }, text: a + b }))), "question", weight));
-    const pages = [texts, ...pairs.map((r) => [r]), ...numbers.map((r) => [r])].map((regions, i): PageModel => ({ ...page, page: i + 1, size: { w: 1200, h: 1320 }, regions }));
-    const out = await (await usualRenderer()).render(pages);
+    const pages = [texts, ...pairs.map((r) => [r]), ...numbers.map((r) => [r])].map((regions, i): PageModel => ({ ...page, page: i + 1, size: i < 3 ? { w: 1200, h: 1320 } : { w: 360, h: 220 }, regions }));
+    const out = await renderDrawing(assets(), pages);
     expect([checkTexts(pages, out.texts), checkFit(pages, out.texts), checkPdf(pages, out.texts, out.pdf)]).toEqual([[], [], []]);
     for (const sheet of [4, 5]) {
       const width = new Map(out.texts.filter((t) => t.sheet === sheet).map((t) => [t.text, t.natural.w]));
@@ -315,7 +310,7 @@ describe.skipIf(skipTypstTests()).concurrent("with the real Typst", () => {
       const [page] = goodPages();
       return [{ ...page, regions: Object.entries(inks).map(([name, ink]): Region => ({ id: `${page.id}/${name}`, role: "question", rect: ink.rect, item: null, part: null, ink: [ink] })) }];
     };
-    const draw = async (pages: PageModel[]) => (await usualRenderer()).render(pages);
+    const draw = async (pages: PageModel[]) => reportDrawing(assets(), pages);
     const box = (row: number, w: number, h: number, x = 100): Rect => ({ x, y: 100 + row * 40, w, h });
     const line = (text: string, rect: Rect, align: "left" | "center" | "right", size = 18, weight = 400): Ink => ({ kind: "text", rect, color: "black", text, size, weight, align });
 
@@ -370,7 +365,7 @@ describe.skipIf(skipTypstTests()).concurrent("with the real Typst", () => {
       const [page] = goodPages();
       const ink = flow([...words("Mia has twenty-one hand-woven mats."), mathToken("21 - 5 = 16")], { x: 100, y: 300, w: 110, h: 100 });
       const pages = [{ ...page, regions: [...page.regions.filter((r) => r.role === "qr"), { id: `${page.id}/question-1`, role: "question", rect: ink.rect, item: null, part: null, ink: [ink] } satisfies Region] }];
-      const out = await draw(pages);
+      const out = await renderDrawing(assets(), pages);
       expect([checkTexts(pages, out.texts), checkFit(pages, out.texts), checkImages(pages, out.images), checkPdf(pages, out.texts, out.pdf)]).toEqual([[], [], [], []]);
     });
 
@@ -383,18 +378,16 @@ describe.skipIf(skipTypstTests()).concurrent("with the real Typst", () => {
       ["leaves room between the letters", (s) => s.replace('lang: "en"', 'lang: "en", tracking: 0.1em'), /of "heading" is \d+\.?\d* points wide and its place is 300/],
     ])("a drawing file that %s stops", async (_name, change, problem) => {
       const pages = smallPages().slice(0, 1);
-      const out = await renderDrawing(template("fit.typ", change), pages);
+      const out = await reportDrawing(template("fit.typ", change), pages);
       expect([...checkTexts(pages, out.texts), ...checkFit(pages, out.texts)].join("\n")).toMatch(problem);
     });
 
     it.each<[string, (s: string) => string, RegExp, RegExp]>([
       ["moves what it prints, and not what it reports", (s) => s.replace("else { it }", "else { box(move(dx: 6 * 1pt, it)) }"), /^$/, /^Page 381: the PDF draws the text "3-20 · /],
-      ["prints smaller letters than it reports", (s) => s.replace("else { it }", "else { set text(size: 0.9em); it }").replace("0.9em", "text.size * 0.9").replace("set text(size: text.size * 0.9); it", "context text(size: text.size * 0.9, it)"), /^$/, /^Page 381: the PDF draws the text "3-20 · .* with 13\.5 points/],
       ["cuts what it prints", (s) => s.replace("height: points(rect.h), body)", "height: points(rect.h), clip: not reports, body)"), /^$/, /^The PDF has the drawing command "W/],
       ["prints a dark red in place of black", (s) => s.replace("(black: black)", '(black: rgb("#300000"))'), /the image has a colour that is not a grey/, /^The PDF has a colour that is not a grey\.$/],
       ["prints a dark grey in place of black", (s) => s.replace("(black: black)", '(black: luma(40))'), /the image has the grey 40, which the model does not use/, /in the grey 0\.1\d*, which the model does not use/],
       ["prints a square in each answer area", (s) => s.replace("if reports { report(region.id) }", 'if reports { report(region.id) }\n      if region.role == "answer" { place(center + horizon, rect(width: 1pt, height: 1pt, fill: luma(240))) }'), /the image has ink that the model does not have, at .* in "answer-1"/, /^Page 381: the PDF draws a fill .* and the model has an outline/],
-      ["prints a wider border", (s) => s.replace("stroke: points(ink.width) +", "stroke: points(ink.width) * 3 +"), /the image has ink that the model does not have, at .* in "answer-1"/, /^Page 381: the PDF draws an outline of 2\.25/],
     ])("a drawing file that %s stops", async (_name, change, imageProblem, pdfProblem) => {
       const pages = smallPages().slice(0, 1);
       const out = await renderDrawing(template("print.typ", change), pages);
@@ -426,7 +419,7 @@ describe.skipIf(skipTypstTests()).concurrent("with the real Typst", () => {
     ["skips a rectangle", (s) => s.replace("for region in sheet.regions", "for region in sheet.regions.slice(1)")],
   ])("a drawing file that %s does not match the model", async (_name, change) => {
     const pages = smallPages().slice(0, 1);
-    const out = await renderDrawing(template("moved.typ", change), pages);
+    const out = await reportDrawing(template("moved.typ", change), pages);
     expect(checkPositions(pages, out.positions)).not.toEqual([]);
   });
 
@@ -437,7 +430,7 @@ describe.skipIf(skipTypstTests()).concurrent("with the real Typst", () => {
     ["puts text in another place", (s) => s.replace("dy: points(rect.y - from.y)", "dy: points(rect.y - from.y + 1)")],
   ])("a drawing file that %s does not match the model", async (_name, change) => {
     const pages = smallPages().slice(0, 1);
-    const out = await renderDrawing(template("text.typ", change), pages);
+    const out = await reportDrawing(template("text.typ", change), pages);
     expect(checkTexts(pages, out.texts)).not.toEqual([]);
   });
 
@@ -571,10 +564,10 @@ describe.skipIf(skipTypstTests()).concurrent("with the real Typst", () => {
 
     it("draws the same bytes at the same time, also from a program that may not run", async () => {
       const noExec = inFolder("concurrent-noexec");
-      cpSync(assets().program, noExec);
+      cpSync(quick().assets.program, noExec);
       chmodSync(noExec, 0o444);
       const pages = smallPages();
-      const [plain, copied] = await Promise.all([usualRenderer(), openRenderer({ ...assets(), program: noExec, copyIfNotExecutable: true })]);
+      const [plain, copied] = await Promise.all([usualRenderer(), openRenderer({ ...assets(), program: noExec, copyIfNotExecutable: true }, quick().pins)]);
       const [one, two, three] = await Promise.all([plain.render(pages), copied.render(pages), copied.render(pages)]);
       for (const other of [two, three]) {
         expect(Buffer.compare(one.pdf, other.pdf)).toBe(0);

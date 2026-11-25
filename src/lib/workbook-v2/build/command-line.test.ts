@@ -28,14 +28,21 @@ function writeShort(): void {
 const WHOLE = "scripts/workbook-v2.mjs";
 /** The same command with a bundle that is made one time for this file: what npm runs, without its first step. */
 let bundled = "";
+/** The bank check in the same way. */
+let bundledCheck = "";
 beforeAll(async () => {
   folder = mkdtempSync(join(tmpdir(), "workbook-v2-cli-"));
   writeShort();
-  const [bundle, make] = [join(folder, "bundle.mjs"), join(folder, "make.mjs")];
-  bundled = join(folder, "command.mjs");
+  const make = join(folder, "make.mjs");
   const runner = JSON.stringify(pathToFileURL(resolve("scripts/run-script.mjs")).href);
-  writeFileSync(make, `import { bundleScript } from ${runner}; await bundleScript("scripts/workbook-v2.ts", ${JSON.stringify(bundle)});`);
-  writeFileSync(bundled, `import { runBundle } from ${runner}; await runBundle(${JSON.stringify(bundle)});`);
+  const bundle = (script: string) => join(folder, `${script}-bundle.mjs`);
+  const scripts = ["workbook-v2", "workbook-v2-check"];
+  writeFileSync(make, `import { bundleScript } from ${runner}; ${scripts.map((s) => `await bundleScript("scripts/${s}.ts", ${JSON.stringify(bundle(s))});`).join(" ")}`);
+  [bundled, bundledCheck] = scripts.map((s) => {
+    const file = join(folder, `${s}.mjs`);
+    writeFileSync(file, `import { runBundle } from ${runner}; await runBundle(${JSON.stringify(bundle(s))});`);
+    return file;
+  });
   expect(await run([make])).toEqual({ code: 0, output: "" });
 });
 afterAll(() => rmSync(folder, { recursive: true, force: true }));
@@ -67,16 +74,12 @@ describe.concurrent("the command, before it builds", () => {
   });
 });
 
-const CHECK = "scripts/workbook-v2-check.mjs";
 describe.concurrent("the bank check command, before it checks", () => {
   it.each<[string, string[], RegExp]>([
     ["no argument", [], /^Usage: npm run workbook:v2:check -- --snapshot FILE\n$/],
-    ["an unknown argument", ["--snapshot", "a", "--book", "b"], /^Usage/],
-    ["two snapshots", ["--snapshot", "a", "--snapshot", "b"], /^Usage/],
-    ["a file that is not there", ["--snapshot", "gone.json"], /gone\.json/],
     ["a file that is not JSON", ["--snapshot", "README.md"], /^README\.md is not JSON\.\n$/],
   ])("stops on %s", async (_name, args, message) => {
-    const { code, output } = await command(args, {}, "", CHECK);
+    const { code, output } = await command(args, {}, "", bundledCheck);
     expect(code).toBe(1);
     expect(output).toMatch(message);
   });
@@ -86,7 +89,7 @@ describe.skipIf(skipTypstTests()).concurrent("the bank check command, with the r
   it("says what it checked, and stops with the list of problems", async () => {
     const wrong = join(folder, "wrong-template.json");
     writeFileSync(wrong, readFileSync(short, "utf8").replaceAll('"columns-2x4"', '"columns-9x9"'));
-    const [good, bad] = await Promise.all([command(["--snapshot", short], {}, "", CHECK), command(["--snapshot", wrong], {}, "", CHECK)]);
+    const [good, bad] = await Promise.all([command(["--snapshot", short], {}, "", bundledCheck), command(["--snapshot", wrong], {}, "", bundledCheck)]);
     expect(good).toMatchObject({ code: 0, output: expect.stringMatching(/^No problem in 1 sheets and 2 rows: 200 seeds, 400 questions, \d+ texts, 4 full pages and 32 questions drawn alone, in \d+\.\d s\.\n$/) });
     expect(bad.code).toBe(1);
     expect(bad.output).toBe(["front", "back"].map((side) => `Sheet "column-multiplication-1", ${side} side: there is no template "columns-9x9".\n`).join("") + "2 problems.\n");

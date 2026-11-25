@@ -402,7 +402,6 @@ describe("wrong shapes that touch more than one check", () => {
     ["that gives no answer part", ["answer-form"], () => ({ shape: skip({ answer: () => ({ parts: [] }) }) })],
     ["with two parts that is said to be worked in columns", ["steps-marks"], () => ({ shape: skip(), registration: { working: "columns" } })],
     ["with rows in order and no list", ["list"], () => ({ shape: fact({ list: undefined }) })],
-    ["with no form of its questions", ["forms", "book"], () => ({ shape: { ...missingFactor, forms: () => [] } as Shape })],
     ["with a form that is not the widest", ["forms"], () => ({ shape: { ...missingFactor, forms: (l: MissingLimits) => missingFactor.forms?.(l).map((item) => (item.question.result > 9 ? { question: { ...item.question, known: 1, result: 2 }, answer: whole("2") } : item)) ?? [] } as Shape })],
     ["that gives one list of rows and turns it each time", ["determinism"], () => {
       const known = new Map<string, FactQuestion[][] | null>();
@@ -439,6 +438,11 @@ describe("wrong shapes that touch more than one check", () => {
   ])("a registration %s", (_name, wanted, broken) => {
     const found = checksOf(check(broken()));
     for (const name of wanted) expect(found).toContain(name);
+  });
+
+  it("stops a shape that gives no form of its questions", () => {
+    const { failures } = check({ shape: { ...missingFactor, forms: () => [] } as Shape });
+    expect(failures.map((f) => f.message).join("\n")).toMatch(/forms: the forms of \{.*\} are none, so the size of its questions is not known/);
   });
 
   it("stops a shape that changes the limits that it gets", () => {

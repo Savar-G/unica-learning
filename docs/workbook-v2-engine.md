@@ -36,7 +36,7 @@ The snapshot file holds the content of one level. The book file holds the book i
 
 ## Rules
 
-- **Pure boundary:** everything outside `render/` and `testing/` is pure and cannot import `render/`. `buildBook` gets a `Renderer`. Behind it, `render/` may read files and start Typst, with no clock, random source, network or setting of the computer. `npm run check:guard` enforces this, the import list and the rule of no level branches (`scripts/engine-guard.mjs`, which says what it does not see). The checks read page images with `inflateSync` of `node:zlib` and with `jsqr`. Both turn bytes into a value and touch nothing else, so the guard lists them for the pure part.
+- **Pure boundary:** everything outside `render/` and `testing/` is pure and cannot import `render/`. `buildBook` gets a `Renderer`. Behind it, `render/` may read files and start Typst, with no clock, random source, network or setting of the computer. `npm run check:guard` enforces this, the import list and the rule of no level branches (`scripts/engine-guard.mjs`, which says what it does not see). A drawing file may use `json("pages.json")`, `str(sys.version)` and `"report" in sys.inputs`, and no other file, clock or fact of the computer. The checks read page images with `inflateSync` of `node:zlib` and with `jsqr`. Both turn bytes into a value and touch nothing else, so the guard lists them for the pure part.
 - **Seed:** the child, the sheet id and the attempt decide the numbers. See "Repeats" for the questions of a sheet. A new attempt of a sheet may repeat a question of an earlier attempt, also when others exist; the choice of unseen questions is UNI-258.
 - **Order on a side:** the difficulty decides it, from easy to hard, so the questions of two rows may mix. A row in order (see "Rows in order") is not sorted and mixes with no row. Questions of equal difficulty keep the row order of the bank. Each item records its row (`rowId`). Scores compare only inside one shape, so rows of two shapes never mix.
 - **Places:** a side has no more questions than the places of its template on that side.
@@ -54,14 +54,14 @@ No check repairs a page: a text is never clipped, made smaller or wrapped to fit
 | Layer | What it proves | When |
 |---|---|---|
 | 1. Measure (`checks/fit.ts`) | Typst measures each text with all the room it wants, and says where it drew it. The width, and the ink above and below its line, fit the rectangle of the text. Its size and weight are those of the model, it is on one line, as wide as it wants, and at the left, in the middle or at the right of its place. | every drawing |
-| 2. Own slot (`inkOutside` in `checks/blank.ts`) | A question that is drawn alone on an empty page leaves no ink outside its slot, and has some ink. | the bank check |
+| 2. Own slot (`inkOutside` in `checks/blank.ts`) | A question that is drawn alone on an empty page has all ink of its model, in its colours, on an image of the right size, and no ink outside its slot. | the bank check |
 | 3. Blank zones (`strayInk` in `checks/blank.ts`) | A page has no ink but that of its model. | every page of every book, and the full pages of the bank check |
 
-**Flow text** is an ink of its own kind (`flow` in `contract.ts`): words and math in a rectangle, from its top left corner. A word is split after each of its hyphens and nowhere else; math is one piece, so a negative number must be math. Typst wraps the pieces, and layer 1 checks each piece: its width, its line, its place inside the rectangle, its order, and one space between two tokens. The problem names the token. No bank field and no template uses it yet (UNI-139).
+**Flow text** is an ink of its own kind (`flow` in `contract.ts`): words and math in a rectangle, from its top left corner. A word is split after each of its hyphens and nowhere else; math is one piece, so a negative number must be math. Typst wraps the pieces, and layer 1 checks each piece: its width, its line and its place inside the rectangle. The first piece starts at the corner of the rectangle. The next one starts where the one before it ends, after one space of the font when a token begins, or on the next line at the left, exactly the leading of the model below. The problem names the token. No bank field and no template uses it yet (UNI-139).
 
 **Place value** (`checks/place-value.ts`): the digits of a stack stand in the columns of its question, counted from its right end, where Typst reports them. A digit may be 2% of a column from the middle.
 
-**Page images** are read one time (`checks/images.ts`). The QR code must fill its box and read as the text of its own page, and there must be no second code. Every text must have ink in its rectangle and the sides of an outline must have no gap in their middle half, with pixels below 72; each whole pixel of a fill must be 0. Ink is a pixel with a part of its colour below 245. Every pixel must be a grey, and an area of 3 by 3 pixels of one grey must be within 2 of black or white. What these do not see: a stray mark inside the rectangle of a text, a middle letter that is missing, and a grey from 3 to 71 in lines that are less than 3 pixels wide. The PDF check sees all three.
+**Page images** are read one time (`checks/images.ts`). The QR code must fill its box and read as the text of its own page, and there must be no second code. Every text must have ink in its rectangle and the sides of an outline must have no gap in their middle half, with pixels below 72; each whole pixel of a fill must be 0. Ink is a pixel with a part of its colour below 245. Every pixel must be a grey, and an area of 3 by 3 pixels of one grey must be within 2 of black or white. Each place with ink that the model does not have is named, and an image of several wrong places gives a problem for each of them. A pixel belongs to the first place that holds its middle (answer areas first), so a mark on an edge can be named in two places.
 
 **Edges in pixels** (150 an inch, so 1 point is 2.08 pixels). Typst gives a pixel at the edge of ink a part of its colour, so:
 
@@ -71,23 +71,34 @@ No check repairs a page: a text is never clipped, made smaller or wrapped to fit
 
 A square of 1 point is found at each place of a zone, also in the grey of 244 and beside a border, because it always covers a whole pixel past the edge. A square that touches the border itself is seen only in the part that is past the border.
 
-**The PDF** goes to the printer, and Typst makes it in a run of its own. `checks/pdf-file.ts` reads it back with no other program, and refuses everything that a book does not have: another drawing command (a picture, a clip, a curve, see-through ink), a turn or a scale, a colour, a note, a page box or a start action. `checks/pdf.ts` then compares each page with the model: the count and the size of the pages, white paper, and the fills, outlines and texts in their order, with place, size, weight and width, all in black. The PDF and the images have the same drawing file, program, fonts and settings; only the run that reports has one more input. Not proved: the shapes of the letters in the fonts of the PDF, that each letter name in it is the letter that is drawn, and what a printer makes of it (UNI-145, the physical run).
+**The PDF** goes to the printer, and Typst makes it in a run of its own. `checks/pdf-file.ts` reads it back with no other program, and refuses everything that a book does not have: another drawing command (a picture, a clip, a curve, see-through ink), a turn or a scale, a colour, a note, a page box or a start action. `checks/pdf.ts` then compares each page with the model: the count and the size of the pages, white paper, and the fills, outlines and texts in their order, with place, size, weight and width, all in black. A letter may stand from the one before it only as far as the fonts kern a pair (-30 to 160 thousandths of the size, measured over all pairs that may be printed), so a letter that is moved and moved back is refused. Typst hangs no punctuation over the edge of a text (`overhang: false`), so the report and the PDF have one place for it.
+
+**What a book does not prove:**
+
+- The PNG files and the PDF come from two runs of Typst with the same program, drawing file, fonts and pages; only the run that reports has one more input. No check compares the two drawings with each other. A different digit inside its own rectangle in the image alone is not seen. In the PDF it is.
+- In the images: a stray mark inside the rectangle of a text, a missing middle letter, a grey from 3 to 71 in lines that are less than 3 pixels wide, and an area lighter than 245 that is less than 3 pixels wide. The PDF check sees all of them.
+- In the PDF: the shapes of the letters in its fonts, that each letter name in it is the letter that is drawn, and a letter that is moved inside the bound of the kerning. What a printer makes of it is for the physical run (UNI-145).
 
 **The bank check** (`build/check-bank.ts`, for the freeze of a level, UNI-140) reads a snapshot and lists its problems with sheet, side and row:
 
 - 200 seeds make each sheet, with every check that needs no drawing. The first seed that fails is named, and the rows that fail alone.
-- Each different text that those seeds print is measured in the size of its place. The widest question of a shape has the most digits, and not the widest digits: "20" is wider than "10".
+- **Every text that the limits of a row admit is measured in its place**, at each place of both sides of its template (`build/row-texts.ts`), and not only what the seeds print. The widest question of a shape has the most digits and not the widest digits: "20" is wider than "10".
+  - A shape with a list: the texts of every question of the list. A question that does not fit the template is a problem. Limits that a row in order never reaches count too, because the limits admit them.
+  - A shape with no list: the texts of the widest question of each form, with every digit 0 to 9 in the place of its digits, and with as many digits as the longest number of that question, plus 0.021 of the size between two digits (the most that the fonts add). A stack fills all of its digit places in both lines. This is at least as wide as each question of the limits, as long as the shape gives each form and no question needs more than the widest one of its form; the shape harness checks both with its seeds.
+  - Each text that the seeds print, with the heading, the instruction and the footer. A text that does not fit names every row that prints it.
+- A shape that gives no form, or a row for which nothing is drawn, is a problem (also in `validateSnapshot` and in the shape harness).
 - The widest question of each form of each row is drawn at every place of its template on both sides, with every check of a book, and one time alone (layer 2). Questions that two rows share are drawn alone one time.
+- A drawing that Typst cannot make is made again row by row, question by question or text by text, and a shape that throws names its sheet, side and row. When the parts can only not be drawn together, the problem names all of their rows.
 
 | Level | Time on a laptop |
 |---|---|
-| A sheet of columns (4 rows) | 0.7 s |
-| Five sheets of facts and sequences (17 rows; one sequence of ten terms has many forms) | 14 s |
-| 200 sheets, made by repeating the nine example sheets (822 rows, 807,200 questions, 10,268 full pages) | 4 minutes, 450 MB of memory |
+| A sheet of columns (4 rows) | 0.6 s |
+| Five sheets of facts and sequences (17 rows; one sequence of ten terms has many forms) | 13 s |
+| 200 sheets, made by repeating the nine example sheets (822 rows, 807,200 questions, 10,268 full pages) | 4 minutes, 400 MB of memory |
 
-The check of 200 different sheets draws more questions alone: about 4 ms for each, and up to 160 for a sheet of facts. A level can take some minutes more.
+The check of 200 different sheets draws more questions alone: about 3 ms for each, and up to 160 for a sheet of facts. A level can take some minutes more.
 
-120 pages build in about 4 seconds with all checks: 2 for Typst and 1.5 for the checks of the drawing.
+120 pages build in about 3.5 seconds with all checks: 2 for Typst and 1.5 for the checks of the drawing. The texts of a drawing are matched with the model one time for all its checks (`checks/texts.ts`). A question that is drawn alone needs only its image, and a text that is only measured needs only the report (`Renderer.images` and `Renderer.report`).
 
 ## Answer parts
 

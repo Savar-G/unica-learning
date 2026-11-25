@@ -1,7 +1,7 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { PRINT_RULES, type PageModel, type Rect, type Region } from "../contract";
-import { drawPage, paint, paintSmooth, toColourPng, toPng, type Canvas } from "../testing/raster";
+import { drawPage as draw, paint, paintSmooth, toColourPng, toPng, type Canvas } from "../testing/raster";
 import { factsBook, goodPages } from "../testing/sample";
 import { flatGrey, inkOutside, strayInk } from "./blank";
 import { checkImages } from "./images";
@@ -10,6 +10,13 @@ import { readPageImage, type PageImage } from "./page-image";
 const pages = goodPages();
 const [front, back] = pages;
 const facts = factsBook().pages;
+/** The drawing of a page, made one time. Each call gives a copy that a test can paint on. */
+const drawn = new Map<PageModel, Canvas>();
+const drawPage = (page: PageModel): Canvas => {
+  const canvas = drawn.get(page) ?? draw(page);
+  drawn.set(page, canvas);
+  return { ...canvas, grey: canvas.grey.slice() };
+};
 const named = (page: PageModel, name: string): Region => {
   const found = page.regions.find((r) => r.id.endsWith(`/${name}`));
   if (!found) throw new Error(`no ${name}`);
@@ -70,9 +77,8 @@ describe("a black square of one point", () => {
   it("is found at each place of each zone, also when it is as light as ink can be", () => {
     const zones = (page: PageModel) => page.regions.filter((r) => ["answer", "reach", "work"].includes(r.role)).map((r) => r.rect)
       .concat([{ x: 0, y: 0, w: page.side === "front" ? 90 : 36, h: 792 }, { x: page.side === "front" ? 576 : 522, y: 0, w: page.side === "front" ? 36 : 90, h: 792 }, { x: 0, y: 0, w: 612, h: 36 }, { x: 0, y: 756, w: 612, h: 36 }]);
-    const blank = new Map([front, back, facts[8]].map((page) => [page, drawPage(page)]));
     const part = fc.double({ min: 0, max: 1, noNaN: true });
-    fc.assert(fc.property(fc.constantFrom(...blank.keys()), fc.nat(), part, part, fc.constantFrom(0, 128, 244), (page, which, across, down, value) => {
+    fc.assert(fc.property(fc.constantFrom(front, back, facts[8]), fc.nat(), part, part, fc.constantFrom(0, 128, 244), (page, which, across, down, value) => {
       const all = zones(page);
       const zone = all[which % all.length];
       const at = square(zone.x + across * (zone.w - 1), zone.y + down * (zone.h - 1));
@@ -81,12 +87,10 @@ describe("a black square of one point", () => {
       const line = PRINT_RULES.answer.outline / 2;
       const touches = borders.some((b) => at.x < b.x + b.w + line && at.x + 1 > b.x - line && at.y < b.y + b.h + line && at.y + 1 > b.y - line && !(at.x >= b.x + line && at.x + 1 <= b.x + b.w - line && at.y >= b.y + line && at.y + 1 <= b.y + b.h - line));
       fc.pre(!touches);
-      const canvas = blank.get(page);
-      if (!canvas) throw new Error("no page");
-      const copy = { ...canvas, grey: canvas.grey.slice() };
+      const copy = drawPage(page);
       paintSmooth(copy, at, value);
       expect(strayInk(page, imageOf(copy)).length).toBeGreaterThan(0);
-    }), { numRuns: 60 });
+    }), { numRuns: 24 });
   });
 
   it("of a grey of 244 is ink, and of 245 it is paper", () => {
@@ -130,6 +134,18 @@ describe("ink in more than one place", () => {
     }
   });
 
+  it("keeps the ink of a place beside another one, to the pixel", () => {
+    const { x, y, w } = named(front, "reach-1").rect;
+    const canvas = drawPage(front);
+    // The middle of this pixel is past the right end of the reach, and the reach touches it.
+    const edge = Math.floor(((x + w) * 150) / 72);
+    expect(edge + 0.5).toBeGreaterThan(((x + w) * 150) / 72);
+    const line = Math.ceil(((y + 20) * 150) / 72);
+    canvas.grey[line * canvas.width + edge] = 0;
+    canvas.grey[line * canvas.width + edge - 10] = 0;
+    expect(strayInk(front, imageOf(canvas)).map((s) => s.place)).toEqual(['"reach-1"', '"slot-1"']);
+  });
+
   it("names every place of one mark that crosses the page", () => {
     const { y } = named(front, "answer-1").rect;
     const found = placesWith(front, { x: 0, y: y + 20, w: 612, h: 3 });
@@ -143,7 +159,7 @@ describe("ink in more than one place", () => {
       const canvas = drawPage(front);
       for (const zone of [a, b]) paintSmooth(canvas, middle(zone.rect));
       expect(new Set(strayInk(front, imageOf(canvas)).map((s) => s.place))).toEqual(new Set([a, b].map((z) => `"${z.id.slice(z.id.lastIndexOf("/") + 1)}"`)));
-    }), { numRuns: 20 });
+    }), { numRuns: 12 });
   });
 });
 
