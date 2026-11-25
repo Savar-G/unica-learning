@@ -57,7 +57,7 @@ linear_gql() {
 - **Comment on an issue:** `mutation { commentCreate(input: { issueId: "<issue-uuid>", body: "..." }) { success } }`
 - **Apply / remove labels:** `mutation { issueUpdate(id: "<issue-uuid>", input: { addedLabelIds: ["..."], removedLabelIds: ["..."] }) { success } }`
 - **Close / change state:** Post a summary comment with `commentCreate`, then call `issueUpdate(id: "<issue-uuid>", input: { stateId: "<done-or-canceled-state-id>" })`.
-- **Archive when closed:** The free plan limits the number of issues. As soon as an issue is `Done`, `Canceled` or `Duplicate` and its last comment is posted, call `mutation { issueArchive(id: "<issue-uuid>") { success } }`. An archived issue keeps its links and can still be read by its id. A list hides it without `includeArchived: true` (the read query above has it for the children and the relations). Before you edit or reopen an archived issue, restore it with `mutation { issueUnarchive(id: "<issue-uuid>") { success } }`. When it is closed again, archive it again.
+- **Archive when closed:** The free plan limits the number of issues. When an issue is `Done`, `Canceled` or `Duplicate` and its last comment is posted, wait 3 minutes (Linear posts the status to Slack about 30 seconds later, and posts nothing for an issue that is archived before), then call `mutation { issueArchive(id: "<issue-uuid>") { success } }`. An archived issue keeps its links and can still be read by its id. A list hides it without `includeArchived: true` (the read query above has it for the children and the relations). Before you edit or reopen an archived issue, restore it with `mutation { issueUnarchive(id: "<issue-uuid>") { success } }`. When it is closed again, archive it again.
 
 ## Pull requests as a triage surface
 
