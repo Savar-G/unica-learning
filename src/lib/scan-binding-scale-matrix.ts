@@ -12,8 +12,8 @@ import { calibrateAmong, chromium, createScanBindingContext, FULL, PAGE_SIZE, SI
 // page in the photo, one part a test file, so the parts run on their own machines (docs/ci/README.md). Each part has every
 // scale and angle and compares with every page. The full form (SCAN_MATRIX_OUT) is one part, in the first file.
 
-/** The pages of the quick form that each part photographs, by their place in the matrix. */
-export const QUICK_PARTS: readonly (readonly number[])[] = [[0, 3], [1, 4], [2, 5]];
+/** The parts of the quick form. Each photographs every third page. */
+export const PARTS = 3;
 
 const SCALE_FILE = /^scan-binding-scale(?:-(\d+))?-chromium\.test\.ts$/;
 /** Which part a test file runs, by its name (no number is part 1), or null for another file. */
@@ -27,8 +27,9 @@ export const matrixBooks = (full: boolean): [level: string, pages: number][] => 
 
 /** The pages of the matrix a part photographs. The full form is all in part 1. */
 export function shownInPart(part: number, pages: number, full: boolean): number[] {
-  if (full) return part === 1 ? Array.from({ length: pages }, (_, i) => i) : [];
-  return [...QUICK_PARTS[part - 1]];
+  const all = Array.from({ length: pages }, (_, i) => i);
+  if (full) return part === 1 ? all : [];
+  return all.filter((i) => i % PARTS === part - 1);
 }
 
 export interface MatrixCondition { scale: number; angle: string; corners: Point[] }
@@ -56,6 +57,9 @@ export function describeMatrixPart(fileUrl: string) {
   const ctx = createScanBindingContext();
   afterAll(() => ctx.close());
 
+  // A part that is skipped for want of a browser would pass.
+  it.runIf(process.env.CI)("has a browser in CI", () => expect(Boolean(chromium)).toBe(true));
+
   describe.skipIf(!chromium || (FULL && part > 1))(`telling pages apart at every scale, part ${part}`, () => {
     it("over scale and angle: no other page ever calibrates, and each right page the upload accepts does", async () => {
       // A false refusal hurts every family, and a false accept is a wrong mark. Both are counted: for the whole check, and for
@@ -69,7 +73,12 @@ export function describeMatrixPart(fileUrl: string) {
       expect(pages.length, "pages of the matrix").toBe(full ? 24 : 6);
       const shownPages = shownInPart(part, pages.length, full).map((i) => pages[i]);
       const greys = pages.map((p) => p.grey);
-      const among = (photo: Raster, p: Real) => calibrateAmong(photo, p, greys);
+      // What calibration was really asked, written where it is asked.
+      const asked: string[] = [];
+      const among = (c: MatrixCondition, photo: { of: Real; raster: Raster }, p: Real) => {
+        asked.push(`${c.scale} ${c.angle} ${photo.of.key} against ${p.key}`);
+        return calibrateAmong(photo.raster, p, greys);
+      };
       const conditions = matrixConditions(full);
       const right: { page: string; scale: number; angle: string; uploadReads: boolean; status: string; reason: string | null }[] = [];
       const wrong: { photo: string; against: string; scale: number; angle: string; status: string; reason: string | null; sheetStops?: boolean }[] = [];
@@ -78,16 +87,16 @@ export function describeMatrixPart(fileUrl: string) {
         // What the upload stores is what calibration reads: the normalized photo, when the upload takes it.
         const normalized = await normalizeScanPhoto(bytes).catch(() => null);
         const uploadReads = normalized?.token === shown.token;
-        const photo = await greyRaster(normalized ? normalized.bytes : bytes);
-        const own = among(photo, shown);
+        const photo = { of: shown, raster: await greyRaster(normalized ? normalized.bytes : bytes) };
+        const own = among(c, photo, shown);
         right.push({ page: shown.key, scale: c.scale, angle: c.angle, uploadReads, status: own.status, reason: own.status === "calibrated" ? null : own.reason });
         for (const against of pages) {
           if (against === shown) continue;
-          const r = among(photo, against);
+          const r = among(c, photo, against);
           const reason = r.status === "calibrated" ? null : r.reason;
           // (The sheet's marks map it the same way whichever page it is compared with.)
           const sheetStops = reason === "qr-mismatch" && own.status === "calibrated"
-            ? sheetChecker({ photo, printed: against.grey, transform: own.calibration.transform, writing: against.writing })(greys).verdict !== "this-page" : undefined;
+            ? sheetChecker({ photo: photo.raster, printed: against.grey, transform: own.calibration.transform, writing: against.writing })(greys).verdict !== "this-page" : undefined;
           wrong.push({ photo: shown.key, against: against.key, scale: c.scale, angle: c.angle, status: r.status, reason, sheetStops });
         }
       }
@@ -123,6 +132,7 @@ export function describeMatrixPart(fileUrl: string) {
       expect(right.map((r) => `${r.scale} ${r.angle} ${r.page}`)).toEqual(expected.flatMap((c) => shownPages.map((p) => `${c} ${p.key}`)));
       expect(wrong.map((r) => `${r.scale} ${r.angle} ${r.photo} against ${r.against}`))
         .toEqual(expected.flatMap((c) => shownPages.flatMap((p) => pages.filter((q) => q !== p).map((q) => `${c} ${p.key} against ${q.key}`))));
+      expect(asked).toEqual(expected.flatMap((c) => shownPages.flatMap((p) => [p, ...pages.filter((q) => q !== p)].map((q) => `${c} ${p.key} against ${q.key}`))));
       expect(new Set(pages.map((p) => p.key)).size).toBe(pages.length);
       expect(summary.falseAccepts, JSON.stringify(summary)).toBe(0);
       expect(summary.falseRefusals, JSON.stringify(accepted.filter((r) => r.status !== "calibrated"))).toBe(0);

@@ -214,7 +214,7 @@ jobs:
 
   # The scan page matrix (src/lib/scan-binding-scale-matrix.ts), one test file a machine. Each file holds a third of the
   # photos. `.github/scripts/engine-ci.test.mjs` checks that this list is every file of the matrix. The job's result is
-  # `success` only when all three pass. On a scoped pull request the same files run in `pr-unit` instead.
+  # `success` only when all three pass. On a scoped pull request `pr-unit` runs the files that a change touches instead.
   scan-binding-scale:
     name: Chromium scan binding scale (${{ matrix.file }})
     needs: [scope]

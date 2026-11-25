@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Raster } from "@/lib/scan-calibration";
 import { drawDigit } from "@/lib/scan-synthetic";
 import { calibrate, chromium, photoOf, SIZE } from "@/lib/scan-binding-chromium-harness";
-import { describeMatrixPart, matrixBooks, matrixConditions, partOfFile, QUICK_PARTS, shownInPart } from "@/lib/scan-binding-scale-matrix";
+import { describeMatrixPart, matrixBooks, matrixConditions, partOfFile, PARTS, shownInPart } from "@/lib/scan-binding-scale-matrix";
 
 const ctx = describeMatrixPart(import.meta.url);
 
@@ -32,10 +32,12 @@ describe("the plan of the page matrix", () => {
     const files = readdirSync(import.meta.dirname).filter((f) => f.startsWith("scan-binding-scale") && f.endsWith(".test.ts"));
     const parts = files.map(partOfFile);
     expect([...parts].sort()).toEqual([1, 2, 3]);
-    expect(QUICK_PARTS.length).toBe(3);
+    expect(PARTS).toBe(3);
     const shown = (pages: number, full: boolean) => parts.flatMap((part) => shownInPart(part!, pages, full)).sort((a, b) => a - b);
-    expect(shown(6, false)).toEqual([0, 1, 2, 3, 4, 5]);
-    expect(shown(24, true)).toEqual(Array.from({ length: 24 }, (_, i) => i));
+    for (const pages of [1, 2, 3, 5, 6, 7, 24]) for (const full of [false, true]) {
+      expect(shown(pages, full), `${pages} pages`).toEqual(Array.from({ length: pages }, (_, i) => i));
+    }
+    expect([1, 2, 3].map((part) => shownInPart(part, 6, false))).toEqual([[0, 3], [1, 4], [2, 5]]);
     // 42 photos, and 210 comparisons with another page.
     expect(matrixConditions(false).length * shown(6, false).length).toBe(42);
     expect(matrixConditions(false).length * shown(6, false).length * 5).toBe(210);

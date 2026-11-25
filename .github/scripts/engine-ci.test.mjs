@@ -134,6 +134,12 @@ test("every file of the scan matrix runs on its own runner in full mode and only
   assert.deepEqual(scaleTargets(scaleJob).sort(), onDisk);
   assert.match(scaleJob, /\n {4}if: needs\.scope\.outputs\.mode == 'full'\n/);
   assert.match(scaleJob, /\n {6}fail-fast: false\n/);
+  // The job is skipped only as a whole (the gate reads that), and its one test command has one file.
+  assert.equal((scaleJob.match(/^\s*(?:- )?if:/gm) ?? []).length, 1);
+  assert.deepEqual(
+    scaleJob.split("\n").map((l) => l.trim().replace(/^- /, "")).filter((l) => /^run:/.test(l)),
+    ["run: npm ci --no-audit --no-fund", "run: npm test -- src/lib/${{ matrix.file }}.test.ts --maxWorkers=1"],
+  );
   for (const weaker of ["continue-on-error", "--retry", "--passWithNoTests", "--testTimeout", "--bail", "exclude:", "|| true"]) {
     assert.equal(scaleJob.includes(weaker), false, `scan-binding-scale must not use ${weaker}`);
   }
@@ -152,7 +158,9 @@ test("the required test job shell fails when engine is required and does not suc
   assert.ok(testJob, "test job must exist");
   assert.match(testJob, /needs: \[[^\]]*\bengine\b[^\]]*\]/, "test job must depend on engine");
   assert.match(testJob, /RUN_ENGINE:\s*\$\{\{\s*needs\.scope\.outputs\.run_engine\s*\}\}/);
-  assert.match(testJob, /ENGINE_RESULT:\s*\$\{\{\s*needs\.engine\.result\s*\}\}/);
+  for (const [name, job] of [["ENGINE", "engine"], ["SCAN_BINDING", "scan-binding-scale"], ["UNIT", "unit"], ["PR_UNIT", "pr-unit"], ["MAYA", "maya-behaviour"], ["ZONES", "family-zones"], ["LINT", "lint-and-types"], ["VOICE", "voice-worker"]]) {
+    assert.equal(testJob.split(`\n          ${name}_RESULT: \${{ needs.${job}.result }}\n`).length, 2, `${name}_RESULT is the result of ${job}`);
+  }
 
   const script = extractIndentedRunBlock(testJob, "Required CI jobs passed");
   const baseEnv = {
