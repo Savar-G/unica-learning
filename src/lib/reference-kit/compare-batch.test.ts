@@ -3372,16 +3372,18 @@ describe("compareWorkFolder", () => {
       );
     }
     const samePlaces: Array<[string, PageRecord, PageRecord, string]> = [
-      ["the scaffold of both readers gives the name", placed(["tens", "ones"], ["tens", "ones"]), placed([undefined, undefined], ["Tens place", "ones"]), "double_read"],
+      ["the scaffold of both readers gives the name", placed(["tens", "ones"], ["tens", "ones"]), placed([undefined, undefined], ["tens", "ones"]), "double_read"],
+      ["the name in another form in one scaffold", placed(["tens", "ones"], ["tens", "ones"]), placed([undefined, undefined], ["Tens place", "ones"]), "agreement_accepted"],
       ["only one scaffold gives the name", placed(["tens", "ones"]), placed([undefined, undefined], ["tens", "ones"]), "agreement_accepted"],
       ["no scaffold", placed(["tens"]), placed([undefined]), "agreement_accepted"],
       ["the name in another form", placed(["ones"]), placed(["Ones place"]), "agreement_accepted"],
       ["names that readers choose", placed(["top box"]), placed(["first box"]), "agreement_accepted"],
     ];
-    for (const [label, a, b, status] of samePlaces) expect(runPair(a, b).page.answer_disagreements, label).toBeUndefined();
-    for (const [label, a, b, status] of samePlaces.slice(1)) expect(runPair(a, b).page.status, label).toBe(status);
-    const agreed = runPair(samePlaces[0][1], samePlaces[0][2]).page;
-    expect([...agreed.once_read, ...agreed.differences].filter((d) => d.path.includes("responses"))).toEqual([]);
+    for (const [label, a, b, status] of samePlaces) {
+      const { page } = runPair(a, b);
+      expect(page.answer_disagreements, label).toBeUndefined();
+      expect(page.status, label).toBe(status);
+    }
 
     const passes: Array<[string, PageRecord, PageRecord, string]> = [
       ["one reader gives no label", withExample(solved({ label: "Example 1" })), withExample(solved()), "examples[0].label"],
