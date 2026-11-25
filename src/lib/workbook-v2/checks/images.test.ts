@@ -16,8 +16,8 @@ const part = (page: PageModel, role: RegionRole) => {
   return found;
 };
 const qr = part(front, "qr");
-/** The problems of the book when its front page has another image. */
-const problemsWith = (image: Uint8Array) => checkImages(pages, [image, pagePng(back)]);
+/** The problems of the front page when it has another image. */
+const problemsWith = (image: Uint8Array) => checkImages([front], [image]);
 /** The front page with a change in its image. */
 const changed = (change: (canvas: Canvas) => unknown): Uint8Array => {
   const canvas = drawPage(front);
@@ -68,10 +68,16 @@ describe("the QR code of a page image", () => {
   });
 
   it("may not come with a second QR code of any text, size or place, in any quarter turn", () => {
-    const boxes = fc.record({ text: fc.stringMatching(/^[a-z0-9:/.-]{1,60}$/), x: fc.double({ min: 0, max: 400, noNaN: true }), y: fc.double({ min: 0, max: 430, noNaN: true }), side: fc.double({ min: 75, max: 190, noNaN: true }), turns: fc.nat(3) });
-    fc.assert(fc.property(boxes, ({ text, x, y, side, turns }) => {
+    // A small page with nothing but its QR code, because the time of a check is that of the pixels.
+    const at = { x: 205, y: 205 };
+    const small: PageModel = { ...front, size: { w: 270, h: 270 }, regions: [{ ...qr, rect: { ...qr.rect, ...at }, ink: qr.ink.map((i) => ({ ...i, rect: { ...i.rect, x: i.rect.x - qr.rect.x + at.x, y: i.rect.y - qr.rect.y + at.y } })) }] };
+    expect(checkImages([small], [pagePng(small)])).toEqual([]);
+    const boxes = fc.record({ text: fc.stringMatching(/^[a-z0-9:/.-]{1,60}$/), x: fc.double({ min: 0, max: 1, noNaN: true }), y: fc.double({ min: 0, max: 1, noNaN: true }), side: fc.double({ min: 75, max: 190, noNaN: true }), turns: fc.nat(3) });
+    fc.assert(fc.property(boxes, ({ text, x: across, y: down, side, turns }) => {
+      const [x, y] = [across * (at.x - side), down * (270 - side)];
       const box = { x, y, w: side, h: side };
-      const image = changed((c) => {
+      const canvas = drawPage(small);
+      const draw = (c: Canvas) => {
         paint(c, box, 255);
         const squares = qrSquares(box, text);
         if (typeof squares === "string") throw new Error(squares);
@@ -80,8 +86,9 @@ describe("the QR code of a page image", () => {
           for (let t = 0; t < turns; t++) turned = { x: x + side - (turned.y - y) - turned.h, y: y + (turned.x - x), w: turned.h, h: turned.w };
           paint(c, turned);
         }
-      });
-      expect(problemsWith(image)).toContain(`Page 381: the image has a second QR code, which reads "${text}".`);
+      };
+      draw(canvas);
+      expect(checkImages([small], [toPng(canvas)])).toContain(`Page 381: the image has a second QR code, which reads "${text}".`);
     }), { numRuns: 60 });
   });
 

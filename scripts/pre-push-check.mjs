@@ -36,6 +36,10 @@ export function buildChecks(rootDir) {
       steps: [{ cmd: process.execPath, args: ["scripts/repo-guard.mjs"] }],
     },
     {
+      name: "shape-fingerprints",
+      steps: [{ cmd: process.execPath, args: ["scripts/shape-fingerprint-base.mjs"] }],
+    },
+    {
       name: "oxlint",
       steps: [{ cmd: binPath(rootDir, "oxlint"), args: ["src", "worker/maya-voice/src", "scripts/workbook-worker.ts", "scripts/retention-worker.ts"] }],
     },

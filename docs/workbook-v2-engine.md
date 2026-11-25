@@ -26,7 +26,7 @@ The snapshot file holds the content of one level. The book file holds the book i
 | Checks | before the drawing: `checkPrintedAnswers(pages, items, shapes)`, `checkPage(page, items)`; after it: `checkRendering(pages, drawn)`, `checkPositions(pages, positions)`, `checkTexts(pages, texts)`, `checkImages(pages, images)` | `checks/` |
 | Renderer | the interface to a typesetter (`render(pages)`) | `renderer.ts` |
 | Render | the only module that calls Typst; fonts, pins, install | `render/` |
-| Build | `buildBook(input, renderer)`: the book, or a list of problems | `build/` |
+| Build | `buildBook(input, renderer)`: the book, or a list of problems; `planBook(input)`: the pages and items of the book before the drawing, as `{ ok: true, ... }`, or `{ ok: false, problems }` | `build/` |
 
 ## Rules
 
@@ -38,7 +38,24 @@ The snapshot file holds the content of one level. The book file holds the book i
 - **Geometry:** every position is in the page model. `page.typ` only draws it. The build compares the rectangles and the text that Typst reports with the model.
 - **Proof of each page:** the build reads each page image back. Its QR code must fill its box and read as the text of its own page, and there must be no second code. Every text of the model must have ink there, every fill must be dark in all of its area, and the sides of an outline must have no gap in their middle half. This takes about 2 seconds for 120 pages on a laptop. It does not prove the PDF, which Typst makes in a run of its own from the same files.
 - **Typst and fonts:** pinned by version and SHA-256 in `render/pins.ts`. The fonts and the drawing file are read once and each drawing uses that copy in a private folder; the program is checked again before each drawing. `typst:install` puts the official program in `~/.cache/unica-learning/typst/`. Computer fonts and Typst's own fonts are off. Any Typst warning stops the build. Typst prints an empty box, with no warning, for a character that a font does not hold, so `validateSnapshot` refuses those characters in the bank and `checkPage` refuses them in every text that a page prints (`isPrintable`).
-- **A change that can change a page** (Typst, a font, `page.typ`, a template, a shape) also changes `ENGINE_VERSION`.
+- **A change that can change a page or an output file** (Typst, a font, `page.typ`, a template, a shape, or the fields of `answers.json`) also changes `ENGINE_VERSION`. Each `BookItem` in `answers.json` carries `shapeVersion` from its shape; `solveAgain` and layout do not read it.
+
+## Adding a shape
+
+1. Add one shape file in `shapes/` with `version: 1`, and the shape in `shapes/index.ts` (`SHAPES`).
+2. Add its registration in `testing/shape-registrations.ts`. It shares no code with the shape and speaks of printed rows only (`testing/shape-registration.ts` has the interface; `testing/example-shapes.ts` has a listed space and a space that is too large to list):
+   - `limits`: one rule for each limit, as data (`rangeLimit`, `neverLimit`). The harness makes limits, wider limits and bad limits from the rules.
+   - `read(rows)`: the answer, one feature for each limit, at least one width and every worked step, computed from the printed rows in another way than the shape.
+   - `space`: the list of every printed question, or the count and the ends for any limits.
+   - `cases` (the limits of each bank row must be one), `smallSpaces` with complete lists by hand, `witnesses` (for each limit a question inside and one that breaks only it), and the named lists.
+   - Steps: the harness compares the whole list of steps with the list of the reader, and then reads each part of a step that holds "=" (parts end at `,` `.` `;` or `:`). Such a part must be one true equation, as in "3 × 4 = 12, write 2, carry 1". Any other part with "=" is refused.
+3. Run `npm run workbook:v2:fingerprints`, then `npx vitest run src/lib/workbook-v2/shapes --sequence.shuffle`.
+
+`worstCase` is one question that is the widest in every width and in digit places. If the widths pull apart (99 - 4 leaves as much as 100 - 5 in fewer places), register the digit places as the width.
+
+The harness (`testing/shape-harness.ts`) takes 1,000 production seeds for each shape: `planBook` builds one book with both sides and all places of each template that fits any of the limits, and each generated question is compared with the reader, the rules, the second solver, the steps and the ranges. Limits come from fast-check with a fixed seed, so a failure comes back in the next run, and its message holds the call that repeats it. `testing/shape-harness.test.ts` holds a broken shape for each check. An answer with parts needs a new kind in `ANSWER_KINDS` and `Answer` (`contract.ts`) and its rule in `ANSWER_FORMS` (`testing/shape-checks.ts`); the rest compares whole answers.
+
+**Fingerprints:** `testing/shape-fingerprints.json` holds one SHA-256 for each version of a shape: every question of a listed space, or 1,000 questions of a large one, with the registered limits. A change of the output needs a new `version`, then the command. A stored entry never changes: `scripts/shape-fingerprint-base.mjs` compares the file with the base of the branch, in the `scope` job of CI (the one job that always has the base) and in `npm run check:fast`.
 
 ## Tests
 
@@ -56,4 +73,4 @@ The snapshot file holds the content of one level. The book file holds the book i
 
 - Fit and ink checks (UNI-137): `checks/`; `readPageImage` gives the pixels of a page image and `checkImages` already reads each one.
 - The book job (UNI-260): see "In a Vercel function".
-- More shapes (UNI-236): one file in `shapes/` and one line in `shapes/index.ts`. A new look of a question is a new `Face` and a template that takes it.
+- More shapes (UNI-237 to 240): follow "Adding a shape" above. A new look of a question is a new `Face` and a template that takes it.

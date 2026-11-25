@@ -50,13 +50,19 @@ jobs:
         timeout-minutes: 2
         with:
           persist-credentials: false
-          # Depth 2 on pull_request fetches the merge commit plus both parents (HEAD^1 = base, HEAD^2 = PR head).
-          fetch-depth: ${{ github.event_name == 'pull_request' && '2' || '1' }}
+          # Depth 2 fetches the commit and its parents: on pull_request HEAD^1 is the base and HEAD^2 the PR head, on a
+          # push HEAD^1 is the commit before.
+          fetch-depth: 2
       - id: classify
         run: |
           out=$(node .github/scripts/pr-scope.mjs)
           echo "$out"
           echo "$out" >> "$GITHUB_OUTPUT"
+      # This job always runs and has the base, which the engine tests do not. The script needs no package.
+      - name: Stored shape fingerprints are unchanged
+        env:
+          EVENT_BEFORE: ${{ github.event.before }}
+        run: node scripts/shape-fingerprint-base.mjs
 
   # Full 8-shard unit suite (runs on main pushes, workflow_dispatch, and high-blast-radius PRs).
   # Shard 1 is pinned to hold src/lib/workbook-book1-recovery.test.ts (#472), which loads pinned planners from Git
@@ -313,7 +319,7 @@ jobs:
         run: node scripts/build-retention-worker.mjs && node --conditions=react-server .retention/worker.mjs --help
         timeout-minutes: 2
       - name: CI tooling self-tests
-        run: node --test .github/scripts/blog-publish.test.mjs .github/scripts/unit-shards.test.mjs .github/scripts/pr-scope.test.mjs .github/scripts/engine-ci.test.mjs scripts/ci-audit.test.mjs scripts/pre-push-check.test.mjs scripts/repo-guard.test.mjs
+        run: node --test .github/scripts/blog-publish.test.mjs .github/scripts/unit-shards.test.mjs .github/scripts/pr-scope.test.mjs .github/scripts/engine-ci.test.mjs scripts/ci-audit.test.mjs scripts/pre-push-check.test.mjs scripts/repo-guard.test.mjs scripts/shape-fingerprint-base.test.mjs
         timeout-minutes: 2
 
   # The root tsconfig.json excludes worker/, so the Maya voice worker's own type check and tests run here.
