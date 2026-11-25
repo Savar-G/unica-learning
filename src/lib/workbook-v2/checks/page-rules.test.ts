@@ -294,6 +294,12 @@ describe("what a question prints", () => {
       ...(after((all) => [...all, ink]).length === 0 ? [`twice: ${JSON.stringify(ink)}`] : []),
     ]);
     expect(passed).toEqual([]);
+    // Two texts of one size that change places, in the same order of the ink.
+    const texts = own.ink.flatMap((ink, at) => (ink.kind === "text" ? [{ ink, at }] : []));
+    for (const [i, one] of texts.entries()) for (const two of texts.slice(i + 1)) {
+      if (one.ink.text === two.ink.text || one.ink.rect.w !== two.ink.rect.w || one.ink.rect.h !== two.ink.rect.h) continue;
+      expect(after((all) => all.with(one.at, { ...one.ink, rect: two.ink.rect }).with(two.at, { ...two.ink, rect: one.ink.rect }))).not.toEqual([]);
+    }
     const { x, y, w } = own.rect;
     expect(after((all) => [...all, { kind: "fill", rect: { x, y, w, h: 0.1 }, color: "black" }]).join()).toMatch(/prints a line that its face does not have there/);
   });
