@@ -111,7 +111,7 @@ describe("ink that the model has and the image does not", () => {
   it.each<[string, Uint8Array, RegExp]>([
     ["the heading", without("heading", 0), /^Page 381: "heading" must print "3-20 · Multiplying 2 digits by 1 digit" and the image has no ink there\.$/m],
     ["the instruction", without("instruction", 0), /^Page 381: "instruction" must print "Multiply\. Start with the ones\." and the image has no ink there\.$/m],
-    ["the footer", without("footer", 0), /"footer" must print "Level 3 · Page 381"/],
+    ["the footer", without("footer", 0), /"footer" must print "Level 3 \(Grade 3 work\) · Page 381"/],
     ["the number of a question", without("label", 2), /"label-3" must print "3"/],
     ["one digit of a question", changed((c) => paint(c, part(front, "question").ink[3].rect, 255)), /"question-1" must print "\d" and the image has no ink there/],
     ["the sign of a question", changed((c) => paint(c, part(front, "question").ink[2].rect, 255)), /"question-1" must print "×"/],

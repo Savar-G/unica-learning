@@ -17,8 +17,8 @@ describe("the two pages of a sheet", () => {
     const [front, back] = pages();
     expect(texts(one(front, "heading"))).toEqual(["3-20 · Multiplying 2 digits by 1 digit"]);
     expect(texts(one(front, "instruction"))).toEqual(["Multiply. Start with the ones."]);
-    expect(texts(one(front, "footer"))).toEqual(["Level 3 · Page 381"]);
-    expect(texts(one(back, "footer"))).toEqual(["Level 3 · Page 382"]);
+    expect(texts(one(front, "footer"))).toEqual(["Level 3 (Grade 3 work) · Page 381"]);
+    expect(texts(one(back, "footer"))).toEqual(["Level 3 (Grade 3 work) · Page 382"]);
     expect([front.qr, back.qr]).toEqual(["https://unicalearning.com/tutor/p/example-front-381", "https://unicalearning.com/tutor/p/example-back-382"]);
   });
 

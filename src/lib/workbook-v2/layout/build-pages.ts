@@ -1,6 +1,6 @@
 // Puts the content of a sheet into the rectangles of its templates. It decides no position of its own.
 import type { SnapshotSheet } from "../bank/snapshot";
-import { PAPER, type BookItem, type Ink, type PageModel, type Rect, type Region, type RegionRole, type Side } from "../contract";
+import { PAPER, workbookLevelLabel, type BookItem, type Ink, type PageModel, type Rect, type Region, type RegionRole, type Side } from "../contract";
 import { qrSquares } from "./qr";
 import { digitPlaces, type ItemPlace, type PageFrame, type PageTemplate } from "./templates";
 
@@ -79,7 +79,7 @@ function buildPage({ sheet, levelName, attempt, qr, items }: PlannedSheet, side:
       region("heading", "heading", heading, [text(heading, `${sheet.topic.code} · ${sheet.topic.title}`, 15, BOLD, "left")]),
       region("instruction", "instruction", frame.instruction, [text(frame.instruction, instruction, 12, REGULAR, "left")]),
       ...onSide.flatMap((item, i) => itemRegions(template, places[i], item, at)),
-      region("footer", "footer", footer, [text(footer, `Level ${levelName} · Page ${page}`, 11, REGULAR, side === "front" ? "left" : "right")]),
+      region("footer", "footer", footer, [text(footer, `${workbookLevelLabel(levelName)} · Page ${page}`, 11, REGULAR, side === "front" ? "left" : "right")]),
       region("qr", "qr", frame.qr, squares),
     ],
   };
