@@ -9,7 +9,11 @@ npm run typst:install    # once for each computer
 npm run workbook:v2 -- --snapshot src/lib/workbook-v2/fixtures/snapshot.json --book src/lib/workbook-v2/fixtures/book.json --out /tmp/example-book
 ```
 
-Run it from the repository root. The build uses no network. The output folder must be new or empty. It gets `book.pdf`, `page-1.png` and up (150 pixels an inch), `pages.json` (page models), `positions.json` (what Typst reports), `answers.json` and `record.json` (the engine, snapshot and input, the version of Typst, and the SHA-256 of its program on this computer, of the drawing file and of each font). A book that fails writes nothing and lists each problem with its place.
+```sh
+npm run workbook:v2:check -- --snapshot src/lib/workbook-v2/fixtures/snapshot.json    # every sheet and row of a level
+```
+
+Run both from the repository root. The build uses no network. The output folder must be new or empty. It gets `book.pdf`, `page-1.png` and up (150 pixels an inch), `pages.json` (page models), `positions.json` (what Typst reports), `answers.json` and `record.json` (the engine, snapshot and input, the version of Typst, and the SHA-256 of its program on this computer, of the drawing file and of each font). A book that fails writes nothing and lists each problem with its place.
 
 The command writes the whole book into a hidden folder beside the output folder and renames it in one step. The system refuses that step when the output folder holds something: of two processes one wins and the other stops. An error removes the hidden folder; a process that is killed can leave one (`.workbook-v2-*`), which is safe to delete.
 
@@ -25,10 +29,10 @@ The snapshot file holds the content of one level. The book file holds the book i
 | Bank | `validateSnapshot(raw)`: the checked snapshot and its hash, or every problem | `bank/` |
 | Shapes | one file for each shape family; the interface is in `shape.ts` | `shapes/` |
 | Layout | `buildPages(sheets)`; templates are fixed rectangles in points | `layout/` |
-| Checks | before the drawing: `checkPrintedAnswers(pages, items, shapes)`, `checkPage(page, items)`; after it: `checkRendering(pages, drawn)`, `checkPositions(pages, positions)`, `checkTexts(pages, texts)`, `checkImages(pages, images)` | `checks/` |
+| Checks | before the drawing: `checkPrintedAnswers(pages, items, shapes)`, `checkPage(page, items)`; after it: `checkDrawing(pages, items, drawn)`, which is `checkRendering`, `checkPositions`, `checkTexts`, `checkFit`, `checkPlaces`, `checkImages` and `checkPdf` | `checks/` |
 | Renderer | the interface to a typesetter (`render(pages)`) | `renderer.ts` |
 | Render | the only module that calls Typst; fonts, pins, install | `render/` |
-| Build | `buildBook(input, renderer)`: the book with its notices, or a list of problems; `planBook(input)`: the pages and items of the book before the drawing, as `{ ok: true, ... }`, or `{ ok: false, problems }` | `build/` |
+| Build | `buildBook(input, renderer)`: the book with its notices, or a list of problems; `planBook(input)`: the pages and items of the book before the drawing, as `{ ok: true, ... }`, or `{ ok: false, problems }`; `checkBank(snapshot, renderer)`: the problems of a level, with sheet, side and row | `build/` |
 
 ## Rules
 
@@ -39,9 +43,51 @@ The snapshot file holds the content of one level. The book file holds the book i
 - **Answers:** a shape computes each answer from the parameters of the question. The second computation (`solveAgain`) gets only the printed rows, which the build takes from the rectangles of the page model, from top to bottom and from left to right. An answer area beside or inside its question is a blank of the row (`□`, a character that no page prints). Each answer must first have a good form: parts with names that marking knows, each one time, of the kind of the shape, with a value in the form of the kind (`checks/answer-form.ts`). The second computation must read the same question and compute the same answer, with the same parts in the same order, and the last worked step must be it and draw nothing. If not, the build stops.
 - **Worked steps:** see "Steps" below.
 - **Geometry:** every position is in the page model. `page.typ` only draws it. The build compares the rectangles and the text that Typst reports with the model.
-- **Proof of each page:** the build reads each page image back. Its QR code must fill its box and read as the text of its own page, and there must be no second code. Every text of the model must have ink there, every fill must be dark in all of its area, and the sides of an outline must have no gap in their middle half. This takes about 2 seconds for 120 pages on a laptop. It does not prove the PDF, which Typst makes in a run of its own from the same files.
+- **Proof of each page:** see "Fit and ink" below.
 - **Typst and fonts:** pinned by version and SHA-256 in `render/pins.ts`. The fonts and the drawing file are read once and each drawing uses that copy in a private folder; the program is checked again before each drawing. `typst:install` puts the official program in `~/.cache/unica-learning/typst/`. Computer fonts and Typst's own fonts are off. Any Typst warning stops the build. Typst prints an empty box, with no warning, for a character that a font does not hold, so `validateSnapshot` refuses those characters in the bank and `checkPage` refuses them in every text that a page prints (`isPrintable`).
 - **A change that can change a page or an output file** (Typst, a font, `page.typ`, a template, a shape, or the fields of `answers.json`) also changes `ENGINE_VERSION`. Each `BookItem` in `answers.json` carries `shapeVersion` from its shape; `solveAgain` and layout do not read it.
+
+## Fit and ink
+
+No check repairs a page: a text is never clipped, made smaller or wrapped to fit. A book that fails one stops with the list of problems, each with its page and place. The checks know no face, part or template; they read the model, the paper and the print rules.
+
+| Layer | What it proves | When |
+|---|---|---|
+| 1. Measure (`checks/fit.ts`) | Typst measures each text with all the room it wants, and says where it drew it. The width, and the ink above and below its line, fit the rectangle of the text. Its size and weight are those of the model, it is on one line, as wide as it wants, and at the left, in the middle or at the right of its place. | every drawing |
+| 2. Own slot (`inkOutside` in `checks/blank.ts`) | A question that is drawn alone on an empty page leaves no ink outside its slot, and has some ink. | the bank check |
+| 3. Blank zones (`strayInk` in `checks/blank.ts`) | A page has no ink but that of its model. | every page of every book, and the full pages of the bank check |
+
+**Flow text** is an ink of its own kind (`flow` in `contract.ts`): words and math in a rectangle, from its top left corner. A word is split after each of its hyphens and nowhere else; math is one piece, so a negative number must be math. Typst wraps the pieces, and layer 1 checks each piece: its width, its line, its place inside the rectangle, its order, and one space between two tokens. The problem names the token. No bank field and no template uses it yet (UNI-139).
+
+**Place value** (`checks/place-value.ts`): the digits of a stack stand in the columns of its question, counted from its right end, where Typst reports them. A digit may be 2% of a column from the middle.
+
+**Page images** are read one time (`checks/images.ts`). The QR code must fill its box and read as the text of its own page, and there must be no second code. Every text must have ink in its rectangle and the sides of an outline must have no gap in their middle half, with pixels below 72; each whole pixel of a fill must be 0. Ink is a pixel with a part of its colour below 245. Every pixel must be a grey, and an area of 3 by 3 pixels of one grey must be within 2 of black or white. What these do not see: a stray mark inside the rectangle of a text, a middle letter that is missing, and a grey from 3 to 71 in lines that are less than 3 pixels wide. The PDF check sees all three.
+
+**Edges in pixels** (150 an inch, so 1 point is 2.08 pixels). Typst gives a pixel at the edge of ink a part of its colour, so:
+
+- The print of the model covers each pixel that it touches: a fill, the rectangle of a text, and a band for each side of a border (0.75 points is 1.56 pixels, which touches 2 or 3 pixels).
+- A zone is the pixels that are in it with all of their area. A zone holds its own print and no other, whatever else the model says: an answer area its border, a QR box its squares, and a reach, a work area, the spine zone (90 points) and the margins (36 points) nothing. A reach also holds the border of its answer area, which is in it.
+- The rest of a page may hold ink only where the model prints.
+
+A square of 1 point is found at each place of a zone, also in the grey of 244 and beside a border, because it always covers a whole pixel past the edge. A square that touches the border itself is seen only in the part that is past the border.
+
+**The PDF** goes to the printer, and Typst makes it in a run of its own. `checks/pdf-file.ts` reads it back with no other program, and refuses everything that a book does not have: another drawing command (a picture, a clip, a curve, see-through ink), a turn or a scale, a colour, a note, a page box or a start action. `checks/pdf.ts` then compares each page with the model: the count and the size of the pages, white paper, and the fills, outlines and texts in their order, with place, size, weight and width, all in black. The PDF and the images have the same drawing file, program, fonts and settings; only the run that reports has one more input. Not proved: the shapes of the letters in the fonts of the PDF, that each letter name in it is the letter that is drawn, and what a printer makes of it (UNI-145, the physical run).
+
+**The bank check** (`build/check-bank.ts`, for the freeze of a level, UNI-140) reads a snapshot and lists its problems with sheet, side and row:
+
+- 200 seeds make each sheet, with every check that needs no drawing. The first seed that fails is named, and the rows that fail alone.
+- Each different text that those seeds print is measured in the size of its place. The widest question of a shape has the most digits, and not the widest digits: "20" is wider than "10".
+- The widest question of each form of each row is drawn at every place of its template on both sides, with every check of a book, and one time alone (layer 2). Questions that two rows share are drawn alone one time.
+
+| Level | Time on a laptop |
+|---|---|
+| A sheet of columns (4 rows) | 0.7 s |
+| Five sheets of facts and sequences (17 rows; one sequence of ten terms has many forms) | 14 s |
+| 200 sheets, made by repeating the nine example sheets (822 rows, 807,200 questions, 10,268 full pages) | 4 minutes, 450 MB of memory |
+
+The check of 200 different sheets draws more questions alone: about 4 ms for each, and up to 160 for a sheet of facts. A level can take some minutes more.
+
+120 pages build in about 4 seconds with all checks: 2 for Typst and 1.5 for the checks of the drawing.
 
 ## Answer parts
 
@@ -164,7 +210,7 @@ The harness (`testing/shape-harness.ts`, with the step checks in `shape-steps.ts
 
 ## Tests
 
-`npx vitest run src/lib/workbook-v2` takes about 7 seconds and needs no browser, network or database. The tests that draw pages use the real Typst. In CI they run in the `engine` job (`Workbook engine` in `.github/workflows/ci.yml`), which installs the pinned Typst, runs `npm run check:guard`, runs `npm run engine:typecheck`, runs the engine tests, and reports the test time against the 15 s budget. In CI those tests fail when Typst is absent; on a laptop without it they are skipped and print the reason.
+`npx vitest run src/lib/workbook-v2` takes about 10 seconds and needs no browser, network or database. The tests that draw pages use the real Typst. In CI they run in the `engine` job (`Workbook engine` in `.github/workflows/ci.yml`), which installs the pinned Typst, runs `npm run check:guard`, runs `npm run engine:typecheck`, runs the engine tests, and reports the test time against the 15 s budget. In CI those tests fail when Typst is absent; on a laptop without it they are skipped and print the reason.
 
 ## In a Vercel function
 
@@ -176,6 +222,6 @@ The harness (`testing/shape-harness.ts`, with the step checks in `shape-steps.ts
 
 ## Where the next parts connect
 
-- Fit and ink checks (UNI-137): `checks/`; `readPageImage` gives the pixels of a page image and `checkImages` already reads each one.
+- The freeze of a level (UNI-140) calls `checkBank`. Story text (UNI-139) prints the `flow` ink.
 - The book job (UNI-260): see "In a Vercel function".
 - More shapes (UNI-237 part 2 and UNI-240): follow "Adding a shape" above. A new look of a question is a new `Face` and a template that takes it.

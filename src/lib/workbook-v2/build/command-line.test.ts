@@ -67,6 +67,32 @@ describe.concurrent("the command, before it builds", () => {
   });
 });
 
+const CHECK = "scripts/workbook-v2-check.mjs";
+describe.concurrent("the bank check command, before it checks", () => {
+  it.each<[string, string[], RegExp]>([
+    ["no argument", [], /^Usage: npm run workbook:v2:check -- --snapshot FILE\n$/],
+    ["an unknown argument", ["--snapshot", "a", "--book", "b"], /^Usage/],
+    ["two snapshots", ["--snapshot", "a", "--snapshot", "b"], /^Usage/],
+    ["a file that is not there", ["--snapshot", "gone.json"], /gone\.json/],
+    ["a file that is not JSON", ["--snapshot", "README.md"], /^README\.md is not JSON\.\n$/],
+  ])("stops on %s", async (_name, args, message) => {
+    const { code, output } = await command(args, {}, "", CHECK);
+    expect(code).toBe(1);
+    expect(output).toMatch(message);
+  });
+});
+
+describe.skipIf(skipTypstTests()).concurrent("the bank check command, with the real Typst", () => {
+  it("says what it checked, and stops with the list of problems", async () => {
+    const wrong = join(folder, "wrong-template.json");
+    writeFileSync(wrong, readFileSync(short, "utf8").replaceAll('"columns-2x4"', '"columns-9x9"'));
+    const [good, bad] = await Promise.all([command(["--snapshot", short], {}, "", CHECK), command(["--snapshot", wrong], {}, "", CHECK)]);
+    expect(good).toMatchObject({ code: 0, output: expect.stringMatching(/^No problem in 1 sheets and 2 rows: 200 seeds, 400 questions, \d+ texts, 4 full pages and 32 questions drawn alone, in \d+\.\d s\.\n$/) });
+    expect(bad.code).toBe(1);
+    expect(bad.output).toBe(["front", "back"].map((side) => `Sheet "column-multiplication-1", ${side} side: there is no template "columns-9x9".\n`).join("") + "2 problems.\n");
+  });
+});
+
 describe.skipIf(skipTypstTests()).concurrent("the command, with the real Typst", () => {
   /** The example book, made by the whole command in an empty folder and, with other settings, in a folder that is not there yet. */
   let example: Promise<{ code: number; output: string }[]> | undefined;

@@ -91,6 +91,8 @@ describe.skipIf(skipTypstTests()).concurrent("with the real Typst", () => {
 
   /** The example pages and their drawing, made one time for all the tests that only look at it. */
   let drawn: ReturnType<typeof renderWith> | undefined;
+  let drawnImages: Promise<Awaited<ReturnType<typeof readImage>>[]> | undefined;
+  const exampleImages = async () => { const { pages, out } = await example(); return { pages, images: await (drawnImages ??= Promise.all(out.images.map(readImage))) }; };
   const example = async () => ({ pages: goodPages(), out: await (drawn ??= usualRenderer().then((renderer) => renderer.render(goodPages()))) });
 
   /** The same for small pages, for the tests that compare drawings. */
@@ -111,17 +113,16 @@ describe.skipIf(skipTypstTests()).concurrent("with the real Typst", () => {
     });
 
     it("are black on white, at 150 pixels an inch, and each QR code reads as its own page's text", async () => {
-      const { pages, out } = await example();
-      const images = await Promise.all(out.images.map(readImage));
+      const { pages, images } = await exampleImages();
       expect(images.map((i) => [i.width, i.height])).toEqual([[1275, 1650], [1275, 1650]]);
       expect(images.map(isGrey)).toEqual([true, true]);
       expect(images.map(qrText)).toEqual(pages.map((p) => p.qr));
     });
 
     it("have ink on the lines of each answer area and scan mark, and none inside an answer area, a reach, a work area or the edges", async () => {
-      const { pages, out } = await example();
+      const { pages, images } = await exampleImages();
       for (const [i, page] of pages.entries()) {
-        const image = await readImage(out.images[i]);
+        const image = images[i];
         const spine = page.side === "front" ? { x: 0, y: 0, w: 89, h: 792 } : { x: 523, y: 0, w: 89, h: 792 };
         const outer = page.side === "front" ? { x: 577, y: 0, w: 35, h: 792 } : { x: 0, y: 0, w: 35, h: 792 };
         for (const edge of [spine, outer, { x: 0, y: 0, w: 612, h: 35 }, { x: 0, y: 757, w: 612, h: 35 }]) expect(darkest(image, edge)).toBe(255);
@@ -318,8 +319,8 @@ describe.skipIf(skipTypstTests()).concurrent("with the real Typst", () => {
     it("in a flow wraps between tokens and after hyphens and nowhere else, and what does not fit is named", async () => {
       const STORY = [...words("Mia has twenty-one hand-woven mats. She sells"), mathToken("21 - 5 = 16"), ...words("mats and/or rugs, 4–6 each day.")];
       const pages = invented({
-        "story": flow(STORY, { x: 100, y: 100, w: 110, h: 150 }),
-        "low": flow(STORY, { x: 300, y: 100, w: 110, h: 82 }),
+        "story": flow(STORY, { x: 100, y: 100, w: 100, h: 150 }),
+        "low": flow(STORY, { x: 300, y: 100, w: 100, h: 100 }),
         "word": flow(words("an extraordinarily long word"), { x: 100, y: 300, w: 60, h: 120 }),
         "part": flow(words("a well-extraordinarily made mat"), { x: 200, y: 300, w: 60, h: 120 }),
         "math": flow([wordToken("so"), mathToken("10 + 20 + 30"), wordToken("is")], { x: 300, y: 300, w: 60, h: 120 }),
@@ -328,10 +329,10 @@ describe.skipIf(skipTypstTests()).concurrent("with the real Typst", () => {
       expect(checkTexts(pages, out.texts)).toEqual([]);
       const problems = checkFit(pages, out.texts);
       expect(problems.filter((p) => p.includes('"story"'))).toEqual([]);
-      expect(problems.filter((p) => p.includes('"low"'))).toEqual(["4–6", "each", "day."].map((token) => `Page 381: the token "${token}" of "low" is below its place.`));
+      expect(problems.filter((p) => p.includes('"low"'))).toEqual(["each", "day."].map((token) => `Page 381: the token "${token}" of "low" is below its place.`));
       const told = problems.join("\n");
-      expect(told).toMatch(/^Page 381: the token "extraordinarily" of "word" is 8\d\.\d+ points wide and its place is 60\.$/m);
-      expect(told).toMatch(/^Page 381: the token "well-extraordinarily" of "part" is 8\d\.\d+ points wide in the part "extraordinarily" and its place is 60\.$/m);
+      expect(told).toMatch(/^Page 381: the token "extraordinarily" of "word" is 78\.38 points wide and its place is 60\.$/m);
+      expect(told).toMatch(/^Page 381: the token "well-extraordinarily" of "part" is 78\.38 points wide in the part "extraordinarily" and its place is 60\.$/m);
       expect(told).toMatch(/^Page 381: the token "10 \+ 20 \+ 30" of "math" is \d+\.\d+ points wide and its place is 60\.$/m);
       const own = out.texts.slice(0, STORY.flatMap((t) => t.pieces).length);
       const lines = [...new Set(own.map((t) => t.start.y))].map((y) => own.filter((t) => t.start.y === y).map((t) => t.text).join("|"));
@@ -350,8 +351,7 @@ describe.skipIf(skipTypstTests()).concurrent("with the real Typst", () => {
     it.each<[string, (s: string) => string, RegExp]>([
       ["puts each text at the left", (s) => s.replace("sides.at(ink.align) + horizon", "left + horizon"), /"2" of "question-1" starts at/],
       ["puts each text at the top", (s) => s.replace("sides.at(ink.align) + horizon", "sides.at(ink.align) + top"), /of "heading" starts at/],
-      ["draws smaller letters", (s) => s.replace("size: points(ink.size), weight", "size: points(ink.size) * 0.9, weight"), /of "heading" has the size 13\.5 and the weight 600, and the model says 15 and 600/],
-      ["draws lighter letters", (s) => s.replace("weight: ink.weight", "weight: 400"), /of "heading" has the size 15 and the weight 400/],
+      ["draws smaller and lighter letters", (s) => s.replace("size: points(ink.size), weight: ink.weight", "size: points(ink.size) * 0.9, weight: 400"), /of "heading" has the size 13\.5 and the weight 400, and the model says 15 and 600/],
       ["makes each text narrower", (s) => s.replace(TEXT, `scale(x: 90%, ${TEXT})`), /"3-20 · .* was not drawn at its place/],
       ["leaves room between the letters", (s) => s.replace('lang: "en"', 'lang: "en", tracking: 0.1em'), /of "heading" is \d+\.?\d* points wide and its place is 300/],
     ])("a drawing file that %s stops", async (_name, change, problem) => {

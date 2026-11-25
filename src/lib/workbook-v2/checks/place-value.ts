@@ -37,9 +37,10 @@ export function checkPlaces(pages: readonly PageModel[], items: readonly BookIte
   for (const placed of placeTexts(pages, drawn).texts) {
     if (placed.region.role === "question") ofItem.set(placed.region.item, [...(ofItem.get(placed.region.item) ?? []), placed]);
   }
+  const itemOf = new Map<string | null, BookItem>(items.map((i) => [i.id, i]));
   for (const page of pages) {
     for (const { role, item: id } of page.regions) {
-      const item = role === "question" ? items.find((i) => i.id === id) : undefined;
+      const item = role === "question" ? itemOf.get(id) : undefined;
       if (item?.face.kind === "column") checkStack(item.face, ofItem.get(id) ?? [], (problem) => problems.push(`Page ${page.page}: question ${item.number} ${problem}.`));
     }
   }
