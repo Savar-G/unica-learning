@@ -141,8 +141,9 @@ export function compareWorkFolder(opts: {
   // The check of a page counts only for the record on disk and the photo that the manifest gives
   // the page after this run. Every file is looked at before the first write.
   const keptRefs = keptCheckedRefs(finalDir, checked);
-  // Another photo takes the page id of a kept page only when the readings name that photo.
-  const refsWithPhoto = new Set(pairs.filter((pair) => pairDigest(pair) !== null).map(pairSourceRef));
+  // Another photo takes the page id of a kept page only when the readings name it and the photo list has it.
+  const listed = new Set(manifest.photos.map((p) => p.sha256));
+  const refsWithPhoto = new Set(pairs.filter((pair) => listed.has(pairDigest(pair) ?? "")).map(pairSourceRef));
   const plannedManifest = planManifestSourceRefs(
     manifest,
     pairs,

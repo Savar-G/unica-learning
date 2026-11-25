@@ -339,7 +339,8 @@ describe("a page checked by a person", () => {
       (JSON.parse(readFileSync(join(work, "photos", "photos-manifest.json"), "utf8")) as {
         photos: Array<{ sha256: string; source_ref?: string }>;
       }).photos.filter((p) => p.source_ref === REF).map((p) => p.sha256);
-    const rows: Array<{ name: string; runs: string[]; photo: string; reasons: string[] }> = [
+    const rows: Array<{ name: string; runs: string[]; photo: string; reasons: string[]; unlisted?: boolean }> = [
+      { name: "new photo that the photo list does not have", runs: [], photo: "p9", reasons: [], unlisted: true },
       { name: "both runs lost", runs: ["a", "b"], photo: "p1", reasons: [] },
       { name: "run of reader a lost", runs: ["a"], photo: "p1", reasons: [] },
       { name: "run of reader b lost", runs: ["b"], photo: "p1", reasons: [] },
@@ -348,12 +349,12 @@ describe("a page checked by a person", () => {
       { name: "new photo", runs: [], photo: "p9", reasons: [PHOTO_CHANGED] },
       { name: "new photo, run of reader b lost", runs: ["b"], photo: "p9", reasons: [PHOTO_CHANGED] },
     ];
-    for (const { name, runs, photo, reasons } of rows) {
+    for (const { name, runs, photo, reasons, unlisted } of rows) {
       rmSync(work, { recursive: true });
       mkdirSync(work);
       const before = setUpChecked();
       compare();
-      addPreparedPhoto(work, "p9");
+      if (!unlisted) addPreparedPhoto(work, "p9");
       setReadings([{ photo, ref: REF }, { photo: "p2", ref: "sample:M:4a" }]);
       for (const slot of runs) rmSync(join(work, `reader-${slot}`, "run.json"));
       for (let round = 1; round <= 2; round += 1) {

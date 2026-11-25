@@ -1488,7 +1488,10 @@ describe("extractFolder (reference:extract)", () => {
       const changes = (Object.keys(paths) as Note[]).flatMap((note) => {
         const file = paths[note];
         const good = readText(file);
-        const [left, right] = good.split("sample:M:4a");
+        // A bad byte in text that no rule looks at; status.json has no such text, so there it is in a page id.
+        const marked = note === "status" ? good : JSON.stringify({ ...(JSON.parse(good) as object), "sample:M:": "" });
+        const at = Buffer.from(marked).indexOf("sample:M:") + "sample:M:".length;
+        const badByte = Buffer.concat([Buffer.from(marked).subarray(0, at), Buffer.of(0xff), Buffer.from(marked).subarray(at)]);
         const write = (content: string | Buffer) => () => writeFileSync(file, content);
         const link = (target: string) => () => {
           rmSync(file);
@@ -1498,13 +1501,7 @@ describe("extractFolder (reference:extract)", () => {
         writeFileSync(copy, good);
         return [
           ...["{ bad", "", "null", "[]", '"text"', ...texts[note]].map((text) => ({ note, name: text, change: write(text) })),
-          ...(right === undefined
-            ? []
-            : [{
-                note,
-                name: "invalid UTF-8",
-                change: write(Buffer.concat([Buffer.from(`${left}sample:M:4a`), Buffer.of(0xff), Buffer.from(right)])),
-              }]),
+          { note, name: "invalid UTF-8", change: write(badByte) },
           { note, name: "link to a good file", change: link(copy) },
           { note, name: "link to nothing", change: link(join(w.root, "nothing")) },
           {

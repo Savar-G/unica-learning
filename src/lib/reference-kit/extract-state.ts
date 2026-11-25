@@ -194,6 +194,7 @@ export function pruneRemovedPhotos(opts: PruneRemovedPhotosOptions): PruneRemove
   const removedPhotos: RemovedPhotoReport[] = [];
   const dropped = new Set<string>();
   const droppedRefs = new Set<string>();
+  const droppedFiles = new Set<string>();
   for (const sha of removedDigests) {
     const refs = refsForDigest(sha, manifest, entriesA, entriesB);
     const manifestEntry = manifest.photos.find((p) => p.sha256 === sha);
@@ -210,11 +211,17 @@ export function pruneRemovedPhotos(opts: PruneRemovedPhotosOptions): PruneRemove
       ...(ref ? { source_ref: ref } : {}),
       kept_human_checked: checkedRef !== undefined,
     });
-    if (checkedRef !== undefined) continue;
+    if (checkedRef !== undefined) {
+      // Also a photo that only the readings know.
+      keptFiles.add(photo).add(preparedFileNameForHash(sha));
+      continue;
+    }
     dropped.add(sha);
     for (const droppedRef of refs) droppedRefs.add(droppedRef);
-    if (!keptFiles.has(photo)) unlinkChild(opts.preparedPhotosDir, photo);
+    droppedFiles.add(photo);
   }
+  // Two digests can share a file name, so nothing is removed before every kept photo is known.
+  for (const file of droppedFiles) if (!keptFiles.has(file)) unlinkChild(opts.preparedPhotosDir, file);
 
   const keepEntries = (slotDir: string, entries: readonly PhotoRunEntry[]): PhotoRunEntry[] =>
     entries.filter((entry) => {

@@ -183,6 +183,8 @@ describe("extract-state", () => {
       { name: "photo of the check", checks: [[REF, SHA_1]], removed: [[SHA_1, REF, REF]], keptPhotos: [SHA_1], keptFiles: [SHA_1] },
       { name: "another photo of the checked page", checks: [[REF, SHA_1]], removed: [[SHA_1, REF, REF], [SHA_2, REF, REF]], keptPhotos: [SHA_1], keptFiles: [SHA_1] },
       { name: "page checked before the digests", checks: [[REF, null]], removed: [[SHA_2, REF, REF]], keptPhotos: [SHA_2], keptFiles: [SHA_2] },
+      { name: "page checked before the digests, only in the readings", checks: [[REF, null]], removed: [[SHA_2, null, REF]], keptPhotos: [SHA_2], keptFiles: [SHA_2] },
+      { name: "dropped photo with the file name of a kept one", checks: [[REF, SHA_1]], removed: [[SHA_1B, OTHER, OTHER], [SHA_1, REF, REF]], keptPhotos: [SHA_1], keptFiles: [SHA_1] },
       { name: "photo of the check, only in the readings", checks: [[REF, SHA_1]], removed: [[SHA_1, null, REF]], keptPhotos: [SHA_1], keptFiles: [SHA_1] },
       { name: "photo of the check under another page id", checks: [[REF, SHA_1]], removed: [[SHA_1, OTHER, OTHER]], keptPhotos: [SHA_1], keptFiles: [SHA_1] },
       { name: "photo of the check with no page id", checks: [[REF, SHA_1]], removed: [[SHA_1, null, null]], keptPhotos: [], keptFiles: [SHA_1] },
