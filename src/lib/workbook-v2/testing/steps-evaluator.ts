@@ -1,8 +1,9 @@
 // Reads the equations of a worked step and says whether they are true. It knows no shape.
-const NUMBER = String.raw`\d+(?:\.\d+)?`;
-const SIGN = "[-+−–×÷]";
-/** One equation that is not a part of a longer one: "3 × 4 = 12" or "2 + 3 + 4 = 9". A period may end the sentence. */
-const EQUATION = new RegExp(String.raw`(?<![\d.]|${SIGN} ?|= ?)(${NUMBER}(?: ${SIGN} ${NUMBER})+) = (${NUMBER})(?!\d|\.\d| ?${SIGN}| ?=)`, "g");
+const NUMBER = String.raw`-?\d+(?:\.\d+)?`;
+/** One whole part of a step: "3 × 4 = 12", "2 + 3 + 4 = 9" or "2 - 3 = -1". */
+const EQUATION = new RegExp(String.raw`^(${NUMBER}(?: [-+×÷] ${NUMBER})+) = (${NUMBER})$`);
+/** What ends a part. A comma in "1,000" or a period in "1.5" does not. */
+const PART_END = /[,.;:](?:\s+|$)/;
 
 /** An exact fraction. The bottom is 0 after a division by zero, and then no equation is true. */
 interface Exact { top: bigint; bottom: bigint }
@@ -43,14 +44,18 @@ const isTrue = (left: string, right: string): boolean => {
 export interface ReadStep {
   /** The equations that are not true. */
   wrong: string[];
-  /** Whether the step holds only equations, so that nothing in it is unproven. */
-  whole: boolean;
+  /** The parts with an equals sign that are no equation that this file can read. */
+  unread: string[];
 }
 
+/** Each part of the step that holds an equals sign is read or refused, so that none is left unproven. */
 export function readStep(step: string): ReadStep {
-  const equations = [...step.matchAll(EQUATION)];
-  return {
-    wrong: equations.filter(([, left, right]) => !isTrue(left, right)).map(([equation]) => equation),
-    whole: equations.length > 0 && step.replace(EQUATION, "").replace(/[\s,;.]/g, "") === "",
-  };
+  const found: ReadStep = { wrong: [], unread: [] };
+  for (const part of step.split(PART_END).map((p) => p.trim()).filter((p) => p.includes("="))) {
+    // The minus sign and the en dash are a minus too.
+    const equation = EQUATION.exec(part.replace(/[−–]/g, "-"));
+    if (!equation) found.unread.push(part);
+    else if (!isTrue(equation[1], equation[2])) found.wrong.push(part);
+  }
+  return found;
 }

@@ -13,7 +13,7 @@ const whole = (value: number) => ({ kind: "whole-number" as const, value: String
 function readAll(raw: unknown, bounds: Record<string, Range>, words: readonly string[], count: (limits: never) => number): ReturnType<Shape["readLimits"]> {
   const bad = (problem: string) => ({ ok: false as const, problem });
   if (!isRecord(raw)) return bad("the limits must be an object");
-  const unknown = Object.keys(raw).find((k) => !(k in bounds) && !words.includes(k));
+  const unknown = Object.keys(raw).find((k) => !Object.hasOwn(bounds, k) && !words.includes(k));
   if (unknown !== undefined) return bad(`unknown limit "${unknown}"`);
   const limits: Record<string, unknown> = {};
   for (const [name, bound] of Object.entries(bounds)) {
@@ -99,10 +99,13 @@ export const addRegistration: ShapeRegistration = {
     if (!found) return null;
     const [a, b] = [Number(found[1]), Number(found[2])];
     const sum = String(countUp(a, b));
+    const [tens, ones] = [found[1].slice(0, -1) || "0", found[1].slice(-1)];
+    const low = String(countUp(Number(ones), b));
     return {
       answer: { kind: "whole-number", value: sum },
-      features: { a, b, sum: Number(sum), carry: String(countUp(Number(found[1].slice(-1)), b)).length - 1, roundSum: sum.endsWith("0") },
+      features: { a, b, sum: Number(sum), carry: low.length - 1, roundSum: sum.endsWith("0") },
       widths: { sum: Number(sum) },
+      steps: [`${ones} + ${b} = ${low}`, low.length === 1 ? `The tens stay ${tens}.` : `${tens === "0" ? "" : tens}0 + ${low} = ${sum}`, sum],
     };
   },
   space: Array.from({ length: 270 }, (_, i) => [String(1 + Math.floor(i / 9)), `+${1 + (i % 9)}`]),
@@ -123,10 +126,6 @@ export const addRegistration: ShapeRegistration = {
     { name: "a carry", rows: q("17 +6"), answer: { kind: "whole-number", value: "23" }, steps: ["7 + 6 = 13", "10 + 13 = 23", "23"] },
     { name: "no carry", rows: q("12 +3"), answer: { kind: "whole-number", value: "15" }, steps: ["2 + 3 = 5", "The tens stay 1.", "15"] },
   ],
-  stepForms: [{
-    name: "the tens stay", example: "The tens stay 1.", trueFor: q("12 +3"), falseFor: q("16 +6"),
-    isTrue: (step, { features: { a, carry } }) => carry === 0 && step === `The tens stay ${String(a).padStart(2, "0").at(0)}.`,
-  }],
   refusedLimits: [
     { name: "not an object", raw: "bad", problem: "the limits must be an object" },
     { name: "a number that is too small", raw: { ...ADD_WIDE, a: r(0, 5) }, problem: "a must be from 1 to 30" },

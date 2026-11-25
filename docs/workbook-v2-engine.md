@@ -45,15 +45,15 @@ The snapshot file holds the content of one level. The book file holds the book i
 1. Add one shape file in `shapes/` with `version: 1`, and the shape in `shapes/index.ts` (`SHAPES`).
 2. Add its registration in `testing/shape-registrations.ts`. It shares no code with the shape and speaks of printed rows only (`testing/shape-registration.ts` has the interface; `testing/example-shapes.ts` has a listed space and a space that is too large to list):
    - `limits`: one rule for each limit, as data (`rangeLimit`, `neverLimit`). The harness makes limits, wider limits and bad limits from the rules.
-   - `read(rows)`: the answer, one feature for each limit, the widths and, if possible, the worked steps, computed from the printed rows in another way than the shape.
+   - `read(rows)`: the answer, one feature for each limit, at least one width and every worked step, computed from the printed rows in another way than the shape.
    - `space`: the list of every printed question, or the count and the ends for any limits.
-   - `cases` (the limits of each bank row must be one), `smallSpaces` with lists by hand, `witnesses` (for each limit a question inside and one that breaks only it), and the named lists.
-   - `stepForms`: a step that is more than "a + b = c" needs a form that looks at the printed question (its example is true for one question and false for another), or a reader that says all steps.
-3. Run `npm run workbook:v2:fingerprints`, then `npx vitest run src/lib/workbook-v2/shapes`.
+   - `cases` (the limits of each bank row must be one), `smallSpaces` with complete lists by hand, `witnesses` (for each limit a question inside and one that breaks only it), and the named lists.
+   - Steps: the harness compares the whole list of steps with the list of the reader, and then reads each part of a step that holds "=" (parts end at `,` `.` `;` or `:`). Such a part must be one true equation, as in "3 × 4 = 12, write 2, carry 1". Any other part with "=" is refused.
+3. Run `npm run workbook:v2:fingerprints`, then `npx vitest run src/lib/workbook-v2/shapes --sequence.shuffle`.
 
 `worstCase` is one question that is the widest in every width and in digit places. If the widths pull apart (99 - 4 leaves as much as 100 - 5 in fewer places), register the digit places as the width.
 
-The harness (`testing/shape-harness.ts`) takes 1,000 production seeds for each shape: `planBook` builds one book with both sides and all places of each template that fits, and each generated question is compared with the reader, the rules, the second solver, the steps and the ranges. Limits come from fast-check with a fixed seed, so a failure comes back in the next run, and its message holds the call that repeats it. `testing/shape-harness.test.ts` holds a broken shape for each check. An answer with parts needs a new kind in `ANSWER_KINDS` and `Answer` (`contract.ts`) and its rule in `ANSWER_FORMS`; the rest compares whole answers.
+The harness (`testing/shape-harness.ts`) takes 1,000 production seeds for each shape: `planBook` builds one book with both sides and all places of each template that fits any of the limits, and each generated question is compared with the reader, the rules, the second solver, the steps and the ranges. Limits come from fast-check with a fixed seed, so a failure comes back in the next run, and its message holds the call that repeats it. `testing/shape-harness.test.ts` holds a broken shape for each check. An answer with parts needs a new kind in `ANSWER_KINDS` and `Answer` (`contract.ts`) and its rule in `ANSWER_FORMS` (`testing/shape-checks.ts`); the rest compares whole answers.
 
 **Fingerprints:** `testing/shape-fingerprints.json` holds one SHA-256 for each version of a shape: every question of a listed space, or 1,000 questions of a large one, with the registered limits. A change of the output needs a new `version`, then the command. A stored entry never changes: `scripts/shape-fingerprint-base.mjs` compares the file with the base of the branch, in the `scope` job of CI (the one job that always has the base) and in `npm run check:fast`.
 

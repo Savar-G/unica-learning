@@ -2,19 +2,19 @@
 // facts of its registration, on questions that the production builder makes. Evidence that is missing is a failure.
 import vm from "node:vm";
 import fc from "fast-check";
-import { plainCopy } from "../bank/plain";
 import type { TemplateLibrary } from "../bank/snapshot";
 import { planBook } from "../build/build-book";
 import { itemSeed } from "../build/items";
 import { printedRows } from "../checks/printed-answers";
-import { isPrintable, type Answer, type AnswerKind, type BookItem, type Side } from "../contract";
+import { isPrintable, type Answer, type BookItem, type Side } from "../contract";
 import { canonicalJson, seedFrom } from "../hash";
 import { itemRegions } from "../layout/build-pages";
 import { digitPlaces, TEMPLATES, type PageTemplate } from "../layout/templates";
 import { shapeLibrary, type Item, type Shape, type ShapeLibrary } from "../shapes";
-import { sampleBook } from "./shape-book";
+import { sampleBook, unfilledSides } from "./shape-book";
+import { brokenRows, frozen, hasAnswerForm, isPlain, maxOf } from "./shape-checks";
 import { fingerprintProblem } from "./shape-fingerprints";
-import { isInside, registryProblems, type LargeSpace, type Limits, type Printed, type Rows, type ShapeRegistration } from "./shape-registration";
+import { isInside, printedProblem, registryProblems, type LargeSpace, type Limits, type Printed, type Rows, type ShapeRegistration } from "./shape-registration";
 import { readStep } from "./steps-evaluator";
 
 /** How many production seeds each registered shape gets. */
@@ -25,11 +25,11 @@ const ARBITRARY_LIMITS = 120;
 const TIME_LIMIT_MS = 2000;
 const MAX_REACH = 1000;
 /** A shape that gives few different questions makes the build try again and again. */
-const MAX_SEEDS = 20_000;
+const MAX_QUESTIONS = 20_000;
 
 export const CHECKS = [
   "registration", "witness", "arbitrary", "read-limits", "refused-limits", "count", "difficulty-range", "worst-case", "widening", "small-space",
-  "plain", "determinism", "inside", "answer", "answer-form", "independent-answer", "printed", "solve-again", "steps-end", "steps-true", "steps-form",
+  "plain", "determinism", "inside", "answer", "answer-form", "independent-answer", "printed", "solve-again", "steps-end", "steps-true",
   "steps-reader", "difficulty", "width", "harder", "examples", "refused-rows", "book", "layout", "evidence", "fingerprint",
 ] as const;
 export type Check = (typeof CHECKS)[number];
@@ -48,23 +48,13 @@ export interface HarnessOptions {
   templates?: TemplateLibrary;
   /** How long the limits of a registration may take to make. */
   timeLimitMs?: number;
+  /** How many questions the harness may ask for. */
+  maxQuestions?: number;
 }
-
-/** What an answer of each kind must look like. A new kind needs its rule here. */
-const ANSWER_FORMS: Readonly<Record<AnswerKind, (answer: Answer) => boolean>> = {
-  "whole-number": ({ value, ...more }) => /^(0|[1-9]\d*)$/.test(value) && Object.keys(more).join() === "kind",
-};
 
 const SIDES: readonly Side[] = ["front", "back"];
 const keyOf = (rows: Rows): string => rows.join("\n");
 const show = (rows: Rows): string => JSON.stringify(rows);
-const isPlain = (value: unknown): boolean => plainCopy("value", value).ok;
-
-/** A shape that changes the limits that it gets throws. */
-function frozen<T>(value: T): T {
-  if (typeof value === "object" && value !== null) Object.values(value).forEach(frozen);
-  return Object.freeze(value);
-}
 
 /** All that the checks know about one question. */
 interface Inspected { question: unknown; rows: Rows; printed: Printed; answer: string; steps: string; score: number; places: number }
@@ -73,22 +63,23 @@ interface Listed { rows: Rows; printed: Printed; asked: Inspected | null }
 /** All that the checks know about one set of limits. */
 interface Space { limits: Limits; json: string; count: number; easiest: number; hardest: number; widths: Readonly<Record<string, number>>; places: number }
 
-const maxOf = (widths: readonly Readonly<Record<string, number>>[]): Record<string, number> =>
-  Object.fromEntries(Object.keys(widths[0] ?? {}).map((name) => [name, Math.max(...widths.map((w) => w[name]))]));
-
 class Harness {
   readonly failures = new Map<Check, string>();
+  /** The seeds of the form that the build makes. */
   seeds = 0;
+  /** Every question that the harness asked for. */
+  private calls = 0;
+  private widthNames: string[] | null = null;
   readonly inspected = new Map<string, Inspected | null>();
   private readonly byRows = new Map<string, Inspected | null>();
   readonly spaces = new Map<string, Space | null>();
   private readonly seen = new WeakMap<Limits, Space | null>();
   private every: Listed[] | null = null;
-  /** The shape with a `generate` that checks each question that it gives. */
+  /** The shape as the build gets it: its `generate` checks each question, and nothing can change the limits that it read. */
   readonly watched: Shape;
 
   constructor(readonly shape: Shape, readonly reg: ShapeRegistration, readonly wantedSeeds: number, readonly options: HarnessOptions) {
-    this.watched = Object.assign(Object.create(shape) as Shape, { generate: (limits: unknown, seed: string) => this.generate(limits as Limits, seed) });
+    this.watched = Object.assign(Object.create(shape) as Shape, { readLimits: (raw: unknown) => frozen(shape.readLimits(raw)), generate: (limits: unknown, seed: string) => this.generate(limits as Limits, seed) });
   }
 
   get templates(): PageTemplate[] { return [...(this.options.templates ?? TEMPLATES).values()]; }
@@ -105,6 +96,14 @@ class Harness {
     } catch (error) {
       return this.tell(check, `threw ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  /** What the independent reader says of rows. */
+  private read(rows: Rows): Printed | null {
+    const printed = this.reg.read(rows);
+    const problem = printed && printedProblem(this.reg, printed, this.widthNames ??= Object.keys(printed.widths));
+    if (problem) this.tell("registration", `the reader of ${show(rows)} ${problem}`);
+    return printed;
   }
 
   /** The rows that the real layout prints for a question. */
@@ -129,15 +128,15 @@ class Harness {
   }
 
   private inspectNew(question: unknown, key: string): Inspected | null {
-    const { shape, reg } = this;
+    const { shape } = this;
     const answer = shape.answer(question);
     const answerJson = canonicalJson(answer);
     const at = `question ${key}`;
     if (!isPlain({ question, answer })) this.tell("plain", `${at} holds a value that is not plain data`);
-    if (answer.kind !== shape.answerKind || !ANSWER_FORMS[answer.kind]?.(answer)) this.tell("answer-form", `${at}: ${answerJson} is no answer of the kind "${shape.answerKind}"`);
+    if (answer.kind !== shape.answerKind || !hasAnswerForm(answer)) this.tell("answer-form", `${at}: ${answerJson} is no answer of the kind "${shape.answerKind}"`);
     const { rows, places } = this.print(question, answer);
     if (!rows.every(isPrintable)) this.tell("printed", `${at}: the fonts cannot print ${show(rows)}`);
-    const printed = reg.read(rows);
+    const printed = this.read(rows);
     if (!printed) return this.tell("printed", `${at}: the independent reader finds no question in ${show(rows)}`);
     const read = canonicalJson(printed.answer);
     if (read !== answerJson) this.tell("independent-answer", `${at}: the answer is ${answerJson} and ${show(rows)} reads as ${read}`);
@@ -154,13 +153,12 @@ class Harness {
     const bad = steps.find((s) => typeof s !== "string" || s === "" || !isPrintable(s));
     if (bad !== undefined) this.tell("steps-end", `${at}: the step ${JSON.stringify(bad)} cannot be printed`);
     if (steps.at(-1) !== answer.value) this.tell("steps-end", `${at}: the steps end in ${JSON.stringify(steps.at(-1))} and not in "${answer.value}"`);
-    for (const step of steps.slice(0, -1)) {
-      const { wrong, whole } = readStep(step);
-      const form = whole ? undefined : this.reg.stepForms?.find((f) => f.isTrue(step, printed));
+    for (const step of steps) {
+      const { wrong, unread } = readStep(step);
+      if (unread.length > 0) this.tell("steps-true", `cannot read "${unread[0]}" in a step of ${at}`);
       if (wrong.length > 0) this.tell("steps-true", `${at}: the step "${step}" holds "${wrong[0]}"`);
-      if (!whole && !form && !printed.steps) this.tell("steps-form", `${at}: nothing proves the step "${step}"`);
     }
-    if (printed.steps && JSON.stringify(printed.steps) !== JSON.stringify(steps)) this.tell("steps-reader", `${at}: the steps are ${show(steps)} and must be ${show(printed.steps)}`);
+    if (JSON.stringify(printed.steps) !== JSON.stringify(steps)) this.tell("steps-reader", `${at}: the steps are ${show(steps)} and must be ${show(printed.steps)}`);
   }
 
   /** The question that rows print, by the shape. */
@@ -183,19 +181,22 @@ class Harness {
     return found;
   }
 
-  /** Every question that the harness asks of `generate` comes through here. */
-  generate(limits: Limits, seed: string): Item<unknown> {
+  /** Every question that the harness asks of `generate` comes through here. Only seeds of the form of the build count. */
+  generate(limits: Limits, seed: string, counts = true): Item<unknown> {
+    frozen(limits);
     const at = () => `generate(${canonicalJson(limits)}, "${seed}")`;
     const first = this.shape.generate(limits, seed);
     const copy = canonicalJson(first);
     const again = this.shape.generate(limits, seed);
     if (canonicalJson(again) !== copy || canonicalJson(first) !== copy) this.tell("determinism", `${at()} gave ${copy}, then ${canonicalJson(again)}`);
     if (again === first || again.answer === first.answer || (again.question === first.question && typeof first.question === "object")) this.tell("determinism", `${at()} gave the same object twice`);
-    if (++this.seeds > MAX_SEEDS) throw new Error(`the build asked for more than ${MAX_SEEDS} questions to find ${this.wantedSeeds} different ones`);
+    if (counts) this.seeds++;
+    const most = this.options.maxQuestions ?? MAX_QUESTIONS;
+    if (++this.calls > most) throw new Error(`more than ${most} questions were asked for to find ${this.wantedSeeds} different ones`);
     const item = this.itemOf(first, at);
     const space = this.spaceOf(limits);
+    if (item && !isInside(this.reg, item.printed, limits)) this.tell("inside", `${at()} gave ${show(item.rows)}, which is outside the limits`);
     if (!item || !space) return first;
-    if (!isInside(this.reg, item.printed, limits)) this.tell("inside", `${at()} gave ${show(item.rows)}, which is outside the limits`);
     if (item.score < space.easiest || item.score > space.hardest) this.tell("difficulty", `${at()} has the score ${item.score}, outside ${space.easiest} to ${space.hardest}`);
     for (const [name, width] of Object.entries(item.printed.widths)) if (!(width <= space.widths[name])) this.tell("width", `${at()} has ${name} ${width}, wider than ${space.widths[name]}`);
     if (item.places > space.places) this.tell("width", `${at()} needs ${item.places} digit places, more than ${space.places}`);
@@ -303,14 +304,14 @@ class Harness {
     if (Array.isArray(space)) {
       if (new Set((space as Rows[]).map(keyOf)).size < space.length) this.tell("registration", "the space lists a question twice");
       this.every = (space as Rows[]).flatMap((rows) => {
-        const printed = this.reg.read(rows);
+        const printed = this.read(rows);
         if (!printed) this.tell("registration", `the space lists ${show(rows)} and the reader finds no question in it`);
         return printed ? [{ rows, printed, asked: this.ask(rows) }] : [];
       });
     }
     for (const { limit, limits, inside, outside } of witnesses) {
       const broken = (rows: Rows) => {
-        const printed = this.reg.read(rows);
+        const printed = this.read(rows);
         return printed ? Object.keys(rules).filter((name) => !rules[name].allows(printed.features[name], limits[name])).join(", ") : "no question";
       };
       if (broken(inside) !== "") this.tell("witness", `${show(inside)} must meet all limits and breaks: ${broken(inside)}`);
@@ -338,7 +339,7 @@ class Harness {
     };
     for (const [name, { bad }] of Object.entries(reg.limits)) for (const value of bad) refuse({ ...good, [name]: value }, name);
     for (const raw of [null, undefined, "limits", 5, [], [good]]) refuse(raw, "");
-    refuse({ ...good, "another-limit": 1 }, "another-limit");
+    for (const name of ["another-limit", "constructor"]) refuse({ ...good, [name]: 1 }, name);
     for (const { name, raw, problem } of reg.refusedLimits) {
       const read = canonicalJson(shape.readLimits(raw));
       if (read !== canonicalJson({ ok: false, problem })) this.tell("refused-limits", `"${name}" gave ${read}`);
@@ -348,12 +349,7 @@ class Harness {
   /** Named rows that print no question, and broken copies of good rows: the reader and the shape must agree on each. */
   checkRefusedRows(): void {
     const good = [...this.reg.examples.map((e) => e.rows), ...this.reg.smallSpaces.flatMap((s) => s.questions)].slice(0, 12);
-    const broken = good.flatMap((rows) => [
-      [], [...rows, ""], [...rows, rows[0]], [...rows].reverse(),
-      ...rows.flatMap((row, i) => ["", `0${row}`, ` ${row}`, `${row} `, `${row}0`, row.slice(1), row.slice(0, -1), `-${row}`, `${row}.0`, ...["+", "-", "×", "÷", "x"].map((sign) => row.replace(/[-+×÷]/, sign))]
-        .map((other) => rows.map((r, j) => (j === i ? other : r)))),
-    ]);
-    for (const rows of [...broken, ...this.reg.refusedRows.map((r) => r.rows)]) {
+    for (const rows of [...brokenRows(good), ...this.reg.refusedRows.map((r) => r.rows)]) {
       const [reader, solver] = [this.reg.read(rows)?.answer, this.shape.solveAgain(rows)?.answer].map((answer) => (answer ? `reads ${canonicalJson(answer)}` : "refuses it"));
       if (reader !== solver) this.tell("refused-rows", `${show(rows)}: the shape ${solver} and the reader ${reader}`);
     }
@@ -365,21 +361,21 @@ class Harness {
   checkSmallSpaces(): void {
     for (const { name, limits, questions } of this.reg.smallSpaces) {
       const wanted = new Set(questions.map(keyOf));
-      const listed = this.every?.filter((q) => isInside(this.reg, q.printed, limits)).map(({ rows }) => keyOf(rows));
       const reached = new Set<string>();
       const families = [(i: number) => `seed-${i}`, (i: number) => itemSeed(seedFrom("child", name, i), "front", "row", 0, 0)];
-      for (const family of families) {
+      for (const [at, family] of families.entries()) {
         const left = new Set(wanted);
         for (let i = 0; i < Math.max(MAX_REACH, 40 * wanted.size) && left.size > 0; i++) {
-          const key = keyOf(this.inspect(this.generate(limits, family(i)).question)?.rows ?? ["?"]);
+          const key = keyOf(this.inspect(this.generate(limits, family(i), at === 1).question)?.rows ?? ["?"]);
           left.delete(key);
           reached.add(key);
         }
         for (const missing of left) this.tell("small-space", `"${name}": no seed like "${family(0)}" gives ${show(missing.split("\n"))}`);
       }
-      const other = [...reached, ...(listed ?? [])].find((key) => !wanted.has(key));
+      const other = [...reached].find((key) => !wanted.has(key));
       if (other !== undefined) this.tell("small-space", `"${name}" has the question ${show(other.split("\n"))}, which its list does not`);
-      if (wanted.size !== questions.length || (listed && listed.length !== wanted.size)) this.tell("small-space", `"${name}" lists ${questions.length} questions and the rules allow ${listed?.length ?? wanted.size}`);
+      const allowed = this.spaceOf(limits)?.count ?? 0;
+      if (wanted.size !== questions.length || wanted.size !== allowed) this.tell("small-space", `"${name}" lists ${questions.length} questions and the rules allow ${allowed}`);
     }
   }
 
@@ -388,13 +384,14 @@ class Harness {
     const largest = [...new Set(spaces)].sort((a, b) => b.count - a.count);
     // A test of the harness itself uses few seeds, and then its book holds only the largest spaces.
     const used = this.wantedSeeds < SEEDS ? largest.slice(0, 2 * Math.max(1, Math.ceil(this.wantedSeeds / 16))) : largest;
-    const { input, unfilled } = sampleBook(this.shape.id, used.map(({ limits, count, places }) => {
+    const withTemplates = ({ limits, count, places }: Space) => {
       const { kind } = this.shape.face(this.shape.worstCase(limits).question);
       return { limits, count, fitting: this.templates.filter((t) => t.faces.includes(kind) && t.digits >= places) };
-    }), this.wantedSeeds);
-    if (unfilled.length > 0) this.tell("evidence", `no page of the book fills ${unfilled.join(" and ")}`);
-    const plan = planBook(input, shapeLibrary([this.watched]), this.options.templates);
+    };
+    const plan = planBook(sampleBook(this.shape.id, used.map(withTemplates), this.wantedSeeds), shapeLibrary([this.watched]), this.options.templates);
     if (!plan.ok) return void this.tell("book", plan.problems.slice(0, 3).join(" "));
+    const unfilled = unfilledSides(plan.pages, [...new Set(largest.flatMap((space) => withTemplates(space).fitting))]);
+    if (unfilled.length > 0) this.tell("evidence", `no page of the book fills ${unfilled.join(" and ")}`);
     const printed = new Map(plan.pages.flatMap((p) => p.regions.filter((r) => r.role === "question").map((r) => [r.item, printedRows(r.ink)] as const)));
     for (const { id, question, steps, difficulty } of plan.items) {
       const known = this.inspect(question);
@@ -407,7 +404,8 @@ class Harness {
   /** A book of a small space asks for few questions, so seeds of the same form fill the number. */
   fillSeeds(spaces: readonly Space[]): void {
     for (let i = 0; this.seeds < this.wantedSeeds && spaces.length > 0; i++) this.generate(spaces[i % spaces.length].limits, itemSeed(seedFrom("child", "more", i), SIDES[i % 2], "row", i % 8, 0));
-    if (this.wantedSeeds < 1 || this.seeds < this.wantedSeeds || spaces.length === 0) this.tell("evidence", `${this.seeds} seeds of ${this.wantedSeeds} and ${spaces.length} limits were used`);
+    const different = new Set(spaces).size;
+    if (this.wantedSeeds < 1 || this.seeds < this.wantedSeeds || different < 2) this.tell("evidence", `${this.seeds} seeds of ${this.wantedSeeds} and ${different} limits were used`);
   }
 }
 

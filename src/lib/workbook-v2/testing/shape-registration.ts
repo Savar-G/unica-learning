@@ -16,8 +16,8 @@ export interface Printed {
   features: Readonly<Record<string, unknown>>;
   /** Each way in which a question can be wide. The worst case is the widest in all of them. */
   widths: Readonly<Record<string, number>>;
-  /** The worked steps, when the reader can say all of them. */
-  steps?: readonly string[];
+  /** Every worked step of this question. */
+  steps: readonly string[];
 }
 
 /** One limit: the values that it can have, and the features that each value permits. */
@@ -84,11 +84,6 @@ export interface ShapeRegistration {
   witnesses: readonly { limit: string; limits: Limits; inside: Rows; outside: Rows }[];
   harder: readonly { name: string; easier: Rows; harder: Rows }[];
   examples: readonly { name: string; rows: Rows; answer: Answer; steps: readonly string[] }[];
-  /**
-   * Forms of a step that hold more than "a + b = c". A reader that says all the steps needs none. A form looks at the
-   * printed question: its example is true for one question and false for another.
-   */
-  stepForms?: readonly { name: string; isTrue(step: string, printed: Printed): boolean; example: string; trueFor: Rows; falseFor: Rows }[];
   refusedLimits: readonly { name: string; raw: unknown; problem: string }[];
   refusedRows: readonly { name: string; rows: Rows }[];
 }
@@ -98,6 +93,17 @@ export function isInside(registration: ShapeRegistration, printed: Printed, limi
   return true;
 }
 
+/** Whether an object has these names of its own, in any order, and no other. */
+export const hasNames = (object: object, names: readonly string[]): boolean => Object.keys(object).length === names.length && names.every((name) => Object.hasOwn(object, name));
+
+/** What an independent reader leaves out: a check would have nothing to compare. Each question has the same widths. */
+export function printedProblem({ limits }: ShapeRegistration, { features, widths }: Printed, widthNames: readonly string[]): string | null {
+  const names = Object.keys(limits);
+  if (!hasNames(features, names)) return `says the features ${Object.keys(features).join(", ")} and the limits are ${names.join(", ")}`;
+  if (widthNames.length === 0) return "says no width";
+  return hasNames(widths, widthNames) ? null : `says the widths ${Object.keys(widths).join(", ")} and for other questions ${widthNames.join(", ")}`;
+}
+
 const LISTS = ["cases", "smallSpaces", "witnesses", "harder", "examples", "refusedLimits", "refusedRows"] as const;
 
 function listProblems(registration: ShapeRegistration): string[] {
@@ -105,14 +111,10 @@ function listProblems(registration: ShapeRegistration): string[] {
   const found: string[] = [...LISTS.filter((list) => registration[list].length === 0), ...(names.length === 0 ? ["limits"] : [])].map((list) => `${list} must not be empty`);
   if (Array.isArray(registration.space) && registration.space.length === 0) found.push("space must not be empty");
   for (const name of names.filter((n) => !registration.witnesses.some((w) => w.limit === n))) found.push(`the limit "${name}" has no witness`);
-  for (const { name, isTrue, example, trueFor, falseFor } of registration.stepForms ?? []) {
-    const [right, wrong] = [registration.read(trueFor), registration.read(falseFor)];
-    if (!right || !wrong) found.push(`the step form "${name}" names rows that print no question`);
-    if (right && !isTrue(example, right)) found.push(`the step form "${name}" refuses "${example}" for the question that it is true for`);
-    if (wrong && isTrue(example, wrong)) found.push(`the step form "${name}" accepts "${example}" for the question that it is false for`);
-  }
+  for (const name of names.filter((n) => registration.limits[n].bad.length === 0)) found.push(`the limit "${name}" has no bad value`);
+  for (const { name, questions } of registration.smallSpaces) if (questions.length === 0) found.push(`the list of "${name}" must not be empty`);
   for (const { name, limits } of [...registration.cases, ...registration.smallSpaces, ...registration.witnesses.map((w) => ({ ...w, name: w.limit }))]) {
-    if (Object.keys(limits).sort().join() !== [...names].sort().join()) found.push(`the limits of "${name}" must be ${names.join(", ")}`);
+    if (!hasNames(limits, names)) found.push(`the limits of "${name}" must be ${names.join(", ")}`);
   }
   return found;
 }
