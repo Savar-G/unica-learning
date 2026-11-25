@@ -3,7 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { SHAPES } from "@/lib/workbook-v2/shapes";
-import { addShapeFingerprints } from "@/lib/workbook-v2/testing/shape-fingerprints";
+import { addShapeFingerprints, fingerprintText } from "@/lib/workbook-v2/testing/shape-fingerprints";
 import { SHAPE_REGISTRATIONS } from "@/lib/workbook-v2/testing/shape-registrations";
 
 const DEFAULT_FILE = "src/lib/workbook-v2/testing/shape-fingerprints.json";
@@ -37,6 +37,6 @@ if (!result.ok) throw new Error(result.problems.join("\n"));
 if (result.added.length === 0) {
   console.log(`Fingerprints are up to date: ${file}`);
 } else {
-  await writeFile(file, `${JSON.stringify(result.fingerprints, null, 2)}\n`, "utf8");
+  await writeFile(file, fingerprintText(result.fingerprints), "utf8");
   console.log(`Added fingerprints (${result.added.join(", ")}): ${file}`);
 }

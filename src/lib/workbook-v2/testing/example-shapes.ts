@@ -1,31 +1,23 @@
 // Two invented shapes that no book uses: one with a listed space and limits that interact, and one with a space that is
 // too large to list. They show how a shape registers, and the tests of the harness break them.
+import type { Step } from "../contract";
 import { pick } from "../hash";
 import type { Item, Shape } from "../shapes";
-import { isRecord, readRange, type Range } from "../shapes/shape";
-import { neverLimit, rangeLimit, type Limits, type Rows, type ShapeRegistration } from "./shape-registration";
+import { readLimitFields, type Range } from "../shapes/shape";
+import { neverLimit, rangeLimit, step, type Limits, type Rows, type ShapeRegistration } from "./shape-registration";
 
 const r = (min: number, max: number): Range => ({ min, max });
 const within = (n: number, range: Range) => n >= range.min && n <= range.max;
 const whole = (value: number) => ({ kind: "whole-number" as const, value: String(value) });
 
+/** The marks that write the digits of a number, the first of them (the ones of the number) at a place. */
+const writing = (digits: string, place: number): Step["marks"] => [...digits].reverse().map((digit, i) => ({ mark: "write", place: place + i, digit }));
+
 /** Reads limits that are ranges, and "never" or "allowed" for the rest. */
 function readAll(raw: unknown, bounds: Record<string, Range>, words: readonly string[], count: (limits: never) => number): ReturnType<Shape["readLimits"]> {
-  const bad = (problem: string) => ({ ok: false as const, problem });
-  if (!isRecord(raw)) return bad("the limits must be an object");
-  const unknown = Object.keys(raw).find((k) => !Object.hasOwn(bounds, k) && !words.includes(k));
-  if (unknown !== undefined) return bad(`unknown limit "${unknown}"`);
-  const limits: Record<string, unknown> = {};
-  for (const [name, bound] of Object.entries(bounds)) {
-    const range = readRange(raw, name, bound);
-    if (typeof range === "string") return bad(range);
-    limits[name] = range;
-  }
-  for (const word of words) {
-    if (raw[word] !== "never" && raw[word] !== "allowed") return bad(`${word} must be "never" or "allowed"`);
-    limits[word] = raw[word];
-  }
-  return count(limits as never) > 0 ? { ok: true, limits } : bad("no question meets these limits");
+  const limits = readLimitFields(raw, bounds, Object.fromEntries(words.map((word) => [word, ["never", "allowed"]])));
+  if (typeof limits === "string") return { ok: false, problem: limits };
+  return count(limits as never) > 0 ? { ok: true, limits } : { ok: false, problem: "no question meets these limits" };
 }
 
 // A 1-digit or 2-digit number plus a 1-digit number. `sum` and `a` limit the same questions.
@@ -67,7 +59,12 @@ export const addShape: Shape<AddLimits, AddQuestion> = {
   },
   steps({ a, b }) {
     const [tens, ones] = [a - (a % 10), a % 10];
-    return [`${ones} + ${b} = ${ones + b}`, ones + b >= 10 ? `${tens} + ${ones + b} = ${a + b}` : `The tens stay ${tens / 10}.`, String(a + b)];
+    const more = String(a + b).slice(0, -1);
+    return [
+      { text: `${ones} + ${b} = ${ones + b}`, marks: writing(String((ones + b) % 10), 0) },
+      { text: ones + b >= 10 ? `${tens} + ${ones + b} = ${a + b}` : `The tens stay ${tens / 10}.`, marks: writing(more, 1) },
+      { text: String(a + b), marks: [] },
+    ];
   },
   difficulty: addScore,
   difficultyRange(limits) {
@@ -105,7 +102,11 @@ export const addRegistration: ShapeRegistration = {
       answer: { kind: "whole-number", value: sum },
       features: { a, b, sum: Number(sum), carry: low.length - 1, roundSum: sum.endsWith("0") },
       widths: { sum: Number(sum) },
-      steps: [`${ones} + ${b} = ${low}`, low.length === 1 ? `The tens stay ${tens}.` : `${tens === "0" ? "" : tens}0 + ${low} = ${sum}`, sum],
+      steps: [
+        step(`${ones} + ${b} = ${low}`, `w${low.slice(-1)}@0`),
+        step(low.length === 1 ? `The tens stay ${tens}.` : `${tens === "0" ? "" : tens}0 + ${low} = ${sum}`, sum.length > 1 ? `w${sum[0]}@1` : ""),
+        step(sum),
+      ],
     };
   },
   space: Array.from({ length: 270 }, (_, i) => [String(1 + Math.floor(i / 9)), `+${1 + (i % 9)}`]),
@@ -123,8 +124,8 @@ export const addRegistration: ShapeRegistration = {
   ],
   harder: [{ name: "a carry", easier: q("12 +7"), harder: q("12 +8") }, { name: "a larger number", easier: q("12 +3"), harder: q("12 +4") }],
   examples: [
-    { name: "a carry", rows: q("17 +6"), answer: { kind: "whole-number", value: "23" }, steps: ["7 + 6 = 13", "10 + 13 = 23", "23"] },
-    { name: "no carry", rows: q("12 +3"), answer: { kind: "whole-number", value: "15" }, steps: ["2 + 3 = 5", "The tens stay 1.", "15"] },
+    { name: "a carry", rows: q("17 +6"), answer: { kind: "whole-number", value: "23" }, steps: [step("7 + 6 = 13", "w3@0"), step("10 + 13 = 23", "w2@1"), step("23")] },
+    { name: "no carry", rows: q("12 +3"), answer: { kind: "whole-number", value: "15" }, steps: [step("2 + 3 = 5", "w5@0"), step("The tens stay 1.", "w1@1"), step("15")] },
   ],
   refusedLimits: [
     { name: "not an object", raw: "bad", problem: "the limits must be an object" },
@@ -169,7 +170,7 @@ export const lessShape: Shape<LessLimits, LessQuestion> = {
     const [a, b] = [Number(top), Number(low.slice(1))];
     return { question: { a, b }, answer: whole(a + -b) };
   },
-  steps: ({ a, b }) => [`${a} - ${b} = ${a - b}`, String(a - b)],
+  steps: ({ a, b }) => [{ text: `${a} - ${b} = ${a - b}`, marks: writing(String(a - b), 0) }, { text: String(a - b), marks: [] }],
   difficulty: ({ b }) => b,
   difficultyRange: (limits) => ({ easiest: lowersOf(limits)[0], hardest: lowersOf(limits).at(-1) ?? 0 }),
   worstCase(limits) {
@@ -199,7 +200,7 @@ export const lessRegistration: ShapeRegistration = {
     if (!found) return null;
     let left = Number(found[1]);
     for (let i = 0; i < Number(found[2]); i++) left -= 1;
-    return { answer: { kind: "whole-number", value: String(left) }, features: { a: Number(found[1]), b: Number(found[2]), left }, widths: { left }, steps: [`${found[1]} - ${found[2]} = ${left}`, String(left)] };
+    return { answer: { kind: "whole-number", value: String(left) }, features: { a: Number(found[1]), b: Number(found[2]), left }, widths: { left }, steps: [step(`${found[1]} - ${found[2]} = ${left}`, [...String(left)].map((d, i, all) => `w${d}@${all.length - 1 - i}`).reverse().join(" ")), step(String(left))] };
   },
   space: {
     count: (l) => pairsOf(l).reduce((sum, { low, high }) => sum + high - low + 1, 0),
@@ -215,7 +216,7 @@ export const lessRegistration: ShapeRegistration = {
     { limit: "left", limits: { ...LESS_WIDE, left: r(1, 195) }, inside: q("200 -5"), outside: q("200 -4") },
   ],
   harder: [{ name: "a larger number", easier: q("200 -5"), harder: q("200 -6") }],
-  examples: [{ name: "over a hundred", rows: q("200 -5"), answer: { kind: "whole-number", value: "195" }, steps: ["200 - 5 = 195", "195"] }],
+  examples: [{ name: "over a hundred", rows: q("200 -5"), answer: { kind: "whole-number", value: "195" }, steps: [step("200 - 5 = 195", "w5@0 w9@1 w1@2"), step("195")] }],
   refusedLimits: [{ name: "a number that is too large", raw: { ...LESS_WIDE, a: r(100, 1000) }, problem: "a must be from 100 to 999" }],
   refusedRows: [{ name: "another sign", rows: ["200", "+5"] }],
 };

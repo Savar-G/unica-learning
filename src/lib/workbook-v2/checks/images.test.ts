@@ -3,7 +3,7 @@ import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 import type { PageModel, RegionRole } from "../contract";
 import { qrSquares } from "../layout/qr";
-import { blankPage, drawPage, paint, paintInk, pagePng, toPng, type Canvas } from "../testing/raster";
+import { blankPage, drawPage, paint, paintInk, pagePng, pngFile, toPng, type Canvas } from "../testing/raster";
 import { goodPages } from "../testing/sample";
 import { checkImages } from "./images";
 import { readPageImage } from "./page-image";
@@ -183,5 +183,28 @@ describe("reading a page image", () => {
       const [r, g, b] = [data[i * 3], data[i * 3 + 1], data[i * 3 + 2]];
       expect(Math.abs(image.grey[i] - (r * 299 + g * 587 + b * 114) / 1000)).toBeLessThanOrEqual(2);
     }
+  });
+
+  /** The lines of a file with one filter for each line, as the PNG standard defines them: the difference from a guess. */
+  const filtered = (bytes: Uint8Array, stride: number, parts: number, filterOf: (y: number) => number): Uint8Array => {
+    const height = bytes.length / stride;
+    const at = (x: number, y: number) => (x < 0 || y < 0 ? 0 : bytes[y * stride + x]);
+    const guess = (filter: number, left: number, above: number, corner: number): number => {
+      const near = [left, above, corner].map((n) => Math.abs(left + above - corner - n));
+      return [0, left, above, Math.floor((left + above) / 2), [left, above, corner][near.indexOf(Math.min(...near))]][filter];
+    };
+    return Uint8Array.from(Array.from({ length: height }, (_, y) => [
+      filterOf(y), ...Array.from({ length: stride }, (_x, x) => at(x, y) - guess(filterOf(y), at(x - parts, y), at(x, y - 1), at(x - parts, y - 1))),
+    ]).flat());
+  };
+  it.each([1, 3, 4].flatMap((parts) => [0, 1, 2, 3, 4].map((filter): [number, number] => [parts, filter])))("%i parts a pixel, filter %i on the first line and on each second one", async (parts, filter) => {
+    const [width, height] = [13, 10];
+    const bytes = Uint8Array.from({ length: width * height * parts }, (_, i) => (parts === 4 && i % 4 === 3 ? 255 : (i * 2654435761) >>> 24));
+    const png = pngFile(width, height, { 1: 0, 3: 2, 4: 6 }[parts] ?? 0, filtered(bytes, width * parts, parts, (y) => (y % 2 === 0 ? filter : 4 - filter)));
+    const other = await sharp(png).removeAlpha().toColourspace("srgb").raw().toBuffer();
+    const image = readPageImage(png);
+    if (typeof image === "string") throw new Error(image);
+    const wanted = Array.from({ length: width * height }, (_, i) => Math.floor((other[3 * i] * 299 + other[3 * i + 1] * 587 + other[3 * i + 2] * 114) / 1000));
+    expect([...image.grey]).toEqual(wanted);
   });
 });

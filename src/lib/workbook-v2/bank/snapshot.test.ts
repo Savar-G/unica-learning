@@ -107,7 +107,7 @@ describe("a value that is not plain data is refused, so the hash covers all that
   const LIMITS = "The snapshot, sheets[0].front.rows[0].limits";
   class Sheet { id = "x"; }
   it.each<[string, (s: Raw) => unknown, string]>([
-    ["an inherited limit", (s) => inherit(limits(s), "zeroInTens", "never"), `${LIMITS}: this must be a plain object.`],
+    ["an inherited limit", (s) => inherit(limits(s), "zeroInProduct", "never"), `${LIMITS}: this must be a plain object.`],
     ["an inherited range end", (s) => inherit(limits(s).a, "max", 43), `${LIMITS}.a: this must be a plain object.`],
     ["an inherited field of a sheet", (s) => inherit(s.sheets[0], "firstPage", 381), "The snapshot, sheets[0]: this must be a plain object."],
     ["an inherited field of the level", (s) => inherit(s.level, "name", "3"), "The snapshot, level: this must be a plain object."],

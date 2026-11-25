@@ -27,6 +27,14 @@ const input = (change: (i: Input) => unknown = () => {}): Input => {
 const put = (target: object, key: string, value: unknown) => { Reflect.set(target, key, value); };
 
 const IDENTITY: Renderer["identity"] = { typst: "0.0.0", program: "p", template: "t", fonts: { "A.ttf": "a", "B.ttf": "b" } };
+/** The image of a page, made one time for all the tests that print the same page. */
+const images = new Map<string, Uint8Array>();
+function imageOf(page: PageModel): Uint8Array {
+  const key = JSON.stringify(page);
+  const image = images.get(key) ?? pagePng(page);
+  images.set(key, image);
+  return Uint8Array.from(image);
+}
 /** A renderer that draws exactly the model. */
 function fake(change: Partial<Renderer> = {}): Renderer & { drawn: PageModel[][] } {
   const drawn: PageModel[][] = [];
@@ -37,7 +45,7 @@ function fake(change: Partial<Renderer> = {}): Renderer & { drawn: PageModel[][]
       drawn.push([...pages]);
       return {
         pdf: new TextEncoder().encode(`%PDF-${JSON.stringify(pages)}`),
-        images: pages.map(pagePng),
+        images: pages.map(imageOf),
         positions: pages.flatMap((p, i) => p.regions.map((r) => ({ id: r.id, sheet: i + 1, rect: r.rect }))),
         texts: pages.flatMap((p, i) => p.regions.flatMap((r) => r.ink.flatMap((ink) => (ink.kind === "text" ? [{ sheet: i + 1, x: ink.rect.x, y: ink.rect.y, text: ink.text }] : [])))),
       };
@@ -65,10 +73,10 @@ describe("a good input", () => {
     expect(book.items).toHaveLength(16);
     for (const { face, answer, steps, shape, shapeVersion } of book.items) {
       expect(answer).toEqual({ kind: "whole-number", value: String(Number(face.top) * Number(face.bottom)) });
-      expect(steps.at(-1)).toBe(answer.value);
+      expect(steps.at(-1)).toEqual({ text: answer.value, marks: [] });
       expect(shapeVersion).toBe(SHAPES.get(shape)?.version);
     }
-    expect(book.record).toMatchObject({ bookId: "example-book", engine: "2.0.0-s2", ...IDENTITY, snapshot: { id: "invented-level-3-v1" } });
+    expect(book.record).toMatchObject({ bookId: "example-book", engine: "2.0.0-s3", ...IDENTITY, snapshot: { id: "invented-level-3-v1" } });
     expect(book.record.snapshot.hash).toMatch(/^[0-9a-f]{64}$/);
     expect(book.record.inputHash).toMatch(/^[0-9a-f]{64}$/);
   });
@@ -234,7 +242,8 @@ describe("a build stops, draws nothing and says why", () => {
 describe.skipIf(skipTypstTests())("with the real Typst", () => {
   it("the same input gives the same bytes, and another child's book has other bytes", async () => {
     const renderer = await openRenderer(testAssets());
-    const [one, two, other] = await Promise.all([built(input(), renderer), built(input(), renderer), built(input((i) => put(i.book, "childId", "other-child")), renderer)]);
+    const few = (childId: string) => input((i) => { put(i.book, "childId", childId); for (const side of [i.snapshot.sheets[0].front, i.snapshot.sheets[0].back]) put(side, "rows", [{ ...side.rows[0], items: 2 }]); });
+    const [one, two, other] = await Promise.all([built(few("child"), renderer), built(few("child"), renderer), built(few("other-child"), renderer)]);
     expect(Buffer.compare(one.pdf, two.pdf)).toBe(0);
     expect(one.pages.map((p, i) => Buffer.compare(p.image, two.pages[i].image))).toEqual([0, 0]);
     expect(Buffer.compare(one.pdf, other.pdf)).not.toBe(0);

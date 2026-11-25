@@ -1,16 +1,16 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
+import type { Step } from "../contract";
 import { canonicalJson, pick, seedFrom } from "../hash";
 import { TEMPLATES, type PageTemplate } from "../layout/templates";
 import { shapeLibrary, type Item, type Shape } from "../shapes";
-import { mulColumn, type MulColumnLimits, type MulColumnQuestion } from "../shapes/mul-column";
+import { readLimitFields } from "../shapes/shape";
 import * as example from "./example-shapes";
 import { addItem, addQuestions, addRegistration, addShape, lessRegistration, lessShape, type AddLimits, type AddQuestion, type LessLimits, type LessQuestion } from "./example-shapes";
 import { sampleBook } from "./shape-book";
 import { shapeFingerprint } from "./shape-fingerprints";
 import { CHECKS, checkShape, checkShapes, runChecks, SEEDS, type Check, type HarnessOptions, type ShapeReport } from "./shape-harness";
-import { isInside, neverLimit, rangeLimit, registryProblems, type LargeSpace, type Limits, type Rows, type ShapeRegistration } from "./shape-registration";
-import { SHAPE_REGISTRATIONS } from "./shape-registrations";
+import { neverLimit, onlyLimit, rangeLimit, registryProblems, step, type LargeSpace, type Limits, type Rows, type ShapeRegistration } from "./shape-registration";
 import { readStep } from "./steps-evaluator";
 
 // Broken shapes. Every table row has one fault, and the harness must refuse it for that fault and no other.
@@ -26,12 +26,18 @@ const lessSpace = lessRegistration.space as LargeSpace;
 const same = (a: unknown, b: unknown) => canonicalJson(a) === canonicalJson(b);
 const whole = (value: string) => ({ kind: "whole-number" as const, value });
 
+/** Steps of a question of test.add: the lines, the first of which writes the last line. */
+const said = (...texts: string[]): Step[] => texts.map((text, i) => step(text, i === 0 && texts.length > 1 && /^\d+$/.test(texts[texts.length - 1]) ? [...texts[texts.length - 1]].reverse().map((d, at) => `w${d}@${at}`).join(" ") : ""));
+
 /** A few seeds are enough for a fault that every run meets. */
-function check({ shape, registration, options, seeds = 48 }: Broken): ShapeReport {
-  const full = { ...(shape.id === "test.add" ? addRegistration : shape.id === "test.less" ? lessRegistration : mulRegistration), ...registration };
-  const own = () => { try { const hash = shapeFingerprint(shape, full); return { [shape.id]: Object.fromEntries(Array.from({ length: shape.version }, (_, i) => [i + 1, hash])) }; } catch { return {}; } };
-  const all = { fingerprints: options?.fingerprints ?? own(), ...options };
-  return seeds === SEEDS ? checkShape(shape, full, all) : runChecks(shape, full, seeds, all);
+function check({ shape, registration, options, seeds = 32 }: Broken): ShapeReport {
+  const full = { ...(shape.id === "test.add" ? addRegistration : shape.id === "test.less" ? lessRegistration : plusOne(1, 2).registration), ...registration };
+  const templates = new Map([[short.id, short]]);
+  const all = { templates, fingerprints: {}, ...(seeds === SEEDS ? {} : { madeLimits: 40 }), ...options };
+  const report = seeds === SEEDS ? checkShape(shape, full, all) : runChecks(shape, full, seeds, all);
+  if (options?.fingerprints !== undefined) return report;
+  // A fingerprint that a test makes would be equal by construction; the tests of the fingerprints give one.
+  return { ...report, failures: report.failures.filter((f) => !f.message.includes(`version ${shape.version} has no fingerprint`)) };
 }
 const checksOf = (report: ShapeReport) => report.failures.map((f) => f.check);
 
@@ -40,7 +46,7 @@ const QUIET: AddQuestion = { a: 16, b: 6 };
 const isQuiet = (question: AddQuestion) => same(question, QUIET);
 const onQuiet = <T>(normal: (question: AddQuestion) => T, quiet: T) => (question: AddQuestion): T => (isQuiet(question) ? quiet : normal(question));
 /** A change of what the shape prints and reads for one question, the same in each part of the shape. */
-const coordinated = (value: string, steps: string[]): Partial<Add> => ({
+const coordinated = (value: string, steps: Step[]): Partial<Add> => ({
   answer: onQuiet(addShape.answer, whole(value)),
   solveAgain: (rows) => { const item = addShape.solveAgain(rows); return item && isQuiet(item.question) ? { ...item, answer: whole(value) } : item; },
   steps: onQuiet(addShape.steps, steps),
@@ -50,21 +56,10 @@ const readQuiet = (change: object): Partial<ShapeRegistration> => ({
   read: (rows) => { const printed = addRegistration.read(rows); return printed && rows.join() === "16,+6" ? { ...printed, ...change } : printed; },
 });
 /** Steps of one question that the shape gives and the reader says too. */
-const bothSay = (...steps: string[]): Broken => ({ shape: add({ steps: onQuiet(addShape.steps, steps) }), registration: readQuiet({ steps }) });
+const bothSay = (...steps: Step[]): Broken => ({ shape: add({ steps: onQuiet(addShape.steps, steps) }), registration: readQuiet({ steps }) });
 const limitsOf = (name: string, rule: Partial<ReturnType<typeof rangeLimit>>): Partial<ShapeRegistration> => ({ limits: { ...addRegistration.limits, [name]: { ...addRegistration.limits[name], ...rule } } });
 const wide = (limits: unknown) => same(limits, example.ADD_WIDE);
 const middle = (limits: unknown) => same(limits, example.LESS_SMALL);
-
-const mulRegistration = SHAPE_REGISTRATIONS.find((r) => r.id === mulColumn.id) ?? (() => { throw new Error("mul.column has no registration"); })();
-const MUL_WIDE = mulRegistration.cases[0].limits;
-const mulItem = (question: MulColumnQuestion): Item<MulColumnQuestion> => ({ question, answer: mulColumn.answer(question) });
-/** The space of mul.column as facts in place of a list. */
-function mulAsLarge(widest: (limits: Limits) => Rows | null): LargeSpace {
-  const all = (mulRegistration.space as readonly Rows[]).map((rows) => ({ rows, printed: mulRegistration.read(rows), score: mulColumn.difficulty({ a: Number(rows[0]), b: Number(rows[1].slice(1)) }) }));
-  const within = (l: Limits) => all.filter((q) => q.printed && isInside(mulRegistration, q.printed, l));
-  const most = (l: Limits, of: (q: (typeof all)[number]) => number) => within(l).reduce((x, y) => (of(y) > of(x) ? y : x)).rows;
-  return { count: (l) => within(l).length, easiest: (l) => most(l, (q) => -q.score), hardest: (l) => most(l, (q) => q.score), widest: (l) => widest(l) ?? most(l, (q) => q.printed?.widths.product ?? 0) };
-}
 
 /** The template with other places on one side. */
 function withPlaces(side: "front" | "back", change: (place: PageTemplate["sides"]["front"]["places"][number]) => object): Partial<HarnessOptions> {
@@ -73,6 +68,8 @@ function withPlaces(side: "front" | "back", change: (place: PageTemplate["sides"
   return { templates: new Map([[template.id, { ...template, sides: { ...template.sides, [side]: { ...template.sides[side], places } } }]]) };
 }
 const [first] = TEMPLATES.values();
+/** One template with few places is enough for a fault that every question or every limit has. */
+const short: PageTemplate = { ...first, sides: { front: { ...first.sides.front, places: first.sides.front.places.slice(0, 4) }, back: { ...first.sides.back, places: first.sides.back.places.slice(0, 4) } } };
 const narrow: PageTemplate = { ...first, id: "narrow", digits: 2 };
 const withNarrow = { templates: new Map([first, narrow].map((t) => [t.id, t])) };
 const reversedBack = withPlaces("back", (p) => ({ topCells: [...p.topCells].reverse() }));
@@ -128,7 +125,7 @@ function shortList(): Broken {
 
 /** A registration with one set of limits that any question meets. */
 function oneSpace(): Broken {
-  const { shape, registration } = twoQuestions();
+  const { shape, registration } = plusOne(1, 2);
   const [{ limits }] = registration.cases;
   const three = { limit: "a", limits, inside: ["1", "+1"], outside: ["3", "+1"] };
   const read = (rows: Rows) => { const printed = registration.read(["2", "+1"]); return printed && rows.join() === "3,+1" ? { ...printed, features: { a: 3 } } : registration.read(rows); };
@@ -141,7 +138,7 @@ function oneSpace(): Broken {
 /** A shape that says the steps of one question in another true way, only the second time after its fingerprint. */
 function changingSteps(): Broken {
   let calls = 0;
-  const shape = add({ steps: (question) => (same(question, { a: 22, b: 2 }) && ++calls === 2 ? ["2 + 2 = 4", "20 + 4 = 24", "24"] : addShape.steps(question)) });
+  const shape = add({ steps: (question) => (same(question, { a: 22, b: 2 }) && ++calls === 2 ? [step("2 + 2 = 4", "w4@0"), step("20 + 4 = 24", "w2@1"), step("24")] : addShape.steps(question)) });
   const fingerprints = { "test.add": { 1: shapeFingerprint(shape, addRegistration) } };
   calls = 0;
   return { shape, options: { fingerprints }, seeds: SEEDS };
@@ -179,7 +176,7 @@ const REFUSED: readonly Refused[] = [
   ["difficulty-range", "a field that is no end", () => ({ shape: add({ difficultyRange: (l) => ({ ...addShape.difficultyRange(l), ...(wide(l) ? { ignored: 1 } : {}) }) }) }), /"ignored":1/],
   ["worst-case", "a question that is not the widest", () => ({ shape: add({ worstCase: (l) => (wide(l) ? addItem({ a: 30, b: 8 }) : addShape.worstCase(l)) }) }), /with sum 38, and the widest has 39/],
   ["worst-case", "a question outside the limits", () => ({ shape: add({ worstCase: (l) => (same(l, example.ADD_ONE) ? addItem({ a: 30, b: 9 }) : addShape.worstCase(l)) }) }), /which is outside the limits/],
-  ["worst-case", "a question of fewer digit places than the widest", () => ({ shape: { ...mulColumn, worstCase: (l: MulColumnLimits) => mulColumn.worstCase(l.product.max === 999 && l.a.max === 99 && l.b.max === 9 ? { ...l, product: { min: 10, max: 99 }, a: { min: 10, max: 49 } } : l) } as Shape, registration: { read: (rows) => { const p = mulRegistration.read(rows); return p && { ...p, widths: { same: 1 } }; } } }), /needs 2 digit places and the widest question needs 3/],
+  ["worst-case", "a question of fewer digit places than the widest", () => { const { shape, registration } = digitsVary(); return { shape: { ...shape, worstCase: (l) => shape.worstCase(reaches(l, 98) ? { a: { min: 98, max: 98 } } : l) }, registration }; }, /needs 2 digit places and the widest question needs 3/],
   ["widening", "scores that fall when the limits grow", wrongForUnreadLimits, /have the count \d+ and the scores 1 to 1/],
   ["small-space", "a question that no seed gives", () => ({ shape: add({ generate: (l, seed) => { const item = addShape.generate(l, seed); return same(l, example.ADD_SIX) && item.question.a === 22 && item.question.b === 4 ? addItem({ a: 21, b: 4 }) : item; } }) }), /no seed like "seed-0" gives \["22","\+4"\]/],
   ["small-space", "a question that no seed of the old family gives", () => ({ shape: add({ generate: (l, seed) => (seed.startsWith("seed-") ? addItem(addQuestions(l)[0]) : addShape.generate(l, seed)) }) }), /no seed like "seed-0"/],
@@ -197,35 +194,63 @@ const REFUSED: readonly Refused[] = [
   ["inside", "a question outside the limits", () => ({ seeds: SEEDS, shape: add({ generate: (l, seed) => { const item = addShape.generate(l, seed); return same(l, addRegistration.cases[1].limits) && item.question.b === 9 ? addItem({ a: 11, b: 9 }) : item; } }) }), /gave \["11","\+9"\], which is outside the limits/],
   ["inside", "questions for limits that no question meets", readsOtherLimits, /which is outside the limits/],
   ["answer", "another answer for one seed of a small space", () => ({ shape: add({ generate: (l, seed) => { const item = addShape.generate(l, seed); return seed === "seed-0" ? { ...item, answer: whole("1") } : item; } }) }), /holds the answer .*"1".* and the shape answers/],
-  ["answer-form", "a word, in every part of the shape and in the reader", () => ({ shape: add(coordinated("ok", ["ok"])), registration: readQuiet({ answer: whole("ok"), steps: ["ok"] }) }), /"ok"\} is no answer of the kind "whole-number"/],
-  ["answer-form", "a zero in front", () => ({ shape: add(coordinated("02", ["02"])), registration: readQuiet({ answer: whole("02"), steps: ["02"] }) }), /"02"\} is no answer/],
-  ["independent-answer", "a wrong answer in every part of the shape", () => ({ shape: add(coordinated("23", ["23"])), registration: readQuiet({ steps: ["23"] }) }), /the answer is .*"23".* and \["16","\+6"\] reads as .*"22"/],
+  ["answer-form", "a word, in every part of the shape and in the reader", () => ({ shape: add(coordinated("ok", said("ok"))), registration: readQuiet({ answer: whole("ok"), steps: said("ok") }) }), /"ok"\} is no answer of the kind "whole-number"/],
+  ["answer-form", "a zero in front", () => ({ shape: add(coordinated("02", said("02"))), registration: readQuiet({ answer: whole("02"), steps: said("02") }) }), /"02"\} is no answer/],
+  ["independent-answer", "a wrong answer in every part of the shape", () => ({ shape: add(coordinated("23", said("It is 23.", "23"))), registration: readQuiet({ steps: said("It is 23.", "23") }) }), /the answer is .*"23".* and \["16","\+6"\] reads as .*"22"/],
   ["printed", "a plus that the shape reads as a plus and the child as another sign", () => ({ shape: add({ face: onQuiet(addShape.face, { kind: "column", top: "16", sign: "×", bottom: "6" }), solveAgain: (rows) => addShape.solveAgain(rows.join() === "16,×6" ? ["16", "+6"] : rows) }) }), /the independent reader finds no question in \["16","×6"\]/],
   ["printed", "a sign that the fonts do not hold", () => ({ shape: add({ face: onQuiet(addShape.face, { kind: "column", top: "16", sign: "✚", bottom: "6" }), solveAgain: (rows) => addShape.solveAgain(rows.join() === "16,✚6" ? ["16", "+6"] : rows) }), registration: { read: (rows) => addRegistration.read(rows.join() === "16,✚6" ? ["16", "+6"] : rows) } }), /the fonts cannot print/],
   ["printed", "rows that are read as another question", () => ({ shape: add({ solveAgain: (rows) => (rows.join() === "16,+6" ? addItem({ a: 18, b: 6 }) : addShape.solveAgain(rows)) }) }), /\["16","\+6"\] is printed as \["18","\+6"\]/],
   ["solve-again", "no second answer for one question", () => ({ shape: add({ solveAgain: (rows) => (rows.join() === "16,+6" ? null : addShape.solveAgain(rows)) }) }), /solveAgain finds no question in \["16","\+6"\]/],
   ["solve-again", "another second answer for one question", () => ({ shape: add({ solveAgain: (rows) => (rows.join() === "16,+6" ? { question: QUIET, answer: whole("23") } : addShape.solveAgain(rows)) }) }), /solveAgain\(\["16","\+6"\]\) gave .*"23"/],
-  ["steps-end", "an end that is not the answer", () => bothSay("6 + 6 = 12", "12"), /the steps end in "12" and not in "22"/],
+  ["steps-end", "an end that is not the answer", () => bothSay(...said("6 + 6 = 12", "12")), /the steps end in "12" and not in "22"/],
   ["steps-end", "no step", () => bothSay(), /the steps end in undefined/],
-  ["steps-end", "a step that the fonts cannot print", () => bothSay("✚", "22"), /the step "✚" cannot be printed/],
-  ["steps-true", "a false step that the reader says too", () => bothSay("6 + 6 = 12", "10 + 12 = 23", "22"), /holds "10 \+ 12 = 23"/],
-  ["steps-true", "a false step with a negative result that the reader says too", () => bothSay("2 - 3 = -2", "22"), /holds "2 - 3 = -2"/],
-  ["steps-true", "a step with an equals sign that nothing can read", () => bothSay("6 and 6 = 12", "22"), /cannot read "6 and 6 = 12"/],
+  ["steps-end", "a step that the fonts cannot print", () => bothSay(...said("✚", "22")), /the step "✚" cannot be printed/],
+  ["steps-true", "a false step that the reader says too", () => bothSay(...said("6 + 6 = 12", "10 + 12 = 23", "22")), /holds "10 \+ 12 = 23"/],
+  ["steps-true", "a false step with a negative result that the reader says too", () => bothSay(...said("2 - 3 = -2", "22")), /holds "2 - 3 = -2"/],
+  ["steps-true", "a step with an equals sign that nothing can read", () => bothSay(...said("6 and 6 = 12", "22")), /cannot read "6 and 6 = 12"/],
   ...([
     ["a true equation of other numbers", "90 + 9 = 99"], ["a sentence that is false for this question and true for another", "The tens stay 1."],
-    ["a step that says nothing", "Think hard."], ["words beside an equation", "6 + 6 = 12, write 4"],
-  ].map(([fault, step]): Refused => ["steps-reader", fault, () => ({ shape: add({ steps: onQuiet(addShape.steps, [step, "22"]) }) }), /the steps are .* and must be \["6 \+ 6 = 12","10 \+ 12 = 22","22"\]/])),
-  ["steps-reader", "other steps than the reader says", () => ({ shape: add(), registration: readQuiet({ steps: ["12 + 10 = 22", "22"] }) }), /the steps are .* and must be \["12 \+ 10 = 22","22"\]/],
+    ["a step that says nothing", "Think hard."], ["words beside an equation", "6 + 6 = 12, as you know"],
+  ].map(([fault, line]): Refused => ["steps-reader", fault, () => ({ shape: add({ steps: onQuiet(addShape.steps, said(line, "22")) }) }), /the steps are .* and must be .*"6 \+ 6 = 12".*"10 \+ 12 = 22"/])),
+  ...([
+    ["a place that no step writes", [step("6 + 6 = 12", "w2@0"), step("22")], /write "2" and not the answer "22"/],
+    ["a place that two steps write", [step("6 + 6 = 12", "w2@0"), step("10 + 12 = 22", "w2@1 w2@0"), step("22")], /write the place 0 more than once/],
+    ["another digit than the answer has", [step("6 + 6 = 12", "w2@0"), step("10 + 12 = 22", "w1@1"), step("22")], /write "12" and not the answer "22"/],
+    ["a place above the answer", [step("6 + 6 = 12", "w2@0"), step("10 + 12 = 22", "w2@2"), step("22")], /write "2\?2" and not the answer "22"/],
+    ["a last step that writes", [step("6 + 6 = 12", "w2@0"), step("22", "w2@1")], /the last step draws something/],
+    ["a mark of no kind", [{ text: "6 + 6 = 12", marks: [{ mark: "circle", place: 0, digit: "2" }] }, ...said("22")], /"6 \+ 6 = 12" holds a mark that is not one/],
+    ["a mark of two digits", [{ text: "6 + 6 = 12", marks: [{ mark: "write", place: 0, digit: "22" }] }, ...said("22")], /holds a mark that is not one/],
+    ["a mark at no place", [{ text: "6 + 6 = 12", marks: [{ mark: "write", place: -1, digit: "2" }] }, ...said("22")], /holds a mark that is not one/],
+    ["a mark with a field more", [{ text: "6 + 6 = 12", marks: [{ mark: "write", place: 0, digit: "2", color: "red" }] }, ...said("22")], /holds a mark that is not one/],
+    ["a step with a field more", [{ ...step("6 + 6 = 12", "w2@0 w2@1"), note: "" }, step("22")], /is not a text with marks/],
+    ["a step that says another digit than it writes", [step("6 + 6 = 12, write 3", "w2@0"), step("10 + 12 = 22", "w2@1"), step("22")], /says "write 3" and writes "2"/],
+    ["a carry that is not said", [step("6 + 6 = 12, write 2", "w2@0 c1@1"), step("1 + 0 = 1, plus 1 is 2", "w2@1"), step("22")], /says no carry and carries 1/],
+    ["a carry that is said and not drawn", [step("6 + 6 = 12, write 2, carry 1", "w2@0"), step("1 + 0 = 1, plus 1 is 2", "w2@1"), step("22")], /says "carry 1" and carries nothing/],
+    ["a carry of 0", [step("6 + 6 = 12, write 2, carry 0", "w2@0 c0@1"), step("1 + 1 = 2", "w2@1"), step("22")], /carries 0/],
+    ["two carries of one step", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@1 c1@1"), step("1 + 0 = 1, plus 1 is 2", "w2@1"), step("22")], /has 2 carries/],
+    ["a carry above its own column", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@0"), step("1 + 0 = 1, plus 1 is 2", "w2@1"), step("22")], /its carry stands at the place 0 and must stand at 1/],
+    ["a carry two places above its column", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@2"), step("1 + 0 = 1, plus 1 is 2", "w2@1"), step("22")], /its carry stands at the place 2 and must stand at 1/],
+    ["a carry that the next column does not add", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@1"), step("1 + 1 = 2", "w2@1"), step("22")], /carries 1 and the next step adds nothing/],
+    ["a carry that the next column adds as another number", [step("6 + 6 = 12, write 2, carry 2", "w2@0 c2@1"), step("1 + 0 = 1, plus 1 is 2", "w2@1"), step("22")], /carries 2 and the next step adds 1/],
+    ["a column that adds a carry that no step made", [step("6 + 6 = 12, write 2", "w2@0"), step("1 + 0 = 1, plus 1 is 2", "w2@1"), step("22")], /carries nothing and the next step adds 1/],
+    ["a first column that adds a carry", [step("5 + 6 = 11, plus 1 is 12, write 2", "w2@0"), step("10 + 12 = 22", "w2@1"), step("22")], /the first step adds 1/],
+    ["a carry that the step of another place adds", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@1"), step("1 + 0 = 1, plus 1 is 2", ""), step("10 + 12 = 22", "w2@1"), step("22")], /and the next step does not write that place/],
+  ] as [string, Step[], RegExp][]).map(([fault, steps, message]): Refused => ["steps-marks", fault, () => bothSay(...steps), message]),
+  ["steps-reader", "another mark than the reader says", () => ({ shape: add({ steps: onQuiet(addShape.steps, [step("6 + 6 = 12", "w2@0 w2@1"), step("10 + 12 = 22"), step("22")]) }) }), /the steps are .* and must be /],
+  ["steps-reader", "other steps than the reader says", () => ({ shape: add(), registration: readQuiet({ steps: said("12 + 10 = 22", "22") }) }), /the steps are .* and must be .*"12 \+ 10 = 22"/],
   ["steps-reader", "a reader that says no steps", () => ({ shape: add(), registration: readQuiet({ steps: undefined }) }), /the steps are .* and must be undefined/],
   ["difficulty", "a score that is not a number", () => ({ shape: add({ difficulty: onQuiet(addShape.difficulty, Number.NaN), difficultyRange: addShape.difficultyRange }) }), /the score is NaN/],
   ["difficulty", "a score past the hardest, which the registration has wrong too", () => ({ seeds: SEEDS, shape: less({ difficultyRange: (l) => (middle(l) ? { easiest: 40, hardest: 41 } : lessShape.difficultyRange(l)) }), registration: { space: { ...lessSpace, hardest: (l: Limits) => (middle(l) ? ["500", "-41"] : lessSpace.hardest(l)) } } }), /has the score \d+, outside 40 to 41/],
   ["width", "a question wider than the worst case, which the registration has wrong too", () => ({ seeds: SEEDS, shape: less({ worstCase: (l) => lessShape.worstCase(middle(l) ? { ...l, left: { min: 440, max: 441 } } : l) }), registration: { space: { ...lessSpace, widest: (l: Limits) => lessSpace.widest(middle(l) ? { ...l, left: { min: 440, max: 441 } } : l) } } }), /has left 4\d\d, wider than 441/],
-  ["width", "a question of more digit places than the worst case, which the registration has wrong too", () => ({
-    shape: { ...mulColumn, worstCase: (l: MulColumnLimits) => (same(l, MUL_WIDE) ? mulItem({ a: 10, b: 2 }) : mulColumn.worstCase(l)) } as Shape,
-    registration: { space: mulAsLarge((l) => (same(l, MUL_WIDE) ? ["10", "×2"] : null)), read: (rows) => { const p = mulRegistration.read(rows); return p && { ...p, widths: { same: 1 } }; } },
-  }), /needs 3 digit places, more than 2/],
+  ["width", "a question of more digit places than the worst case, which the registration has wrong too", () => {
+    const { shape, registration } = digitsVary();
+    const all = registration.space as readonly Rows[];
+    const inside = (l: Limits) => all.filter((rows) => rangeLimit(1, 120).allows(Number(rows[0]), l.a));
+    const large: LargeSpace = { count: (l) => inside(l).length, easiest: (l) => inside(l)[0], hardest: (l) => inside(l).at(-1) ?? [], widest: (l) => inside(l)[0] };
+    return { seeds: SEEDS, shape: { ...shape, worstCase: (l) => shape.worstCase({ a: { min: (l as PlusOneLimits).a.min, max: (l as PlusOneLimits).a.min } }) }, registration: { ...registration, space: large } };
+  }, /needs 3 digit places, more than 2/],
   ["harder", "one score for all", () => ({ shape: add({ difficulty: () => 5, difficultyRange: () => ({ easiest: 5, hardest: 5 }) }) }), /"a carry": the score of .* is 5 and of .* is 5/],
-  ["examples", "other true steps than the example", () => ({ shape: add({ steps: ({ a, b }) => (a === 17 && b === 6 ? ["6 + 7 = 13", "10 + 13 = 23", "23"] : addShape.steps({ a, b })) }), registration: { read: (rows) => { const p = addRegistration.read(rows); return p && rows.join() === "17,+6" ? { ...p, steps: ["6 + 7 = 13", "10 + 13 = 23", "23"] } : p; } } }), /"a carry" gives .*6 \+ 7 = 13/],
+  ["examples", "other true steps than the example", () => ({ shape: add({ steps: ({ a, b }) => (a === 17 && b === 6 ? said("6 + 7 = 13", "10 + 13 = 23", "23") : addShape.steps({ a, b })) }), registration: { read: (rows) => { const p = addRegistration.read(rows); return p && rows.join() === "17,+6" ? { ...p, steps: said("6 + 7 = 13", "10 + 13 = 23", "23") } : p; } } }), /"a carry" gives .*6 \+ 7 = 13/],
   ["examples", "another answer in the registration", () => ({ shape: add(), registration: { examples: [{ ...addRegistration.examples[0], answer: whole("33") }] } }), /"a carry" gives .*"23"/],
   ["refused-rows", "a zero in front of a number", () => ({ shape: add({ solveAgain: (rows) => addShape.solveAgain(rows[0] === "017" ? ["17", rows[1]] : rows) }) }), /\["017","\+6"\]: the shape reads .* and the reader refuses it/],
   ["refused-rows", "named rows", () => ({ shape: add({ solveAgain: (rows) => (rows[0] === "31" ? addItem({ a: 30, b: 3 }) : addShape.solveAgain(rows)) }) }), /\["31","\+3"\]: the shape reads/],
@@ -235,7 +260,7 @@ const REFUSED: readonly Refused[] = [
   ["book", "a generate that widens the limits of the book", () => widensInTheBook("generate"), /threw Cannot assign to read only property 'a'/],
   ["book", "a count that widens the limits of the book", () => widensInTheBook("count"), /threw Cannot assign to read only property 'a'/],
   ["layout", "a back side that turns the rows, which the shape and the reader accept", () => ({ shape: add({ solveAgain: (rows) => addShape.solveAgain(eitherOrder(rows)) }), options: withPlaces("back", (p) => ({ topCells: p.bottomCells, bottomCells: p.topCells })), registration: { read: (rows) => addRegistration.read(eitherOrder(rows)) } }), /prints \["\+\d","\d+"\] and the first place prints/],
-  ["evidence", "a template that no page of the book fills", () => ({ shape: mulColumn as Shape, seeds: 1, options: withNarrow }), /no page of the book fills narrow, front side and narrow, back side/],
+  ["evidence", "a template that no page of the book fills", () => ({ ...plusOne(1, 120), seeds: 1, options: withNarrow }), /no page of the book fills narrow, front side and narrow, back side/],
   ["evidence", "limits that are all the same, so that nothing can be wider", oneSpace, /and 1 limits were used/],
   ["evidence", "no seeds", () => ({ shape: add(), seeds: 0 }), /seeds of 0/],
   ["fingerprint", "another output with the same version", () => ({ shape: add(), options: { fingerprints: { "test.add": { 1: "0".repeat(64) } } } }), /the output changed and the version is still 1/],
@@ -244,7 +269,8 @@ const REFUSED: readonly Refused[] = [
 describe("the harness refuses", () => {
   it("accepts the two example shapes", () => {
     for (const shape of [add(), less()]) {
-      const report = check({ shape, seeds: SEEDS });
+      const registration = shape.id === "test.add" ? addRegistration : lessRegistration;
+      const report = check({ shape, seeds: SEEDS, options: { fingerprints: { [shape.id]: { 1: shapeFingerprint(shape, registration) } } } });
       expect(report.failures).toEqual([]);
       expect(report.evidence.seeds).toBeGreaterThanOrEqual(1000);
     }
@@ -254,7 +280,7 @@ describe("the harness refuses", () => {
     const report = check(broken());
     expect(report.failures.map((f) => f.message).join("\n")).toMatch(message);
     expect(checksOf(report)).toEqual([name]);
-    expect(report.failures[0].message).toMatch(/^\[(test\.(?:add|less|two)|mul\.column)\] [a-z-]+: .*\(fast-check seed 236\)$/);
+    expect(report.failures[0].message).toMatch(/^\[test\.(?:add|less|plus)\] [a-z-]+: .*\(fast-check seed 236\)$/);
   });
 
   it("has a broken shape for each check", () => {
@@ -266,15 +292,15 @@ describe("wrong shapes that touch more than one check", () => {
   const bad = (change: Partial<Add>): Broken => ({ shape: add(change) });
   const registered: AddLimits = example.ADD_WIDE;
   it.each<[string, Check[], () => Broken]>([
-    ["that gives one question for each seed of the form that the build makes", ["inside", "book"], () => ({ ...bad({ generate: (l, seed) => (/^[0-9a-f]{64}$/.test(seed) ? addShape.generate(registered, "a".repeat(64)) : addShape.generate(l, seed)) }), seeds: SEEDS })],
+    ["that gives one question for each seed of the form that the build makes", ["inside", "book"], () => ({ ...bad({ generate: (l, seed) => (/^[0-9a-f]{64}$/.test(seed) ? addShape.generate(registered, "a".repeat(64)) : addShape.generate(l, seed)) }), seeds: SEEDS, options: { maxQuestions: 12000 } })],
     ["that gives one question for each first try of a place", ["inside", "small-space"], () => bad({ generate: (l, seed) => (seed === seedFrom(seedFrom("child", "six questions", 3), "front", "row", 0, 0) ? addItem({ a: 30, b: 9 }) : addShape.generate(l, seed)) })],
     ["that answers with a word in every part", ["answer-form", "independent-answer"], () => {
       const word = <T extends { answer: { value: string } }>(item: T): T => ({ ...item, answer: { ...item.answer, value: "cat" } });
-      return bad({ answer: (q) => word(addItem(q)).answer, generate: (l, s) => word(addShape.generate(l, s)), worstCase: (l) => word(addShape.worstCase(l)), solveAgain: (rows) => { const item = addShape.solveAgain(rows); return item && word(item); }, steps: () => ["cat"] });
+      return bad({ answer: (q) => word(addItem(q)).answer, generate: (l, s) => word(addShape.generate(l, s)), worstCase: (l) => word(addShape.worstCase(l)), solveAgain: (rows) => { const item = addShape.solveAgain(rows); return item && word(item); }, steps: () => said("cat") });
     }],
     ["that prints another sign than it computes", ["printed"], () => bad({ face: (q) => ({ ...addShape.face(q), sign: "×" }), solveAgain: (rows) => addShape.solveAgain(rows.map((row) => row.replace("×", "+"))) })],
     ["that prints a face that no template takes", ["printed", "book"], () => bad({ face: (q) => ({ ...addShape.face(q), kind: "story" as "column" }) })],
-    ["that answers with a number in place of text", ["answer-form"], () => bad({ ...coordinated(22 as never, ["22"]) })],
+    ["that answers with a number in place of text", ["answer-form"], () => bad({ ...coordinated(22 as never, said("22")) })],
     ["with a count that is not a number", ["count", "widening"], () => bad({ count: () => Number.NaN })],
     ["with a count that has no end", ["count"], () => bad({ count: () => Number.POSITIVE_INFINITY })],
     ["with a count that is not a whole number", ["count"], () => bad({ count: (l) => addShape.count(l) + 0.5 })],
@@ -320,7 +346,7 @@ describe("wrong shapes that touch more than one check", () => {
 
   it("gives the same failure in each run, and the failure holds what repeats it", () => {
     const broken = add({ generate: (l, seed) => { const item = addShape.generate(l, seed); return item.question.b === 9 ? addItem({ a: 30, b: 8 }) : item; } });
-    const [one, two] = [check({ shape: broken }), check({ shape: broken })];
+    const [one, two] = [check({ shape: broken, seeds: 48 }), check({ shape: broken, seeds: 48 })];
     expect(two.failures).toEqual(one.failures);
     const message = one.failures.find((f) => f.check === "inside")?.message ?? "";
     const [, limits, seed] = /generate\((\{.*\}), "([^"]*)"\)/.exec(message) ?? [];
@@ -328,39 +354,43 @@ describe("wrong shapes that touch more than one check", () => {
   });
 });
 
-/** A shape with two questions. */
-function twoQuestions(): { shape: Shape; registration: ShapeRegistration } {
-  type Pair = { a: number };
-  const item = ({ a }: Pair): Item<Pair> => ({ question: { a }, answer: whole(String(a + 1)) });
-  const all = ({ a }: { a: { min: number; max: number } }) => [{ a: 1 }, { a: 2 }].filter((q) => q.a >= a.min && q.a <= a.max);
-  const shape: Shape<{ a: { min: number; max: number } }, Pair> = {
-    id: "test.two", version: 1, answerKind: "whole-number",
-    readLimits: (raw) => {
-      const read = addShape.readLimits({ ...example.ADD_WIDE, ...(raw as object) });
-      const { a, ...more } = (raw ?? {}) as { a?: { min: number; max: number } };
-      if (Object.keys(more).length > 0) return { ok: false, problem: `unknown limit "${Object.keys(more)[0]}"` };
-      return read.ok && a && a.max <= 2 ? { ok: true, limits: { a } } : { ok: false, problem: "a must be from 1 to 2" };
-    },
-    generate: (limits, seed) => item(all(limits)[pick(seed, all(limits).length)]),
+type PlusOneLimits = { a: { min: number; max: number } };
+/** The shape of the questions "a + 1" for the numbers of a range, with all that it registers. From 99 on it needs 3 digit places. */
+function plusOne(min: number, max: number): { shape: Shape; registration: ShapeRegistration } {
+  const item = ({ a }: { a: number }): Item<{ a: number }> => ({ question: { a }, answer: whole(String(a + 1)) });
+  const isOne = (rows: Rows) => rows.length === 2 && /^[1-9]\d*$/.test(rows[0]) && rows[1] === "+1" && Number(rows[0]) >= min && Number(rows[0]) <= max;
+  const marks = (n: number) => [...String(n)].reverse().map((digit, place) => `w${digit}@${place}`).join(" ");
+  const stepsOf = (a: number) => [step(`${a} + 1 = ${a + 1}`, marks(a + 1)), step(String(a + 1))];
+  const shape: Shape<PlusOneLimits, { a: number }> = {
+    id: "test.plus", version: 1, answerKind: "whole-number",
+    readLimits: (raw) => { const read = readLimitFields(raw, { a: { min, max } }, {}); return typeof read === "string" ? { ok: false, problem: read } : { ok: true, limits: read as unknown as PlusOneLimits }; },
+    generate: ({ a }, seed) => item({ a: a.min + pick(seed, a.max - a.min + 1) }),
     answer: (q) => item(q).answer,
-    solveAgain: (rows) => (rows.length === 2 && /^[12]$/.test(rows[0]) && rows[1] === "+1" ? item({ a: Number(rows[0]) }) : null),
-    steps: ({ a }) => [`${a} + 1 = ${a + 1}`, String(a + 1)],
+    solveAgain: (rows) => (isOne(rows) ? item({ a: Number(rows[0]) }) : null),
+    steps: ({ a }) => stepsOf(a),
     difficulty: ({ a }) => a, difficultyRange: ({ a }) => ({ easiest: a.min, hardest: a.max }),
-    worstCase: ({ a }) => item({ a: a.max }), count: (limits) => all(limits).length,
+    worstCase: ({ a }) => item({ a: a.max }), count: ({ a }) => Math.max(0, Math.min(a.max, max) - Math.max(a.min, min) + 1),
     face: ({ a }) => ({ kind: "column", top: String(a), sign: "+", bottom: "1" }),
   };
-  const only = (min: number, max: number): Limits => ({ a: { min, max } });
+  const only = (low: number, high: number): Limits => ({ a: { min: low, max: high } });
+  const rowsOf = (a: number): Rows => [String(a), "+1"];
   const registration: ShapeRegistration = {
-    id: "test.two", limits: { a: rangeLimit(1, 2) }, space: [["1", "+1"], ["2", "+1"]], cases: [{ name: "both", limits: only(1, 2) }],
-    read: (rows) => { const p = /^[12]$/.test(rows[0] ?? "") && rows[1] === "+1" ? addRegistration.read(rows) : null; return p && { ...p, features: { a: p.features.a }, steps: rows[0] === "1" ? ["1 + 1 = 2", "2"] : ["2 + 1 = 3", "3"] }; },
-    smallSpaces: [{ name: "one question", limits: only(2, 2), questions: [["2", "+1"]] }],
-    witnesses: [{ limit: "a", limits: only(1, 1), inside: ["1", "+1"], outside: ["2", "+1"] }],
-    harder: [{ name: "more", easier: ["1", "+1"], harder: ["2", "+1"] }],
-    examples: [{ name: "two", rows: ["2", "+1"], answer: whole("3"), steps: ["2 + 1 = 3", "3"] }],
-    refusedLimits: [{ name: "three", raw: only(1, 3), problem: "a must be from 1 to 2" }], refusedRows: [{ name: "three", rows: ["3", "+1"] }],
+    id: "test.plus", limits: { a: rangeLimit(min, max) }, space: Array.from({ length: max - min + 1 }, (_, i) => rowsOf(min + i)), cases: [{ name: "all", limits: only(min, max) }],
+    read: (rows) => (isOne(rows) ? { answer: whole(String(Number(rows[0]) - -1)), features: { a: Number(rows[0]) }, widths: { a: Number(rows[0]) }, steps: stepsOf(Number(rows[0])) } : null),
+    smallSpaces: [{ name: "one question", limits: only(max, max), questions: [rowsOf(max)] }],
+    witnesses: [{ limit: "a", limits: only(min, min), inside: rowsOf(min), outside: rowsOf(max) }],
+    harder: [{ name: "more", easier: rowsOf(min), harder: rowsOf(max) }],
+    examples: [{ name: "the last", rows: rowsOf(max), answer: whole(String(max + 1)), steps: stepsOf(max) }],
+    refusedLimits: [{ name: "too many", raw: only(min, max + 1), problem: `a must be from ${min} to ${max}` }], refusedRows: [{ name: "too many", rows: rowsOf(max + 1) }],
   };
   return { shape: shape as Shape, registration };
 }
+/** All questions are equally wide for the reader, so that only the digit places tell them apart. */
+function digitsVary(): ReturnType<typeof plusOne> {
+  const { shape, registration } = plusOne(1, 120);
+  return { shape, registration: { ...registration, read: (rows) => { const p = registration.read(rows); return p && { ...p, widths: { same: 1 } }; } } };
+}
+const reaches = (limits: unknown, a: number): boolean => { const { min, max } = (limits as PlusOneLimits).a; return min <= a && a < max; };
 
 describe("the number of seeds", () => {
   it("counts the seeds of the form of the build and no other", () => {
@@ -408,7 +438,7 @@ describe("the book of a shape", () => {
   });
 
   it("fills a template that only smaller limits of a shape fit", () => {
-    expect(check({ shape: mulColumn as Shape, seeds: SEEDS, options: withNarrow }).failures).toEqual([]);
+    expect(check({ ...plusOne(1, 120), seeds: SEEDS, options: withNarrow }).failures).toEqual([]);
   });
 
   it.each([[1, 1], [1, 1000], [3, 64], [270, 1]])("uses each of nine limits with %i questions and %i seeds", (count, seeds) => {
@@ -422,7 +452,7 @@ describe("the book of a shape", () => {
   });
 
   it("of a shape with two questions passes, and other seeds fill the number", () => {
-    const report = check({ ...twoQuestions(), seeds: SEEDS });
+    const report = check({ ...plusOne(1, 2), seeds: SEEDS });
     expect(report.failures).toEqual([]);
     expect(report.evidence.seeds).toBeGreaterThanOrEqual(SEEDS);
   });
@@ -471,6 +501,12 @@ describe("the rules of limits", () => {
       expect(rule.widen(one, other)).toEqual({ min: Math.min(x.min, y.min), max: Math.max(x.max, y.max) });
     }));
     expect([rule.allows(undefined, { min: 1, max: 30 }), rule.allows("5", { min: 1, max: 30 })]).toEqual([false, false]);
+  });
+
+  it("only asks for the feature, never refuses it, and allowed permits both", () => {
+    const rule = onlyLimit();
+    expect([[true, "never"], [true, "allowed"], [true, "only"], [false, "never"], [false, "allowed"], [false, "only"], [undefined, "allowed"], [undefined, "never"]].map(([feature, limit]) => rule.allows(feature, limit))).toEqual([false, true, true, true, true, false, false, false]);
+    expect([rule.widen("never", "only"), rule.widen("only", "allowed"), rule.widen("only", "only"), rule.widen("never", "never")]).toEqual(["allowed", "allowed", "only", "never"]);
   });
 
   it("never refuses a question with the feature, and allowed permits it", () => {

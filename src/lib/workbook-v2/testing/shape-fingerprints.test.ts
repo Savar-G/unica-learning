@@ -8,13 +8,13 @@ import { canonicalJson, seedFrom } from "../hash";
 import { SHAPES, shapeLibrary, type Shape } from "../shapes";
 import { mulColumn } from "../shapes/mul-column";
 import { addItem, addQuestions, addRegistration, addShape, lessRegistration, lessShape, type AddLimits, type AddQuestion, type LessLimits, type LessQuestion } from "./example-shapes";
-import { addShapeFingerprints, fingerprintProblem, shapeFingerprint, type ShapeFingerprints } from "./shape-fingerprints";
+import { addShapeFingerprints, fingerprintProblem, fingerprintText, shapeFingerprint, type ShapeFingerprints } from "./shape-fingerprints";
 import committed from "./shape-fingerprints.json";
-import type { ShapeRegistration } from "./shape-registration";
+import { step, type ShapeRegistration } from "./shape-registration";
 import { SHAPE_REGISTRATIONS } from "./shape-registrations";
 
 const add = (change: Partial<Shape<AddLimits, AddQuestion>> = {}): Shape => ({ ...addShape, ...change }) as Shape;
-const other = { steps: ({ a, b }: AddQuestion) => [`${b} + ${a} = ${a + b}`, String(a + b)] };
+const other = { steps: ({ a, b }: AddQuestion) => [step(`${b} + ${a} = ${a + b}`), step(String(a + b))] };
 const A = "a".repeat(64);
 const now = (shape = add(), registration: ShapeRegistration = addRegistration) => shapeFingerprint(shape, registration);
 
@@ -26,7 +26,7 @@ describe("the fingerprint of a shape", () => {
   it("changes with any part of the output of any one question of a listed space", () => {
     const all = addQuestions(addRegistration.cases[0].limits as unknown as AddLimits);
     const changes: ((question: AddQuestion) => Partial<Shape<AddLimits, AddQuestion>>)[] = [
-      (one) => ({ steps: (q) => (canonicalJson(q) === canonicalJson(one) ? ["?"] : addShape.steps(q)) }),
+      (one) => ({ steps: (q) => (canonicalJson(q) === canonicalJson(one) ? [step("?")] : addShape.steps(q)) }),
       (one) => ({ answer: (q) => (canonicalJson(q) === canonicalJson(one) ? { kind: "whole-number", value: "0" } : addShape.answer(q)) }),
       (one) => ({ difficulty: (q) => addShape.difficulty(q) + (canonicalJson(q) === canonicalJson(one) ? 1 : 0) }),
       (one) => ({ face: (q) => ({ ...addShape.face(q), ...(canonicalJson(q) === canonicalJson(one) ? { sign: "-" } : {}) }) }),
@@ -58,7 +58,7 @@ describe("the fingerprint of a shape", () => {
     const base = shapeFingerprint(watched, lessRegistration);
     expect(seeds.length).toBeGreaterThanOrEqual(1000);
     expect(seeds.every((s) => s.length === seedFrom("a").length && /^[0-9a-f]+$/.test(s))).toBe(true);
-    const changedAt = (key: string) => shapeFingerprint({ ...lessShape, steps: (q: LessQuestion) => (canonicalJson(q) === key ? ["?"] : lessShape.steps(q)) } as Shape, lessRegistration);
+    const changedAt = (key: string) => shapeFingerprint({ ...lessShape, steps: (q: LessQuestion) => (canonicalJson(q) === key ? [step("?")] : lessShape.steps(q)) } as Shape, lessRegistration);
     const covered = [...questions].filter((_q, i) => i % 125 === 0);
     for (const key of [...covered, ...[[200, 5], [200, 6], [201, 5], [201, 6]].map(([a, b]) => canonicalJson({ a, b }))]) expect(changedAt(key)).not.toBe(base);
   });
@@ -94,6 +94,12 @@ describe("adding fingerprints", () => {
     ["adds a new version and keeps the older ones, and other shapes", [library({ ...other, version: 2 }), [addRegistration], { ...first, "a.other": { 1: A } }], { ok: true, added: ["test.add@2"], fingerprints: { "a.other": { 1: A }, "test.add": { ...first["test.add"], 2: now(add({ ...other, version: 2 })) } } }],
   ])("%s", (_name, args, result) => expect(addShapeFingerprints(...args)).toEqual(result));
 
+  it("writes one line for each shape", () => {
+    const text = fingerprintText({ "a.one": { 1: A, 2: A }, "b.two": { 1: A } });
+    expect(text.split("\n")).toEqual(["{", `  "a.one": { "1": "${A}", "2": "${A}" },`, `  "b.two": { "1": "${A}" }`, "}", ""]);
+    expect(JSON.parse(text)).toEqual({ "a.one": { 1: A, 2: A }, "b.two": { 1: A } });
+  });
+
   it.each<[string, Parameters<typeof addShapeFingerprints>, RegExp]>([
     ["another output with the same version", [library(other), [addRegistration], first], /\[test\.add\] fingerprint: the output changed.*a stored fingerprint never changes/],
     ["an older version that is gone", [library({ version: 2 }), [addRegistration], {}], /the fingerprint of version 1 is gone/],
@@ -123,7 +129,7 @@ describe("the command", () => {
     writeFileSync(changed, JSON.stringify({ "mul.column": { ...older["mul.column"], [current]: A } }));
     const [added, refused] = await Promise.all([run(missing), run(changed)]);
     expect(added).toEqual({ code: 0, output: expect.stringContaining(`mul.column@${current}`) as unknown });
-    expect(JSON.parse(readFileSync(missing, "utf8"))).toEqual(committed);
+    expect(readFileSync(missing, "utf8")).toBe(readFileSync("src/lib/workbook-v2/testing/shape-fingerprints.json", "utf8"));
     expect(refused).toEqual({ code: 1, output: expect.stringMatching(/a stored fingerprint never changes/) as unknown });
     expect(readFileSync(changed, "utf8")).toContain(A);
     expect(addShapeFingerprints(SHAPES, SHAPE_REGISTRATIONS, committed)).toEqual({ ok: true, added: [], fingerprints: committed });

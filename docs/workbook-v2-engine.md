@@ -1,6 +1,6 @@
 # Workbook engine v2
 
-The v2 engine turns a bank snapshot file into a book: page models, answers, a PDF, page images and the position of each rectangle. It is in `src/lib/workbook-v2/`, apart from the v1 generator, and it is not connected to the app yet. This first part (UNI-135) holds one shape, one page template and one invented sheet.
+The v2 engine turns a bank snapshot file into a book: page models, answers, a PDF, page images and the position of each rectangle. It is in `src/lib/workbook-v2/`, apart from the v1 generator, and it is not connected to the app yet. It holds one shape (`mul.column`: 2, 3 or 4 digits by 1 digit), two page templates and two invented sheets.
 
 ## Use it
 
@@ -12,6 +12,8 @@ npm run workbook:v2 -- --snapshot src/lib/workbook-v2/fixtures/snapshot.json --b
 Run it from the repository root. The build uses no network. The output folder must be new or empty. It gets `book.pdf`, `page-1.png` and up (150 pixels an inch), `pages.json` (page models), `positions.json` (what Typst reports), `answers.json` and `record.json` (the engine, snapshot and input, the version of Typst, and the SHA-256 of its program on this computer, of the drawing file and of each font). A book that fails writes nothing and lists each problem with its place.
 
 The command writes the whole book into a hidden folder beside the output folder and renames it in one step. The system refuses that step when the output folder holds something: of two processes one wins and the other stops. An error removes the hidden folder; a process that is killed can leave one (`.workbook-v2-*`), which is safe to delete.
+
+`snapshot-4-digits.json` and `book-4-digits.json` in the same folder are a sheet of the wide template.
 
 The snapshot file holds the content of one level. The book file holds the book id, the child id, and for each sheet the attempt and the text of the two QR codes. The caller makes all of these; the engine makes none. Both must be plain JSON data: the build reads a copy, and the hashes cover exactly that copy. An inherited, hidden or computed value is refused. A level name is a number, and a page number and the next one must be exact whole numbers.
 
@@ -34,28 +36,55 @@ The snapshot file holds the content of one level. The book file holds the book i
 - **Seed:** the child, the sheet id and the attempt decide the numbers. A question comes back on a sheet only when its row has no other left. A new attempt of a sheet may repeat a question of an earlier attempt, also when others exist; the choice of unseen questions is UNI-258.
 - **Order on a side:** the difficulty decides it, from easy to hard, so the questions of two rows may mix. Questions of equal difficulty keep the row order of the bank. Each item records its row (`rowId`). Scores compare only inside one shape, so rows of two shapes never mix.
 - **Places:** a side has no more questions than the places of its template on that side.
-- **Answers:** a shape computes each answer from the parameters of the question. The second computation (`solveAgain`) gets only the printed rows, which the build takes from the rectangles of the page model, from top to bottom and from left to right. It must read the same question and compute the same answer, and the worked steps must end in it. If not, the build stops.
+- **Answers:** a shape computes each answer from the parameters of the question. The second computation (`solveAgain`) gets only the printed rows, which the build takes from the rectangles of the page model, from top to bottom and from left to right. It must read the same question and compute the same answer, and the last worked step must be it and draw nothing. If not, the build stops.
+- **Worked steps:** see "Steps" below.
 - **Geometry:** every position is in the page model. `page.typ` only draws it. The build compares the rectangles and the text that Typst reports with the model.
 - **Proof of each page:** the build reads each page image back. Its QR code must fill its box and read as the text of its own page, and there must be no second code. Every text of the model must have ink there, every fill must be dark in all of its area, and the sides of an outline must have no gap in their middle half. This takes about 2 seconds for 120 pages on a laptop. It does not prove the PDF, which Typst makes in a run of its own from the same files.
 - **Typst and fonts:** pinned by version and SHA-256 in `render/pins.ts`. The fonts and the drawing file are read once and each drawing uses that copy in a private folder; the program is checked again before each drawing. `typst:install` puts the official program in `~/.cache/unica-learning/typst/`. Computer fonts and Typst's own fonts are off. Any Typst warning stops the build. Typst prints an empty box, with no warning, for a character that a font does not hold, so `validateSnapshot` refuses those characters in the bank and `checkPage` refuses them in every text that a page prints (`isPrintable`).
 - **A change that can change a page or an output file** (Typst, a font, `page.typ`, a template, a shape, or the fields of `answers.json`) also changes `ENGINE_VERSION`. Each `BookItem` in `answers.json` carries `shapeVersion` from its shape; `solveAgain` and layout do not read it.
 
+## Steps
+
+A question has a list of `Step` (`contract.ts`): `text`, the line that a parent reads, and `marks`, what the step puts on the paper. A `StepMark` is one digit at one place: place 0 is the ones, place 1 the tens, and so on. The last step is the answer, with no marks. 247 × 3 has these steps:
+
+| Text | Marks |
+|---|---|
+| 3 × 7 = 21, write 1, carry 2 | write 1 at 0, carry 2 at 1 |
+| 3 × 4 = 12, plus 2 is 14, write 4, carry 1 | write 4 at 1, carry 1 at 2 |
+| 3 × 2 = 6, plus 1 is 7 | write 7 at 2 |
+| 741 | |
+
+How a shape writes them (the harness checks each rule for an answer that is one whole number, `testing/step-marks.ts`):
+
+- All "write" marks together are the digits of the answer: each place one time.
+- A step that carries writes one digit and puts its "carry" mark one place above that digit. The next step writes that place and adds the same digit.
+- The words say the same as the marks: "write 4" is the digit that the step writes, "carry 1" its carry, and ", plus 1 is 7" adds the carry of the step before. A last column can write two digits with no "write" ("7 × 4 = 28").
+- No mark and no word says a carry of 0.
+
+A new kind of mark (a borrow, a digit crossed out) is a new word in `STEP_MARKS` and its rule in `testing/step-marks.ts`.
+
+## Limits and large spaces
+
+Limits are ranges and words with no default, so that one meaning has one form (`readLimitFields` in `shapes/shape.ts` reads them). The limits of `mul.column` are in `shapes/mul-column-count.ts`. A carry is a carry into the next written column: `carryIntoTens`, `carryIntoHundreds` and `carryIntoThousands` are ranges of the carry itself (0 is none), and `carries` counts the columns that get one. What the last column makes is written, not carried.
+
+A shape whose space is too large to list must not list it for each question. `mul.column` has 79,920 questions: `shapes/mul-column-count.ts` counts them by place and finds the question at one place of the order, with no list and nothing kept between calls. A question takes about 0.1 ms or less, and the choice is the same as from the whole list.
+
 ## Adding a shape
 
 1. Add one shape file in `shapes/` with `version: 1`, and the shape in `shapes/index.ts` (`SHAPES`).
-2. Add its registration in `testing/shape-registrations.ts`. It shares no code with the shape and speaks of printed rows only (`testing/shape-registration.ts` has the interface; `testing/example-shapes.ts` has a listed space and a space that is too large to list):
-   - `limits`: one rule for each limit, as data (`rangeLimit`, `neverLimit`). The harness makes limits, wider limits and bad limits from the rules.
-   - `read(rows)`: the answer, one feature for each limit, at least one width and every worked step, computed from the printed rows in another way than the shape.
-   - `space`: the list of every printed question, or the count and the ends for any limits.
+2. Add its registration in a file of its own, `testing/registrations/<shape>.ts`, and the file in the list of `testing/shape-registrations.ts`. It shares no code with the shape and speaks of printed rows only (`testing/shape-registration.ts` has the interface; `testing/example-shapes.ts` has a listed space and a space that is too large to list):
+   - `limits`: one rule for each limit, as data (`rangeLimit`, `neverLimit`, `onlyLimit`). With many limits, `oftenWide` keeps most of the made limits wide, or almost no question is left: the suite asks for 60 limits that some question meets. The harness makes limits, wider limits and bad limits from the rules.
+   - `read(rows)`: the answer, one feature for each limit, at least one width and every worked step with its marks (`step("2 × 4 = 8, write 8", "w8@0")`), computed from the printed rows in another way than the shape.
+   - `space`: the list of every printed question, or the count and the ends for any limits. `listed` is a part of a large space whose questions are all inspected (2 and 3 digits of `mul.column`).
    - `cases` (the limits of each bank row must be one), `smallSpaces` with complete lists by hand, `witnesses` (for each limit a question inside and one that breaks only it), and the named lists.
-   - Steps: the harness compares the whole list of steps with the list of the reader, and then reads each part of a step that holds "=" (parts end at `,` `.` `;` or `:`). Such a part must be one true equation, as in "3 × 4 = 12, write 2, carry 1". Any other part with "=" is refused.
+   - Steps: the harness compares the whole list of steps and marks with the list of the reader, checks the marks ("Steps" above), and reads each part of a step that holds "=" (parts end at `,` `.` `;` or `:`). Such a part must be one true equation, as in "3 × 4 = 12, write 2, carry 1". Any other part with "=" is refused.
 3. Run `npm run workbook:v2:fingerprints`, then `npx vitest run src/lib/workbook-v2/shapes --sequence.shuffle`.
 
 `worstCase` is one question that is the widest in every width and in digit places. If the widths pull apart (99 - 4 leaves as much as 100 - 5 in fewer places), register the digit places as the width.
 
 The harness (`testing/shape-harness.ts`) takes 1,000 production seeds for each shape: `planBook` builds one book with both sides and all places of each template that fits any of the limits, and each generated question is compared with the reader, the rules, the second solver, the steps and the ranges. Limits come from fast-check with a fixed seed, so a failure comes back in the next run, and its message holds the call that repeats it. `testing/shape-harness.test.ts` holds a broken shape for each check. An answer with parts needs a new kind in `ANSWER_KINDS` and `Answer` (`contract.ts`) and its rule in `ANSWER_FORMS` (`testing/shape-checks.ts`); the rest compares whole answers.
 
-**Fingerprints:** `testing/shape-fingerprints.json` holds one SHA-256 for each version of a shape: every question of a listed space, or 1,000 questions of a large one, with the registered limits. A change of the output needs a new `version`, then the command. A stored entry never changes: `scripts/shape-fingerprint-base.mjs` compares the file with the base of the branch, in the `scope` job of CI (the one job that always has the base) and in `npm run check:fast`.
+**Fingerprints:** `testing/shape-fingerprints.json` holds one SHA-256 for each version of a shape: every question of a listed space, or 1,000 questions of a large one, with the registered limits. A change of the output needs a new `version`, then the command. The file has one line for each shape, so that branches that change other shapes merge. A stored entry never changes: `scripts/shape-fingerprint-base.mjs` compares the file with the base of the branch, in the `scope` job of CI (the one job that always has the base) and in `npm run check:fast`.
 
 ## Tests
 
@@ -73,4 +102,4 @@ The harness (`testing/shape-harness.ts`) takes 1,000 production seeds for each s
 
 - Fit and ink checks (UNI-137): `checks/`; `readPageImage` gives the pixels of a page image and `checkImages` already reads each one.
 - The book job (UNI-260): see "In a Vercel function".
-- More shapes (UNI-237 to 240): follow "Adding a shape" above. A new look of a question is a new `Face` and a template that takes it.
+- More shapes (UNI-237, 238 and 240): follow "Adding a shape" above. A new look of a question is a new `Face` and a template that takes it.

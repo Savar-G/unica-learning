@@ -1,5 +1,5 @@
 // The page templates: fixed rectangles in points. Nothing here depends on what a page holds. The design of the
-// templates is not chosen yet; this one proves the path. A template writes both sides out from the same numbers: the
+// templates is not chosen yet; these prove the path. A template writes both sides out from the same numbers: the
 // spine zone is on the left of a front page and on the right of a back page, and everything moves with it.
 import { PAPER, PRINT_RULES, type Face, type Rect, type Side } from "../contract";
 
@@ -64,38 +64,45 @@ function frame(side: Side): PageFrame {
 
 const COLUMNS = 2;
 const ROWS = 4;
-const DIGITS = 3;
 const CELL = { w: 24, h: 28 };
+/** The room right of the stack before the work area: more than the reach takes. */
+const STACK_ROOM = 34;
 const SLOT = { w: 236, h: 140, top: 92, pitchX: 250, pitchY: 148 };
 
-function place(side: Side, column: number, row: number): ItemPlace {
+function place(side: Side, digits: number, column: number, row: number): ItemPlace {
   const x = liveLeft(side) + column * SLOT.pitchX;
   const y = SLOT.top + row * SLOT.pitchY;
   const stack = x + 44;
-  const cells = (top: number) => Array.from({ length: DIGITS }, (_, i) => rect(stack + i * CELL.w, top, CELL.w, CELL.h));
-  const answer = rect(stack, y + 86, DIGITS * CELL.w, PRINT_RULES.answer.minHeight);
+  const width = digits * CELL.w;
+  const work = stack + width + STACK_ROOM;
+  const cells = (top: number) => Array.from({ length: digits }, (_, i) => rect(stack + i * CELL.w, top, CELL.w, CELL.h));
+  const answer = rect(stack, y + 86, width, PRINT_RULES.answer.minHeight);
   const { reach } = PRINT_RULES;
   return {
     slot: rect(x, y, SLOT.w, SLOT.h),
     label: rect(x, y + 14, 24, CELL.h),
-    question: rect(stack, y + 14, DIGITS * CELL.w, 60),
+    question: rect(stack, y + 14, width, 60),
     topCells: cells(y + 14),
     bottomCells: cells(y + 14 + CELL.h),
-    rule: rect(stack, y + 72, DIGITS * CELL.w, 1.2),
+    rule: rect(stack, y + 72, width, 1.2),
     answer,
     reach: rect(answer.x - reach.left, answer.y - reach.top, answer.w + reach.left + reach.right, answer.h + reach.top + reach.bottom),
-    work: rect(x + 150, y, SLOT.w - 150, SLOT.h),
+    work: rect(work, y, x + SLOT.w - work, SLOT.h),
   };
 }
 
-const side = (s: Side) => ({
+const side = (s: Side, digits: number) => ({
   frame: frame(s),
-  places: Array.from({ length: ROWS * COLUMNS }, (_, i) => place(s, i % COLUMNS, Math.floor(i / COLUMNS))),
+  places: Array.from({ length: ROWS * COLUMNS }, (_, i) => place(s, digits, i % COLUMNS, Math.floor(i / COLUMNS))),
 });
 
-const columns2x4: PageTemplate = { id: "columns-2x4", faces: ["column"], digits: DIGITS, sides: { front: side("front"), back: side("back") } };
+/** Eight column stacks on a side: two across and four down. */
+const stacks = (id: string, digits: number): PageTemplate => ({ id, faces: ["column"], digits, sides: { front: side("front", digits), back: side("back", digits) } });
 
-export const TEMPLATES: ReadonlyMap<string, PageTemplate> = new Map([columns2x4].map((t) => [t.id, t]));
+const columns2x4 = stacks("columns-2x4", 3);
+const columns2x4Wide = stacks("columns-2x4-wide", 5);
+
+export const TEMPLATES: ReadonlyMap<string, PageTemplate> = new Map([columns2x4, columns2x4Wide].map((t) => [t.id, t]));
 
 /** The digit places that a question and its answer need in a stack. The sign takes the place left of the bottom line. */
 export const digitPlaces = (face: Face, answer: string): number => Math.max(face.top.length, face.sign.length + face.bottom.length, answer.length);

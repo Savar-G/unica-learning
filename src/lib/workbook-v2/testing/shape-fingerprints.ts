@@ -96,3 +96,12 @@ export function addShapeFingerprints(shapes: ShapeLibrary, registrations: readon
   if (problems.length > 0) return { ok: false, problems };
   return { ok: true, added, fingerprints: Object.fromEntries(Object.entries(next).sort(([a], [b]) => (a < b ? -1 : 1))) };
 }
+
+/** The text of the file: one line for each shape, so that branches that change other shapes merge. */
+export function fingerprintText(fingerprints: ShapeFingerprints): string {
+  const lines = Object.entries(fingerprints).map(([id, versions]) => {
+    const entries = Object.entries(versions).map(([version, hash]) => `${JSON.stringify(version)}: ${JSON.stringify(hash)}`);
+    return `  ${JSON.stringify(id)}: { ${entries.join(", ")} }`;
+  });
+  return `{\n${lines.join(",\n")}\n}\n`;
+}

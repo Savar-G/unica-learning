@@ -2,7 +2,7 @@
 // it, so it imports nothing. All lengths are points (72 to the inch) from the top left corner of the page.
 
 /** Changes when the same input can give other bytes. A book records it, so a replay can tell which part differs. */
-export const ENGINE_VERSION = "2.0.0-s2";
+export const ENGINE_VERSION = "2.0.0-s3";
 
 export interface Rect { x: number; y: number; w: number; h: number }
 
@@ -18,6 +18,14 @@ export interface Answer { kind: AnswerKind; value: string }
 export interface ColumnFace { kind: "column"; top: string; sign: string; bottom: string }
 export type Face = ColumnFace;
 
+/** What a step puts on the paper. "write" is a digit of the answer; "carry" is the small digit above the next column. */
+export const STEP_MARKS = ["write", "carry"] as const;
+/** One digit of the working. Place 0 is the ones, place 1 the tens, and so on. */
+export interface StepMark { mark: (typeof STEP_MARKS)[number]; place: number; digit: string }
+
+/** One worked step: the line that a parent reads, and what it draws. The last step is the answer, with no marks. */
+export interface Step { text: string; marks: StepMark[] }
+
 /** One printed question of one child. */
 export interface BookItem {
   id: string;
@@ -31,7 +39,7 @@ export interface BookItem {
   question: unknown;
   face: Face;
   answer: Answer;
-  steps: string[];
+  steps: Step[];
   difficulty: number;
 }
 
