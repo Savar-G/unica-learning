@@ -461,8 +461,12 @@ export async function runScanMarking(store: MarkingStore, ref: MarkingRef, token
         const timeout = markingAiTimeout(options.aiTimeLeftMs ? options.aiTimeLeftMs() : null);
         if (timeout === null) { await store.pause(ref, token, "pending"); return "pending"; }
         deadline = clockMs() + timeout;
-        callSignal = options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(timeout)]) : AbortSignal.timeout(timeout);
-        const output = await transport.client.json(await firstLookRequest(image, local, store.cropReach), callSignal);
+        const prepared = await firstLookRequest(image, local, store.cropReach);
+        const remaining = markingAiTimeout(Math.min(deadline - clockMs(), options.aiTimeLeftMs?.() ?? Infinity));
+        if (remaining === null) { await store.pause(ref, token, "pending"); return "pending"; }
+        deadline = clockMs() + remaining;
+        callSignal = options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(remaining)]) : AbortSignal.timeout(remaining);
+        const output = await transport.client.json(prepared, callSignal);
         // Use the complete local alias set when reading: aliases do not change when only pending items were requested.
         observations = readMarkingOutput(frame, output);
       } catch (e) {
@@ -554,15 +558,19 @@ async function secondLook(store: MarkingStore, ref: MarkingRef, token: string, f
   };
   // Only what is left of the run's AI budget, and of the caller's own time: too little, and the unsure items keep the
   // first read's result (they go to our team) instead of risking the lease and the first read's marks.
-  const budgetLeft = claimedAt + MARKING_AI_BUDGET_MS - (options.clockMs ?? Date.now)();
-  const timeout = markingAiTimeout(Math.min(budgetLeft, options.aiTimeLeftMs ? options.aiTimeLeftMs() : Infinity));
-  if (timeout === null) return none;
+  const clock = options.clockMs ?? Date.now;
+  const deadline = Math.min(claimedAt + MARKING_AI_BUDGET_MS, clock() + MARKING_AI_TIMEOUT_MS);
+  const timeLeft = () => markingAiTimeout(Math.min(deadline - clock(), options.aiTimeLeftMs?.() ?? Infinity));
+  if (timeLeft() === null) return none;
   transport = makeClient(beforeAttempt);
   if (!transport) return none;
-  const signal = options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(timeout)]) : AbortSignal.timeout(timeout);
   let failed = false, refusal: MarkingStatus | undefined;
   try {
-    const output = await transport.client.json(await markingSecondLookRequest(frame, image, asked, store.cropReach), signal);
+    const prepared = await markingSecondLookRequest(frame, image, asked, store.cropReach);
+    const timeout = timeLeft();
+    if (timeout === null) return none;
+    const signal = options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(timeout)]) : AbortSignal.timeout(timeout);
+    const output = await transport.client.json(prepared, signal);
     const merged = mergeSecondLook(first, readMarkingOutput(frame, output), asked);
     return { observations: merged.observations, escalation: merged.decided.length ? { model: transport.client.model, prompt: MARKING_ESCALATION_PROMPT_VERSION, items: merged.decided } : null };
   } catch (error) {

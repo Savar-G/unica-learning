@@ -323,6 +323,18 @@ describe("#726: the model call fits the caller's deadline", () => {
     expect(requests).toHaveLength(1);
     expect(s.spend.size).toBe(1);
   });
+
+  it("pauses without reserving spend when first-read crops consume the remaining time", async () => {
+    const f = { ...frame(), contentBounds: { x: 0, y: 0, width: 400, height: 300 } };
+    let left = MARKING_MIN_AI_MS + 1;
+    const s = Object.assign(new Store(f), { cropReach: async () => { left -= 2; return null; } });
+    const requests: AiJsonRequest[] = [];
+    const result = await runScanMarking(s, { parent: P, photo: f.photo }, "short", client(output(["0", "12", "9"]), requests), () => new Date(s.clock).toISOString(), { aiTimeLeftMs: () => left });
+    expect(result).toBe("pending");
+    expect(requests).toHaveLength(0);
+    expect(s.spend.size).toBe(0);
+  });
+
 });
 
 /** One scripted transport attempt: a clean 429 the transport classified, any other failure (unknown), or an answer. */
@@ -1717,6 +1729,22 @@ describe("the second look: unsure answers are read once more by the escalation m
     expect(s.roles.filter((r) => r.role === "escalation")).toHaveLength(0);
     expect([1, 3].map((n) => item(s, n).result)).toEqual(["right", "right"]);
     expect(item(s, 2)).toMatchObject({ state: "pending" });
+  });
+
+  it("keeps the first marks when second-look crops consume the remaining time", async () => {
+    const fixture = { ...f(), contentBounds: { x: 0, y: 0, width: 400, height: 300 } };
+    const s = withOpus(new Store(fixture)), asked: AiJsonRequest[] = [];
+    let zooms = 0;
+    const store = Object.assign(s, { cropReach: async () => {
+      if (++zooms === 4) s.clock += 140_000;
+      return null;
+    } });
+    expect(await runScanMarking(store, { parent: P, photo: fixture.photo }, "photo-esc", client(output(["0", null, "9"])),
+      () => new Date(s.clock).toISOString(), { escalate: client(second("12"), asked, 3_000, MARKING_ESCALATION_MODEL), clockMs: () => s.clock })).toBe("finished");
+    expect(zooms).toBe(4);
+    expect(asked).toHaveLength(0);
+    expect(s.roles.filter(r => r.role === "escalation")).toHaveLength(0);
+    expect([item(s, 1).result, item(s, 2).state, item(s, 3).result]).toEqual(["right", "pending", "right"]);
   });
 
   it("is refused while the month is past half the cap, so first reads always keep their room (#958 review)", async () => {
