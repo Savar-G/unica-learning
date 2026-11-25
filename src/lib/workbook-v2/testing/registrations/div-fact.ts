@@ -94,6 +94,6 @@ export const divFactRegistration: ShapeRegistration = {
     { name: "a limit of another shape", raw: { ...WIDE, remainder: "none" }, problem: 'unknown limit "remainder"' },
   ],
   refusedRows: ([["nothing", []], ["no blank", ["35÷5="]], ["an answer", ["35÷5=7"]], ["something left", ["36÷5=□"]], ["something left in a bracket", ["□", "5)36"]], ["a divisor of 1", ["5÷1=□"]], ["a divisor of 0", ["0÷0=□"]], ["a divisor of 11", ["22÷11=□"]], ["a quotient of 11", ["55÷5=□"]],
-    ["a remainder area", ["35÷5=□R□"]], ["another sign", ["35×5=□"]], ["the numbers of a bracket with no sign", ["□", "535"]], ["a bracket with no blank", ["5)35"]], ["a blank below a bracket", ["5)35", "□"]], ["a line below a blank", ["□", "35÷5="]], ["two brackets", ["□", "5)35)7"]], ["a zero in front", ["035÷5=□"]], ["three numbers", ["70÷5÷2=□"]]] as const).map(([name, rows]) => ({ name, rows })),
+    ["a remainder area", ["35÷5=□R□"]], ["another sign", ["35×5=□"]], ["the numbers of a bracket with no sign", ["□", "535"]], ["the largest numbers with no sign", ["□", "10100"]], ["a bracket with no blank", ["5)35"]], ["a blank below a bracket", ["5)35", "□"]], ["a line below a blank", ["□", "35÷5="]], ["two brackets", ["□", "5)35)7"]], ["a zero in front", ["035÷5=□"]], ["three numbers", ["70÷5÷2=□"]]] as const).map(([name, rows]) => ({ name, rows })),
 };
 

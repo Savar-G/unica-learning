@@ -312,6 +312,7 @@ const REFUSED: readonly Refused[] = [
     ["another question with the same answer", (q, l) => (q.a === 2 && q.b === 6 ? { question: { a: 3, b: 4 }, inLimits: true } : factMul.swapped?.(q, l) ?? null), /is \["3×4=□"\] and must be \["6×2=□"\]/],
     ["a wrong report of the limits", (q, l) => { const s = factMul.swapped?.(q, l) ?? null; return s && { ...s, inLimits: true }; }, /is outside the limits and the shape says the other/],
   ] as [string, NonNullable<Fact["swapped"]>, RegExp][]).map(([fault, swapped, message]): Refused => ["swapped", fault, () => ({ shape: fact({ swapped }) }), message]),
+  ["list", "two questions of one list that are said to be the same", () => ({ shape: fact({ identity: ({ a, b }) => (a === 0 ? a : { a, b }) }) }), /the list of .* has two questions with one identity/],
   ["swapped", "a swapped form with the same answer, where it must have another", () => ({ shape: fact(), registration: { swapChangesAnswer: true } }), /has the answer .* and the question/],
   ["swapped", "a swapped form with another answer, where it must have the same", () => ({ shape: divFact as Shape, registration: { swapChangesAnswer: undefined }, options: { templates: DIVISION } }), /has the answer .* and the question/],
   ["swapped", "swapped forms that the registration does not know", () => ({ shape: fact(), registration: { swapped: undefined } }), /the shape has swapped forms and the registration says the other/],

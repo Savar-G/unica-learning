@@ -151,7 +151,9 @@ describe("the clauses and marks of a division in other working", () => {
   const whole = (value: string): Answer => ({ parts: [{ name: "answer", kind: "whole-number", value }] });
   it.each<[string, string[], string[]]>([
     ["an estimate in a multiplication", ["20", "×2"], ["2 × 0 = 0, 2 × 1 = 2 is too much, write 0 | w0@0", "2 × 2 = 4 | w4@1", "40"]],
+    ["an estimate that writes the digit of its column", ["43", "×1"], ["1 × 3 = 3, 1 × 4 = 4 is too much, write 3 | w3@0", "1 × 4 = 4 | w4@1", "43"]],
     ["a digit that comes down in a subtraction", ["42", "-11"], ["2 - 1 = 1, bring down 4, now 14 | w1@0", "4 - 1 = 3 | w3@1", "31"]],
+    ["a digit that comes down after the last column", ["42", "-11"], ["2 - 1 = 1, write 1 | w1@0", "4 - 1 = 3, bring down 5, now 35 | w3@1", "31"]],
     ["a division mark in a multiplication", ["21", "×2"], ["2 × 1 = 2, write 2 | w2@0 q2@0", "2 × 2 = 4 | w4@1", "42"]],
     ["a division mark in an addition", ["21", "+2"], ["1 + 2 = 3, write 3 | w3@0 r3@0#2", "2, write 2 | w2@1", "23"]],
     ["a division mark that says it is on the top row", ["21", "+2"], ["1 + 2 = 3, write 3 | w3@0", "2, write 2 | w2@1", "23"]],

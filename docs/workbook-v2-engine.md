@@ -180,7 +180,7 @@ The three division shapes share `shapes/division.ts` (the method, its words, bot
    - `read(rows)`: the answer, one feature for each limit, at least one width and every worked step with its marks (`step("2 × 4 = 8, write 8", "w8@0")`), computed from the printed rows in another way than the shape.
    - `space`: the list of every printed question, or the count and the ends for any limits. `listed` is a part of a large space whose questions are all inspected (2 and 3 digits of `mul.column`).
    - `cases` (the limits of each bank row must be one), `smallSpaces` with complete lists by hand, `witnesses` (for each limit a question inside and one that breaks only it), and the named lists.
-   - `working`, and only for a shape that has them: `ordered` (which limits ask for a row in order, and what comes after a question), `swapped` (the printed swapped form) and `swapChangesAnswer`.
+   - `working`, and only for a shape that has them: `ordered` (which limits ask for a row in order, and what comes after a question), `swapped` (the printed swapped form) and `swapChangesAnswer`. The `identity` of a shape must tell the questions of one list apart.
    - Steps: the harness compares the whole list of steps and marks with the list of the reader, checks every clause of each step against the closed grammar (`testing/steps-evaluator.ts`), and checks the marks against the clauses and answer ("Steps" above).
 3. Run `npm run workbook:v2:fingerprints` (with `-- --shape <id>` for one shape), then `npx vitest run src/lib/workbook-v2/shapes --sequence.shuffle`.
 
