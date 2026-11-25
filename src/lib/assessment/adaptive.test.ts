@@ -263,3 +263,43 @@ describe("placement rules v2", () => {
     expect(finish(completed)).not.toHaveProperty("adaptiveVersion");
   });
 });
+
+describe("test-account v2 workbook placement", () => {
+  function advance(initial: Session, stopAtPlacement: boolean): Session {
+    let session = initial;
+    for (let i = 0; i < 100; i++) {
+      if (stopAtPlacement && session.adaptive?.blocks.at(-1)?.purpose === "workbook-placement") return session;
+      const step = testStep(session);
+      if (step.status === "complete") return session;
+      if (step.status === "check") session = lockAdaptiveBlock(session);
+      else {
+        const question = nextQuestion(session)!;
+        session = submitAnswer(session, {
+          questionId: question.id, response: question.level <= 3 ? question.answer : UNKNOWN_RESPONSE, timeMs: 20_000,
+        });
+      }
+    }
+    throw new Error("Assessment did not finish");
+  }
+
+  it.each([[2, 2], [3, 3]] as const)("uses %i correct in Level 3 check to place at Level %i without changing the report score", (right, level) => {
+    const profile = { grade: 3, province: "BC" } as const;
+    const seed = 3;
+    const ordinary = advance(createAdaptiveSession(profile, seed), false);
+    const checked = advance(createAdaptiveSession(profile, seed, undefined, { workbookPlacement: true }), true);
+    expect(checked.adaptive?.blocks.at(-1)?.purpose).toBe("workbook-placement");
+    expect(checked.adaptive?.blocks.at(-1)?.questions).toHaveLength(4);
+    expect(ordinary.adaptive?.blocks.every(block => block.purpose !== "workbook-placement")).toBe(true);
+    let resumed = restoreSession(JSON.parse(JSON.stringify(storedTest(checked))), checked.answers);
+    for (let i = 0; i < 4; i++) {
+      const question = nextQuestion(resumed)!;
+      resumed = submitAnswer(resumed, {
+        questionId: question.id, response: i < right ? question.answer : UNKNOWN_RESPONSE, timeMs: 20_000,
+      });
+    }
+    expect(testStep(resumed).status).toBe("check");
+    const completed = lockAdaptiveBlock(resumed);
+    expect(testStep(completed).status).toBe("complete");
+    expect(finish(completed)).toEqual({ ...finish(ordinary), workbookStart: { level, topic: 1 } });
+  });
+});

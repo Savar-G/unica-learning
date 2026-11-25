@@ -59,6 +59,7 @@ export interface AttemptChild {
   id: string;
   grade: Grade;
   province: Province;
+  workbookPlacement?: true;
 }
 
 /** A stored test without its questions and answers: the attempt, its child, and the seed that drew its questions. */
@@ -330,7 +331,7 @@ async function startFor(
     while (used.has(seed)) seed = newSeed();
     let session: Session;
     try {
-      session = createAdaptiveSession({ grade: child.grade, province: child.province }, seed);
+      session = createAdaptiveSession({ grade: child.grade, province: child.province }, seed, undefined, { workbookPlacement: child.workbookPlacement });
     } catch (e) {
       console.error("[test] cannot build a test", child.grade, messageOf(e));
       return { ok: false, error: "not_ready" };

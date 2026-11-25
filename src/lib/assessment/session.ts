@@ -1,4 +1,4 @@
-import { ADAPTIVE_BREAK_AFTER, ADAPTIVE_SECOND_BREAK_AFTER, scoreStoredAdaptivePlacement, adaptiveEvidence, adaptiveQuestions, adaptiveTop, LEVEL_EVIDENCE_MINIMUM, UNKNOWN_RESPONSE } from "./adaptive";
+import { ADAPTIVE_BREAK_AFTER, ADAPTIVE_SECOND_BREAK_AFTER, assessmentQuestionsOnly, scoreStoredAdaptivePlacement, adaptiveEvidence, adaptiveQuestions, adaptiveTop, LEVEL_EVIDENCE_MINIMUM, UNKNOWN_RESPONSE } from "./adaptive";
 // The assessment session: pure functions over plain data.
 // No network, database, clock or Math.random: the caller passes the seed and every time value.
 import {
@@ -650,12 +650,14 @@ export function finish(session: Session, facts: FactsSession | null = null, help
   if (!session.route || session.answers.length < questions.length || (session.adaptive && (!session.adaptive.complete || !session.adaptive.sufficientEvidence))) {
     throw new Error(`The test is not complete: ${session.answers.length} of ${questions.length} answered`);
   }
-  const marked = questions.map((q, i) => ({ q, correct: session.answers[i].correct }));
+  const mainCount = session.adaptive ? assessmentQuestionsOnly(session.adaptive) : questions.length;
+  const mainAnswers = session.answers.slice(0, mainCount);
+  const marked = questions.slice(0, mainCount).map((q, i) => ({ q, correct: mainAnswers[i].correct }));
   const tally = (items: typeof marked) => ({ correct: items.filter((m) => m.correct).length, total: items.length });
   // #189: a very fast wrong answer inside a run of very fast answers is a guess: it leaves the score, it is not wrong.
   // Every level the test showed keeps its place, even with all its answers left out. Routing is unchanged: it was decided
   // during the test.
-  const out = leftOutOfScore(session.answers);
+  const out = leftOutOfScore(mainAnswers);
   const scored = marked.filter((_, i) => !out[i]);
 
   const levels: LevelResult[] = [...new Set(marked.map((m) => m.q.level))]
@@ -680,6 +682,7 @@ export function finish(session: Session, facts: FactsSession | null = null, help
     scoredAgainst: scoredAgainst(session.profile.province),
     workingLevel,
     ...(current && { adaptiveVersion: 2, mastered: current.outcome === "placed" && current.passed }),
+    ...(session.adaptive?.workbookStart && { workbookStart: session.adaptive.workbookStart }),
     confidence: (current ? current.outcome === "placed" && current.passed : placementLevels.some((l) => atLeast(l.correct, l.total, WORKING_LEVEL_PERCENT))) ? "normal" : "low",
     levelCertainty: current ? (current.outcome === "placed" && current.clear ? "clear" : "early-sign") : levelCertainty(placementLevels),
     // Only a child routed up who clears the highest level asked may work above what the test could show. For Grade 8 the
@@ -692,7 +695,7 @@ export function finish(session: Session, facts: FactsSession | null = null, help
     levels,
     strands,
     facts: facts ? factsResult(facts) : null,
-    flags: flagsFor(session.answers, help),
-    pace: paceOf(session.answers),
+    flags: flagsFor(mainAnswers, help),
+    pace: paceOf(mainAnswers),
   };
 }

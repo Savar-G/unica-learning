@@ -37,7 +37,9 @@ export function attemptStore(admin: SupabaseClient<Database>): AttemptStore {
       const { data, error } = await admin.from("children").select("id, grade, province")
         .eq("id", childId).eq("parent_id", parent).maybeSingle();
       if (error) throw new StoreError("child load failed", error.message);
-      return data ? { id: data.id, grade: data.grade as Grade, province: data.province } : null;
+      if (!data) return null;
+      const testFamily = await admin.from("test_accounts").select("parent_id").eq("parent_id", parent).maybeSingle();
+      return { id: data.id, grade: data.grade as Grade, province: data.province, ...(!testFamily.error && testFamily.data && { workbookPlacement: true }) };
     },
 
     async attempts(parent, childId) {

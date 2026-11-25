@@ -76,6 +76,20 @@ describe("starting a child's test", () => {
     expect(rows).toMatchObject([{ id: "a1", status: "in_progress", seed: 42, startedAt: T0, resumeUntil: T0 + DAY }]);
   });
 
+  it("only opts into workbook placement for a child marked as a test family", async () => {
+    const ordinary = family();
+    await start(ordinary.store, T0, { restart: false, newSeed: seeds(42) });
+    expect(ordinary.tests[0].test.adaptive?.workbookPlacement).toBeUndefined();
+
+    const testAccount = family();
+    const store: AttemptStore = {
+      ...testAccount.store,
+      child: async () => ({ ...asha, workbookPlacement: true }),
+    };
+    await start(store, T0, { restart: false, newSeed: seeds(42) });
+    expect(testAccount.tests[0].test.adaptive?.workbookPlacement).toBe(true);
+  });
+
   it("continues the open test, and opening it does not move its deadline", async () => {
     const { store, tests: rows } = family(stored(open("a1", T0), { seed: 7 }));
     const result = await start(store, T0 + 20 * HOUR, { restart: false, newSeed: seeds(42) });
