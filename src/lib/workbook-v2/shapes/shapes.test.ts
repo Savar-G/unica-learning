@@ -60,7 +60,8 @@ describe("registered shapes", () => {
 });
 
 describe.skipIf(skipTypstTests())("one book with a sheet for each shape, with the real Typst", () => {
-  // The example book of divisions has a sheet for each shape and form of them, so that nothing is drawn two times.
+  // A page is drawn only when it is the first one of its shape or of its template, and the example book of divisions has
+  // all of them for the divisions: another drawing of both proves nothing new.
   it("is built, with the example book of divisions", async () => {
     const drawn = new Set(divisionSnapshot.sheets.flatMap((s) => [...s.front.rows, ...s.back.rows].map((row) => row.shape)));
     const side = (name: string, shape: string, limits: unknown) => {
@@ -71,7 +72,9 @@ describe.skipIf(skipTypstTests())("one book with a sheet for each shape, with th
       const template = [...TEMPLATES.values()].find((t) => fitProblem(t, face, worst.answer) === null);
       return { instruction: "Work it out.", template: template?.id, rows: [{ id: name, shape, limits, items: Math.min(template?.sides.front.places.length ?? 0, found.count(limits)) }] };
     };
-    const own = SHAPE_REGISTRATIONS.filter(({ id }) => !drawn.has(id)).map(({ id, cases }, i) => ({ id: `sheet-${i}`, front: side("front", id, cases[0].limits), back: side("back", id, cases[cases.length - 1].limits) }));
+    const sides = SHAPE_REGISTRATIONS.filter(({ id }) => !drawn.has(id)).flatMap(({ id, cases }) => [cases[0], cases[cases.length - 1]].map(({ limits }, i) => side(`${id.replaceAll(".", "-")}-${i}`, id, limits)))
+      .filter(({ template, rows: [{ shape }] }, i, all) => all.findIndex((s) => s.rows[0].shape === shape) === i || all.findIndex((s) => s.template === template) === i);
+    const own = sides.flatMap((front, i) => (i % 2 === 0 ? [{ id: `sheet-${i}`, front, back: sides[i + 1] ?? { ...front, rows: front.rows.map((row) => ({ ...row, id: "again" })) } }] : []));
     const sheets = [...own, ...divisionSnapshot.sheets].map((sheet, i) => ({ ...sheet, firstPage: 2 * i + 1 }));
     const ids = sheets.map((sheet) => sheet.id);
     const snapshot = { format: 1, id: "all-shapes", level: { id: "level", name: "1" }, topics: [{ id: "topic", code: "1-1", title: "All shapes", sheets: ids }], sheets };

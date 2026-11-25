@@ -3,15 +3,15 @@
 import { describe, expect, it } from "vitest";
 import { validateSnapshot, type SnapshotSheet } from "../bank/snapshot";
 import { repeatNotices, sheetItems } from "../build/items";
-import { answerLine, type Answer, type BookItem, type Side } from "../contract";
+import { answerLine, type Answer, type BookItem, type Face } from "../contract";
 import { pick, seedFrom } from "../hash";
-import { needsOf } from "../layout/templates";
+import { fitProblem, needsOf, TEMPLATES } from "../layout/templates";
 import { divisionProblem } from "../testing/division-steps";
-import { divisionBook } from "../testing/sample";
+import { divisionBook, factsBook } from "../testing/sample";
 import { divLong, type DivLongLimits } from "./div-long";
 import { divRemainder, type DivRemainderLimits } from "./div-remainder";
 import { divFact } from "./div-fact";
-import type { DivisionQuestion } from "./division";
+import type { DivisionForm, DivisionQuestion } from "./division";
 
 const r = (min: number, max: number) => ({ min, max });
 const LONG: DivLongLimits = {
@@ -161,21 +161,35 @@ describe("a sheet with both forms", () => {
 
 // shapes.test.ts draws this book with the real Typst.
 describe("the example book of divisions", () => {
-  it("has a question as large as it holds on each side of each template of divisions", () => {
+  // One question of each form and size, and every fact: what a template takes decides which of them is its widest one.
+  const FORMS = ["line", "bracket"] as const;
+  const sizes = (form: DivisionForm) => [
+    ...divFact.list!({ divisors: [2, 3, 4, 5, 6, 7, 8, 9, 10], quotient: r(0, 10), order: "mixed", form }).map((q) => ({ face: divFact.face(q), answer: divFact.answer(q) })),
+    ...(["none", "any"] as const).flatMap((remainder) => [1, 2, 3].flatMap((n) => [2, 3].flatMap((digits) => {
+      const limits = { ...LONG, form, remainder, quotientDigits: r(n, n), dividendDigits: r(digits, digits) };
+      const small = n === 1 && digits === 2 ? [divRemainder.worstCase({ ...REMAINDER, form, remainder }).question].map((q) => ({ face: divRemainder.face(q), answer: divRemainder.answer(q) })) : [];
+      return [...small, ...(divLong.count(limits) > 0 ? [divLong.worstCase(limits).question].map((q) => ({ face: divLong.face(q), answer: divLong.answer(q) })) : [])];
+    }))),
+  ];
+  const every = FORMS.flatMap(sizes);
+  const most = (questions: readonly { face: Face; answer: Answer }[]) => {
+    const needs = questions.map((q) => needsOf(q.face, q.answer));
+    return Object.fromEntries(Object.keys(needs[0] ?? {}).map((name) => [name, Math.max(...needs.map((n) => n[name]))]));
+  };
+  /** The templates of the example book of facts have their own widest questions there. */
+  const old = new Set(factsBook().pages.map((p) => p.template));
+  const taken = [...TEMPLATES.values()].filter((t) => !old.has(t.id)).map((t) => [t.id, t, every.filter((q) => fitProblem(t, q.face, q.answer) === null)] as const).filter(([, , questions]) => questions.length > 0);
+
+  it("has a sheet for each template that no other example book has and that takes a division", () => {
+    expect(taken.map(([id]) => id)).toEqual(["remainders-1x10", "brackets-2x6", "brackets-2x4", "brackets-2x3", "brackets-1x4", "brackets-1x3"]);
+    const shapesAndForms = new Set(divisionBook().items.map((i) => `${i.shape} ${(i.question as DivisionQuestion).form}`));
+    expect(shapesAndForms).toEqual(new Set(["div.fact", "div.remainder", "div.long"].flatMap((id) => FORMS.map((form) => `${id} ${form}`))));
+  });
+
+  it.each(taken.flatMap(([id, , questions]) => (["front", "back"] as const).map((side) => [id, side, questions] as const)))("has the widest question that a template takes, in each way that it is wide: %s, %s side", (id, side, questions) => {
     const { pages, items } = divisionBook();
-    const largest = (template: string, side: Side) => {
-      const ids = pages.filter((p) => p.template === template && p.side === side).map((p) => `${p.id}/`);
-      const needs = items.filter((i) => ids.some((id) => i.id.startsWith(id))).map((i) => needsOf(i.face, i.answer));
-      return Object.values(Object.fromEntries(Object.keys(needs[0]).map((name) => [name, Math.max(...needs.map((n) => n[name]))]))).join(" ");
-    };
-    const sides = (template: string) => [largest(template, "front"), largest(template, "back")];
-    // Places in the line and characters; outside, inside, characters in an answer and lines of work.
-    expect(sides("remainders-1x10")).toEqual(["7 2", "7 3"]);
-    expect(sides("brackets-2x6")).toEqual(["2 3 2 0", "2 3 2 0"]);
-    expect(sides("brackets-2x4")).toEqual(["1 2 1 2", "1 2 1 2"]);
-    expect(sides("brackets-2x3")).toEqual(["1 3 3 6", "1 3 3 6"]);
-    expect(sides("brackets-1x4")).toEqual(["1 2 1 2", "1 2 1 2"]);
-    expect(sides("brackets-1x3")).toEqual(["1 3 3 6", "1 3 3 6"]);
+    const own = pages.filter((p) => p.template === id && p.side === side).flatMap((p) => items.filter((i) => i.id.startsWith(`${p.id}/`)));
+    expect(most(own)).toEqual(most(questions));
   });
 });
 

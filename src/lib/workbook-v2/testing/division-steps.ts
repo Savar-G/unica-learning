@@ -4,7 +4,7 @@
 import type { Answer, Step, StepMark } from "../contract";
 import { canonicalJson } from "../hash";
 import { hasNames, type Rows } from "./shape-registration";
-import { clauseOf, multipleOf, parseStep, type ParsedStep } from "./steps-evaluator";
+import { clauseOf, multipleOf, parseSteps, type ParsedStep } from "./steps-evaluator";
 
 const WORK_MARKS: readonly StepMark["mark"][] = ["product", "rest", "bring-down"];
 
@@ -119,8 +119,8 @@ class Paper {
   }
 }
 
-/** What is wrong with the steps of a question that is worked as a division, or null. `rows` are its printed rows. */
-export function divisionProblem(steps: readonly Step[], { parts }: Answer, rows: Rows): string | null {
+/** What is wrong with the steps of a question that is worked as a division, or null. `rows` are its printed rows, and `read` its steps before the answer. */
+export function divisionProblem(steps: readonly Step[], { parts }: Answer, rows: Rows, read?: readonly ParsedStep[]): string | null {
   for (const step of steps) {
     if (!hasNames(step, ["text", "marks"]) || !Array.isArray(step.marks)) return `the step ${JSON.stringify(step)} is not a text with marks`;
     if (!step.marks.every(isDivisionMark)) return `the step "${step.text}" holds a mark that is not one`;
@@ -130,10 +130,10 @@ export function divisionProblem(steps: readonly Step[], { parts }: Answer, rows:
   if (!printed) return `the printed rows ${JSON.stringify(rows)} are no division`;
   if (printed.areas !== parts.length) return `the printed rows have ${printed.areas} areas and the answer ${parts.length} parts`;
   const paper = new Paper(printed.dividend, printed.divisor);
-  for (const { text, marks } of steps.slice(0, -1)) {
-    const read = parseStep(text);
-    if (read.problem) return `the step "${text}": ${read.problem}`;
-    const problem = paper.next(read, marks);
+  for (const [i, parsed] of (read ?? parseSteps(steps)).entries()) {
+    const { text, marks } = steps[i];
+    if (parsed.problem) return `the step "${text}": ${parsed.problem}`;
+    const problem = paper.next(parsed, marks);
     if (problem) return `the step "${text}" ${problem}`;
   }
   const end = paper.endProblem();

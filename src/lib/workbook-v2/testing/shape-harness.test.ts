@@ -95,8 +95,17 @@ const narrow: PageTemplate = { ...first, id: "narrow", holds: { "digit places": 
 const withNarrow = { templates: new Map([first, narrow].map((t) => [t.id, t])) };
 const DIVISION = new Map(["facts-2x10", "brackets-2x6"].flatMap((id) => [...TEMPLATES.entries()].filter(([name]) => name === id)));
 const reversedBack = withPlaces("back", (p) => ({ topCells: [...p.topCells].reverse() }));
-/** Rows in either order, for a shape and a reader that take both. */
-const eitherOrder = (rows: Rows): Rows => (rows.length === 2 && rows[0].startsWith("+") ? [rows[1], rows[0]] : rows);
+/** Rows with the larger number first, for a shape and a reader that take both orders. */
+const largeFirst = (rows: Rows): Rows => (rows.length === 2 && /^\d$/.test(rows[0]) && /^\+[1-9]\d$/.test(rows[1]) ? [rows[1].slice(1), `+${rows[0]}`] : rows);
+/** The first face of a question is right. After its score is known, the numbers of 2 digits and 1 digit change places. */
+function facesThatTurn(): Partial<Add> {
+  const known = new Set<string>();
+  return {
+    solveAgain: (rows) => addShape.solveAgain(largeFirst(rows)),
+    difficulty: (question) => { known.add(canonicalJson(question)); return addShape.difficulty(question); },
+    face: (question) => (known.has(canonicalJson(question)) && question.a > 9 && question.b < 10 ? { kind: "column", top: String(question.b), sign: "+", bottom: String(question.a) } : addShape.face(question)),
+  };
+}
 
 /** A shape whose scores are wrong for limits that were never read: only a widened pair has such limits. */
 function wrongForUnreadLimits(): Broken {
@@ -333,7 +342,7 @@ const REFUSED: readonly Refused[] = [
   ["book", "a back side that reverses the digits", () => ({ shape: add(), options: reversedBack }), /back side, question \d \(/],
   ["book", "a generate that widens the limits of the book", () => widensInTheBook("generate"), /threw Cannot assign to read only property 'a'/],
   ["book", "a count that widens the limits of the book", () => widensInTheBook("count"), /threw Cannot assign to read only property 'a'/],
-  ["layout", "a back side that turns the rows, which the shape and the reader accept", () => ({ shape: add({ solveAgain: (rows) => addShape.solveAgain(eitherOrder(rows)) }), options: withPlaces("back", (p) => ({ topCells: p.bottomCells, bottomCells: p.topCells })), registration: { read: (rows) => addRegistration.read(eitherOrder(rows)) } }), /prints \["\+\d","\d+"\] and the first place prints/],
+  ["layout", "a face that turns the rows when it is asked again, which the shape and the reader accept", () => ({ shape: add(facesThatTurn()), registration: { read: (rows) => addRegistration.read(largeFirst(rows)) } }), /prints \["\d","\+\d\d"\] and the first place prints/],
   ["evidence", "a template that no page of the book fills", () => ({ ...plusOne(1, 120), seeds: 1, options: withNarrow }), /no page of the book fills narrow, front side and narrow, back side/],
   ["evidence", "limits that are all the same, so that nothing can be wider", oneSpace, /and 1 limits were used/],
   ["evidence", "no seeds", () => ({ shape: add(), seeds: 0 }), /seeds of 0/],

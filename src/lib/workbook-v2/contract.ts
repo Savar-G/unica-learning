@@ -137,8 +137,16 @@ export const PRINT_RULES = {
   reach: { left: 19.2, right: 28.8, top: 9.6, bottom: 9.6 },
   /** The smallest answer area: a width for each character, plus room, and never less than the minimum. Its outline is a line. */
   answer: { perCharacter: 14.4, extra: 14.4, minWidth: 72, minHeight: 42, outline: 0.75 },
-  /** The smallest height of a line of work that a child writes. */
+  /** The smallest height of a line of work that a child writes, and the smallest work area beside a stack. */
   workLine: 18,
+  stackWork: { w: 38, h: 140 },
+  /** The place of one digit of a stack or inside a bracket, and the height of a text that stands in a line. */
+  cell: { w: 24, h: 28 },
+  textHeight: 28,
+  /** A line of a question, and its distance to the digits that it belongs to. */
+  line: { height: 1.2, gap: 2 },
+  /** The widths of the number outside a bracket and of its sign. */
+  bracket: { outside: 28, sign: 12 },
   maxAnswerColumns: 2,
   maxInstructionCharacters: 60,
   maxTitleCharacters: 44,

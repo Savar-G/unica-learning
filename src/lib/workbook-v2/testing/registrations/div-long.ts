@@ -94,6 +94,7 @@ export const divLongRegistration: ShapeRegistration = {
     { name: "2 digits in a bracket, something left", limits: { ...TWO, form: "bracket", remainder: "some", start: "one", zeroAtEnd: "never" } },
     { name: "3 digits in a bracket, two digits used, something left", limits: { ...THREE, form: "bracket", remainder: "some", start: "two", ...NO_ZEROS } },
     { name: "3 digits in a bracket, three digits of the quotient", limits: { ...THREE, form: "bracket", dividend: r(900, 999), start: "one", remainder: "some" } },
+    { name: "the widest question in a line", limits: { ...WIDE, dividend: r(999, 999), divisor: r(2, 2) } },
     { name: "a zero at the end", limits: { ...THREE, zeroAtEnd: "only" } },
     { name: "a zero that comes down", limits: { ...THREE, bringDownZero: "only", zeroInside: "never", zeroAtEnd: "never" } },
     { name: "a large remainder", limits: { ...WIDE, divisor: r(6, 9), remainder: r(5, 8) } },

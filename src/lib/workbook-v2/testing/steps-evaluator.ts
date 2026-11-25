@@ -1,5 +1,7 @@
 // Evaluates the text of a worked step against a closed clause grammar. It knows no shape.
 // Later shapes add new clause kinds in CLAUSE_KINDS and CLAUSE_PARSERS below, not in the shapes.
+import type { Step } from "../contract";
+
 const NUMBER = String.raw`-?(?:0|[1-9]\d*)(?:\.\d+)?`;
 /** One equation clause: "3 × 4 = 12", "2 + 3 + 4 = 9" or "2 - 3 = -1". */
 const EQUATION = new RegExp(String.raw`^(${NUMBER}(?: [-+×÷] ${NUMBER})+) = (${NUMBER})$`);
@@ -256,6 +258,9 @@ export function parseStep(step: string): ParsedStep {
   if (inside) fail(wrong, inside.text || step, inside.reason);
   return { clauses, answerOnly: false, wrong, unread, problem, dividing };
 }
+
+/** The steps before the answer, each read one time. */
+export const parseSteps = (steps: readonly Step[]): ParsedStep[] => steps.slice(0, -1).map(({ text }) => parseStep(text));
 
 /** Reads every clause of a step against the closed grammar so no part of a step is left unchecked. */
 export function readStep(step: string): ReadStep {

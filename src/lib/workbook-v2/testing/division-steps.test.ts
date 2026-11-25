@@ -1,5 +1,5 @@
 // The checker of a division on its paper, with steps written by hand. The shapes are not used here.
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Answer, Step, StepMark } from "../contract";
 import { divisionProblem } from "./division-steps";
 import { step } from "./shape-registration";
@@ -185,4 +185,20 @@ describe("the working of a question with a bracket", () => {
     ["in lines", { working: "lines" }, /^steps-marks: the step .* is not a text that draws nothing$/],
     ["as a division, in a stack", { kind: "column", rows: ["37", "-4"] }, /^steps-marks: a column stack must be worked in columns$/],
   ])("%s", (_name, change, message) => (message ? expect(details(change)).toMatch(message) : expect(details(change)).toBe("")));
+
+  afterEach(() => void vi.restoreAllMocks());
+  const worked = (answer: Answer, lines: string[], change: Partial<WorkedQuestion>): WorkedQuestion => question({ answer, steps: paper(lines), printed: { answer, steps: paper(lines), features: {}, widths: {} }, ...change });
+  const whole = (value: string): Answer => ({ parts: [{ name: "answer", kind: "whole-number", value }] });
+  it.each<[string, WorkedQuestion]>([
+    ["a division", question({})],
+    ["columns that carry", worked(whole("42"), ["4 × 3 = 12, write 2, carry 1 | w2@0 c1@1", "3 × 1 = 3, plus 1 is 4 | w4@1", "42"], { kind: "equation", rows: ["x"], working: "columns" })],
+    ["columns on their paper", worked(whole("81"), ["3 × 7 = 21, write 1, carry 2 | w1@0 c2@1", "3 × 2 = 6, plus 2 is 8 | w8@1", "81"], { kind: "column", rows: ["27", "×3"], working: "columns" })],
+    ["columns that borrow", worked(whole("25"), ["borrow 1 ten, 4 tens become 3 tens | x4@1 b3@1 b12@0", "12 - 7 = 5, write 5 | w5@0", "3 - 1 = 2 | w2@1", "25"], { kind: "column", rows: ["42", "-17"], working: "columns" })],
+    ["lines", worked(whole("7"), ["5 × 7 = 35", "35 ÷ 5 = 7", "7"], { kind: "equation", rows: ["35÷5=□"], working: "lines" })],
+  ])("has each of its steps read one time: %s", (_name, one) => {
+    const split = vi.spyOn(String.prototype, "split");
+    expect(stepProblems(one)).toEqual([]);
+    const read = split.mock.contexts.map(String).filter((_, i) => (split.mock.calls[i] as unknown[])[0] === ", ");
+    expect(read).toEqual(one.steps.slice(0, -1).map((s) => s.text));
+  });
 });

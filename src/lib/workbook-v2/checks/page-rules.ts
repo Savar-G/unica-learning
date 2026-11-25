@@ -1,5 +1,6 @@
 // The layout rules of a page. They read the page model and the items, never the templates, so a wrong template fails.
-import { BRACKET_SIGN, isPrintable, PAPER, partRegionName, PRINT_RULES, type AnswerPart, type BookItem, type ColumnFace, type Face, type FaceToken, type Ink, type PageModel, type Rect, type Region, type RegionRole } from "../contract";
+import { isPrintable, PAPER, partRegionName, PRINT_RULES, type AnswerPart, type BookItem, type Ink, type PageModel, type Rect, type Region, type RegionRole } from "../contract";
+import { faceBlanks, faceText, printProblems, type Area } from "./face-print";
 import { bottom, EPSILON, inside, near, overlaps, right } from "./rects";
 
 const { spineZone, outerMargin, qrMin, reach: CLEAR, answer: ANSWER } = PRINT_RULES;
@@ -151,29 +152,34 @@ function checkInLine(answer: Region, question: Region, tell: Tell): void {
   if (!inside(answer.rect, question.rect) && !(sameLine && gap >= -EPSILON && gap <= MAX_GAP_BESIDE_ANSWER)) tell(`${regionName(answer)} is not in the line of its question`);
 }
 
-/** The first answer area of a bracket is directly above the number inside, so that a digit can stand over each digit. */
-function checkAbove(answer: Region, question: Region, inside: string, tell: Tell): void {
-  const { rect } = answer;
-  const isOver = ({ rect: digit }: Ink) => digit.x >= rect.x - EPSILON && right(digit) <= right(rect) + EPSILON && digit.y >= bottom(rect) - EPSILON && digit.y - bottom(rect) <= MAX_GAP_ABOVE_ANSWER;
-  const digits = question.ink.filter((i) => i.kind === "text").slice(-inside.length);
-  if (!digits.every(isOver)) tell(`${regionName(answer)} is not directly above the number in its bracket`);
-}
-
 /** Whether a reader comes to one rectangle before the other: it is in a line above, or on the left in the same line. */
 const isBefore = (a: Rect, b: Rect): boolean => bottom(a) <= b.y + EPSILON || (b.y < bottom(a) && a.y < bottom(b) && right(a) <= b.x + EPSILON);
 
-const faceTokens = (face: Exclude<Face, ColumnFace>): readonly FaceToken[] => (face.kind === "bracket" ? face.above : face.tokens);
-
-/** What a question looks like: the text that it prints, and the parts that its blanks name. A stack has no blanks. */
-function faceText(face: Face): string {
-  if (face.kind === "column") return face.top + face.sign + face.bottom;
-  const texts = faceTokens(face).map((t) => ("text" in t ? t.text : "")).join("");
-  return face.kind === "bracket" ? `${texts}${face.outside}${BRACKET_SIGN}${face.inside}` : texts;
+/** Whether a question stands below another one in its column. */
+function isBelowAnother(page: PageModel, item: BookItem): boolean {
+  const slots = page.regions.filter((r) => r.role === "slot");
+  const own = slots.find((r) => r.item === item.id);
+  return own !== undefined && slots.some(({ rect }) => bottom(rect) <= own.rect.y + EPSILON && rect.x < right(own.rect) - EPSILON && right(rect) > own.rect.x + EPSILON);
 }
-const faceBlanks = (face: Face): string[] | null => (face.kind === "column" ? null : faceTokens(face).flatMap((t) => ("blank" in t ? [t.blank] : [])));
+
+/** The work area of a stack is beside it and of a fixed size. The one of a bracket is below all digits, with room for each line of work. */
+function checkWork(work: Region, { face, answer }: BookItem, question: Region, areas: ReadonlyMap<string, Area>, tell: Tell): void {
+  const { rect } = work;
+  if (face.kind === "column") {
+    const least = PRINT_RULES.stackWork;
+    if (rect.w < least.w - EPSILON || rect.h < least.h - EPSILON) tell(`${regionName(work)} is ${size(rect.w)} by ${size(rect.h)} points and needs ${least.w} by ${least.h}`);
+  }
+  if (face.kind !== "bracket") return;
+  const needed = face.workLines * PRINT_RULES.workLine;
+  if (rect.h < needed - EPSILON) tell(`${regionName(work)} is ${size(rect.h)} points high and ${face.workLines} lines of work need ${needed}`);
+  const gap = rect.y - bottom(question.rect);
+  if (gap < -EPSILON || gap > MAX_GAP_ABOVE_ANSWER) tell(`${regionName(work)} is not below its question`);
+  const digits = areas.get(answer.parts[0]?.name)?.answer;
+  if (digits && (rect.x > digits.x - PRINT_RULES.bracket.sign + EPSILON || right(rect) < right(digits) - EPSILON)) tell(`${regionName(work)} does not stand below all digits of its question`);
+}
 
 /** Each part of the answer has one answer area with one reach, and the areas come in the order of the parts. */
-function checkParts(page: PageModel, item: BookItem, question: Region | undefined, tell: Tell): void {
+function checkParts(page: PageModel, item: BookItem, question: Region | undefined, tell: Tell): ReadonlyMap<string, Area> {
   const { parts } = item.answer;
   const names = parts.map((p) => p.name);
   if (parts.length === 0) tell(`question ${item.number} has no answer part`);
@@ -182,6 +188,7 @@ function checkParts(page: PageModel, item: BookItem, question: Region | undefine
   if (blanks && blanks.join() !== names.join()) tell(`question ${item.number} has the blanks ${blanks.join(", ")} and the answer parts ${names.join(", ")}`);
   const own = page.regions.filter((r) => r.item === item.id);
   const areas: Region[] = [];
+  const byPart = new Map<string, Area>();
   for (const part of parts) {
     const [answer, reach] = (["answer", "reach"] as const).map((role) => {
       const found = own.filter((r) => r.role === role && r.part === part.name);
@@ -190,12 +197,11 @@ function checkParts(page: PageModel, item: BookItem, question: Region | undefine
     });
     if (!answer || !reach) continue;
     areas.push(answer);
+    byPart.set(part.name, { answer: answer.rect, reach: reach.rect });
     checkArea(answer, reach, part, tell);
     if (question) (item.face.kind === "column" ? checkBelow : checkInLine)(answer, question, tell);
-    if (question && item.face.kind === "bracket") {
-      if (areas.length === 1) checkAbove(answer, question, item.face.inside, tell);
-      else if (!near(answer.rect.y, areas[0].rect.y)) tell(`${regionName(answer)} is not in the line of ${regionName(areas[0])}`);
-    }
+    if (item.face.kind === "bracket" && areas.length === 1 && item.face.inside.length * PRINT_RULES.cell.w > answer.rect.w + EPSILON) tell(`${regionName(answer)} is not directly above the number in its bracket`);
+    if (item.face.kind === "bracket" && !near(answer.rect.y, areas[0].rect.y)) tell(`${regionName(answer)} is not in the line of ${regionName(areas[0])}`);
   }
   areas.slice(1).forEach((area, i) => {
     if (!isBefore(areas[i].rect, area.rect)) tell(`${regionName(area)} must come after ${regionName(areas[i])}`);
@@ -204,6 +210,7 @@ function checkParts(page: PageModel, item: BookItem, question: Region | undefine
     const hasPart = region.role === "answer" || region.role === "reach";
     if (hasPart ? region.part === null || !names.includes(region.part) : region.part !== null) tell(`${regionName(region)} belongs to ${region.part === null ? "no answer part" : `the answer part "${region.part}"`}`);
   }
+  return byPart;
 }
 
 const ITEM_ROLES = ["slot", "label", "question"] as const;
@@ -220,16 +227,17 @@ function checkItem(page: PageModel, item: BookItem, tell: Tell): void {
   }
   const [slot, label, question] = ITEM_ROLES.map((role) => parts.get(role));
   if (slot) for (const part of page.regions.filter((r) => r.item === item.id)) if (!inside(part.rect, slot.rect)) tell(`${regionName(part)} is not inside ${regionName(slot)}`);
-  const work = parts.get("work");
-  if (work && work.rect.h < workLines * PRINT_RULES.workLine - EPSILON) tell(`${regionName(work)} is ${size(work.rect.h)} points high and ${workLines} lines of work need ${workLines * PRINT_RULES.workLine}`);
-  if (work && question && item.face.kind === "bracket" && work.rect.y < bottom(question.rect) - EPSILON) tell(`${regionName(work)} is not below its question`);
   if (label && texts(label.ink).join("") !== String(item.number)) tell(`question ${item.number} has the label "${texts(label.ink).join("")}"`);
   if (question) {
     const printed = texts(question.ink).join("");
     const wanted = faceText(item.face);
     if (printed !== wanted) tell(`question ${item.number} prints "${printed}" and must print "${wanted}"`);
   }
-  checkParts(page, item, question, tell);
+  const areas = checkParts(page, item, question, tell);
+  if (!question) return;
+  for (const problem of printProblems(item.face, question, areas, isBelowAnother(page, item))) tell(`question ${item.number} ${problem}`);
+  const work = parts.get("work");
+  if (work) checkWork(work, item, question, areas, tell);
 }
 
 const QUESTION_ROLES: readonly RegionRole[] = ["slot", "label", "question", "answer", "reach", "work"];

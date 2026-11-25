@@ -1,6 +1,6 @@
 // Long division: 2 and 3 digits by 2 to 9, one digit of the quotient at a time: 437 ÷ 6 = 72 R5. There are 7,920 pairs of
-// numbers. The facts that the limits ask of each pair are one whole number of bits, made one time, so that a question is
-// found with no list: all pairs of the limits are counted, and the seed picks a place among them. Nothing else is kept.
+// numbers. The facts that the limits ask of each pair are one whole number of bits, made one time, so that each call
+// finds the pairs of its limits quickly: it makes a temporary list of their places, and the seed picks one of them.
 import { answerLine } from "../contract";
 import { pick } from "../hash";
 import { answerOf, divisionSteps, faceOf, FORMS, identity, partsOf, placesOf, readDivisionLimits, readRemainder, remainderRange, workLinesOf, type DivisionForm, type DivisionQuestion, type RemainderLimit } from "./division";

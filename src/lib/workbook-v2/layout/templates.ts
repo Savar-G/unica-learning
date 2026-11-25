@@ -86,7 +86,7 @@ function frame(side: Side): PageFrame {
 
 const COLUMNS = 2;
 const ROWS = 4;
-const CELL = { w: 24, h: 28 };
+const { cell: CELL, line: PRINTED_LINE, textHeight: TEXT_HEIGHT } = PRINT_RULES;
 /** The room right of the stack before the work area: more than the reach takes. */
 const STACK_ROOM = 34;
 const SLOT = { w: 236, h: 140, top: 92, pitchX: 250, pitchY: 148 };
@@ -110,7 +110,7 @@ function place(side: Side, digits: number, column: number, row: number): ColumnP
     question: rect(stack, y + 14, width, 60),
     topCells: cells(y + 14),
     bottomCells: cells(y + 14 + CELL.h),
-    rule: rect(stack, y + 72, width, 1.2),
+    rule: rect(stack, y + 14 + 2 * CELL.h + PRINTED_LINE.gap, width, PRINTED_LINE.height),
     ...areaAt(rect(stack, y + 86, width, PRINT_RULES.answer.minHeight)),
     work: rect(work, y, x + SLOT.w - work, SLOT.h),
   };
@@ -136,7 +136,6 @@ const AREA = { w: PRINT_RULES.answer.minWidth, h: PRINT_RULES.answer.minHeight }
 /** An answer area of the smallest size with its reach. */
 const CLEAR_WIDTH = PRINT_RULES.reach.left + AREA.w + PRINT_RULES.reach.right;
 const LABEL = 22;
-const TEXT_HEIGHT = 28;
 const TWO = { w: 240, pitch: 246 };
 /** The characters that the smallest answer area has room for. */
 const AREA_CHARACTERS = Math.floor((AREA.w - PRINT_RULES.answer.extra) / PRINT_RULES.answer.perCharacter);
@@ -195,7 +194,7 @@ function innerBlank(id: string): PageTemplate<TokenPlace> {
 }
 
 /** The terms of a sequence: as close as the reaches of two answer areas allow, so that a line fits between two sequences. */
-const LADDER = { top: 80.2, pitch: PRINT_RULES.reach.top + AREA.h + PRINT_RULES.reach.bottom, gap: 5.4, line: 1.2 };
+const LADDER = { top: 80.2, pitch: PRINT_RULES.reach.top + AREA.h + PRINT_RULES.reach.bottom, gap: 5.4 };
 
 /** Sequences that go down the page, so that the blanks of a side are in two columns. Each cell holds a term or a blank. */
 function ladders(id: string, terms: number, down: number): PageTemplate<TokenPlace> {
@@ -214,7 +213,7 @@ function ladders(id: string, terms: number, down: number): PageTemplate<TokenPla
     return {
       slot: rect(x, y - above, TWO.w, height + above), label: rect(x, y + (LADDER.pitch - TEXT_HEIGHT) / 2, LABEL - 2, TEXT_HEIGHT),
       question: rect(left, y - above, CLEAR_WIDTH, height + above), forms: [form], from: "first", textSize: 20,
-      rule: above > 0 ? rect(left, y - above, CLEAR_WIDTH, LADDER.line) : null,
+      rule: above > 0 ? rect(left, y - above, CLEAR_WIDTH, PRINTED_LINE.height) : null,
     };
   };
   return { id, faces: ["sequence"], holds: { terms, "characters in a number": AREA_CHARACTERS }, sides: bothSides(2 * down, place) };
@@ -232,8 +231,8 @@ function twoBlanks(id: string): PageTemplate<TokenPlace> {
   return { id, faces: ["equation"], holds: { "places in its line": 7, "characters in a number": 3 }, sides: bothSides(LINE.rows, place) };
 }
 
-/** A bracket: the line above the number inside, the widths of its parts, and the room between the bracket and the work. */
-const BRACKET = { top: 82, height: 616, outside: 28, sign: 12, between: 16, line: 1.2, gap: 2 };
+/** The brackets of a side: where they start, the room for a text between two areas, and the room above the work. */
+const BRACKET = { ...PRINT_RULES.bracket, top: 82, height: 616, between: 16, gap: 2 };
 const CLEAR_HEIGHT = PRINT_RULES.reach.top + AREA.h + PRINT_RULES.reach.bottom;
 const INSIDE = Math.floor(AREA.w / CELL.w);
 
@@ -243,7 +242,7 @@ const INSIDE = Math.floor(AREA.w / CELL.w);
  */
 function brackets(id: string, columns: 1 | 2, rows: number): PageTemplate<BracketPlace> {
   const height = BRACKET.height / rows;
-  const numberTop = CLEAR_HEIGHT + BRACKET.line + BRACKET.gap;
+  const numberTop = CLEAR_HEIGHT + PRINTED_LINE.height + PRINTED_LINE.gap;
   const workTop = numberTop + CELL.h + BRACKET.gap;
   const workLines = Math.floor((height - workTop) / PRINT_RULES.workLine);
   const place = (s: Side, i: number): BracketPlace => {
@@ -258,9 +257,9 @@ function brackets(id: string, columns: 1 | 2, rows: number): PageTemplate<Bracke
     return {
       slot: rect(x, y, width, height), label: rect(x, y + numberTop, LABEL - 2, CELL.h), above,
       question: rect(outside, y, last.x + last.w - outside, numberTop + CELL.h),
-      outside: rect(outside, y + numberTop, BRACKET.outside, CELL.h), sign: rect(sign, y + CLEAR_HEIGHT + BRACKET.line, BRACKET.sign, BRACKET.gap + CELL.h),
+      outside: rect(outside, y + numberTop, BRACKET.outside, CELL.h), sign: rect(sign, y + CLEAR_HEIGHT + PRINTED_LINE.height, BRACKET.sign, PRINTED_LINE.gap + CELL.h),
       inside: Array.from({ length: INSIDE }, (_, c) => rect(number + c * CELL.w, y + numberTop, CELL.w, CELL.h)),
-      line: rect(sign, y + CLEAR_HEIGHT, BRACKET.sign + INSIDE * CELL.w, BRACKET.line),
+      line: rect(sign, y + CLEAR_HEIGHT, BRACKET.sign + AREA.w, PRINTED_LINE.height),
       work: workLines > 0 ? rect(x, y + workTop, width, height - workTop) : null,
     };
   };
