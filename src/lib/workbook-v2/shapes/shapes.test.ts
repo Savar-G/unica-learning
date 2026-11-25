@@ -1,25 +1,35 @@
+import { readdirSync } from "node:fs";
 import { afterAll, describe, expect, it } from "vitest";
 import { buildBook } from "../build/build-book";
 import rawSnapshot from "../fixtures/snapshot.json";
 import { canonicalJson } from "../hash";
 import { digitPlaces, TEMPLATES } from "../layout/templates";
 import { openRenderer } from "../render/typst";
-import committedFingerprints from "../testing/shape-fingerprints.json";
+import { FINGERPRINTS_DIR, readShapeFingerprints } from "../testing/shape-fingerprints";
 import { checkShapes, SAMPLE_SEED, SEEDS } from "../testing/shape-harness";
 import { SHAPE_REGISTRATIONS } from "../testing/shape-registrations";
 import { skipTypstTests, testAssets } from "../testing/typst";
 import { SHAPES } from "./index";
 
 describe("registered shapes", () => {
-  const { problems, reports } = checkShapes(SHAPES, SHAPE_REGISTRATIONS, { fingerprints: committedFingerprints });
-  afterAll(() => console.info(`[shape-harness] ${reports.map((r) => `${r.shape} v${r.version}: ${Math.round(r.durationMs)} ms, ${r.evidence.seeds} seeds, ${r.evidence.limits} limits, ${r.evidence.questions} questions`).join("; ")} (fast-check seed ${SAMPLE_SEED})`));
+  const { problems, reports } = checkShapes(SHAPES, SHAPE_REGISTRATIONS, { fingerprints: readShapeFingerprints() });
+  afterAll(() => console.info(`[shape-harness] ${reports.map((r) => `${r.shape} v${r.version}: ${Math.round(r.durationMs)} ms, ${r.evidence.seeds} seeds, ${r.evidence.spaces} of ${r.evidence.limits} limits, ${r.evidence.questions} questions`).join("; ")} (fast-check seed ${SAMPLE_SEED})`));
 
   it("are registered, each one time", () => expect(problems).toEqual([]));
+
+  it("have one registration file and one fingerprint file each, with the name of the shape", () => {
+    const regFiles = readdirSync("src/lib/workbook-v2/testing/registrations").sort();
+    const fpFiles = readdirSync(FINGERPRINTS_DIR).sort();
+    expect(regFiles).toEqual([...SHAPES.keys()].map((id) => `${id.replaceAll(".", "-")}.ts`).sort());
+    expect(fpFiles).toEqual([...SHAPES.keys()].map((id) => `${id}.json`).sort());
+    expect(SHAPE_REGISTRATIONS.map((r) => r.id).sort()).toEqual([...SHAPES.keys()].sort());
+  });
 
   it.each([...SHAPES.keys()])("%s passes every check on at least 1,000 seeds", (id) => {
     const report = reports.find((r) => r.shape === id);
     expect(report?.failures.map((f) => f.message)).toEqual([]);
     expect(report?.evidence.seeds).toBeGreaterThanOrEqual(1000);
+    expect(report?.evidence.spaces).toBeGreaterThanOrEqual(60);
     expect(SEEDS).toBe(1000);
   });
 

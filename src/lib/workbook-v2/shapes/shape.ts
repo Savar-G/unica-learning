@@ -1,6 +1,6 @@
 // What every shape family gives. A shape is code that picks numbers, answers, explains and scores one kind of question;
 // its limits are content from the bank. A new shape is one new file and one line in index.ts.
-import type { Answer, AnswerKind, Face } from "../contract";
+import type { Answer, AnswerKind, Face, Step } from "../contract";
 
 export interface Item<Q> { question: Q; answer: Answer }
 
@@ -19,8 +19,8 @@ export interface Shape<L = unknown, Q = unknown> {
    * when they print no question of this shape. It shares no code with `generate`, `answer` and `face`.
    */
   solveAgain(rows: readonly string[]): Item<Q> | null;
-  /** The worked steps that a parent reads. The last one is the answer. */
-  steps(question: Q): string[];
+  /** The worked steps. The last one is the answer, and it draws nothing. */
+  steps(question: Q): Step[];
   /** A score: more is harder. Scores compare only inside one shape. */
   difficulty(question: Q): number;
   /** The scores of the easiest and the hardest question of the limits. */
@@ -49,4 +49,26 @@ export function readRange(raw: Record<string, unknown>, name: string, bounds: Ra
   if (min > max) return `${name}.min is more than ${name}.max`;
   if (min < bounds.min || max > bounds.max) return `${name} must be from ${bounds.min} to ${bounds.max}`;
   return { min, max };
+}
+
+/**
+ * Limits with these names and no other: ranges inside their bounds, and words from their lists. It gives the limits, or
+ * the first thing that is wrong.
+ */
+export function readLimitFields(raw: unknown, ranges: Readonly<Record<string, Range>>, words: Readonly<Record<string, readonly string[]>>): Record<string, unknown> | string {
+  if (!isRecord(raw)) return "the limits must be an object";
+  const unknown = Object.keys(raw).find((k) => !hasOwn(ranges, k) && !hasOwn(words, k));
+  if (unknown !== undefined) return `unknown limit "${unknown}"`;
+  const limits: Record<string, unknown> = {};
+  for (const [name, bounds] of Object.entries(ranges)) {
+    const range = readRange(raw, name, bounds);
+    if (typeof range === "string") return range;
+    limits[name] = range;
+  }
+  for (const [name, allowed] of Object.entries(words)) {
+    const word = hasOwn(raw, name) ? raw[name] : undefined;
+    if (typeof word !== "string" || !allowed.includes(word)) return `${name} must be ${allowed.map((w) => `"${w}"`).join(" or ")}`;
+    limits[name] = word;
+  }
+  return limits;
 }

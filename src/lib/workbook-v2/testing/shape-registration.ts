@@ -1,7 +1,7 @@
 // What a shape registers for the harness: independent facts about its printed questions, as data where possible. A
 // registration shares no code with its shape.
 import fc from "fast-check";
-import type { Answer } from "../contract";
+import type { Answer, Step, StepMark } from "../contract";
 import type { ShapeLibrary } from "../shapes";
 import type { Range } from "../shapes/shape";
 
@@ -17,7 +17,7 @@ export interface Printed {
   /** Each way in which a question can be wide. The worst case is the widest in all of them. */
   widths: Readonly<Record<string, number>>;
   /** Every worked step of this question. */
-  steps: readonly string[];
+  steps: readonly Step[];
 }
 
 /** One limit: the values that it can have, and the features that each value permits. */
@@ -60,6 +60,18 @@ export const neverLimit = (): LimitRule => ({
   bad: [undefined, null, true, "", "sometimes", "Never", "allowed ", ["never"]],
 });
 
+/** "never", "allowed" or "only". The feature is true for a question that "never" refuses and "only" asks for. */
+export const onlyLimit = (): LimitRule => ({
+  values: fc.constantFrom("never", "allowed", "only"),
+  allows: (feature, limit) => typeof feature === "boolean" && (limit === "allowed" || limit === (feature ? "only" : "never")),
+  widen: (one, other) => (one === other ? one : "allowed"),
+  bad: [undefined, null, true, "", "sometimes", "Only", "only ", ["only"]],
+});
+
+/** The same limit, at its widest in three of four cases: with many limits, random values alone leave almost no question. */
+export const oftenWide = (rule: LimitRule, widest: unknown): LimitRule =>
+  ({ ...rule, values: fc.oneof({ weight: 3, arbitrary: fc.constant(widest) }, { weight: 1, arbitrary: rule.values }) });
+
 /** A space that is too large to list: its facts, for any limits. */
 export interface LargeSpace {
   /** 0 when no question meets the limits. */
@@ -67,6 +79,17 @@ export interface LargeSpace {
   easiest(limits: Limits): Rows;
   hardest(limits: Limits): Rows;
   widest(limits: Limits): Rows;
+  /** A part of the space that is small enough to list: each of its questions is inspected. */
+  listed?: readonly Rows[];
+}
+
+/** A step as a registration writes it by hand: "w2@0 c1@1" writes 2 in the ones and puts a carry of 1 above the tens. */
+export function step(text: string, marks = ""): Step {
+  return { text, marks: marks.split(" ").filter((m) => m !== "").map((m): StepMark => {
+    const [, kind, digit, place] = /^([wc])(\d)@(\d+)$/.exec(m) ?? [];
+    if (kind === undefined) throw new Error(`"${m}" is no mark of a step`);
+    return { mark: kind === "w" ? "write" : "carry", place: Number(place), digit };
+  }) };
 }
 
 export interface ShapeRegistration {
@@ -83,7 +106,7 @@ export interface ShapeRegistration {
   /** For each limit: a question that meets all limits, and one that breaks this limit and no other. */
   witnesses: readonly { limit: string; limits: Limits; inside: Rows; outside: Rows }[];
   harder: readonly { name: string; easier: Rows; harder: Rows }[];
-  examples: readonly { name: string; rows: Rows; answer: Answer; steps: readonly string[] }[];
+  examples: readonly { name: string; rows: Rows; answer: Answer; steps: readonly Step[] }[];
   refusedLimits: readonly { name: string; raw: unknown; problem: string }[];
   refusedRows: readonly { name: string; rows: Rows }[];
 }

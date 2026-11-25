@@ -8,3 +8,6 @@
 .design/**/*.mp4 filter=lfs diff=lfs merge=lfs -text
 .design/**/*.mov filter=lfs diff=lfs merge=lfs -text
 .design/**/*.pdf filter=lfs diff=lfs merge=lfs -text
+# Shape registries: parallel shape branches append/insert one line per block and merge cleanly with union.
+src/lib/workbook-v2/shapes/index.ts merge=union
+src/lib/workbook-v2/testing/shape-registrations.ts merge=union

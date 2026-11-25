@@ -12,8 +12,12 @@ export const hasAnswerForm = (answer: Answer): boolean => Object.hasOwn(ANSWER_F
 
 export const isPlain = (value: unknown): boolean => plainCopy("value", value).ok;
 
+/** What `frozen` has frozen with all its parts. */
+const done = new WeakSet<object>();
 function frozen<T>(value: T): T {
-  if (typeof value === "object" && value !== null) Object.values(value).forEach(frozen);
+  if (typeof value !== "object" || value === null || done.has(value)) return value;
+  Object.values(value).forEach(frozen);
+  done.add(value);
   return Object.freeze(value);
 }
 
