@@ -43,6 +43,7 @@ export function stepProblems(question: WorkedQuestion): StepProblem[] {
   if (end !== line) tell("steps-end", `the steps end in ${JSON.stringify(end)} and not in "${line}"`);
   // The last step is the answer itself (checked above); check every working step with the closed grammar.
   for (const { text } of steps.slice(0, -1)) {
+    if (typeof text !== "string") continue;
     const { wrong, unread } = readStep(text);
     if (unread.length > 0) tell("steps-true", `cannot read "${unread[0]}" in the step "${text}"`);
     if (wrong.length > 0) tell("steps-true", `the step "${text}" holds "${wrong[0]}"`);

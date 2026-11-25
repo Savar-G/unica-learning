@@ -151,6 +151,7 @@ describe.each(both)("the count of %s", (_id, subject) => {
       }), { numRuns: 100, seed: 237, examples: [0, 1, 666_665, 666_666, 666_667, total - 1].filter((i) => i < total).map((i): [number] => [i]) });
     }
     expect(placeOfQuestion(subject.rules({ ...wide, a: r(1, 5) }), { a: 6, b: 1 })).toBe(-1);
+    for (const question of [{ a: 22, b: -1 }, { a: -1, b: 22 }, { a: 1.5, b: 1 }, { a: 1, b: 0 }, { a: Number.NaN, b: 1 }, { a: 2 ** 53, b: 1 }]) expect(placeOfQuestion(subject.rules(wide), question), JSON.stringify(question)).toBe(-1);
   });
 
   it("asks for a question that the seed alone picks, and changes no limits", () => {

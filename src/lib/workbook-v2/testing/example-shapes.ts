@@ -31,9 +31,9 @@ const carries = ({ a, b }: AddQuestion) => (a % 10) + b >= 10;
 export const addItem = ({ a, b }: AddQuestion): Item<AddQuestion> => ({ question: { a, b }, answer: wholeNumber(a + b) });
 
 /** The lists so far: the tests ask for the same few again and again. */
-const listed = new Map<string, readonly AddQuestion[]>();
+const listed = new Map<string, readonly Readonly<AddQuestion>[]>();
 
-export function addQuestions(l: AddLimits): readonly AddQuestion[] {
+export function addQuestions(l: AddLimits): readonly Readonly<AddQuestion>[] {
   const key = JSON.stringify(l);
   const known = listed.get(key);
   if (known) return known;

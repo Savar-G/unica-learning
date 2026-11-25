@@ -96,6 +96,7 @@ function differenceProblem({ step: { marks }, clauses }: Working, paper: Paper, 
 }
 
 function subtractionProblem(working: readonly Working[], answer: string, paper: Paper): string | null {
+  if (paper.bottom.length > paper.top.length) return "the printed rows have more digits below than above";
   let place = 0;
   for (const read of working) {
     const isBorrow = clauseOf(read.clauses, "borrow") !== undefined;

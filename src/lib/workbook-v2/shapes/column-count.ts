@@ -339,6 +339,7 @@ export function chooseQuestion(given: ColumnRules, choose: (count: number) => nu
 
 /** The place of a question in the order of `chooseQuestion`, or -1 when it does not meet the limits. */
 export function placeOfQuestion(given: ColumnRules, { a, b }: ColumnQuestion): number {
+  if (![a, b].every((n) => Number.isSafeInteger(n) && n > 0)) return -1;
   const { rules, kept, moves, below, whole } = placesOf(given, false);
   const last = lengthOf(a) - 1;
   if (last >= moves.length) return -1;
