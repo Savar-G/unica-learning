@@ -1,3 +1,4 @@
+import type { CheckProblemReason } from "@/lib/reference-record";
 import type { PageStatus, RecordDifference, UnnamedTeachingMark } from "./compare";
 import type {
   DuplicatePhotoReport,
@@ -29,6 +30,8 @@ export interface KeptHumanCheckedReport {
   diff_count_b: number;
   // The checked file could not be read as a valid record. It is kept as it is.
   invalid?: boolean;
+  // Why the check does not count now. Absent when the page is human_checked.
+  check_problems?: CheckProblemReason[];
 }
 
 // A photo that claims a page id that another photo won. It gets no final record and keeps its readings.
@@ -69,6 +72,9 @@ export interface PageCompareReport {
   photo: string | null;
   original_name: string | null;
   photo_sha256: string | null;
+  // sha256 of the photo that supplied the final text (reader A's when A has a record, else reader B's).
+  // Null when a person edited or checked the kept record.
+  final_photo_sha256?: string | null;
   status: PageStatus;
   agreement?: PageAgreement;
   result?: PageResultLabel;
@@ -95,6 +101,8 @@ export interface PageCompareReport {
   final_record_sha256?: string | null;
   // The final record was changed by a person and is not checked yet. The compare step kept it.
   edited_by_person?: boolean;
+  // A person checked this page and the check does not count now. The compare step kept the record.
+  check_problems?: CheckProblemReason[];
 }
 
 export interface CompareWorkReport {

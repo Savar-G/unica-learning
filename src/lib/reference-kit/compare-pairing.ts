@@ -1,23 +1,26 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { validateReferenceRecord, type ReferenceRecord } from "@/lib/reference-record";
+import {
+  isPlainObject,
+  parseJsonFileBytes,
+  readJsonNote,
+  validateReferenceRecord,
+  type ReferenceRecord,
+} from "@/lib/reference-record";
 import type { StoredAnswerNote } from "./answers";
 import type { DigestMismatchInfo, FailedPhotoReport, SamePageIdConflict } from "./compare-report";
 import {
-  PHOTOS_MANIFEST_FILE,
   PREPARE_REPORT_FILE,
   type DuplicatePhotoReport,
-  type PhotosManifest,
   type PrepareReportFile,
   type RemovedPhotoReport,
   type TooSmallPhotoReport,
   type UnreadablePhotoReport,
 } from "./prepare";
-import type { PhotoRunEntry, ReaderMeta, ReadRunReport } from "./read";
+import type { PhotoRunEntry } from "./read";
+import { loadReaderNotes, READER_NOTE_FILES, type ReaderNotes } from "./reader-notes";
 
-export interface LoadedSlot {
-  meta: ReaderMeta | null;
-  run: ReadRunReport | null;
+export interface LoadedSlot extends ReaderNotes {
   recordsByFile: Map<string, ReferenceRecord>;
   recordsByRef: Map<string, ReferenceRecord>;
 }
@@ -45,25 +48,17 @@ export interface PairedPage {
   noteDetailsB?: StoredAnswerNote[];
 }
 
-const SKIP_JSON_FILES = new Set(["reader.json", "run.json"]);
+const PREPARE_LISTS = ["too_small", "unreadable", "duplicates", "removed_photos"] as const;
 
-export function readJsonIfExists<T>(filePath: string): T | null {
-  if (!existsSync(filePath)) return null;
-  return JSON.parse(readFileSync(filePath, "utf8")) as T;
-}
-
-export function loadOriginalNamesByDigest(workDir: string): Map<string, string> {
-  const map = new Map<string, string>();
-  const manifestPath = join(workDir, "photos", PHOTOS_MANIFEST_FILE);
-  const raw = readJsonIfExists<Partial<PhotosManifest>>(manifestPath);
-  if (raw && Array.isArray(raw.photos)) {
-    for (const p of raw.photos) {
-      if (typeof p.sha256 === "string" && typeof p.original_name === "string") {
-        map.set(p.sha256, p.original_name);
-      }
+function parsePrepareReport(raw: unknown): Partial<PrepareReportFile> {
+  if (!isPlainObject(raw)) throw new Error("expected an object");
+  for (const key of PREPARE_LISTS) {
+    const { [key]: list = [] } = raw;
+    if (!Array.isArray(list) || !list.every((e: unknown) => isPlainObject(e) && typeof e.original_name === "string")) {
+      throw new Error(`${key} is not a list of photos`);
     }
   }
-  return map;
+  return raw as Partial<PrepareReportFile>;
 }
 
 export function loadPrepareReport(workDir: string): {
@@ -72,12 +67,12 @@ export function loadPrepareReport(workDir: string): {
   duplicates: DuplicatePhotoReport[];
   removedPhotos: RemovedPhotoReport[];
 } {
-  const raw = readJsonIfExists<Partial<PrepareReportFile>>(join(workDir, PREPARE_REPORT_FILE));
+  const report = readJsonNote(join(workDir, PREPARE_REPORT_FILE), parsePrepareReport);
   return {
-    tooSmall: Array.isArray(raw?.too_small) ? raw.too_small : [],
-    unreadable: Array.isArray(raw?.unreadable) ? raw.unreadable : [],
-    duplicates: Array.isArray(raw?.duplicates) ? raw.duplicates : [],
-    removedPhotos: Array.isArray(raw?.removed_photos) ? raw.removed_photos : [],
+    tooSmall: report?.too_small ?? [],
+    unreadable: report?.unreadable ?? [],
+    duplicates: report?.duplicates ?? [],
+    removedPhotos: report?.removed_photos ?? [],
   };
 }
 
@@ -85,20 +80,19 @@ export function loadSlot(slotDir: string): LoadedSlot {
   if (!existsSync(slotDir)) {
     return { meta: null, run: null, recordsByFile: new Map(), recordsByRef: new Map() };
   }
-  const meta = readJsonIfExists<ReaderMeta>(join(slotDir, "reader.json"));
-  const run = readJsonIfExists<ReadRunReport>(join(slotDir, "run.json"));
+  const { meta, run } = loadReaderNotes(slotDir);
   const recordsByFile = new Map<string, ReferenceRecord>();
   const recordsByRef = new Map<string, ReferenceRecord>();
 
   for (const name of readdirSync(slotDir)) {
-    if (!name.endsWith(".json") || name.endsWith(".invalid.json") || SKIP_JSON_FILES.has(name)) {
+    if (!name.endsWith(".json") || name.endsWith(".invalid.json") || READER_NOTE_FILES.has(name)) {
       continue;
     }
-    const raw = JSON.parse(readFileSync(join(slotDir, name), "utf8")) as unknown;
-    const check = validateReferenceRecord(raw);
+    const filePath = join(slotDir, name);
+    const check = validateReferenceRecord(parseJsonFileBytes(filePath, readFileSync(filePath)));
     if (!check.ok) {
       throw new Error(
-        `Invalid record ${join(slotDir, name)}: ${check.errors.map((e) => `${e.path}: ${e.message}`).join("; ")}`,
+        `Invalid record ${filePath}: ${check.errors.map((e) => `${e.path}: ${e.message}`).join("; ")}`,
       );
     }
     recordsByFile.set(name, check.record);
@@ -352,9 +346,10 @@ export function pairSourceRef(pair: PairedPage): string | null {
   return (pair.recA ?? pair.recB)?.source_ref ?? null;
 }
 
-// The photo digest that a pair's final record belongs to.
+// The photo digest that a pair's final record belongs to (reader A's when A has a record, else reader B's).
 export function pairDigest(pair: PairedPage): string | null {
-  return pair.photoSha256 ?? pair.digestMismatch?.a ?? pair.digestMismatch?.b ?? null;
+  if (pair.recA) return pair.digestMismatch ? pair.digestMismatch.a : pair.photoSha256;
+  return pair.photoSha256;
 }
 
 function compareByOriginalName(x: PairedPage, y: PairedPage): number {

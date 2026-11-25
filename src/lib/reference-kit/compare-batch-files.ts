@@ -1,29 +1,24 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  validateReferenceRecord,
+  isPlainObject,
+  parseStrictUtf8Json,
+  readRegularFileIfExists,
   writeSafeOutputFile,
-  type ReferenceRecord,
 } from "@/lib/reference-record";
-import { fileSlugFromRef } from "./answers";
-import type { PageStatus } from "./compare";
-import { pairDigest, readJsonIfExists, type PairedPage } from "./compare-pairing";
-import { parsePhotosManifest, PHOTOS_MANIFEST_FILE } from "./prepare";
+import { fileExists, finalFileKey, finalFileName, isDamagedFinalRecord, loadCheckedPages } from "./checked-pages";
+import { pairDigest, pairSourceRef, type PairedPage } from "./compare-pairing";
+import { PHOTOS_MANIFEST_FILE, type PhotosManifest } from "./prepare";
 
-export function readStoredSourceRef(filePath: string): string | null {
-  if (!existsSync(filePath)) return null;
+export { loadExistingFinalRecord } from "./checked-pages";
+
+function readStoredSourceRef(filePath: string): string | null {
+  const bytes = readRegularFileIfExists(filePath);
+  if (bytes === null) return null;
   try {
-    const parsed = JSON.parse(readFileSync(filePath, "utf8")) as unknown;
-    if (
-      typeof parsed === "object" &&
-      parsed !== null &&
-      !Array.isArray(parsed) &&
-      typeof (parsed as Record<string, unknown>).source_ref === "string"
-    ) {
-      return (parsed as Record<string, unknown>).source_ref as string;
-    }
-    return null;
+    const parsed = parseStrictUtf8Json(bytes);
+    return isPlainObject(parsed) && typeof parsed.source_ref === "string" ? parsed.source_ref : null;
   } catch {
     return null;
   }
@@ -33,49 +28,32 @@ export function sha256OfFile(filePath: string): string {
   return createHash("sha256").update(readFileSync(filePath)).digest("hex");
 }
 
-export function loadExistingFinalRecord(filePath: string): ReferenceRecord | null {
-  if (!existsSync(filePath)) return null;
-  try {
-    const parsed = JSON.parse(readFileSync(filePath, "utf8")) as unknown;
-    const check = validateReferenceRecord(parsed);
-    return check.ok ? check.record : null;
-  } catch {
-    return null;
-  }
-}
+const FINAL_META_FILES: ReadonlySet<string> = new Set(["status.json", "report.json"]);
 
-// The hash of each final record as the last compare wrote it. Another hash on disk means that a
-// person changed the file. A malformed report stops the run: without its hashes, compare would
-// write over a record that a person changed.
-export function loadPreviousHashes(reportPath: string): Map<string, string> {
-  const hashes = new Map<string, string>();
-  try {
-    const pages: unknown = readJsonIfExists<{ pages?: unknown }>(reportPath)?.pages ?? [];
-    if (!Array.isArray(pages)) throw new Error("pages is not a list");
-    pages.forEach((page: unknown, i) => {
-      const row = (page ?? {}) as { source_ref?: unknown; final_record_sha256?: unknown };
-      const hash = row.final_record_sha256 ?? null;
-      if (typeof row.source_ref !== "string") throw new Error(`pages[${i}] has no source_ref`);
-      if (hash === null) return;
-      if (typeof hash !== "string") throw new Error(`pages[${i}] has a hash that is not text`);
-      if ((hashes.get(row.source_ref) ?? hash) !== hash) {
-        throw new Error(`pages[${i}] gives a second hash for ${row.source_ref}`);
-      }
-      hashes.set(row.source_ref, hash);
-    });
-  } catch (err) {
-    throw new Error(
-      `Malformed previous report ${reportPath}: ${err instanceof Error ? err.message : String(err)}`,
-    );
+// A damaged final record stays when its page is checked, or is in this run as an edited page. Else
+// compare would write over it or remove it as a file of no page, so it stops. A name in other letter
+// case is another file on some disks.
+function assertNoLostRecords(pairs: readonly PairedPage[], finalDir: string): void {
+  const { refs, reported } = loadCheckedPages(finalDir);
+  const inRun = pairs.map(pairSourceRef).filter((ref) => ref !== null);
+  const keptFiles = new Set([...refs, ...inRun.filter((ref) => typeof reported.get(ref)?.record === "string")].map(finalFileName));
+  for (const name of readdirSync(finalDir)) {
+    if (!name.endsWith(".json") || FINAL_META_FILES.has(name) || keptFiles.has(name)) continue;
+    const filePath = join(finalDir, name);
+    if (isDamagedFinalRecord(filePath)) {
+      throw new Error(
+        `Damaged final record ${filePath}: correct the file, or remove it when its page can be written again. Nothing was written`,
+      );
+    }
   }
-  return hashes;
 }
 
 export function assertNoFileCollisions(
   pairs: readonly PairedPage[],
-  existingStatus: Record<string, PageStatus>,
+  existingRefs: ReadonlySet<string>,
   finalDir: string,
 ): void {
+  assertNoLostRecords(pairs, finalDir);
   const fileToRef = new Map<string, string>();
 
   for (const pair of pairs) {
@@ -83,14 +61,15 @@ export function assertNoFileCollisions(
     if (!chosen) continue;
     const sourceRef = chosen.source_ref;
 
-    const fileName = `${fileSlugFromRef(sourceRef)}.json`;
-    const prior = fileToRef.get(fileName);
+    const fileName = finalFileName(sourceRef);
+    const key = finalFileKey(sourceRef);
+    const prior = fileToRef.get(key);
     if (prior && prior !== sourceRef) {
       throw new Error(
         `Refusing to write: "${sourceRef}" and "${prior}" both map to "${fileName}"`,
       );
     }
-    fileToRef.set(fileName, sourceRef);
+    fileToRef.set(key, sourceRef);
 
     const storedRef = readStoredSourceRef(join(finalDir, fileName));
     if (storedRef !== null && storedRef !== sourceRef) {
@@ -100,35 +79,32 @@ export function assertNoFileCollisions(
     }
   }
 
-  for (const existingRef of Object.keys(existingStatus)) {
-    const fileName = `${fileSlugFromRef(existingRef)}.json`;
-    const prior = fileToRef.get(fileName);
-    if (prior && prior !== existingRef) {
+  for (const existingRef of existingRefs) {
+    const fileName = finalFileName(existingRef);
+    const key = finalFileKey(existingRef);
+    const prior = fileToRef.get(key);
+    // In other letter case, a page whose record file is gone has nothing to lose.
+    if (
+      prior &&
+      prior !== existingRef &&
+      (finalFileName(prior) === fileName || fileExists(join(finalDir, fileName)))
+    ) {
       throw new Error(
         `Refusing to write: "${prior}" collides with existing "${existingRef}" on "${fileName}"`,
       );
     }
-    fileToRef.set(fileName, existingRef);
+    if (!prior) fileToRef.set(key, existingRef);
   }
 }
 
 // The manifest gives a page id only to the photo whose readings made the final record, so it holds
-// at most one entry for each page id. A kept human_checked page with no current readings keeps the
+// at most one entry for each page id. A kept page of a person with no current readings keeps the
 // page id it already has.
-export function syncManifestSourceRefs(
-  workDir: string,
+export function planManifestSourceRefs(
+  before: PhotosManifest,
   winners: readonly PairedPage[],
   keptStaleRefs: ReadonlySet<string>,
-  repoRoot: string,
-): void {
-  const manifestPath = join(workDir, "photos", PHOTOS_MANIFEST_FILE);
-  if (!existsSync(manifestPath)) return;
-  let manifest;
-  try {
-    manifest = parsePhotosManifest(JSON.parse(readFileSync(manifestPath, "utf8")) as unknown);
-  } catch {
-    return;
-  }
+): PhotosManifest {
   const refByDigest = new Map<string, string>();
   for (const pair of winners) {
     const digest = pairDigest(pair);
@@ -136,7 +112,7 @@ export function syncManifestSourceRefs(
     if (digest && ref && !refByDigest.has(digest)) refByDigest.set(digest, ref);
   }
   const assigned = new Set<string>();
-  const photos = manifest.photos.map((entry) => {
+  const photos = before.photos.map((entry) => {
     const { source_ref: oldRef, ...rest } = entry;
     const winnerRef = refByDigest.get(entry.sha256);
     const ref = winnerRef ?? (oldRef && keptStaleRefs.has(oldRef) ? oldRef : undefined);
@@ -144,8 +120,17 @@ export function syncManifestSourceRefs(
     assigned.add(ref);
     return { ...rest, source_ref: ref };
   });
-  const next = `${JSON.stringify({ version: 1, photos }, null, 2)}\n`;
-  if (next !== `${JSON.stringify(manifest, null, 2)}\n`) {
-    writeSafeOutputFile(manifestPath, next, repoRoot);
+  return { version: 1, photos };
+}
+
+export function writePlannedManifest(
+  photosDir: string,
+  before: PhotosManifest,
+  after: PhotosManifest,
+  repoRoot: string,
+): void {
+  const next = `${JSON.stringify(after, null, 2)}\n`;
+  if (next !== `${JSON.stringify(before, null, 2)}\n`) {
+    writeSafeOutputFile(join(photosDir, PHOTOS_MANIFEST_FILE), next, repoRoot);
   }
 }

@@ -11,13 +11,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { writeSafeOutputFile } from "@/lib/reference-record";
 import { fileSlugFromRef } from "./answers";
+import { finalFileGuard, keptCheckedRefs, loadCheckedPages } from "./checked-pages";
 import { readRegularFileNoFollow, resolveSafeChildPath } from "./prepare";
 
 // While a reader of one photo digest runs, no reading, final record, or view of that page may be in
 // the work folder. The shelter moves those files to a new private folder in the OS temp folder and
 // removes the digest from both run.json files. On close it puts back every file that was not
 // replaced by a new reading. Without a commit (an error) it puts back everything and deletes the
-// files written while it was open.
+// files written while it was open. It never takes the record of a page that a person checked: that
+// file stays in final/, so that a killed run cannot lose it.
 
 export type ShelterCategory = "slotA" | "slotB";
 
@@ -73,7 +75,17 @@ function stripDigestFromRun(runPath: string, sha256: string, repoRoot: string): 
   return text;
 }
 
+// Also in other letter case: some disks see one file there.
+function assertNoCheckedRecord(workDir: string, refs: readonly string[]): void {
+  const finalDir = join(workDir, "final");
+  const checked = refs.find(finalFileGuard(keptCheckedRefs(finalDir, loadCheckedPages(finalDir))));
+  if (checked !== undefined) {
+    throw new Error(`Refusing to move the final record of ${checked}: a person checked this page.`);
+  }
+}
+
 export function openPageShelter(opts: PageShelterOptions): PageShelter {
+  assertNoCheckedRecord(opts.workDir, opts.finalSourceRefs);
   const shelterDir = mkdtempSync(join(tmpdir(), "unica-ref-shelter-"));
   chmodSync(shelterDir, 0o700);
   const files: ShelteredFile[] = [];
