@@ -1,3 +1,4 @@
+import { FIXTURES } from "@/lib/maya-gate/fixtures";
 import sharp from "sharp";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { QuestionPackage } from "@/lib/question-package";
@@ -115,6 +116,38 @@ describe("making the crops", () => {
       const row = Math.floor((box.y + 19 - cut.y) * crop.height / cut.height);
       expect(crop.data[row * crop.width + crop.width - 1]).toBeGreaterThan(115);
     }
+  });
+
+  it("keeps legacy tick padding in a mixed crop while masking neighboring ink", async () => {
+    const operation = { x: 500, y: 700, width: 110, height: 100 };
+    const answer = { x: 680, y: 700, width: 100, height: 100 };
+    const neighbour = { x: 440, y: 700, width: 50, height: 100 };
+    const question = structuredClone(FIXTURES.A);
+    question.item = { format: "tick-and-number", scorable: true, parentChecked: false, error: null,
+      regions: [
+        { id: "operation", kind: "choice", mark: "tick", label: null, choices: ["+", "−", "×", "÷"], answer: "+" },
+        { id: "answer", kind: "box", label: null, answer: { type: "number", value: 66 } },
+      ], checks: [{ kind: "operation-sign", region: "operation" }, { kind: "operation", region: "answer" }],
+    };
+    const questions: ScanFrame["page"]["questions"] = [
+      { number: 1, package: question, regions: [{ id: "operation", kind: "choice", box: operation }, { id: "answer", kind: "box", box: answer }] },
+      { number: 2, package: pkg("neighbour"), regions: [{ id: "a", kind: "box", box: neighbour }] },
+    ];
+    const page = drawn(false), printed = await pagePng(page);
+    fillBox(page, 493, 731, 7, 10, 20);
+    fillBox(page, 504, 689, 10, 10, 20);
+    fillBox(page, 625, 730, 10, 10, 20);
+    const bytes = await photoJpeg(page);
+    const m = setup({ bytes, questions, contract: { ...contract, fingerprints: { ...contract.fingerprints, image: await sha256Hex(printed) } } });
+    m.printed.set("page.png", printed);
+    expect((await runScanCrops(m.store, ref, token(1))).status).toBe("ready");
+    const cut = shownBox(m, 1), crop = await cropRaster(m, "crop-1", token(1));
+    const pixel = (x: number, y: number) => crop.data[
+      Math.floor((y - cut.y) * crop.height / cut.height) * crop.width + Math.floor((x - cut.x) * crop.width / cut.width)
+    ];
+    expect(pixel(509, 693)).toBeLessThan(80);
+    expect(cut.x).toBeGreaterThan(493);
+    expect(pixel(629, 734)).toBeGreaterThan(235);
   });
 
   it("stores the straightened page and one numbered crop per item, each holding its own written answer", async () => {

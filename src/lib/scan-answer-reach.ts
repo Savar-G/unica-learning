@@ -19,13 +19,25 @@ export function answerReach(
   content: Box,
 ): Box | undefined {
   if (region.kind !== "number" && region.kind !== "fraction" && region.kind !== "text") return undefined;
+  return boundedAnswerArea(region, question, questions, content, HORIZONTAL_REACH, VERTICAL_REACH);
+}
+
+/** Bound a crop extension by the print edge and adjoining regions. */
+export function boundedAnswerArea(
+  region: Pick<MarkingRegion, "id" | "box">,
+  question: number,
+  questions: readonly QuestionRegions[],
+  content: Box,
+  horizontal: number,
+  vertical: number,
+): Box {
   const { x, y, width, height } = region.box;
   const right = x + width, bottom = y + height;
   // A snap can move part of a printed box past the content edge. Keep the whole box.
-  const maxLeft = Math.max(Math.min(x, content.x), x - HORIZONTAL_REACH);
-  const maxTop = Math.max(Math.min(y, content.y), y - VERTICAL_REACH);
-  const maxRight = Math.min(Math.max(right, content.x + content.width), right + HORIZONTAL_REACH);
-  const maxBottom = Math.min(Math.max(bottom, content.y + content.height), bottom + VERTICAL_REACH);
+  const maxLeft = Math.max(Math.min(x, content.x), x - horizontal);
+  const maxTop = Math.max(Math.min(y, content.y), y - vertical);
+  const maxRight = Math.min(Math.max(right, content.x + content.width), right + horizontal);
+  const maxBottom = Math.min(Math.max(bottom, content.y + content.height), bottom + vertical);
   let left = maxLeft, top = maxTop, farRight = maxRight, farBottom = maxBottom;
 
   for (const other of questions) {

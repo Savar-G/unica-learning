@@ -11,6 +11,7 @@ import {
   calibratePhoto,
   calibrationForPhoto,
   cropInPhoto,
+  cropMargin,
   cropPlan,
   sheetChecker,
   straightenedPage,
@@ -22,7 +23,7 @@ import {
 } from "@/lib/scan-calibration";
 import { printContractForPhoto, sha256Hex, type Box, type PagePrintContract, type Point } from "@/lib/workbook-print-contract";
 import { enclosingBox, limitReachToPhoto, renderAnswerCrop } from "@/lib/scan-answer-crops";
-import { answerReach, placedRegions, scanContentBounds } from "@/lib/scan-answer-reach";
+import { answerReach, boundedAnswerArea, placedRegions, scanContentBounds } from "@/lib/scan-answer-reach";
 import { markingRegions } from "@/lib/scan-marking-regions";
 import { pageUrl } from "@/lib/workbook-render";
 
@@ -388,7 +389,15 @@ export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: s
       return reach && limitReachToPhoto(calibration, contract.contract, region.box, reach);
     });
     if (!reaches.some(Boolean)) continue;
-    const areas = regions.map((region, index) => reaches[index] ?? region.box);
+    const margin = cropMargin(crop.box);
+    const page = { x: 0, y: 0, ...contract.contract.coordinates.image };
+    const areas = regions.map((region, index) => {
+      const reach = reaches[index];
+      if (reach) return reach;
+      if (region.kind !== "choice") return region.box;
+      const padded = boundedAnswerArea(region, question.number, questions, page, margin, margin);
+      return limitReachToPhoto(calibration, contract.contract, region.box, padded);
+    });
     crop.display = { box: enclosingBox(areas), areas };
   }
   if (Date.now() >= deadline) return timedOut();
