@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { planBook } from "../build/build-book";
 import type { PageModel, Rect, Region, RegionRole } from "../contract";
+import wideBook from "../fixtures/book-4-digits.json";
+import wideSnapshot from "../fixtures/snapshot-4-digits.json";
 import { goodPages } from "../testing/sample";
+import { TEMPLATES } from "./templates";
 
 const pages = () => goodPages();
 const regions = (page: PageModel, role: RegionRole) => page.regions.filter((r) => r.role === role);
@@ -56,5 +60,46 @@ describe("the two pages of a sheet", () => {
   it("have ids that no other rectangle of the book has", () => {
     const ids = pages().flatMap((p) => p.regions.map((g) => g.id));
     expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+describe("a sheet of 4 digits by 1 digit", () => {
+  const plan = planBook({ snapshot: wideSnapshot, book: wideBook });
+  const wide = plan.ok ? plan.pages : [];
+
+  it("passes every check that needs no drawing, with all places of both sides full", () => {
+    expect(plan).toMatchObject({ ok: true });
+    expect(wide.map((page) => [page.template, regions(page, "slot").length])).toEqual([["columns-2x4-wide", 8], ["columns-2x4-wide", 8]]);
+    if (plan.ok) expect(Math.max(...plan.items.map((i) => i.answer.value.length))).toBe(5);
+  });
+
+  it("has answer areas of five digit places in the two columns of the other template, mirrored between the sides", () => {
+    const [front, back] = wide;
+    const answers = (page: PageModel) => regions(page, "answer").map(({ rect }) => [rect.x, rect.y, rect.w, rect.h]);
+    expect(answers(front)).toEqual([178, 326, 474, 622].flatMap((y) => [[134, y, 120, 42], [384, y, 120, 42]]));
+    expect(answers(back)).toEqual(answers(front).map(([x, ...more]) => [x - 54, ...more]));
+  });
+
+  it("lines up the digits from the right: ones under ones, and the sign left of the bottom number", () => {
+    const placed = regions(wide[0], "question")[0].ink.flatMap((i) => (i.kind === "text" ? [[i.text, i.rect.x - 134]] : []));
+    expect(placed.map(([, x]) => x)).toEqual([24, 48, 72, 96, 72, 96]);
+    expect(placed[4][0]).toBe("×");
+  });
+
+  it("leaves a work area beside each stack, outside the reach of its answer", () => {
+    expect(wide).toHaveLength(2);
+    for (const page of wide) {
+      const works = regions(page, "work");
+      expect(works).toHaveLength(8);
+      works.forEach(({ rect }, i) => {
+        const reach = regions(page, "reach")[i].rect;
+        expect(rect.x).toBeGreaterThan(reach.x + reach.w);
+        expect([rect.w, rect.h]).toEqual([38, 140]);
+      });
+    }
+  });
+
+  it("uses the only template that 5 digit places fit", () => {
+    expect([...TEMPLATES.values()].map((t) => [t.id, t.digits])).toEqual([["columns-2x4", 3], ["columns-2x4-wide", 5]]);
   });
 });

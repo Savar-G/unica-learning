@@ -31,7 +31,9 @@ function problemOf(item: BookItem, rows: readonly string[], shape: Shape | undef
   const differs = (other: string, by: string) => `the answer is "${answer.value}" by one computation and "${other}" by ${by}`;
   if (printed.answer.kind !== answer.kind || printed.answer.value !== answer.value) return differs(printed.answer.value, "another");
   if (canonicalJson(printed.question) !== canonicalJson(item.question)) return "the page prints another question than the book holds";
-  return item.steps.at(-1) === answer.value ? null : differs(item.steps.at(-1) ?? "", "the worked steps");
+  const last = item.steps.at(-1);
+  if (last?.text !== answer.value) return differs(last?.text ?? "", "the worked steps");
+  return last.marks.length === 0 ? null : "the last worked step is the answer and must draw nothing";
 }
 
 /** What is wrong with the answers of a book, in plain words. */

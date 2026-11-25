@@ -68,31 +68,35 @@ function paeth(left: number, above: number, corner: number): number {
 }
 
 /**
- * Each line holds its filter and then the difference of each byte from its neighbours. False: an unknown filter. Each
- * filter has a loop of its own, because a book has a billion of these bytes.
+ * Each line holds its filter and then the difference of each byte from its neighbours. False: an unknown filter. Above the
+ * first line and left of the first pixel there is nothing, which counts as 0. Each filter has a loop of its own, because a
+ * book has a billion of these bytes.
  */
 function unfilter(lines: Uint8Array, { height, parts }: Header, stride: number): boolean {
+  const up = stride + 1;
   for (let y = 0; y < height; y++) {
-    const start = y * (stride + 1) + 1;
+    const start = y * up + 1;
+    const first = start + parts;
     const end = start + stride;
-    const up = stride + 1;
     const filter = lines[start - 1];
     if (filter > 4) return false;
-    // Above the first line and left of the first pixel there is nothing, which counts as 0.
-    const above = (i: number) => (y === 0 ? 0 : lines[i - up]);
-    const left = (i: number) => (i < start + parts ? 0 : lines[i - parts]);
-    if (filter === 1) for (let i = start + parts; i < end; i++) lines[i] += lines[i - parts];
+    if (filter === 1 || (filter === 4 && y === 0)) for (let i = first; i < end; i++) lines[i] += lines[i - parts];
     else if (filter === 2 && y > 0) for (let i = start; i < end; i++) lines[i] += lines[i - up];
-    else if (filter === 3) for (let i = start; i < end; i++) lines[i] += (left(i) + above(i)) >> 1;
-    else if (filter === 4) for (let i = start; i < end; i++) lines[i] += paeth(left(i), above(i), i < start + parts ? 0 : above(i - parts));
+    else if (filter === 3 && y === 0) for (let i = first; i < end; i++) lines[i] += lines[i - parts] >> 1;
+    else if (filter === 3) {
+      for (let i = start; i < first; i++) lines[i] += lines[i - up] >> 1;
+      for (let i = first; i < end; i++) lines[i] += (lines[i - parts] + lines[i - up]) >> 1;
+    } else if (filter === 4) {
+      for (let i = start; i < first; i++) lines[i] += lines[i - up];
+      for (let i = first; i < end; i++) lines[i] += paeth(lines[i - parts], lines[i - up], lines[i - up - parts]);
+    }
   }
   return true;
 }
 
-/** How light a pixel prints on white paper. */
+/** How light a pixel of 3 or 4 parts prints on white paper. */
 function lightness(lines: Uint8Array, at: number, parts: number): number {
   const red = lines[at];
-  if (parts === 1) return red;
   const green = lines[at + 1];
   const blue = lines[at + 2];
   const light = red === green && red === blue ? red : (red * 299 + green * 587 + blue * 114) / 1000;
@@ -109,7 +113,9 @@ export function readPageImage(png: Uint8Array): PageImage | string {
   if (!lines || !unfilter(lines, header, stride)) return CANNOT_READ;
   const grey = new Uint8Array(width * height);
   for (let y = 0, to = 0; y < height; y++) {
-    for (let x = 0, from = y * (stride + 1) + 1; x < width; x++, from += parts) grey[to++] = lightness(lines, from, parts);
+    const start = y * (stride + 1) + 1;
+    if (parts === 1) grey.set(lines.subarray(start, start + stride), y * width);
+    else for (let x = 0, from = start; x < width; x++, from += parts) grey[to++] = lightness(lines, from, parts);
   }
   return { width, height, grey };
 }

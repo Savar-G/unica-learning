@@ -1,11 +1,18 @@
 // The committed fingerprint of each shape version: one SHA-256 of all that the shape gives for the registered limits.
-// scripts/shape-fingerprint-base.mjs compares the file with the base of the branch.
+// Each shape lives in its own JSON file under testing/fingerprints/ so parallel shape branches merge without conflict.
+// scripts/shape-fingerprint-base.mjs compares the folder with the base of the branch.
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { canonicalJson, seedFrom, sha256 } from "../hash";
 import type { Item, Shape, ShapeLibrary } from "../shapes";
 import { isRecord } from "../shapes/shape";
-import { registryProblems, type Rows, type ShapeRegistration } from "./shape-registration";
+import { registryProblems, type LargeSpace, type Rows, type ShapeRegistration } from "./shape-registration";
 
 export type ShapeFingerprints = Record<string, Record<string, string>>;
+
+export const FINGERPRINTS_DIR = "src/lib/workbook-v2/testing/fingerprints";
+/** The id itself, so that two ids never share a file. */
+export const fingerprintFileName = (id: string): string => `${id}.json`;
 
 /** A space that can be listed is covered by its list, so a few seeds prove which question a seed picks. */
 const SEEDS_OF_A_LISTED_SPACE = 100;
@@ -30,7 +37,10 @@ export function shapeFingerprint(shape: Shape, registration: ShapeRegistration):
     lines.push(canonicalJson([limits, shape.count(limits), shape.difficultyRange(limits)]), add(shape.worstCase(limits)));
     for (const seed of seeds(perCase)) lines.push(add(shape.generate(limits, seed)));
   }
-  const rows: readonly Rows[] = listed ? (space as readonly Rows[]) : smallSpaces.flatMap((s) => s.questions);
+  // A large space covers its small spaces and every `listed` question in full; the rest of the large space has sampled coverage via the seeds above.
+  const rows: readonly Rows[] = listed
+    ? (space as readonly Rows[])
+    : [...smallSpaces.flatMap((s) => s.questions), ...((space as LargeSpace).listed ?? [])];
   for (const row of rows) {
     const read = shape.solveAgain(row);
     lines.push(read ? add(read) : `no question: ${row.join(" ")}`);
@@ -95,4 +105,29 @@ export function addShapeFingerprints(shapes: ShapeLibrary, registrations: readon
   }
   if (problems.length > 0) return { ok: false, problems };
   return { ok: true, added, fingerprints: Object.fromEntries(Object.entries(next).sort(([a], [b]) => (a < b ? -1 : 1))) };
+}
+
+/** The text of one shape's fingerprint file. */
+export function fingerprintFileText(id: string, versions: Readonly<Record<string, string>>): string {
+  const entries = Object.entries(versions)
+    .sort(([a], [b]) => Number(a) - Number(b))
+    .map(([version, hash]) => `${JSON.stringify(version)}: ${JSON.stringify(hash)}`);
+  return `{\n  ${JSON.stringify(id)}: { ${entries.join(", ")} }\n}\n`;
+}
+
+/** Reads every per-shape JSON file in the fingerprints folder into one map. */
+export function readShapeFingerprints(dir = FINGERPRINTS_DIR): ShapeFingerprints {
+  const files = readdirSync(dir).filter((name) => name.endsWith(".json")).sort();
+  const merged: ShapeFingerprints = {};
+  for (const file of files) {
+    const parsed: unknown = JSON.parse(readFileSync(join(dir, file), "utf8"));
+    if (!isRecord(parsed)) throw new Error(`${file} must hold an object`);
+    const ids = Object.keys(parsed);
+    if (ids.length !== 1) throw new Error(`${file} must hold exactly one shape`);
+    const [id] = ids;
+    if (fingerprintFileName(id) !== file) throw new Error(`${file} holds "${id}" and must be named "${fingerprintFileName(id)}"`);
+    if (Object.hasOwn(merged, id)) throw new Error(`duplicate fingerprint entry for "${id}"`);
+    merged[id] = parsed[id] as Record<string, string>;
+  }
+  return merged;
 }

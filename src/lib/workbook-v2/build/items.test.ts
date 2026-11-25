@@ -51,14 +51,19 @@ describe("the seed decides the numbers", () => {
       for (const side of ["front", "back"] as const) {
         const onSide = items.filter((i) => i.side === side);
         expect(onSide.map((i) => i.number)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
-        onSide.forEach((item, i) => {
-          if (i > 0) expect(item.difficulty).toBeGreaterThanOrEqual(onSide[i - 1].difficulty);
+        // One look at all the questions of a side, because a look at each takes longer than making them.
+        const wrong = onSide.filter((item, i) => {
           const [top, bottom, value] = [Number(item.face.top), Number(item.face.bottom), Number(item.answer.value)];
           const carries = (top % 10) * bottom >= 10;
-          if (item.rowId === "no-carry") expect([top >= 11 && top <= 43, bottom >= 2 && bottom <= 4, carries, value <= 99]).toEqual([true, true, false, true]);
-          if (item.rowId === "one-carry") expect([top >= 12 && top <= 49, bottom >= 2 && bottom <= 4, carries, value <= 99]).toEqual([true, true, true, true]);
-          if (item.rowId === "past-one-hundred") expect([top >= 21 && top <= 98, bottom >= 3, value >= 100]).toEqual([true, true, true]);
+          const inside: Record<string, boolean> = {
+            "no-carry": top >= 11 && top <= 43 && bottom >= 2 && bottom <= 4 && !carries && value <= 99,
+            "one-carry": top >= 12 && top <= 49 && bottom >= 2 && bottom <= 4 && carries && value <= 99,
+            "one-carry-larger": top >= 12 && top <= 49 && bottom >= 2 && bottom <= 8 && carries && value <= 99,
+            "past-one-hundred": top >= 21 && top <= 98 && bottom >= 3 && value >= 100,
+          };
+          return !inside[item.rowId] || !Number.isFinite(item.difficulty) || (i > 0 && !(item.difficulty >= onSide[i - 1].difficulty));
         });
+        expect(wrong).toEqual([]);
       }
     }), { numRuns: 1000 });
     expect(seen.size).toBeGreaterThanOrEqual(995);
@@ -66,7 +71,7 @@ describe("the seed decides the numbers", () => {
 
   it("uses a question twice only when the row has no other left", () => {
     const one = SHEET.front.rows[0];
-    const two = { ...one, items: 2, limits: { a: { min: 11, max: 11 }, b: { min: 2, max: 3 }, carries: { min: 0, max: 0 }, product: { min: 10, max: 99 }, zeroInTens: "never" } };
+    const two = { ...one, items: 2, limits: { ...(one.limits as object), a: { min: 11, max: 11 }, b: { min: 2, max: 3 } } };
     const sheet = { ...SHEET, front: { ...SHEET.front, rows: [{ ...two, id: "first" }, { ...two, id: "second" }] }, back: SHEET.back };
     const items = sheetItems(sheet, "child-a", 1).filter((i) => i.side === "front");
     expect(items.filter((i) => i.rowId === "first").map((i) => i.answer.value).sort()).toEqual(["22", "33"]);
@@ -76,7 +81,7 @@ describe("the seed decides the numbers", () => {
 
 describe("the printed order of a side", () => {
   // With no carry and no product of 100, the multiplier alone decides the difficulty: 11 × 2 and 13 × 2 are equal.
-  const limits = (a: [number, number], b: [number, number]) => ({ a: { min: a[0], max: a[1] }, b: { min: b[0], max: b[1] }, carries: { min: 0, max: 0 }, product: { min: 20, max: 99 }, zeroInTens: "never" });
+  const limits = (a: [number, number], b: [number, number]) => ({ ...(SHEET.front.rows[0].limits as object), a: { min: a[0], max: a[1] }, b: { min: b[0], max: b[1] }, product: { min: 20, max: 99 } });
   const sheetOf = (rows: { id: string; items: number; limits: unknown }[]): SnapshotSheet =>
     ({ ...SHEET, front: { ...SHEET.front, rows: rows.map((row) => ({ ...row, shape: SHEET.front.rows[0].shape })) } });
   const order = (sheet: SnapshotSheet, child: string) => sheetItems(sheet, child, 1).filter((i) => i.side === "front").map((i) => `${i.rowId} ×${i.face.bottom}`);

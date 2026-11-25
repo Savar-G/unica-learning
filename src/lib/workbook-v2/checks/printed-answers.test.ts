@@ -31,7 +31,7 @@ describe("a display function that shows another question stops the book", () => 
     ["another top operand", (f) => ({ ...f, top: f.top === "99" ? "98" : String(Number(f.top) + 1) }), PLACE],
     ["a wrong operator", (f) => ({ ...f, sign: "+" }), /question 1 \(\d\d \+\d\): the printed question cannot be read as mul\.column\.$/],
     ["no operator", (f) => ({ ...f, sign: "" }), /question 1 \(\d\d \d\): the printed question cannot be read as mul\.column\.$/],
-    ["a digit too many", (f) => ({ ...f, top: `1${f.top}` }), /the printed question cannot be read as mul\.column\.$/],
+    ["a digit too many", (f) => ({ ...f, top: `1${f.top}` }), /question 1 \(1\d\d ×\d\): the answer is "\d+" by one computation and "\d+" by another\.$/],
     ["a zero in front", (f) => ({ ...f, top: "05" }), /the printed question cannot be read as mul\.column\.$/],
     ["other digits that are not plain digits", (f) => ({ ...f, bottom: "³" }), /the printed question cannot be read as mul\.column\.$/],
   ])("%s", (_name, change, problem) => {
@@ -41,7 +41,7 @@ describe("a display function that shows another question stops the book", () => 
   it("another question with the same product", () => {
     const book = goodBook();
     const item = book.items[0];
-    book.items[0] = { ...item, question: { a: 48, b: 2 }, answer: { kind: "whole-number", value: "96" }, steps: ["96"] };
+    book.items[0] = { ...item, question: { a: 48, b: 2 }, answer: { kind: "whole-number", value: "96" }, steps: [{ text: "96", marks: [] }] };
     const region = questionOf(book.pages[0], item);
     const digits = ["3", "2", "×", "3"];
     region.ink = region.ink.map((ink, i): Ink => (ink.kind === "text" ? { ...ink, text: digits[i] } : ink));
@@ -94,12 +94,18 @@ describe("the two computations of an answer, and the worked steps", () => {
     ["a wrong first computation", (s) => ({ generate: (l, seed) => ({ ...s.generate(l, seed), answer: otherAnswer }) }), "another"],
     ["a wrong second computation", (s) => ({ solveAgain: (rows) => { const r = s.solveAgain(rows); return r && { ...r, answer: otherAnswer }; } }), "another"],
     ["another kind of answer", (s) => ({ solveAgain: (rows) => { const r = s.solveAgain(rows); return r && { ...r, answer: { ...r.answer, kind: "fraction" as "whole-number" } }; } }), "another"],
-    ["worked steps that end in another number", () => ({ steps: () => ["3 × 4 = 12", "12345"] }), "the worked steps"],
+    ["worked steps that end in another number", () => ({ steps: () => ["3 × 4 = 12", "12345"].map((line) => ({ text: line, marks: [] })) }), "the worked steps"],
     ["no worked steps", () => ({ steps: () => [] }), "the worked steps"],
   ])("%s is a problem of every question", (_name, fault, by) => {
     const problems = faulty(fault);
     expect(problems).toHaveLength(16);
     for (const problem of problems) expect(problem).toMatch(new RegExp(`^Sheet "column-multiplication-1", (front|back) side, question \\d \\(\\d\\d ×\\d\\): the answer is "\\d+" by one computation and "\\d*" by ${by}\\.$`));
+  });
+
+  it("a last worked step that draws something is a problem of every question", () => {
+    const problems = faulty((s) => ({ steps: (q) => s.steps(q).map((step, i, all) => (i === all.length - 1 ? { ...step, marks: [{ mark: "write", place: 0, digit: "1" }] } : step)) }));
+    expect(problems).toHaveLength(16);
+    for (const problem of problems) expect(problem).toMatch(/: the last worked step is the answer and must draw nothing\.$/);
   });
 
   it("the second computation never gets the parameters of the question", () => {

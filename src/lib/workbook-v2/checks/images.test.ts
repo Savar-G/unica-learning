@@ -3,9 +3,10 @@ import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 import type { PageModel, RegionRole } from "../contract";
 import { qrSquares } from "../layout/qr";
-import { blankPage, drawPage, paint, paintInk, pagePng, toPng, type Canvas } from "../testing/raster";
+import { blankPage, drawPage, paint, paintInk, pagePng, pngFile, toPng, type Canvas } from "../testing/raster";
 import { goodPages } from "../testing/sample";
 import { checkImages } from "./images";
+import { strayQrTexts } from "./find-qr";
 import { readPageImage } from "./page-image";
 
 const pages = goodPages();
@@ -101,6 +102,22 @@ describe("the QR code of a page image", () => {
     const corner = (c: Canvas, x: number, y: number) => { paint(c, { x, y, w: 14, h: 14 }); paint(c, { x: x + 2, y: y + 2, w: 10, h: 10 }, 255); paint(c, { x: x + 4, y: y + 4, w: 6, h: 6 }); };
     expect(problemsWith(changed((c) => { corner(c, 300, 660); corner(c, 340, 660); corner(c, 300, 690); }))).toEqual([]);
   });
+
+  it("reads stray QR codes when the pixel buffer starts at an unaligned byte offset", () => {
+    const canvas = drawPage(front);
+    paintQr(canvas, "stray-unaligned", 200, 300, 60);
+    for (const offset of [1, 2, 3]) {
+      const padded = new Uint8Array(canvas.grey.length + offset);
+      padded.set(canvas.grey, offset);
+      const view = padded.subarray(offset);
+      expect(view.byteOffset % 4).toBe(offset);
+      const qrBox = { left: Math.floor((qr.rect.x * 150) / 72), top: Math.floor((qr.rect.y * 150) / 72), right: Math.ceil(((qr.rect.x + qr.rect.w) * 150) / 72), bottom: Math.ceil(((qr.rect.y + qr.rect.h) * 150) / 72) };
+      expect(strayQrTexts({ width: canvas.width, height: canvas.height, grey: view }, qrBox)).toEqual(["stray-unaligned"]);
+      expect(strayQrTexts({ width: 10, height: 3, grey: new Uint8Array(30 + offset).fill(255).subarray(offset) }, { left: 0, top: 0, right: 0, bottom: 0 })).toEqual([]);
+    }
+    // A view that ends before the first aligned byte.
+    expect(strayQrTexts({ width: 1, height: 1, grey: new Uint8Array(2).fill(255).subarray(1) }, { left: 0, top: 0, right: 0, bottom: 0 })).toEqual([]);
+  });
 });
 
 describe("ink that the model has and the image does not", () => {
@@ -183,5 +200,28 @@ describe("reading a page image", () => {
       const [r, g, b] = [data[i * 3], data[i * 3 + 1], data[i * 3 + 2]];
       expect(Math.abs(image.grey[i] - (r * 299 + g * 587 + b * 114) / 1000)).toBeLessThanOrEqual(2);
     }
+  });
+
+  /** The lines of a file with one filter for each line, as the PNG standard defines them: the difference from a guess. */
+  const filtered = (bytes: Uint8Array, stride: number, parts: number, filterOf: (y: number) => number): Uint8Array => {
+    const height = bytes.length / stride;
+    const at = (x: number, y: number) => (x < 0 || y < 0 ? 0 : bytes[y * stride + x]);
+    const guess = (filter: number, left: number, above: number, corner: number): number => {
+      const near = [left, above, corner].map((n) => Math.abs(left + above - corner - n));
+      return [0, left, above, Math.floor((left + above) / 2), [left, above, corner][near.indexOf(Math.min(...near))]][filter];
+    };
+    return Uint8Array.from(Array.from({ length: height }, (_, y) => [
+      filterOf(y), ...Array.from({ length: stride }, (_x, x) => at(x, y) - guess(filterOf(y), at(x - parts, y), at(x, y - 1), at(x - parts, y - 1))),
+    ]).flat());
+  };
+  it.each([1, 3, 4].flatMap((parts) => [0, 1, 2, 3, 4].map((filter): [number, number] => [parts, filter])))("%i parts a pixel, filter %i on the first line and on each second one", async (parts, filter) => {
+    const [width, height] = [13, 10];
+    const bytes = Uint8Array.from({ length: width * height * parts }, (_, i) => (parts === 4 && i % 4 === 3 ? 255 : (i * 2654435761) >>> 24));
+    const png = pngFile(width, height, { 1: 0, 3: 2, 4: 6 }[parts] ?? 0, filtered(bytes, width * parts, parts, (y) => (y % 2 === 0 ? filter : 4 - filter)));
+    const other = await sharp(png).removeAlpha().toColourspace("srgb").raw().toBuffer();
+    const image = readPageImage(png);
+    if (typeof image === "string") throw new Error(image);
+    const wanted = Array.from({ length: width * height }, (_, i) => Math.floor((other[3 * i] * 299 + other[3 * i + 1] * 587 + other[3 * i + 2] * 114) / 1000));
+    expect([...image.grey]).toEqual(wanted);
   });
 });
