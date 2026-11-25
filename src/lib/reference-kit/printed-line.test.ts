@@ -174,6 +174,7 @@ describe("findPrintedConflicts", () => {
     for (const [printed, expr] of stops) expect(conflictsOf(printed, expr), `${printed} | ${JSON.stringify(expr)}`).toBe(1);
     expect(conflictsOf("9) 76", arith("div", 9, 76), { form: "bracket" })).toBe(1);
     expect(conflictsOf("2 + 3", null, { form: "vertical", responses: [] })).toBe(1);
+    expect(conflictsOf("2 + 3 =", null, { form: null, responses: [] })).toBe(1);
     expect(conflictsOf("2 + 3", add(3, 2), { form: "vertical" })).toBe(1);
   });
 
@@ -213,7 +214,6 @@ describe("findPrintedConflicts", () => {
     const checkbox = { position: "checkbox" as const, cue: null, answer: null, answer_source: "unchecked" as const };
     expect(conflictsOf("2 × 3 = 6", null, { form: null, responses: [checkbox] })).toBe(0);
     expect(conflictsOf("Read the table aloud.", null, { form: null, responses: [checkbox] })).toBe(0);
-    expect(conflictsOf("2 + 3 =", null, { form: null, responses: [] })).toBe(0);
   });
 
   it("compares the setup steps of a worked example with its parts", () => {

@@ -238,11 +238,10 @@ export function itemLine(item: PageItem, section: PageSection): PrintedLine | nu
   return readAloud ? null : parsePrintedLine(item.printed, item.form);
 }
 
-// A taken line with no expression is a lost question when it asks for something (it is not printed
-// already solved) and the item has an answer place or a vertical or bracket form.
-function isLostQuestion(line: PrintedLine, item: PageItem): boolean {
-  const asks = resultOf(line) === null || exprOfLine(line).kind === "missing";
-  return asks && (item.responses.length > 0 || item.form === "vertical" || item.form === "bracket");
+// A taken line with no expression is a lost question when it asks for something: it is not printed
+// already solved.
+function isLostQuestion(line: PrintedLine): boolean {
+  return resultOf(line) === null || exprOfLine(line).kind === "missing";
 }
 
 function itemConflict(item: PageItem, section: PageSection, path: string): AnswerNote[] {
@@ -252,7 +251,7 @@ function itemConflict(item: PageItem, section: PageSection, path: string): Answe
   if (computed !== null) return [note(path, `page prints "${item.printed}", computed "${computed}"`)];
   const noExpr = item.expr === null || (item.expr.kind === "word" && item.expr.expr === null);
   const wrong = noExpr
-    ? isLostQuestion(line, item)
+    ? isLostQuestion(line)
     : item.expr !== null && compareLineWithExpr(line, item.expr) === "differs";
   return wrong ? [differs(path, item.printed, [item.expr])] : [];
 }
