@@ -747,6 +747,31 @@ describe("formatCompareReportMarkdown", () => {
       { status: "human_checked", edited: true },
     ];
 
+    // A page whose check does not count now: its kept record is the one that a person checked. The
+    // instruction to check it again stands only on machine_read.
+    for (const status of ["machine_read", "agreement_accepted", "double_read", "human_checked"] as const) {
+      const reason = "photo changed after the check" as const;
+      const kept = { ...validKeptChecked[2], source_ref: "sample:M:6a", check_problems: [reason] };
+      const md = formatCompareReportMarkdown(
+        makeReport(
+          [{ ...fullPageFields, source_ref: "sample:M:6a", status, check_problems: [reason] }],
+          [...validKeptChecked, kept],
+        ),
+      );
+      const keptLine =
+        "- sample:M:6a: kept as it is (not in current batch), but the check does not count now (photo changed after the check). Compare the record with the photo, then run reference:check for this page.";
+      expect(md, status).toContain(keptLine);
+      const rest = md.replace(keptLine, "");
+      expect(rest, status).toContain("the check does not count now: photo changed after the check. The file was kept.");
+      expect(rest, status).not.toContain("a person changed the final record");
+      expect(rest, status).not.toContain("`sections[0].scaffolds[]`");
+      for (const phrase of REVIEW_INSTRUCTION_PHRASES) {
+        const onKeptRecord = ["look at the photo", "find the place", "write the value", "write the answer", "mark the page checked", "run reference:check"];
+        if (status === "machine_read" && onKeptRecord.includes(phrase)) expect(rest, phrase).toContain(phrase);
+        else expect(rest, `${status} must not contain "${phrase}"`).not.toContain(phrase);
+      }
+    }
+
     for (const cell of grid) {
       const label = `${cell.status}${cell.edited ? "+edited" : ""}`;
       const md = formatCompareReportMarkdown(

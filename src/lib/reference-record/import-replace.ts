@@ -2,13 +2,9 @@
 // planned row, and when it is not, write the photo (overwrite) and update the row in place.
 // Nothing here deletes a row or an object.
 import type { PlannedPhoto } from "./import-photos";
-import {
-  deepEqualJson,
-  TRANSCRIPT_STATUSES,
-  type ExistingReferenceRow,
-  type ReferenceStore,
-  type TranscriptStatus,
-} from "./import";
+import { deepEqualJson, type ExistingReferenceRow, type ReferenceStore } from "./import";
+import { isPlainObject } from "./read-file";
+import { TRANSCRIPT_STATUSES, type TranscriptStatus } from "./status-file";
 import type { ReferenceRecord } from "./types";
 
 export interface StatusLowered {
@@ -140,37 +136,84 @@ export function checkPathOwnership(
   return { problems, leftoverWaits };
 }
 
+// The text of a page: single_read only says how it was read.
+function withoutSingleRead(transcript: unknown): unknown {
+  return isPlainObject(transcript) ? { ...transcript, single_read: undefined } : transcript;
+}
+
+// A row that keeps its stored photo keeps its text too: the new text may belong to another photo.
+function keepsPhotoOfOtherText(
+  record: ReferenceRecord,
+  prev: ExistingReferenceRow,
+  photo: PlannedPhoto | undefined,
+): boolean {
+  return (
+    photo === undefined &&
+    prev.path !== null &&
+    !deepEqualJson(withoutSingleRead(prev.transcript), withoutSingleRead(record))
+  );
+}
+
+// Without a planned photo, a row with a stored photo may keep or lower its status, never raise it.
+// An unknown stored status has rank -1, so any valid planned status counts as a raise.
+function raisesStatusWithoutPhoto(
+  prev: ExistingReferenceRow,
+  plannedStatus: TranscriptStatus,
+  photo: PlannedPhoto | undefined,
+): boolean {
+  return (
+    photo === undefined &&
+    prev.path !== null &&
+    statusRank(prev.transcript_status) < statusRank(plannedStatus)
+  );
+}
+
 // Decides every existing row of the run and checks which rows use the paths it touches. Reads only.
 export async function planReplaces(args: {
   store: ReferenceStore;
   records: ReferenceRecord[];
   existing: Map<string, ExistingReferenceRow>;
   plannedPhotos: Map<string, PlannedPhoto>;
-  statusByRef: Map<string, TranscriptStatus>;
+  statusByRef: ReadonlyMap<string, TranscriptStatus>;
   storedShaByRef: Map<string, string | null>;
 }): Promise<PathOwnershipCheck & { decisions: Map<string, ReplaceDecision> }> {
   const decisions = new Map<string, ReplaceDecision>();
   const plans: PathPlan[] = [];
+  const textProblems: string[] = [];
   for (const record of args.records) {
     const ref = record.source_ref;
     const photo = args.plannedPhotos.get(ref);
     const prev = args.existing.get(ref);
     let decision: ReplaceDecision | null = null;
     if (prev !== undefined) {
+      const plannedStatus = args.statusByRef.get(ref) ?? "machine_read";
       decision = decideReplace({
         record,
         prev,
-        plannedStatus: args.statusByRef.get(ref) ?? "machine_read",
+        plannedStatus,
         photo,
         storedSha: args.storedShaByRef.get(ref) ?? null,
       });
       decisions.set(ref, decision);
+      if (keepsPhotoOfOtherText(record, prev, photo)) {
+        textProblems.push(
+          `${ref}: the replace would change the text and keep the stored photo, which may not belong to it; give the photo of this page with --photos`,
+        );
+      } else if (raisesStatusWithoutPhoto(prev, plannedStatus, photo)) {
+        const fromLabel = isKnownStatus(prev.transcript_status)
+          ? prev.transcript_status
+          : quoted(prev.transcript_status);
+        textProblems.push(
+          `${ref}: the replace would raise the status (${fromLabel} -> ${plannedStatus}) and keep the stored photo, which may not belong to it; give the photo of this page with --photos`,
+        );
+      }
     }
     plans.push({ ref, plannedPhotoPath: photo?.storagePath ?? null, decision });
   }
   const paths = pathsToCheck(plans);
   const refsByPath = paths.length > 0 ? await args.store.refsByPath(paths) : new Map();
-  return { decisions, ...checkPathOwnership(plans, refsByPath) };
+  const ownership = checkPathOwnership(plans, refsByPath);
+  return { ...ownership, decisions, problems: [...textProblems, ...ownership.problems] };
 }
 
 export type ReplaceOutcome =

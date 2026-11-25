@@ -53,15 +53,16 @@ describe("a computer that Typst is not pinned for", () => {
   });
 });
 
-describe.skipIf(skipTypstTests())("with the real Typst", () => {
+describe.skipIf(skipTypstTests()).concurrent("with the real Typst", () => {
   let folder = "";
   const assets = (): RenderAssets => testAssets();
   const inFolder = (name: string) => join(folder, name);
   beforeAll(() => { folder = mkdtempSync(join(tmpdir(), "workbook-v2-test-")); });
   afterAll(() => rmSync(folder, { recursive: true, force: true }));
 
+  let templates = 0;
   const template = (name: string, change: (source: string) => string): RenderAssets => {
-    const file = inFolder(name);
+    const file = inFolder(`${templates++}-${name}`);
     const source = readFileSync(assets().template, "utf8");
     const changed = change(source);
     expect(changed).not.toBe(source);
@@ -70,10 +71,13 @@ describe.skipIf(skipTypstTests())("with the real Typst", () => {
   };
   const renderWith = async (a: RenderAssets, pages: PageModel[] = goodPages(), pins = PINS) => (await openRenderer(a, pins)).render(pages);
 
+  /** The example pages and their drawing, made one time for all the tests that only look at it. */
+  let drawn: ReturnType<typeof renderWith> | undefined;
+  const example = async () => ({ pages: goodPages(), out: await (drawn ??= renderWith(assets())) });
+
   describe("the pages of the example sheet", () => {
     it("come out as one PDF and one image a page, with every rectangle where the model puts it", async () => {
-      const pages = goodPages();
-      const out = await renderWith(assets(), pages);
+      const { pages, out } = await example();
       expect(Buffer.from(out.pdf).subarray(0, 5).toString()).toBe("%PDF-");
       expect(out.images).toHaveLength(2);
       expect(out.positions).toHaveLength(pages[0].regions.length + pages[1].regions.length);
@@ -83,8 +87,7 @@ describe.skipIf(skipTypstTests())("with the real Typst", () => {
     });
 
     it("are black on white, at 150 pixels an inch, and each QR code reads as its own page's text", async () => {
-      const pages = goodPages();
-      const out = await renderWith(assets(), pages);
+      const { pages, out } = await example();
       const images = await Promise.all(out.images.map(readImage));
       expect(images.map((i) => [i.width, i.height])).toEqual([[1275, 1650], [1275, 1650]]);
       expect(images.map(isGrey)).toEqual([true, true]);
@@ -92,8 +95,7 @@ describe.skipIf(skipTypstTests())("with the real Typst", () => {
     });
 
     it("have ink on the lines of each answer area and scan mark, and none inside an answer area, a reach, a work area or the edges", async () => {
-      const pages = goodPages();
-      const out = await renderWith(assets(), pages);
+      const { pages, out } = await example();
       for (const [i, page] of pages.entries()) {
         const image = await readImage(out.images[i]);
         const spine = page.side === "front" ? { x: 0, y: 0, w: 89, h: 792 } : { x: 523, y: 0, w: 89, h: 792 };
@@ -141,7 +143,7 @@ describe.skipIf(skipTypstTests())("with the real Typst", () => {
       const pages = goodPages();
       const [plain, other] = [await openRenderer(assets()), await openRenderer(a)];
       change();
-      const [one, two] = [await plain.render(pages), await other.render(pages)];
+      const [{ out: one }, two] = [await example(), await other.render(pages)];
       expect(other.identity).toEqual(plain.identity);
       expect(Buffer.compare(one.pdf, two.pdf)).toBe(0);
       expect(one.images.map((image, i) => Buffer.compare(image, two.images[i]))).toEqual([0, 0]);
@@ -247,7 +249,7 @@ describe.skipIf(skipTypstTests())("with the real Typst", () => {
     ["makes a rectangle wider", (s) => s.replace("width: points(rect.w)", "width: points(rect.w + 1)")],
     ["skips a rectangle", (s) => s.replace("for region in sheet.regions", "for region in sheet.regions.slice(1)")],
   ])("a drawing file that %s does not match the model", async (_name, change) => {
-    const pages = goodPages();
+    const pages = goodPages().slice(0, 1);
     const out = await renderWith(template("moved.typ", change), pages);
     expect(checkPositions(pages, out.positions)).not.toEqual([]);
   });
@@ -258,23 +260,23 @@ describe.skipIf(skipTypstTests())("with the real Typst", () => {
     ["prints text of its own", (s) => s.replace("report(region.id)", "report(region.id)\n      place(origin)[more]")],
     ["puts text in another place", (s) => s.replace("dy: points(rect.y - from.y)", "dy: points(rect.y - from.y + 1)")],
   ])("a drawing file that %s does not match the model", async (_name, change) => {
-    const pages = goodPages();
+    const pages = goodPages().slice(0, 1);
     const out = await renderWith(template("text.typ", change), pages);
     expect(checkTexts(pages, out.texts)).not.toEqual([]);
   });
 
   it("puts each pinned font into the PDF, and no other", async () => {
-    const text = Buffer.from((await renderWith(assets())).pdf).toString("latin1");
+    const text = Buffer.from((await example()).out.pdf).toString("latin1");
     expect([...new Set([...text.matchAll(/\/[A-Z]{6}\+([\w-]+)/g)].map((m) => `${m[1]}.ttf`))].sort()).toEqual(Object.keys(PINS.fonts).sort());
   });
 
   it("writes nothing about the child or the time into the PDF", async () => {
-    const text = Buffer.from((await renderWith(assets())).pdf).toString("latin1");
+    const text = Buffer.from((await example()).out.pdf).toString("latin1");
     expect(text).not.toMatch(/example-child|CreationDate|ModDate|20\d\d-\d\d-\d\dT/);
   });
 
-  describe("environment isolation, read-only bundles and temp cleanup", () => {
-    // A temp folder of these tests alone: other test files draw at the same time.
+  // One at a time: they change the environment and list the temp folder, which is of these tests alone.
+  describe.sequential("environment isolation, read-only bundles and temp cleanup", () => {
     const usual = process.env.TMPDIR;
     beforeAll(() => {
       process.env.TMPDIR = inFolder("private-temp");

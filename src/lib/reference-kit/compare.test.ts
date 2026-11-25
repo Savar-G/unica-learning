@@ -4,6 +4,7 @@ import fc from "fast-check";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import {
+  CHECK_PROBLEM_REASONS,
   EXPR_KINDS,
   NOT_STATED,
   recordPathResolves,
@@ -1892,6 +1893,12 @@ describe("90% reader agreement rule", () => {
         at95: { editedByPerson: true },
         at100: { editedByPerson: true },
       },
+      ...CHECK_PROBLEM_REASONS.map((reason) => ({
+        reason,
+        label: reason,
+        at95: { checkProblems: [reason] },
+        at100: { checkProblems: [reason] },
+      })),
       {
         reason: "missing reader",
         label: "missing reader B",

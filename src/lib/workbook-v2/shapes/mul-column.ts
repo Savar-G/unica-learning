@@ -95,6 +95,7 @@ function readLimits(raw: unknown): { ok: true; limits: MulColumnLimits } | { ok:
 
 export const mulColumn: Shape<MulColumnLimits, MulColumnQuestion> = {
   id: "mul.column",
+  version: 1,
   answerKind: "whole-number",
   readLimits,
   generate(limits, seed) {

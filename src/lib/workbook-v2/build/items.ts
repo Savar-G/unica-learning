@@ -11,19 +11,22 @@ const SIDES: readonly Side[] = ["front", "back"];
  */
 const TRIES = 500;
 
+/** The seed of one place of a row, and of each next try for that place. */
+export const itemSeed = (sheetSeed: string, side: Side, rowId: string, place: number, attempt: number): string => seedFrom(sheetSeed, side, rowId, place, attempt);
+
 type RowItem = Omit<BookItem, "number" | "id">;
 
 function rowItems(sheetId: string, side: Side, row: SnapshotRow, seed: string, used: Set<string>): RowItem[] {
   return Array.from({ length: row.items }, (_, place) => {
-    let picked = row.shape.generate(row.limits, seedFrom(seed, side, row.id, place, 0));
+    let picked = row.shape.generate(row.limits, itemSeed(seed, side, row.id, place, 0));
     const key = () => `${row.shape.id} ${canonicalJson(picked.question)}`;
     for (let attempt = 1; used.has(key()) && attempt < TRIES; attempt++) {
-      picked = row.shape.generate(row.limits, seedFrom(seed, side, row.id, place, attempt));
+      picked = row.shape.generate(row.limits, itemSeed(seed, side, row.id, place, attempt));
     }
     used.add(key());
     const { question, answer } = picked;
     return {
-      sheetId, side, rowId: row.id, shape: row.shape.id, question, answer,
+      sheetId, side, rowId: row.id, shape: row.shape.id, shapeVersion: row.shape.version, question, answer,
       face: row.shape.face(question), steps: row.shape.steps(question), difficulty: row.shape.difficulty(question),
     };
   });

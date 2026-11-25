@@ -76,7 +76,7 @@ export function checkFolders({ repoRoot, recordsDir, methodsDir }: Folders): str
 
 export interface LevelRecords {
   records: ReferenceRecord[];
-  statusByRef: Map<string, TranscriptStatus>;
+  statusByRef: ReadonlyMap<string, TranscriptStatus>;
 }
 
 // The final folder of the kit, where the file name of a record is made from its source_ref.

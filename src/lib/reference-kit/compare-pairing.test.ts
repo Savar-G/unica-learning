@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ReferenceRecord } from "@/lib/reference-record";
-import { pickPageWinners, type PairedPage } from "./compare-pairing";
+import { pairDigest, pickPageWinners, type PairedPage } from "./compare-pairing";
 
 function record(sourceRef: string): ReferenceRecord {
   return {
@@ -40,5 +40,19 @@ describe("pickPageWinners", () => {
     const { winners, conflicts } = pickPageWinners([crossed, first]);
     expect(winners).toEqual([first]);
     expect(conflicts.map((c) => c.original_name)).toEqual(["02.jpg"]);
+  });
+
+  it("returns reader A's photo digest for pairDigest when A has a record, never falling back to reader B's on mismatch", () => {
+    const mismatchBoth = pair("01", "sample:M:1a", "sample:M:1a", true);
+    expect(pairDigest(mismatchBoth)).toBe("a".repeat(64));
+
+    const mismatchOnlyBHash: PairedPage = {
+      ...mismatchBoth,
+      digestMismatch: { a: null, b: "b".repeat(64) },
+    };
+    expect(pairDigest(mismatchOnlyBHash)).toBeNull();
+
+    const onlyB = pair("03", null, "sample:M:1a", false);
+    expect(pairDigest(onlyB)).toBe("03".padEnd(64, "0"));
   });
 });

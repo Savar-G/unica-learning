@@ -6,6 +6,8 @@ export interface Item<Q> { question: Q; answer: Answer }
 
 export interface Shape<L = unknown, Q = unknown> {
   id: string;
+  /** Whole number starting at 1. Bump whenever output changes. */
+  version: number;
   answerKind: AnswerKind;
   /** The limits of a bank row, or the first thing wrong with them in plain words. */
   readLimits(raw: unknown): { ok: true; limits: L } | { ok: false; problem: string };

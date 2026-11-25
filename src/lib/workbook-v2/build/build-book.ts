@@ -2,7 +2,7 @@
 // renderer's pinned program and fonts: no network, database, clock, random source or AI. The renderer is the edge: only
 // it touches files and starts a program (render/typst.ts). Every check runs before anything is returned.
 import { plainCopy } from "../bank/plain";
-import { validateSnapshot } from "../bank/snapshot";
+import { validateSnapshot, type TemplateLibrary } from "../bank/snapshot";
 import { checkImages } from "../checks/images";
 import { checkPage } from "../checks/page-rules";
 import { checkPositions, checkTexts } from "../checks/positions";
@@ -11,6 +11,7 @@ import { checkRendering } from "../checks/rendering";
 import { ENGINE_VERSION, type BookItem, type PageModel, type Position } from "../contract";
 import { canonicalJson, sha256 } from "../hash";
 import { buildPages } from "../layout/build-pages";
+import { TEMPLATES } from "../layout/templates";
 import { RenderError, type Renderer, type Rendering } from "../renderer";
 import { SHAPES, type ShapeLibrary } from "../shapes";
 import { readBookRequest } from "./book-input";
@@ -51,22 +52,41 @@ async function draw(renderer: Renderer, pages: readonly PageModel[]): Promise<Re
   }
 }
 
-export async function buildBook(input: BuildInput, renderer: Renderer, shapes: ShapeLibrary = SHAPES): Promise<BuildResult> {
-  const bank = validateSnapshot(input.snapshot, shapes);
-  if (!bank.ok) return failed(bank.problems);
+/** What a book prints, before a typesetter draws it. */
+interface BookPlan {
+  ok: true;
+  bookId: string;
+  snapshot: { id: string; hash: string };
+  inputHash: string;
+  items: BookItem[];
+  pages: PageModel[];
+}
+
+/** The questions and the page models of a book, with every check that needs no drawing. */
+export function planBook(input: BuildInput, shapes: ShapeLibrary = SHAPES, templates: TemplateLibrary = TEMPLATES): BookPlan | { ok: false; problems: string[] } {
+  const stop = (problems: string[]) => ({ ok: false as const, problems });
+  const bank = validateSnapshot(input.snapshot, shapes, templates);
+  if (!bank.ok) return bank;
   const request = plainCopy("The book", input.book);
-  if (!request.ok) return failed(request.problems);
+  if (!request.ok) return request;
   const book = readBookRequest(request.value, bank.snapshot);
-  if (Array.isArray(book)) return failed(book);
+  if (Array.isArray(book)) return stop(book);
 
   const sheets = book.sheets.map((s) => ({ ...s, items: sheetItems(s.sheet, book.childId, s.attempt), levelName: bank.snapshot.level.name }));
   const items = sheets.flatMap((s) => s.items);
   const layout = buildPages(sheets);
-  if (!layout.ok) return failed(layout.problems);
+  if (!layout.ok) return layout;
   const { pages } = layout;
-  const pageProblems = [...checkPrintedAnswers(pages, items, shapes), ...pages.flatMap((page) => checkPage(page, items))];
-  if (pageProblems.length > 0) return failed(pageProblems);
+  const problems = [...checkPrintedAnswers(pages, items, shapes), ...pages.flatMap((page) => checkPage(page, items))];
+  if (problems.length > 0) return stop(problems);
+  const inputHash = sha256(canonicalJson({ snapshot: bank.hash, book: request.value }));
+  return { ok: true, bookId: book.bookId, snapshot: { id: bank.snapshot.id, hash: bank.hash }, inputHash, items, pages };
+}
 
+export async function buildBook(input: BuildInput, renderer: Renderer, shapes: ShapeLibrary = SHAPES): Promise<BuildResult> {
+  const plan = planBook(input, shapes);
+  if (!plan.ok) return failed(plan.problems);
+  const { pages, items } = plan;
   const drawn = await draw(renderer, pages);
   if (typeof drawn === "string") return failed([drawn]);
   const missing = checkRendering(pages, drawn);
@@ -77,11 +97,11 @@ export async function buildBook(input: BuildInput, renderer: Renderer, shapes: S
   return {
     status: "built",
     record: {
-      bookId: book.bookId,
+      bookId: plan.bookId,
       engine: ENGINE_VERSION,
       ...renderer.identity,
-      snapshot: { id: bank.snapshot.id, hash: bank.hash },
-      inputHash: sha256(canonicalJson({ snapshot: bank.hash, book: request.value })),
+      snapshot: plan.snapshot,
+      inputHash: plan.inputHash,
     },
     pdf: drawn.pdf,
     pages: pages.map((model, i) => ({ model, image: drawn.images[i] })),
