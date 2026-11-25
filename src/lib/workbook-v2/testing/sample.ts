@@ -1,10 +1,12 @@
 // The example book of the fixtures, for tests.
 import { validateSnapshot } from "../bank/snapshot";
-import { planBook } from "../build/build-book";
+import { planBook, type BuildInput } from "../build/build-book";
 import { sheetItems } from "../build/items";
 import type { BookItem, ColumnFace, Face, PageModel, Region } from "../contract";
 import rawBook from "../fixtures/book.json";
+import divisionRequest from "../fixtures/book-division.json";
 import factsRequest from "../fixtures/book-facts.json";
+import divisionSnapshot from "../fixtures/snapshot-division.json";
 import factsSnapshot from "../fixtures/snapshot-facts.json";
 import rawSnapshot from "../fixtures/snapshot.json";
 import { buildPages } from "../layout/build-pages";
@@ -25,12 +27,16 @@ export function bookOf({ shapes = SHAPES, childId = rawBook.childId }: { shapes?
   return { pages: built.pages, items };
 }
 
-/** The example book of facts, equations with a blank inside and sequences. */
-export function factsBook(): GoodBook {
-  const plan = planBook({ snapshot: factsSnapshot, book: factsRequest });
+function plannedBook(input: BuildInput): GoodBook {
+  const plan = planBook(input);
   if (!plan.ok) throw new Error(plan.problems.join("\n"));
   return { pages: plan.pages, items: plan.items };
 }
+
+/** The example book of facts, equations with a blank inside and sequences. */
+export const factsBook = (): GoodBook => plannedBook({ snapshot: factsSnapshot, book: factsRequest });
+/** The example book of divisions, in lines and in brackets. */
+export const divisionBook = (): GoodBook => plannedBook({ snapshot: divisionSnapshot, book: divisionRequest });
 
 export const goodBook = (): GoodBook => bookOf();
 export const goodPages = (): PageModel[] => goodBook().pages;

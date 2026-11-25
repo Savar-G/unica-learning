@@ -2,7 +2,7 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { PRINT_RULES, type PageModel, type Rect, type Region } from "../contract";
 import { drawPage as draw, paint, paintSmooth, toColourPng, toPng, type Canvas } from "../testing/raster";
-import { factsBook, goodPages } from "../testing/sample";
+import { divisionBook, factsBook, goodPages } from "../testing/sample";
 import { flatGrey, inkOutside, strayInk } from "./blank";
 import { checkImages } from "./images";
 import { readPageImage, type PageImage } from "./page-image";
@@ -10,6 +10,7 @@ import { readPageImage, type PageImage } from "./page-image";
 const pages = goodPages();
 const [front, back] = pages;
 const facts = factsBook().pages;
+const divisions = divisionBook().pages;
 /** The drawing of a page, made one time. Each call gives a copy that a test can paint on. */
 const drawn = new Map<PageModel, Canvas>();
 const drawPage = (page: PageModel): Canvas => {
@@ -33,7 +34,7 @@ const square = (x: number, y: number, side = 1): Rect => ({ x, y, w: side, h: si
 const middle = ({ x, y, w, h }: Rect): Rect => square(x + w / 2, y + h / 2);
 
 it("the example pages have no ink but that of their models", () => {
-  for (const page of [...pages, ...facts]) expect(strayInk(page, imageOf(drawPage(page)))).toEqual([]);
+  for (const page of [...pages, ...facts, ...divisions]) expect(strayInk(page, imageOf(drawPage(page)))).toEqual([]);
 });
 
 describe("a black square of one point", () => {
@@ -67,6 +68,11 @@ describe("a black square of one point", () => {
     ["in an answer area in a line", facts[0], middle(named(facts[0], "answer-7").rect), '"answer-7"'],
     ["in an answer area of a ladder", facts[8], middle(named(facts[8], "answer-1-blank-2").rect), '"answer-1-blank-2"'],
     ["in the reach of a ladder", facts[8], square(named(facts[8], "reach-1-blank-2").rect.x + 1, named(facts[8], "reach-1-blank-2").rect.y + 1), '"reach-1-blank-2"'],
+    ["in the area of a quotient", divisions[6], middle(named(divisions[6], "answer-1-quotient").rect), '"answer-1-quotient"'],
+    ["in the area of a remainder", divisions[6], middle(named(divisions[6], "answer-2-remainder").rect), '"answer-2-remainder"'],
+    ["in the reach of a quotient", divisions[6], square(named(divisions[6], "reach-1-quotient").rect.x + 2, named(divisions[6], "reach-1-quotient").rect.y + 2), '"reach-1-quotient"'],
+    ["in the work area of a bracket", divisions[13], middle(named(divisions[13], "work-2").rect), '"work-2"'],
+    ["at the top of the work area of a bracket", divisions[13], square(named(divisions[13], "work-3").rect.x + 90, named(divisions[13], "work-3").rect.y), '"work-3"'],
   ])("%s is found", (_name, page, rect, place) => {
     // A pixel on an edge has its middle on one side of it, so the square can be in the place beside it too.
     const places = placesWith(page, rect);
@@ -118,9 +124,12 @@ it("a border that is thicker, or a text that leaves its place, is found", () => 
   expect(w).toBe(72);
 });
 
-it("a text over an answer area is found, also when the model has the text there", () => {
-  const page: PageModel = { ...front, regions: front.regions.map((r) => (r.id.endsWith("/label-1") ? { ...r, ink: r.ink.map((i) => ({ ...i, rect: named(front, "answer-1").rect })) } : r)) };
-  expect(strayInk(page, imageOf(drawPage(page))).map((s) => s.place)).toEqual(['"answer-1"']);
+it.each<[string, PageModel, string]>([["an answer area", front, "answer-1"], ["a reach", front, "reach-1"], ["a work area", front, "work-1"], ["the box of a QR code", front, "qr"], ["the area of a remainder", divisions[6], "answer-1-remainder"], ["the work area of a bracket", divisions[6], "work-1"]])("a text over %s is found, also when the model has the text there", (_name, good, zone) => {
+  // The text is at the left end of the zone, 8 points high in its middle, and inside it.
+  const { rect } = named(good, zone);
+  const over = { ...rect, x: rect.x + 4, w: 12 };
+  const page: PageModel = { ...good, regions: good.regions.map((r) => (r.id.endsWith("/label-1") ? { ...r, ink: r.ink.map((i) => ({ ...i, rect: over })) } : r)) };
+  expect(strayInk(page, imageOf(draw(page))).map((s) => s.place)).toContain(`"${zone}"`);
 });
 
 describe("ink in more than one place", () => {

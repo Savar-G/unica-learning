@@ -4,10 +4,11 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PageModel, Rect } from "../contract";
 import addSubSnapshot from "../fixtures/snapshot-add-sub.json";
+import divisionSnapshot from "../fixtures/snapshot-division.json";
 import factsSnapshot from "../fixtures/snapshot-facts.json";
 import wideSnapshot from "../fixtures/snapshot-4-digits.json";
 import rawSnapshot from "../fixtures/snapshot.json";
-import { TEMPLATES, type ColumnPlace, type PageTemplate, type TokenPlace } from "../layout/templates";
+import { TEMPLATES, type ItemPlace, type PageTemplate } from "../layout/templates";
 import { RenderError, type Renderer } from "../renderer";
 import { SHAPES, shapeLibrary, type Shape } from "../shapes";
 import { fakeRenderer } from "../testing/fake-renderer";
@@ -41,7 +42,7 @@ const FRONT = 'Sheet "column-multiplication-1", front side, row "no-carry"';
 const BACK_ROW = rawSnapshot.sheets[0].back.rows[0].id;
 
 /** A copy of a template in which the places of some sides are changed. */
-function templateWith(id: string, change: (place: ColumnPlace | TokenPlace, index: number, side: "front" | "back") => unknown): ReadonlyMap<string, PageTemplate> {
+function templateWith(id: string, change: (place: ItemPlace, index: number, side: "front" | "back") => unknown): ReadonlyMap<string, PageTemplate> {
   const template = structuredClone(SMALL.get(id));
   if (!template) throw new Error("no template");
   for (const side of ["front", "back"] as const) template.sides[side].places.forEach((place, i) => change(place, i, side));
@@ -260,7 +261,7 @@ describe.skipIf(skipTypstTests())("with the real Typst", () => {
   /** A level with a side of each template, with one row on each side. The sequences have few forms. */
   function allTemplates() {
     const [times, , groups, missing, long] = factsSnapshot.sheets;
-    const pairs = [[rawSnapshot.sheets[0].front, wideSnapshot.sheets[0].front], [times.front, groups.front], [groups.back, missing.back], [long.front, addSubSnapshot.sheets[1].front]];
+    const pairs = [[rawSnapshot.sheets[0].front, wideSnapshot.sheets[0].front], [times.front, groups.front], [groups.back, missing.back], [long.front, addSubSnapshot.sheets[1].front], ...[1, 3, 5].map((i) => [divisionSnapshot.sheets[i].front, divisionSnapshot.sheets[i + 1].front])];
     const sheets = pairs.map((pair, i) => {
       const [front, back] = structuredClone(pair).map((side, s) => ({ ...side, rows: side.rows.slice(0, 1).map((row) => ({ ...row, id: `row-${s}`, items: Math.min(row.items, 2), limits: row.shape === "count.skip" ? { ...row.limits, blanks: { min: 1, max: 1 }, places: { min: 3, max: 3 } } : row.shape === "add.repeated" ? { ...row.limits, count: { min: 5, max: 5 } } : row.limits })) }));
       return { id: `sheet-${i}`, firstPage: 2 * i + 1, front, back };
@@ -268,17 +269,25 @@ describe.skipIf(skipTypstTests())("with the real Typst", () => {
     return { ...rawSnapshot, topics: [{ ...rawSnapshot.topics[0], sheets: sheets.map((s) => s.id) }], sheets };
   }
 
-  it("a level with the seven templates of the example levels has no problem", async () => {
+  it("a level with the thirteen templates of the example levels has no problem", async () => {
     const snapshot = allTemplates();
-    expect(new Set(snapshot.sheets.flatMap((s) => [s.front.template, s.back.template])).size).toBe(7);
+    expect(new Set(snapshot.sheets.flatMap((s) => [s.front.template, s.back.template])).size).toBe(13);
     const { problems, checked } = await checkBank(snapshot, await typst(), FEW);
     expect(problems).toEqual([]);
-    expect(checked).toMatchObject({ sheets: 4, rows: 8, questions: expect.any(Number) });
+    expect(checked).toMatchObject({ sheets: 7, rows: 14, questions: expect.any(Number) });
   });
 
   it("a text that is too wide is found: an instruction, a title, and a number that no seed prints but the limits admit", async () => {
-    // "10" fits a cell of 20 points and "20" does not.
-    const templates = templateWith("facts-2x10", (p) => { if ("forms" in p) for (const form of p.forms) for (const cell of form) if (cell.text && cell.text.w === 33) cell.text = { ...cell.text, w: 20 }; });
+    // "10" fits a cell of 20 points and "20" does not. The cells stay side by side, up to the area.
+    const templates = templateWith("facts-2x10", (p) => {
+      if (!("forms" in p)) return;
+      let { x } = p.forms[0].at(-1)?.area?.reach ?? { x: 0 };
+      for (const cell of p.forms[0].slice(0, -1).reverse()) {
+        const w = cell.text && cell.text.w > 30 ? 20 : cell.text?.w ?? 0;
+        x -= w;
+        if (cell.text) cell.text = { ...cell.text, x, w };
+      }
+    });
     const snapshot = snapshotWith((s) => {
       const { front, back } = s.sheets[0];
       Object.assign(front, { template: "facts-2x10", rows: [{ id: "facts", shape: "fact.add", items: 1, limits: { tables: [10, 20], second: { min: 0, max: 0 }, result: { min: 0, max: 20 }, order: "mixed" } }] });

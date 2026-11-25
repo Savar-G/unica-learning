@@ -2,15 +2,18 @@
 // and no shape: it parses each step with the closed clause grammar and compares marks, clauses, carries and the answer.
 // When the printed rows are a column, it also works on the paper: it starts from the two rows, goes column by column from
 // the ones, and each step must say exactly what its column shows then.
-import { STEP_MARKS, type Answer, type Step, type StepMark } from "../contract";
+import type { Answer, Step, StepMark } from "../contract";
 import { canonicalJson } from "../hash";
 import { hasNames, type Rows } from "./shape-registration";
-import { clauseOf, parseStep, UNITS, type ParsedStep } from "./steps-evaluator";
+import { clauseOf, parseSteps, UNITS, type ParsedStep } from "./steps-evaluator";
 
 type WrittenMark = Extract<StepMark, { mark: "write" | "carry" }>;
 
+/** The marks of columns. A division has its own (division-steps.ts), and a column holds none of them. */
+const COLUMN_MARKS: readonly StepMark["mark"][] = ["write", "carry", "cross-out", "borrow"];
+
 function isMark(mark: StepMark): boolean {
-  if (!STEP_MARKS.includes(mark.mark) || !Number.isSafeInteger(mark.place) || mark.place < 0 || typeof mark.digit !== "string") return false;
+  if (!COLUMN_MARKS.includes(mark.mark) || !Number.isSafeInteger(mark.place) || mark.place < 0 || typeof mark.digit !== "string") return false;
   if (mark.mark === "write" || mark.mark === "carry") return hasNames(mark, ["mark", "place", "digit"]) && /^\d$/.test(mark.digit);
   return hasNames(mark, ["mark", "row", "place", "digit"]) && "row" in mark && mark.row === "top" && /^(\d|1[0-8])$/.test(mark.digit);
 }
@@ -165,16 +168,15 @@ function stepProblem({ step, clauses }: Working, index: number, isLast: boolean,
 
 /**
  * What is wrong with the steps of a question that is not worked in columns, or null: each line before the answer is one
- * true equation, nothing is drawn, and the lines come to the value of each part.
+ * true equation, nothing is drawn, and the lines come to the value of each part. `read` are the steps before the answer.
  */
-export function linesProblem(steps: readonly Step[], { parts }: Answer): string | null {
+export function linesProblem(steps: readonly Step[], { parts }: Answer, read?: readonly ParsedStep[]): string | null {
   const wrong = steps.find((s) => !hasNames(s, ["text", "marks"]) || !Array.isArray(s.marks) || s.marks.length > 0);
   if (wrong) return `the step ${JSON.stringify(wrong)} is not a text that draws nothing`;
   const results = new Set<string>();
-  for (const { text } of steps.slice(0, -1)) {
-    const { clauses, answerOnly, problem } = parseStep(text);
+  for (const [i, { clauses, answerOnly, problem }] of (read ?? parseSteps(steps)).entries()) {
     const [equation, ...more] = clauses;
-    if (problem || answerOnly || equation?.kind !== "equation" || equation.value === null || more.length > 0) return `the step "${text}" is not one equation with a whole number`;
+    if (problem || answerOnly || equation?.kind !== "equation" || equation.value === null || more.length > 0) return `the step "${steps[i].text}" is not one equation with a whole number`;
     results.add(String(equation.value));
   }
   const missing = parts.find((p) => !results.has(p.value));
@@ -183,9 +185,9 @@ export function linesProblem(steps: readonly Step[], { parts }: Answer): string 
 
 /**
  * What is wrong with the marks and clauses of the steps of one question that is worked in columns, or null. `rows` are
- * the printed rows of a column face, and null for a question that prints no column.
+ * the printed rows of a column face, and null for a question that prints no column. `read` are the steps before the answer.
  */
-export function marksProblem(steps: readonly Step[], answer: string, rows: Rows | null): string | null {
+export function marksProblem(steps: readonly Step[], answer: string, rows: Rows | null, read?: readonly ParsedStep[]): string | null {
   for (const step of steps) {
     if (!hasNames(step, ["text", "marks"]) || !Array.isArray(step.marks)) return `the step ${JSON.stringify(step)} is not a text with marks`;
     if (!step.marks.every(isMark)) return `the step "${step.text}" holds a mark that is not one`;
@@ -201,10 +203,11 @@ export function marksProblem(steps: readonly Step[], answer: string, rows: Rows 
   if (far) return `the steps write the place ${far.place} and the answer is "${answer}"`;
   if (digitsOf(writes) !== answer) return `the steps write "${digitsOf(writes)}" and not the answer "${answer}"`;
 
-  const working = steps.slice(0, -1).map((step): Working => ({ step, ...parseStep(step.text) }));
-  for (const { step, problem, answerOnly } of working) {
+  const working = (read ?? parseSteps(steps)).map((parsed, i): Working => ({ step: steps[i], ...parsed }));
+  for (const { step, problem, answerOnly, dividing } of working) {
     if (problem) return `the step "${step.text}": ${problem}`;
     if (answerOnly) return `the step "${step.text}" has no equation`;
+    if (dividing) return `the step "${step.text}" divides and the printed rows are no division`;
   }
   const paper = rows && paperOf(rows);
   if (rows && !paper) return `the printed rows ${JSON.stringify(rows)} are no column`;

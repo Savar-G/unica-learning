@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, constants, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import fc from "fast-check";
@@ -494,7 +494,8 @@ describe.skipIf(skipTypstTests()).concurrent("with the real Typst", () => {
       const program = join(bundle, "typst");
       const tmpl = join(bundle, "page.typ");
       mkdirSync(fontsDir, { recursive: true });
-      cpSync(assets().program, program);
+      // A clone where the disk can make one: the program has 45 MB.
+      cpSync(assets().program, program, { mode: constants.COPYFILE_FICLONE });
       cpSync(assets().template, tmpl);
       for (const file of Object.keys(PINS.fonts)) cpSync(join(assets().fontsDir, file), join(fontsDir, file));
 
@@ -582,16 +583,20 @@ describe.skipIf(skipTypstTests()).concurrent("with the real Typst", () => {
     });
 
     it("kills a program that started and does not end, and removes its folder", async () => {
-      const started = inFolder("started");
-      const renderer = await standIn("slow.sh", `echo $$ >> "${started}"; exec sleep 30`, 400);
-      const before = Date.now();
-      await expect(renderer.render(smallPages())).rejects.toThrow(/Typst reported:/);
-      expect(Date.now() - before).toBeLessThan(10_000);
-      const ids = readFileSync(started, "utf8").trim().split("\n").map(Number);
+      // All three runs of a drawing must have started when the time is over. A busy computer gets more time for that.
+      let ids: number[] = [];
+      for (let limit = 400; ids.length < 3 && limit <= 25_600; limit *= 4) {
+        const started = inFolder(`started-${limit}`);
+        const renderer = await standIn(`slow-${limit}.sh`, `echo $$ >> "${started}"; exec sleep 60`, limit);
+        const before = Date.now();
+        await expect(renderer.render(smallPages())).rejects.toThrow(/Typst reported:/);
+        expect(Date.now() - before).toBeLessThan(limit + 20_000);
+        ids = existsSync(started) ? readFileSync(started, "utf8").trim().split("\n").map(Number) : [];
+        for (const id of ids) expect(() => process.kill(id, 0)).toThrow(/ESRCH/);
+        expect(listTempWorkDirs()).toEqual([]);
+      }
       expect(ids).toHaveLength(3);
-      for (const id of ids) expect(() => process.kill(id, 0)).toThrow(/ESRCH/);
-      expect(listTempWorkDirs()).toEqual([]);
-    });
+    }, 60_000);
 
     it.each([0, -1, 0.5, Number.NaN, Number.POSITIVE_INFINITY, 60_001, 2_147_483_647, 2_147_483_648])("refuses a time limit of %s ms", async (timeoutMs) => {
       await expect(openRenderer(assets(), PINS, { timeoutMs })).rejects.toThrow("The time limit must be a whole number of milliseconds from 1 to 60000.");

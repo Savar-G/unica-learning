@@ -5,7 +5,7 @@ import addSubBook from "../fixtures/book-add-sub.json";
 import addSubSnapshot from "../fixtures/snapshot-add-sub.json";
 import { checkPlaces } from "../testing/drawn-checks";
 import { reportedTexts } from "../testing/fake-typesetter";
-import { factsBook, goodBook } from "../testing/sample";
+import { divisionBook, factsBook, goodBook } from "../testing/sample";
 
 const book = goodBook();
 const first = book.items[0].face;
@@ -80,5 +80,60 @@ describe("a digit in another place stops the book", () => {
     const texts = reportedTexts(book.pages);
     texts.splice(START + 3, 1);
     expect(checkPlaces(book.pages, book.items, texts)).toContain("Page 381: question 1 must have its 4 digits and signs in 2 lines, with each line level.");
+  });
+});
+
+describe("a bracket", () => {
+  const division = divisionBook();
+  // Page 7 has brackets with a remainder: R, the number outside, the sign and two digits inside. Page 14 has three digits.
+  const [seventh, last] = [division.pages[6], division.pages[13]];
+  const changed = (page: typeof seventh, change: (own: DrawnText[]) => unknown): string[] => {
+    const sheet = division.pages.indexOf(page) + 1;
+    const texts = reportedTexts(division.pages);
+    const region = page.regions.find((r) => r.id.endsWith("/question-1"));
+    const ink = region?.ink.filter((i) => i.kind === "text") ?? [];
+    change(ink.map((i) => { const found = texts.find((t) => t.sheet === sheet && t.x === i.rect.x && t.y === i.rect.y); if (!found) throw new Error("no text"); return found; }));
+    return checkPlaces(division.pages, division.items, texts);
+  };
+  const faceOf = (page: typeof seventh) => { const item = division.items.find((i) => i.id === `${page.id}/1`); if (item?.face.kind !== "bracket") throw new Error("no bracket"); return item.face; };
+  const [two, three] = [faceOf(seventh), faceOf(last)];
+
+  it("has each digit of its number inside under its place of the area, on every page with brackets", () => {
+    expect([two.inside.length, two.above.length, three.inside.length]).toEqual([2, 3, 3]);
+    expect(changed(seventh, () => {})).toEqual([]);
+  });
+
+  const PAGE = `Page ${seventh.page}: question 1`;
+  it.each<[string, (own: DrawnText[]) => unknown, string]>([
+    ["the tens under the ones", (own) => shift(own[3], 1), `${PAGE} must have "${two.inside[0]}" of its number inside in the tens, and it stands in the ones.`],
+    ["the ones under another place", (own) => shift(own[4], 1), `${PAGE} must have "${two.inside[1]}" of its number inside in the ones, and it stands between two places.`],
+    ["the number one place to the left", (own) => { shift(own[3], -1); shift(own[4], -1); }, `${PAGE} must have "${two.inside[1]}" of its number inside in the ones, and it stands in the tens.`],
+    ["a digit between two places", (own) => shift(own[4], 0.025), `${PAGE} must have "${two.inside[1]}" of its number inside in the ones, and it stands between two places.`],
+    ["a digit with no place", (own) => { own[4].start.x = Number.NaN; }, `${PAGE} must have "${two.inside[1]}" of its number inside in the ones, and it stands between two places.`],
+    ["two digits in each other's place", (own) => { shift(own[3], 1); shift(own[4], -1); }, `${PAGE} must have "${two.inside[0]}" of its number inside in the tens, and it stands in the ones.`],
+    ["a digit that is not level", (own) => { own[3].start.y += 3; }, `${PAGE} must have "${two.outside}" and the 2 digits of "${two.inside}" in one line below its answer area.`],
+    ["the number outside in another line", (own) => { own[1].start.y += 3; }, `${PAGE} must have "${two.outside}" and the 2 digits of "${two.inside}" in one line below its answer area.`],
+    ["the number outside over the sign", (own) => shift(own[1], 0.5), `${PAGE} must have "${two.outside}", then ")", left of its number inside.`],
+    ["the sign over the first digit", (own) => shift(own[2], 0.5), `${PAGE} must have "${two.outside}", then ")", left of its number inside.`],
+    ["the sign left of its place", (own) => shift(own[2], -0.5), `${PAGE} must have "${two.outside}", then ")", left of its number inside.`],
+    ["the numbers in the answer area", (own) => { for (const d of own.slice(1)) { d.start.y -= 40; d.end.y -= 40; } }, `${PAGE} must have its number inside below its answer area.`],
+  ])("%s stops the book", (_name, change, problem) => expect(changed(seventh, change)).toContain(problem));
+
+  it("with three digits stops the book when one stands under another place", () => {
+    expect(changed(last, (own) => shift(own.at(-3)!, 1))).toContain(`Page ${last.page}: question 1 must have "${three.inside[0]}" of its number inside in the hundreds, and it stands in the tens.`);
+  });
+
+  it("stops the book when the area above is moved, also when the model has it there", () => {
+    const wrong = structuredClone(division);
+    for (const r of wrong.pages[6].regions) if (r.item === `${seventh.id}/1` && r.part === "quotient") r.rect = { ...r.rect, x: r.rect.x + CELL };
+    expect(checkPlaces(wrong.pages, wrong.items, reportedTexts(wrong.pages))).toContain(`${PAGE} must have "${two.inside[1]}" of its number inside in the ones, and it stands in the tens.`);
+  });
+
+  it("stops the book with no area, or with a digit that was not drawn", () => {
+    const none = structuredClone(division);
+    none.pages[6].regions = none.pages[6].regions.filter((r) => !r.id.endsWith("/answer-1-quotient"));
+    expect(checkPlaces(none.pages, none.items, reportedTexts(none.pages))).toContain(`${PAGE} must have "${two.outside}" and the 2 digits of "${two.inside}" in one line below its answer area.`);
+    const texts = reportedTexts(division.pages).filter((t) => !(t.sheet === 7 && t.text === two.inside[1]));
+    expect(checkPlaces(division.pages, division.items, texts).join("\n")).toContain(`${PAGE} must have "${two.outside}" and the 2 digits`);
   });
 });

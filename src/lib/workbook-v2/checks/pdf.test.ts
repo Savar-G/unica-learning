@@ -3,7 +3,7 @@ import { mathToken, wordToken, type Ink, type PageModel } from "../contract";
 import { checkPdf } from "../testing/drawn-checks";
 import { fillOf, pagesPdf, pdfFile, pdfPageOf, type FakePage } from "../testing/fake-pdf";
 import { reportedTexts } from "../testing/fake-typesetter";
-import { factsBook, goodPages } from "../testing/sample";
+import { divisionBook, factsBook, goodPages } from "../testing/sample";
 
 const pages = goodPages();
 const [front] = pages;
@@ -28,6 +28,8 @@ describe("the PDF of a book", () => {
     expect(checkPdf(pages, texts, pagesPdf(pages))).toEqual([]);
     const { pages: facts } = factsBook();
     expect(checkPdf(facts, reportedTexts(facts), pagesPdf(facts))).toEqual([]);
+    const { pages: divisions } = divisionBook();
+    expect(checkPdf(divisions, reportedTexts(divisions), pagesPdf(divisions))).toEqual([]);
   });
 
   it("draws flow text piece by piece", () => {

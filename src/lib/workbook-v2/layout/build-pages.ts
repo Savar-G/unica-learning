@@ -1,8 +1,8 @@
 // Puts the content of a sheet into the rectangles of its templates. It decides no position of its own.
 import type { SnapshotSheet } from "../bank/snapshot";
-import { PAPER, partRegionName, PRINT_RULES, type BookItem, type Ink, type PageModel, type Rect, type Region, type RegionRole, type Side } from "../contract";
+import { BRACKET_SIGN, PAPER, partRegionName, PRINT_RULES, type BookItem, type FaceToken, type Ink, type PageModel, type Rect, type Region, type RegionRole, type Side } from "../contract";
 import { qrSquares } from "./qr";
-import { cellsFor, placeProblem, type AnswerArea, type ColumnPlace, type ItemPlace, type PageFrame, type TokenPlace } from "./templates";
+import { cellsFor, placeProblem, tokensOf, type AnswerArea, type BracketPlace, type ColumnPlace, type ItemPlace, type PageFrame, type TokenCell, type TokenPlace } from "./templates";
 
 export interface PlannedSheet {
   sheet: SnapshotSheet;
@@ -17,8 +17,8 @@ export type PagesResult = { ok: true; pages: PageModel[] } | { ok: false; proble
 const SIDES: readonly Side[] = ["front", "back"];
 const BLACK = "black";
 const REGULAR = 400;
-const BOLD = 600;
-const MARK_LINE = 2;
+const { mark: { line: MARK_LINE }, heading: HEADING, instruction: INSTRUCTION, footer: FOOTER } = PRINT_RULES.frame;
+const LABEL = PRINT_RULES.label;
 
 const text = (rect: Rect, value: string, size: number, weight: number, align: "left" | "center" | "right"): Ink =>
   ({ kind: "text", rect, color: BLACK, text: value, size, weight, align });
@@ -63,17 +63,45 @@ function columnRegions(make: MakeRegion, place: ColumnPlace, { face, answer }: L
   ];
 }
 
-function tokenRegions(make: MakeRegion, place: TokenPlace, { face }: LaidOut): Region[] {
-  const tokens = face.kind === "column" ? [] : face.tokens;
-  const cells = cellsFor(place, tokens) ?? [];
-  const ink: Ink[] = place.rule ? [fill(place.rule)] : [];
+/** The texts of tokens, and the areas of their blanks. */
+function tokenInk(make: MakeRegion, cells: readonly TokenCell[], tokens: readonly FaceToken[], size: number): { ink: Ink[]; areas: Region[] } {
+  const ink: Ink[] = [];
   const areas: Region[] = [];
   tokens.forEach((token, i) => {
     const { text: rect, area } = cells[i];
-    if ("text" in token && rect) ink.push(text(rect, token.text, place.textSize, REGULAR, "center"));
+    if ("text" in token && rect) ink.push(text(rect, token.text, size, REGULAR, "center"));
     if ("blank" in token && area) areas.push(...areaRegions(make, area, token.blank));
   });
-  return [make("question", place.question, ink), ...areas];
+  return { ink, areas };
+}
+
+function tokenRegions(make: MakeRegion, place: TokenPlace, { face }: LaidOut): Region[] {
+  const tokens = tokensOf(face);
+  const { ink, areas } = tokenInk(make, cellsFor(place, tokens) ?? [], tokens, place.textSize);
+  return [make("question", place.question, [...(place.rule ? [fill(place.rule)] : []), ...ink]), ...areas];
+}
+
+/** The texts above, then the bracket, so that the ink is in the order of the face. */
+function bracketRegions(make: MakeRegion, place: BracketPlace, { face }: LaidOut): Region[] {
+  if (face.kind !== "bracket") throw new Error("a bracket has two numbers");
+  const { ink, areas } = tokenInk(make, place.above, face.above, 18);
+  return [
+    make("question", place.question, [
+      ...ink,
+      text(place.outside, face.outside, 22, REGULAR, "right"),
+      text(place.sign, BRACKET_SIGN, 30, REGULAR, "center"),
+      ...[...face.inside].map((digit, i) => text(place.inside[i], digit, 22, REGULAR, "center")),
+      fill(place.line),
+    ]),
+    ...areas,
+    ...(place.work ? [make("work", place.work)] : []),
+  ];
+}
+
+/** The rectangles of a question that the kind of its place decides. */
+function faceRegions(make: MakeRegion, place: ItemPlace, item: LaidOut): Region[] {
+  if ("forms" in place) return tokenRegions(make, place, item);
+  return "above" in place ? bracketRegions(make, place, item) : columnRegions(make, place, item);
 }
 
 /** The rectangles of one question that fits its place (`placeProblem`). */
@@ -82,8 +110,8 @@ export function itemRegions(place: ItemPlace, item: LaidOut, at: (name: string) 
   const make: MakeRegion = (role, rect, ink = [], part = null) => ({ id: at(partRegionName(role, number, part)), role, rect, item: item.id, part, ink });
   return [
     make("slot", place.slot),
-    make("label", place.label, [text(place.label, String(number), 11, BOLD, "left")]),
-    ...("forms" in place ? tokenRegions(make, place, item) : columnRegions(make, place, item)),
+    make("label", place.label, [text(place.label, String(number), LABEL.size, LABEL.weight, "left")]),
+    ...faceRegions(make, place, item),
   ];
 }
 
@@ -108,10 +136,10 @@ function buildPage({ sheet, levelName, attempt, qr, items }: PlannedSheet, side:
     topicCode: sheet.topic.code, topicTitle: sheet.topic.title, size: { ...PAPER },
     regions: [
       ...(["tl", "tr", "br", "bl"] as const).map((corner) => region(`mark-${corner}`, "scan-mark", marks[corner], markInk(marks[corner], corner))),
-      region("heading", "heading", heading, [text(heading, `${sheet.topic.code} · ${sheet.topic.title}`, 15, BOLD, "left")]),
-      region("instruction", "instruction", frame.instruction, [text(frame.instruction, instruction, 12, REGULAR, "left")]),
+      region("heading", "heading", heading, [text(heading, `${sheet.topic.code} · ${sheet.topic.title}`, HEADING.size, HEADING.weight, "left")]),
+      region("instruction", "instruction", frame.instruction, [text(frame.instruction, instruction, INSTRUCTION.size, INSTRUCTION.weight, "left")]),
       ...onSide.flatMap((item, i) => itemRegions(places[i], item, at)),
-      region("footer", "footer", footer, [text(footer, `Level ${levelName} · Page ${page}`, 11, REGULAR, side === "front" ? "left" : "right")]),
+      region("footer", "footer", footer, [text(footer, `Level ${levelName} · Page ${page}`, FOOTER.size, FOOTER.weight, side === "front" ? "left" : "right")]),
       region("qr", "qr", frame.qr, squares),
     ],
   };

@@ -1,7 +1,8 @@
 // Chooses the questions of the rows of one shape that has a list: for the whole sheet when its rows can all be different,
 // and otherwise for each side. The seeds of the rows and places decide; nothing else does.
-import { canonicalJson, pick } from "../hash";
+import { pick } from "../hash";
 import type { Shape } from "../shapes";
+import { questionKey } from "../shapes/shape";
 
 /** A row of the bank on one side of a sheet, with the seed of each place and try. */
 export interface AskedRow { id: string; shape: Shape; limits: unknown; items: number; seedOf(place: number, attempt: number): string }
@@ -15,16 +16,16 @@ const NONE: Keys = new Set();
 /** How many choices of a row in order one search looks at. More than ten such rows on a sheet could need more. */
 const MOST_TRIES = 20_000;
 
-const asked = (question: unknown): Question => ({ key: canonicalJson(question), question });
+const asked = (shape: Shape) => (question: unknown): Question => ({ key: questionKey(shape, question), question });
 const keysOf = (chosen: Chosen): string[] => [...chosen.values()].flat().map((q) => q.key);
 const count = (questions: readonly Question[], keys: Keys): number => questions.filter((q) => keys.has(q.key)).length;
 
 function prepared(row: AskedRow): Row {
-  const runs = row.shape.orderedRuns?.(row.limits, row.items)?.map((run) => run.map(asked)) ?? null;
+  const runs = row.shape.orderedRuns?.(row.limits, row.items)?.map((run) => run.map(asked(row.shape))) ?? null;
   const wrong = runs?.find((run) => run.length !== row.items);
   if (wrong) throw new Error(`the row "${row.id}" in order has ${wrong.length} questions and must have ${row.items}`);
   if (runs?.length === 0) throw new Error(`the row "${row.id}" in order has no ${row.items} questions`);
-  return { ...row, list: (row.shape.list?.(row.limits) ?? []).map(asked), runs };
+  return { ...row, list: (row.shape.list?.(row.limits) ?? []).map(asked(row.shape)), runs };
 }
 
 /** Whether each row can get its number of questions, all different and none taken: augmenting paths, with no seed. */
@@ -101,7 +102,7 @@ function assignMixed(mixed: readonly Row[], taken: Keys, stale: Keys): Place[] {
   const give = (place: Place, banned: Keys): boolean => {
     const { shape, limits, list, seedOf } = place.row;
     const isFree = ({ key }: Question) => !taken.has(key) && !banned.has(key) && !owner.has(key);
-    const first = asked(shape.generate(limits, seedOf(place.index, 0)).question);
+    const first = asked(shape)(shape.generate(limits, seedOf(place.index, 0)).question);
     if (isFree(first)) return own(place, first);
     const left = list.filter(isFree);
     return left.length > 0 ? own(place, left[pick(seedOf(place.index, 1), left.length)]) : move(place, banned, new Set());

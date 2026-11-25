@@ -1,0 +1,180 @@
+{
+  "format": 1,
+  "id": "invented-division-v1",
+  "level": { "id": "level-3", "name": "3" },
+  "topics": [
+    { "id": "topic-1", "code": "3-1", "title": "Division facts", "sheets": ["exact-lines", "facts-in-brackets"] },
+    { "id": "topic-2", "code": "3-2", "title": "Dividing with something left", "sheets": ["remainder-lines", "remainders-in-brackets", "exact-in-brackets"] },
+    { "id": "topic-3", "code": "3-3", "title": "Dividing larger numbers", "sheets": ["long-exact-in-brackets", "long-in-brackets"] }
+  ],
+  "sheets": [
+    {
+      "id": "exact-lines",
+      "firstPage": 1,
+      "front": {
+        "instruction": "Divide.",
+        "template": "facts-2x10",
+        "rows": [
+          { "id": "front-easy-tables", "shape": "div.fact", "items": 9,
+            "limits": { "divisors": [2, 10], "quotient": { "min": 1, "max": 9 }, "order": "mixed", "form": "line" } },
+          { "id": "front-hundred", "shape": "div.fact", "items": 1,
+            "limits": { "divisors": [10], "quotient": { "min": 10, "max": 10 }, "order": "mixed", "form": "line" } },
+          { "id": "front-threes-and-fours", "shape": "div.fact", "items": 10,
+            "limits": { "divisors": [3, 4], "quotient": { "min": 1, "max": 10 }, "order": "up", "form": "line" } }
+        ]
+      },
+      "back": {
+        "instruction": "Divide.",
+        "template": "facts-2x10",
+        "rows": [
+          { "id": "back-three-digits", "shape": "div.long", "items": 20,
+            "limits": { "dividendDigits": { "min": 3, "max": 3 }, "dividend": { "min": 10, "max": 999 }, "divisor": { "min": 2, "max": 9 }, "quotient": { "min": 1, "max": 499 }, "quotientDigits": { "min": 1, "max": 3 }, "remainder": "none", "start": "either", "bringDownZero": "allowed", "zeroInside": "allowed", "zeroAtEnd": "allowed", "leftOver": { "min": 0, "max": 2 }, "form": "line" } }
+        ]
+      }
+    },
+    {
+      "id": "remainder-lines",
+      "firstPage": 3,
+      "front": {
+        "instruction": "Divide. Write 0 after R when nothing is left.",
+        "template": "remainders-1x10",
+        "rows": [
+          { "id": "front-easy-tables", "shape": "div.remainder", "items": 9,
+            "limits": { "dividend": { "min": 3, "max": 49 }, "divisors": [2, 3, 4, 5], "quotient": { "min": 1, "max": 9 }, "remainder": "some", "form": "line" } },
+          { "id": "front-largest", "shape": "div.long", "items": 1,
+            "limits": { "dividendDigits": { "min": 2, "max": 3 }, "dividend": { "min": 999, "max": 999 }, "divisor": { "min": 2, "max": 2 }, "quotient": { "min": 1, "max": 499 }, "quotientDigits": { "min": 1, "max": 3 }, "remainder": "any", "start": "either", "bringDownZero": "allowed", "zeroInside": "allowed", "zeroAtEnd": "allowed", "leftOver": { "min": 0, "max": 2 }, "form": "line" } }
+        ]
+      },
+      "back": {
+        "instruction": "Divide. Write 0 after R when nothing is left.",
+        "template": "remainders-1x10",
+        "rows": [
+          { "id": "back-any", "shape": "div.remainder", "items": 7,
+            "limits": { "dividend": { "min": 1, "max": 89 }, "divisors": [2, 3, 4, 5, 6, 7, 8, 9], "quotient": { "min": 1, "max": 9 }, "remainder": "any", "form": "line" } },
+          { "id": "back-three-digits", "shape": "div.long", "items": 3,
+            "limits": { "dividendDigits": { "min": 3, "max": 3 }, "dividend": { "min": 10, "max": 999 }, "divisor": { "min": 2, "max": 9 }, "quotient": { "min": 1, "max": 499 }, "quotientDigits": { "min": 1, "max": 3 }, "remainder": "any", "start": "either", "bringDownZero": "allowed", "zeroInside": "allowed", "zeroAtEnd": "allowed", "leftOver": { "min": 0, "max": 2 }, "form": "line" } }
+        ]
+      }
+    },
+    {
+      "id": "facts-in-brackets",
+      "firstPage": 5,
+      "front": {
+        "instruction": "Divide.",
+        "template": "brackets-2x6",
+        "rows": [
+          { "id": "front-easy-tables", "shape": "div.fact", "items": 11,
+            "limits": { "divisors": [2, 10], "quotient": { "min": 1, "max": 9 }, "order": "mixed", "form": "bracket" } },
+          { "id": "front-hundred", "shape": "div.fact", "items": 1,
+            "limits": { "divisors": [10], "quotient": { "min": 10, "max": 10 }, "order": "mixed", "form": "bracket" } }
+        ]
+      },
+      "back": {
+        "instruction": "Work below. Write 0 after R when nothing is left.",
+        "template": "brackets-1x4",
+        "rows": [
+          { "id": "back-hard-tables", "shape": "div.remainder", "items": 4,
+            "limits": { "dividend": { "min": 20, "max": 89 }, "divisors": [6, 7, 8, 9], "quotient": { "min": 2, "max": 9 }, "remainder": "any", "form": "bracket" } }
+        ]
+      }
+    },
+    {
+      "id": "remainders-in-brackets",
+      "firstPage": 7,
+      "front": {
+        "instruction": "Work below. Write 0 after R when nothing is left.",
+        "template": "brackets-1x4",
+        "rows": [
+          { "id": "front-easy-tables", "shape": "div.remainder", "items": 4,
+            "limits": { "dividend": { "min": 10, "max": 49 }, "divisors": [2, 3, 4, 5], "quotient": { "min": 1, "max": 9 }, "remainder": "some", "form": "bracket" } }
+        ]
+      },
+      "back": {
+        "instruction": "Divide.",
+        "template": "brackets-2x6",
+        "rows": [
+          { "id": "back-hundred", "shape": "div.fact", "items": 1,
+            "limits": { "divisors": [10], "quotient": { "min": 10, "max": 10 }, "order": "mixed", "form": "bracket" } },
+          { "id": "back-hard-tables", "shape": "div.fact", "items": 11,
+            "limits": { "divisors": [6, 7, 8, 9], "quotient": { "min": 2, "max": 9 }, "order": "mixed", "form": "bracket" } }
+        ]
+      }
+    },
+    {
+      "id": "exact-in-brackets",
+      "firstPage": 9,
+      "front": {
+        "instruction": "Divide. Work below each question.",
+        "template": "brackets-2x4",
+        "rows": [
+          { "id": "front-easy-tables", "shape": "div.remainder", "items": 7,
+            "limits": { "dividend": { "min": 10, "max": 45 }, "divisors": [2, 3, 4, 5], "quotient": { "min": 2, "max": 9 }, "remainder": "none", "form": "bracket" } },
+          { "id": "front-hundred", "shape": "div.fact", "items": 1,
+            "limits": { "divisors": [10], "quotient": { "min": 10, "max": 10 }, "order": "mixed", "form": "bracket" } }
+        ]
+      },
+      "back": {
+        "instruction": "Divide. Work below each question.",
+        "template": "brackets-2x3",
+        "rows": [
+          { "id": "back-three-digits", "shape": "div.long", "items": 3,
+            "limits": { "dividendDigits": { "min": 3, "max": 3 }, "dividend": { "min": 10, "max": 999 }, "divisor": { "min": 2, "max": 9 }, "quotient": { "min": 1, "max": 499 }, "quotientDigits": { "min": 1, "max": 3 }, "remainder": "none", "start": "one", "bringDownZero": "never", "zeroInside": "never", "zeroAtEnd": "never", "leftOver": { "min": 0, "max": 2 }, "form": "bracket" } },
+          { "id": "back-zero-inside", "shape": "div.long", "items": 2,
+            "limits": { "dividendDigits": { "min": 3, "max": 3 }, "dividend": { "min": 10, "max": 999 }, "divisor": { "min": 2, "max": 9 }, "quotient": { "min": 1, "max": 499 }, "quotientDigits": { "min": 1, "max": 3 }, "remainder": "none", "start": "either", "bringDownZero": "allowed", "zeroInside": "only", "zeroAtEnd": "allowed", "leftOver": { "min": 0, "max": 2 }, "form": "bracket" } },
+          { "id": "back-tens", "shape": "div.fact", "items": 1,
+            "limits": { "divisors": [10], "quotient": { "min": 1, "max": 9 }, "order": "mixed", "form": "bracket" } }
+        ]
+      }
+    },
+    {
+      "id": "long-exact-in-brackets",
+      "firstPage": 11,
+      "front": {
+        "instruction": "Divide. Work below each question.",
+        "template": "brackets-2x3",
+        "rows": [
+          { "id": "front-two-digits", "shape": "div.long", "items": 3,
+            "limits": { "dividendDigits": { "min": 2, "max": 2 }, "dividend": { "min": 10, "max": 999 }, "divisor": { "min": 2, "max": 9 }, "quotient": { "min": 1, "max": 499 }, "quotientDigits": { "min": 1, "max": 3 }, "remainder": "none", "start": "one", "bringDownZero": "allowed", "zeroInside": "allowed", "zeroAtEnd": "never", "leftOver": { "min": 0, "max": 2 }, "form": "bracket" } },
+          { "id": "front-three-digits", "shape": "div.long", "items": 2,
+            "limits": { "dividendDigits": { "min": 3, "max": 3 }, "dividend": { "min": 10, "max": 999 }, "divisor": { "min": 2, "max": 9 }, "quotient": { "min": 1, "max": 499 }, "quotientDigits": { "min": 1, "max": 3 }, "remainder": "none", "start": "one", "bringDownZero": "never", "zeroInside": "never", "zeroAtEnd": "never", "leftOver": { "min": 0, "max": 2 }, "form": "bracket" } },
+          { "id": "front-tens", "shape": "div.fact", "items": 1,
+            "limits": { "divisors": [10], "quotient": { "min": 1, "max": 9 }, "order": "mixed", "form": "bracket" } }
+        ]
+      },
+      "back": {
+        "instruction": "Divide. Work below each question.",
+        "template": "brackets-2x4",
+        "rows": [
+          { "id": "back-hard-tables", "shape": "div.remainder", "items": 7,
+            "limits": { "dividend": { "min": 18, "max": 81 }, "divisors": [6, 7, 8, 9], "quotient": { "min": 2, "max": 9 }, "remainder": "none", "form": "bracket" } },
+          { "id": "back-hundred", "shape": "div.fact", "items": 1,
+            "limits": { "divisors": [10], "quotient": { "min": 10, "max": 10 }, "order": "mixed", "form": "bracket" } }
+        ]
+      }
+    },
+    {
+      "id": "long-in-brackets",
+      "firstPage": 13,
+      "front": {
+        "instruction": "Work below. Write 0 after R when nothing is left.",
+        "template": "brackets-1x3",
+        "rows": [
+          { "id": "front-two-digits", "shape": "div.long", "items": 2,
+            "limits": { "dividendDigits": { "min": 2, "max": 2 }, "dividend": { "min": 10, "max": 999 }, "divisor": { "min": 2, "max": 9 }, "quotient": { "min": 1, "max": 499 }, "quotientDigits": { "min": 1, "max": 3 }, "remainder": "some", "start": "one", "bringDownZero": "allowed", "zeroInside": "allowed", "zeroAtEnd": "never", "leftOver": { "min": 0, "max": 2 }, "form": "bracket" } },
+          { "id": "front-largest", "shape": "div.long", "items": 1,
+            "limits": { "dividendDigits": { "min": 3, "max": 3 }, "dividend": { "min": 900, "max": 999 }, "divisor": { "min": 2, "max": 9 }, "quotient": { "min": 1, "max": 499 }, "quotientDigits": { "min": 1, "max": 3 }, "remainder": "some", "start": "one", "bringDownZero": "allowed", "zeroInside": "allowed", "zeroAtEnd": "allowed", "leftOver": { "min": 0, "max": 2 }, "form": "bracket" } }
+        ]
+      },
+      "back": {
+        "instruction": "Work below. Write 0 after R when nothing is left.",
+        "template": "brackets-1x3",
+        "rows": [
+          { "id": "back-two-used", "shape": "div.long", "items": 2,
+            "limits": { "dividendDigits": { "min": 3, "max": 3 }, "dividend": { "min": 10, "max": 999 }, "divisor": { "min": 2, "max": 9 }, "quotient": { "min": 1, "max": 499 }, "quotientDigits": { "min": 1, "max": 3 }, "remainder": "some", "start": "two", "bringDownZero": "never", "zeroInside": "never", "zeroAtEnd": "never", "leftOver": { "min": 0, "max": 2 }, "form": "bracket" } },
+          { "id": "back-largest", "shape": "div.long", "items": 1,
+            "limits": { "dividendDigits": { "min": 3, "max": 3 }, "dividend": { "min": 900, "max": 999 }, "divisor": { "min": 2, "max": 9 }, "quotient": { "min": 1, "max": 499 }, "quotientDigits": { "min": 1, "max": 3 }, "remainder": "some", "start": "one", "bringDownZero": "allowed", "zeroInside": "allowed", "zeroAtEnd": "allowed", "leftOver": { "min": 0, "max": 2 }, "form": "bracket" } }
+        ]
+      }
+    }
+  ]
+}

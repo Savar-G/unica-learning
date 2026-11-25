@@ -12,6 +12,7 @@ import { canonicalJson, seedFrom } from "../hash";
 import { itemRegions } from "../layout/build-pages";
 import { TEMPLATES, type Needs, type PageTemplate } from "../layout/templates";
 import { shapeLibrary, type Item, type Shape, type ShapeLibrary } from "../shapes";
+import { questionKey } from "../shapes/shape";
 import { sampleBook, unfilledSides } from "./shape-book";
 import { brokenRows, isPlain, maxOf, onFrozenLimits } from "./shape-checks";
 import { FitChecks, formed } from "./shape-fit";
@@ -322,6 +323,7 @@ class Harness {
       if (!isInside(this.reg, found.printed, limits)) this.tell("list", `the list of ${json} has ${show(found.rows)}, which is outside the limits`);
     }
     if (all.length !== count || keys.size !== count) this.tell("list", `the list of ${json} has ${all.length} questions, ${keys.size} of them different, and the limits allow ${count}`);
+    if (new Set(all.map((question) => questionKey(this.shape, question))).size < all.length) this.tell("list", `the list of ${json} has two questions with one identity`);
   }
 
   /** A row in order: each question is the one that the registration says comes after the question before it. */
@@ -368,7 +370,7 @@ class Harness {
       const found = swapped && this.inspect(swapped.question);
       if (found?.rows.join() !== wanted?.join()) this.tell("swapped", `${at} is ${found ? show(found.rows) : "none"} and must be ${wanted ? show(wanted) : "none"}`);
       if (!swapped || !found) continue;
-      if (found.answer !== q.answer) this.tell("swapped", `${at} has the answer ${found.answer} and not ${q.answer}`);
+      if ((found.answer !== q.answer) !== (reg.swapChangesAnswer === true)) this.tell("swapped", `${at} has the answer ${found.answer} and the question ${q.answer}`);
       const inside = isInside(reg, found.printed, limits);
       if (swapped.inLimits !== inside) this.tell("swapped", `${at} is ${inside ? "inside" : "outside"} the limits and the shape says the other`);
       const back = shape.swapped(swapped.question, limits);

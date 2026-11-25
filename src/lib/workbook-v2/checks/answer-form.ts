@@ -4,7 +4,7 @@ import type { Answer, AnswerKind } from "../contract";
 /** What the value of each kind must look like. A new kind needs its rule here. */
 const VALUE_FORMS: Readonly<Record<AnswerKind, { form: RegExp; name: string }>> = { "whole-number": { form: /^(0|[1-9]\d*)$/, name: "whole-number" } };
 /** The names that marking knows. A shape with another part adds its name here. */
-const PART_NAME = /^(answer|blank-[1-9]\d?)$/;
+const PART_NAME = /^(answer|quotient|remainder|blank-[1-9]\d?)$/;
 const PART_FIELDS = ["kind", "name", "value"];
 
 function partProblem(part: unknown, kind: AnswerKind): string | null {

@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { answerLine, type Answer, type Step } from "../contract";
 import rawSnapshot from "../fixtures/snapshot.json";
+import factsSnapshot from "../fixtures/snapshot-facts.json";
 import { SHAPES } from "../shapes";
 import { fixture, skipTypstTests } from "../testing/typst";
 
@@ -87,12 +88,17 @@ describe.concurrent("the bank check command, before it checks", () => {
 
 describe.skipIf(skipTypstTests()).concurrent("the bank check command, with the real Typst", () => {
   it("says what it checked, and stops with the list of problems", async () => {
-    const wrong = join(folder, "wrong-template.json");
-    writeFileSync(wrong, readFileSync(short, "utf8").replaceAll('"columns-2x4"', '"columns-9x9"'));
-    const [good, bad] = await Promise.all([command(["--snapshot", short], {}, "", bundledCheck), command(["--snapshot", wrong], {}, "", bundledCheck)]);
-    expect(good).toMatchObject({ code: 0, output: expect.stringMatching(/^No problem in 1 sheets and 2 rows: 200 seeds, 400 questions, \d+ texts, 4 full pages and 32 questions drawn alone, in \d+\.\d s\.\n$/) });
+    // A template with two places on each side, and one form: each place and each form costs drawings.
+    const counts = factsSnapshot.sheets[4];
+    const sideOf = (side: typeof counts.front, id: string) => ({ ...side, rows: [{ ...side.rows[0], id, items: 1, limits: { ...side.rows[0].limits, blanks: { min: 1, max: 1 }, places: { min: 3, max: 3 } } }] });
+    const snapshot = { ...factsSnapshot, topics: [{ ...factsSnapshot.topics[0], sheets: [counts.id] }], sheets: [{ ...counts, front: sideOf(counts.front, "one"), back: sideOf(counts.back, "two") }] };
+    const [few, wrong] = [join(folder, "few.json"), join(folder, "wrong-template.json")];
+    writeFileSync(few, JSON.stringify(snapshot));
+    writeFileSync(wrong, JSON.stringify(snapshot).replaceAll('"sequences-2x1"', '"columns-9x9"'));
+    const [good, bad] = await Promise.all([command(["--snapshot", few], {}, "", bundledCheck), command(["--snapshot", wrong], {}, "", bundledCheck)]);
+    expect(good).toMatchObject({ code: 0, output: expect.stringMatching(/^No problem in 1 sheets and 2 rows: 200 seeds, 400 questions, \d+ texts, 4 full pages and \d questions drawn alone, in \d+\.\d s\.\n$/) });
     expect(bad.code).toBe(1);
-    expect(bad.output).toBe(["front", "back"].map((side) => `Sheet "column-multiplication-1", ${side} side: there is no template "columns-9x9".\n`).join("") + "2 problems.\n");
+    expect(bad.output).toBe(["front", "back"].map((side) => `Sheet "long-counts", ${side} side: there is no template "columns-9x9".\n`).join("") + "2 problems.\n");
   });
 });
 
