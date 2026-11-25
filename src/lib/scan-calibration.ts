@@ -1879,12 +1879,13 @@ export function straightenedPage(photo: Raster, c: Calibration, contract: PagePr
 /** How much space a crop keeps around its box, as a part of the box's shorter side, with a limit in image pixels. */
 const CROP_MARGIN = 0.1;
 const CROP_MARGIN_LIMIT = 10;
+export const cropMargin = (box: Box) => Math.min(CROP_MARGIN_LIMIT, CROP_MARGIN * Math.min(box.width, box.height));
 const CROP_MAX_SCALE = 2.5;
 const CROP_MAX_SIDE = 1600;
 
 /** One answer region cut from the photo. */
-export function cropBox(photo: Raster, c: Calibration, contract: PagePrintContract, box: Box): Raster {
-  const margin = Math.min(CROP_MARGIN_LIMIT, CROP_MARGIN * Math.min(box.width, box.height));
+export function cropBox(photo: Raster, c: Calibration, contract: PagePrintContract, printedBox: Box, reach?: Box): Raster {
+  const box = reach ?? printedBox, margin = reach ? 0 : cropMargin(box);
   const { width: iw, height: ih } = contract.coordinates.image;
   const x0 = Math.max(0, box.x - margin), y0 = Math.max(0, box.y - margin);
   const x1 = Math.min(iw, box.x + box.width + margin), y1 = Math.min(ih, box.y + box.height + margin);
@@ -1902,8 +1903,8 @@ export function cropBox(photo: Raster, c: Calibration, contract: PagePrintContra
  * a pixel to spare. A crop of a box the photo's edge cuts would show white paper where the answer was cut off (#912): such
  * a question is not cropped and not marked from the photo.
  */
-export function cropInPhoto(c: Pick<Calibration, "transform" | "bend" | "mesh" | "photo">, contract: PagePrintContract, box: Box): boolean {
-  const margin = Math.min(CROP_MARGIN_LIMIT, CROP_MARGIN * Math.min(box.width, box.height));
+export function cropInPhoto(c: Pick<Calibration, "transform" | "bend" | "mesh" | "photo">, contract: PagePrintContract, box: Box, exact = false): boolean {
+  const margin = exact ? 0 : cropMargin(box);
   const page = contract.coordinates.image;
   const x0 = Math.max(0, box.x - margin), y0 = Math.max(0, box.y - margin);
   const x1 = Math.min(page.width, box.x + box.width + margin), y1 = Math.min(page.height, box.y + box.height + margin);

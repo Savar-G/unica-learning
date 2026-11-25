@@ -1,3 +1,4 @@
+import { zoomScanAnswerReach } from "@/lib/scan-photo-image";
 import { markingAiClient } from "@/lib/scan-marking-ai";
 import { MARKING_MODEL, markingRequest, runScanMarking, validMarkingOutput, type MarkingStore } from "@/lib/scan-marking";
 import { expectedItems, firstObservation, type Observation } from "@/lib/scan-observation";
@@ -166,6 +167,7 @@ export async function runComparisonPhoto(options: {
     frame: async () => photo.frame,
     claim: async () => ({ token: "synthetic", extraction: null, items: expectedItems(photo.frame).map(expected => ({ expected, observation: firstObservation(expected, photo.id), originalEvent: null, eventId: null, at: "2000-01-01T00:00:00.000Z", model: null, prompt: null })) }),
     image: async () => options.image,
+    cropReach: zoomScanAnswerReach,
     admit: async () => {
       if (journalFailed || budgetFailed) return "attempts";
       if (attempts.length >= (options.maxAttempts ?? 1)) return "attempts";

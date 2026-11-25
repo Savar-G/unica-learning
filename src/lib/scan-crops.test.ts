@@ -1,10 +1,11 @@
+import { FIXTURES } from "@/lib/maya-gate/fixtures";
 import sharp from "sharp";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { QuestionPackage } from "@/lib/question-package";
 import { applyTransform, perspectiveTransform, photoPoint } from "@/lib/scan-calibration";
 import { isFenceRefusal, readScanPreview, runScanCrops, scanPartPath, type ScanCropStore, type ScanFrame } from "@/lib/scan-crops";
 import { memoryScanCropStore } from "@/lib/scan-crops-memory";
-import { blankPage, cropCut, curled, cutOut, drawBoxOutline, drawDigit, drawMark, drawPrintedContent, drawQr, fillBox, greyRaster, pagePng, photoJpeg, photographed, readDigit, uprightCorners } from "@/lib/scan-synthetic";
+import { blankPage, cropCut, curled, cutOut, drawBoxOutline, drawDigit, drawMark, drawPrintedContent, drawQr, fillBox, greyRaster, pagePng, photoJpeg, photographed, readDigit, shadowed, uprightCorners } from "@/lib/scan-synthetic";
 import { SCAN_MARKS, sha256Hex, type Box, type PagePrintContract, type Point } from "@/lib/workbook-print-contract";
 import { pageUrl } from "@/lib/workbook-render";
 
@@ -65,9 +66,90 @@ function setup(o: { book?: string | null; photoRevision?: string | null; contrac
   return { ...m, advance: (ms: number) => { clock += ms; } };
 }
 
+const shownBox = (m: ReturnType<typeof setup>, number: number) => {
+  const crop = m.calibrations.get(PHOTO)?.result?.crops?.find(c => c.number === number);
+  if (!crop) throw new Error(`Missing crop ${number}`);
+  return crop.displayBox ?? cropCut(crop.box);
+};
 const cropRaster = async (m: ReturnType<typeof setup>, part: string, t: string) => greyRaster(m.objects.get(scanPartPath(PARENT, PHOTO, t, part))!);
 
 describe("making the crops", () => {
+  it("keeps 10, 25 and 40 px overruns through a printed line in shadow and stops before neighbouring ink", async () => {
+    const printed = blankPage(W, H), size = { width: 1500, height: 1900 };
+    for (const mark of SCAN_MARKS) drawMark(printed, mark, POINTS[mark]);
+    drawPrintedContent(printed);
+    drawQr(printed, { x: 1020, y: 1440, width: 170, height: 170 }, pageUrl(TOKEN));
+    const rows = [10, 25, 40].map((overrun, i) => ({
+      overrun, box: { x: 720, y: 650 + 125 * i, width: 150, height: 100 },
+      neighbour: { x: 950 + (i === 2 ? 0 : 2), y: 650 + 125 * i, width: 150, height: 100 },
+    }));
+    for (const { box, neighbour } of rows) {
+      drawBoxOutline(printed, box);
+      drawBoxOutline(printed, neighbour);
+    }
+    const written = { ...printed, data: printed.data.slice() };
+    const digits = rows.map(({ box, overrun }) => {
+      const positions = [12, 48, 83, 116, box.width + overrun - 24];
+      const slots = [2, 0, 0, 0, 0].map((digit, i) => ({
+        digit, box: { x: box.x + positions[i], y: box.y + 25, width: 30, height: 55 },
+      }));
+      for (const slot of slots) drawDigit(written, slot.box, slot.digit);
+      fillBox(written, slots[1].box.x + 26, box.y + 77, 4, 7, 30);
+      // A neighbour's handwritten stroke approaches the midpoint from the other side.
+      fillBox(written, box.x + box.width + 42, box.y + 16, 46, 7, 30);
+      return slots;
+    });
+    const inShadow = shadowed(written, { x: 690, y: 0 }, { x: 690, y: H }, 0.48);
+    const bytes = await photoJpeg(photographed(inShadow, size, uprightCorners(size, { width: W, height: H }, 70)));
+    const questions = rows.flatMap(({ box, neighbour }, i) => [box, neighbour].map((b, j) => ({
+      number: i * 2 + j + 1, package: pkg(`reach-${i}-${j}`, 20000), regions: [{ id: "a", kind: "box", box: b }],
+    })));
+    const page = await pagePng(printed);
+    const m = setup({ bytes, questions, contract: { ...contract, fingerprints: { ...contract.fingerprints, image: await sha256Hex(page) } } });
+    m.printed.set("page.png", page);
+    const preview = await runScanCrops(m.store, ref, token(1));
+    expect(preview.status).toBe("ready");
+    for (const [i, { box }] of rows.entries()) {
+      const number = i * 2 + 1, crop = await cropRaster(m, `crop-${number}`, token(1)), cut = shownBox(m, number);
+      expect(Math.abs(cut.x + cut.width - (box.x + box.width + 40))).toBeLessThan(2);
+      expect(digits[i].map(slot => readDigit(crop, cut, slot.box)), `overrun ${rows[i].overrun}`).toEqual([2, 0, 0, 0, 0]);
+      const row = Math.floor((box.y + 19 - cut.y) * crop.height / cut.height);
+      expect(crop.data[row * crop.width + crop.width - 1]).toBeGreaterThan(115);
+    }
+  });
+
+  it("keeps legacy tick padding in a mixed crop while masking neighboring ink", async () => {
+    const operation = { x: 500, y: 700, width: 110, height: 100 };
+    const answer = { x: 680, y: 700, width: 100, height: 100 };
+    const neighbour = { x: 440, y: 700, width: 50, height: 100 };
+    const question = structuredClone(FIXTURES.A);
+    question.item = { format: "tick-and-number", scorable: true, parentChecked: false, error: null,
+      regions: [
+        { id: "operation", kind: "choice", mark: "tick", label: null, choices: ["+", "−", "×", "÷"], answer: "+" },
+        { id: "answer", kind: "box", label: null, answer: { type: "number", value: 66 } },
+      ], checks: [{ kind: "operation-sign", region: "operation" }, { kind: "operation", region: "answer" }],
+    };
+    const questions: ScanFrame["page"]["questions"] = [
+      { number: 1, package: question, regions: [{ id: "operation", kind: "choice", box: operation }, { id: "answer", kind: "box", box: answer }] },
+      { number: 2, package: pkg("neighbour"), regions: [{ id: "a", kind: "box", box: neighbour }] },
+    ];
+    const page = drawn(false), printed = await pagePng(page);
+    fillBox(page, 493, 731, 7, 10, 20);
+    fillBox(page, 504, 689, 10, 10, 20);
+    fillBox(page, 625, 730, 10, 10, 20);
+    const bytes = await photoJpeg(page);
+    const m = setup({ bytes, questions, contract: { ...contract, fingerprints: { ...contract.fingerprints, image: await sha256Hex(printed) } } });
+    m.printed.set("page.png", printed);
+    expect((await runScanCrops(m.store, ref, token(1))).status).toBe("ready");
+    const cut = shownBox(m, 1), crop = await cropRaster(m, "crop-1", token(1));
+    const pixel = (x: number, y: number) => crop.data[
+      Math.floor((y - cut.y) * crop.height / cut.height) * crop.width + Math.floor((x - cut.x) * crop.width / cut.width)
+    ];
+    expect(pixel(509, 693)).toBeLessThan(80);
+    expect(cut.x).toBeGreaterThan(493);
+    expect(pixel(629, 734)).toBeGreaterThan(235);
+  });
+
   it("stores the straightened page and one numbered crop per item, each holding its own written answer", async () => {
     // Disproved if crop 2 holds another question's digit, or a stored crop is not a real image of its box.
     const m = setup();
@@ -77,7 +159,7 @@ describe("making the crops", () => {
     expect(m.filesOf(PHOTO).sort()).toEqual([...["straight", ...preview.crops.map((c) => c.part)].map((p) => `${token(1)}-${p}.jpg`)].sort());
     for (const [i, a] of ANSWERS.entries()) {
       const crop = await cropRaster(m, `crop-${i + 1}`, token(1));
-      expect(readDigit(crop, cropCut(a.box), a.box), `crop ${i + 1}`).toBe(a.digit);
+      expect(readDigit(crop, shownBox(m, i + 1), a.box), `crop ${i + 1}`).toBe(a.digit);
       // Adjacent positive control: the neighbour's digit differs, and this crop does not hold it.
       const next = ANSWERS[(i + 1) % ANSWERS.length];
       expect(next.digit).not.toBe(a.digit);
@@ -98,7 +180,7 @@ describe("making the crops", () => {
     const stored = m.objects.get(scanPartPath(PARENT, PHOTO, token(1), "crop-1"))!;
     const { channels, space } = await sharp(stored).metadata();
     expect([channels, space]).toEqual([3, "srgb"]);
-    expect(readDigit(await greyRaster(stored), cropCut(ANSWERS[0].box), ANSWERS[0].box)).toBe(ANSWERS[0].digit);
+    expect(readDigit(await greyRaster(stored), shownBox(m, 1), ANSWERS[0].box)).toBe(ANSWERS[0].digit);
   });
 
   it("the second call gets the first call's work, with no new files", async () => {
@@ -319,7 +401,7 @@ describe("leases", () => {
     expect(m.filesOf(PHOTO).sort()).toEqual(after);
     expect(after.every((n) => n.startsWith(token(2)))).toBe(true);
     expect((await m.store.calibration(ref))!.token).toBe(token(2));
-    for (const [i, a] of ANSWERS.entries()) expect(readDigit(await cropRaster(m, `crop-${i + 1}`, token(2)), cropCut(a.box), a.box)).toBe(a.digit);
+    for (const [i, a] of ANSWERS.entries()) expect(readDigit(await cropRaster(m, `crop-${i + 1}`, token(2)), shownBox(m, i + 1), a.box)).toBe(a.digit);
   });
 
   it("gives up after five attempts, so a photo that keeps failing stops using work", async () => {
@@ -447,7 +529,7 @@ describe("a question the photo's edge cuts off (#912)", () => {
     expect(m.filesOf(PHOTO).sort()).toEqual(["straight", "crop-2", "crop-3", "crop-5", "crop-6"].map((p) => `${token(1)}-${p}.jpg`).sort());
     for (const n of [2, 3, 5, 6]) {
       const a = ANSWERS[n - 1];
-      expect(readDigit(await cropRaster(m, `crop-${n}`, token(1)), cropCut(a.box), a.box), `crop ${n}`).toBe(a.digit);
+      expect(readDigit(await cropRaster(m, `crop-${n}`, token(1)), shownBox(m, n), a.box), `crop ${n}`).toBe(a.digit);
     }
     // What marking reads: the stored result names the cut questions, and the calibration says how the page was placed.
     const stored = await m.store.calibration(ref);
@@ -533,7 +615,7 @@ describe("readable QR with hidden marks", () => {
     };
     expect(error(far.box)).toBeGreaterThan(4);
     expect(error(c.box)).toBeLessThanOrEqual(4);
-    expect(readDigit(await cropRaster(m, "crop-6", token(1)), cropCut(c.box), c.box)).toBe(far.digit);
+    expect(readDigit(await cropRaster(m, "crop-6", token(1)), shownBox(m, c.number), c.box)).toBe(far.digit);
   }, 30_000);
 
   it("holds a frame beyond the snap window even when its horizontal stroke matches", async () => {
@@ -571,7 +653,7 @@ describe("readable QR with hidden marks", () => {
     expect(result?.held).toEqual([{ number: 3, issue: "covered" }, { number: 6, issue: "covered" }]);
     expect(result?.crops?.map((c) => c.number)).toEqual([1, 2, 4, 5]);
     for (const c of result!.crops!) {
-      expect(readDigit(await cropRaster(m, c.part, token(1)), cropCut(c.box), c.box)).toBe(answers[c.number - 1].digit);
+      expect(readDigit(await cropRaster(m, c.part, token(1)), shownBox(m, c.number), c.box)).toBe(answers[c.number - 1].digit);
     }
   }, 30_000);
 

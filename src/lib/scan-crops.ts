@@ -10,8 +10,8 @@ import {
   boxDistance,
   calibratePhoto,
   calibrationForPhoto,
-  cropBox,
   cropInPhoto,
+  cropMargin,
   cropPlan,
   sheetChecker,
   straightenedPage,
@@ -22,6 +22,8 @@ import {
   type SheetRefusal,
 } from "@/lib/scan-calibration";
 import { printContractForPhoto, sha256Hex, type Box, type PagePrintContract, type Point } from "@/lib/workbook-print-contract";
+import { enclosingBox, limitReachToPhoto, renderAnswerCrop } from "@/lib/scan-answer-crops";
+import { answerReach, boundedAnswerArea, placedRegions, scanContentBounds } from "@/lib/scan-answer-reach";
 import { markingRegions } from "@/lib/scan-marking-regions";
 import { pageUrl } from "@/lib/workbook-render";
 
@@ -53,6 +55,7 @@ export interface ScanCrop {
   regionId: string;
   regionIds?: string[];
   box: Box;
+  displayBox?: Box;
   width: number;
   height: number;
 }
@@ -328,7 +331,7 @@ export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: s
   const held = new Map<number, QuestionHold>();
   const covered: CoveredRegionDetails[] = [];
   const snaps: AnswerSnap[] = [];
-  const crops: typeof planned.crops = [];
+  const crops: (typeof planned.crops[number] & { display?: { box: Box; areas: Box[] } })[] = [];
   if (calibration) {
     // Compare distinctive print wherever another page of this book differs (#456, #975).
     const ask = sheetChecker({ photo, printed, transform: calibration.transform, writing, sheet: calibration });
@@ -369,20 +372,40 @@ export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: s
         snaps.push(...regions.map(({ regionId, box, offset }) => ({ number: crop.number, regionId, box, offset })));
         const issue = regions.find((r) => r.issue === "covered")?.issue ?? regions.find((r) => r.issue)?.issue;
         if (issue) { held.set(crop.number, issue); continue; }
-        const x = Math.min(...regions.map((r) => r.box.x)), y = Math.min(...regions.map((r) => r.box.y));
-        const box = { x, y, width: Math.max(...regions.map((r) => r.box.x + r.box.width)) - x, height: Math.max(...regions.map((r) => r.box.y + r.box.height)) - y };
+        const box = enclosingBox(regions.map(r => r.box));
         if (cropInPhoto(calibration, contract.contract, box)) crops.push({ ...crop, box });
         else cutOff.push(crop.number);
       }
     }
   }
 
+  const content = scanContentBounds(contract.contract);
+  const questions = frame.page.questions.map(q => ({ ...q, regions: placedRegions(q, snaps) }));
+  if (calibration) for (const crop of crops) {
+    const question = questions.find(q => q.number === crop.number)!;
+    const regions = markingRegions(question);
+    const reaches = regions.map(region => {
+      const reach = answerReach(region, question.number, questions, content);
+      return reach && limitReachToPhoto(calibration, contract.contract, region.box, reach);
+    });
+    if (!reaches.some(Boolean)) continue;
+    const margin = cropMargin(crop.box);
+    const page = { x: 0, y: 0, ...contract.contract.coordinates.image };
+    const areas = regions.map((region, index) => {
+      const reach = reaches[index];
+      if (reach) return reach;
+      if (region.kind !== "choice") return region.box;
+      const padded = boundedAnswerArea(region, question.number, questions, page, margin, margin);
+      return limitReachToPhoto(calibration, contract.contract, region.box, padded);
+    });
+    crop.display = { box: enclosingBox(areas), areas };
+  }
   if (Date.now() >= deadline) return timedOut();
   if (previous) await store.clearLease({ ...ref, token: previous });
   const straight = calibration && !review ? straightenedPage(photo, calibration, contract.contract) : photo;
   const uploads = [
     { part: STRAIGHT_PART, raster: straight, quality: 78 },
-    ...(calibration ? crops.map((c) => ({ part: cropPart(c.number), raster: cropBox(photo, calibration, contract.contract, c.box), quality: 85 })) : []),
+    ...(calibration ? crops.map((c) => ({ part: cropPart(c.number), raster: renderAnswerCrop(photo, calibration, contract.contract, c.box, c.display), quality: 85 })) : []),
   ];
   let bytes = 0;
   for (let i = 0; i < uploads.length; i += UPLOADS_AT_ONCE) {
@@ -404,7 +427,7 @@ export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: s
     ...(cutOff.length || held.size ? { cutOff: [...cutOff, ...held.keys()] } : {}),
     crops: crops.map((c) => {
       const part = cropPart(c.number), r = rasters.get(part)!;
-      return { part, number: c.number, itemId: c.itemId, regionId: c.regionId, ...(c.regionIds ? { regionIds: c.regionIds } : {}), box: c.box, width: r.width, height: r.height };
+      return { part, number: c.number, itemId: c.itemId, regionId: c.regionId, ...(c.regionIds ? { regionIds: c.regionIds } : {}), box: c.box, ...(c.display ? { displayBox: c.display.box } : {}), width: r.width, height: r.height };
     }),
   }, bytes);
 }
