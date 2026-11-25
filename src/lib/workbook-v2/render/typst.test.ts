@@ -268,7 +268,7 @@ describe.skipIf(skipTypstTests()).concurrent("with the real Typst", () => {
     const characters = Array.from({ length: 0x10000 }, (_, code) => String.fromCharCode(code)).filter((c) => isPrintable(c) && c !== " ");
     const ink = [400, 600].flatMap((weight, w) => characters.map((c, i): Ink =>
       ({ kind: "text", rect: { x: 100 + (i % 12) * 30, y: 100 + (Math.floor(i / 12) + w * 10) * 28, w: 24, h: 24 }, color: "black", text: c, size: 14, weight, align: "center" })));
-    const all = [{ ...page, regions: page.regions.map((r) => (r.role === "heading" ? { ...r, ink } : { ...r, ink: r.role === "qr" ? r.ink : [] })) }];
+    const all = [{ ...page, regions: page.regions.map((r) => (r.role === "heading" ? { ...r, ink } : { ...r, ink: r.role === "qr" || r.role === "answer" ? r.ink : [] })) }];
     const out = await (await usualRenderer()).render(all);
     expect(checkTexts(all, out.texts)).toEqual([]);
     expect(checkImages(all, out.images)).toEqual([]);

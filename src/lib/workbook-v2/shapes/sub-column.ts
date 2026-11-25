@@ -7,7 +7,7 @@ import {
   chooseQuestion, countQuestions, NOT_ONLY, NUMBER_RANGES, numberRules, readColumnLimits, scoreOf, scoreRange, widestQuestion, WORD, ZERO_WORDS,
   type ColumnQuestion, type ColumnRules, type NumberLimits, type Word,
 } from "./column-count";
-import type { Item, Range, Shape } from "./shape";
+import { wholeNumber, type Item, type Range, type Shape } from "./shape";
 
 export interface SubColumnLimits extends NumberLimits {
   difference: Range;
@@ -71,7 +71,7 @@ function columns({ a, b }: SubColumnQuestion): Column[] {
 
 /** The answer is what the columns leave, with no zero in front. */
 const valueOf = (all: readonly Column[]): string => all.map(({ value }) => value).reverse().join("").replace(/^0+(?=\d)/, "");
-const answer = (q: SubColumnQuestion): Answer => ({ kind: "whole-number", value: valueOf(columns(q)) });
+const answer = (q: SubColumnQuestion): Answer => wholeNumber(valueOf(columns(q)));
 const item = (question: SubColumnQuestion): Item<SubColumnQuestion> => ({ question, answer: answer(question) });
 
 /** Reads the two printed rows as whole numbers and subtracts these, with no look at a column. */
@@ -79,7 +79,7 @@ function solveAgain(rows: readonly string[]): Item<SubColumnQuestion> | null {
   const [top, low, ...more] = rows;
   if (more.length > 0 || !/^[1-9][0-9]{0,3}$/.test(top ?? "") || !/^-[1-9][0-9]{0,3}$/.test(low ?? "")) return null;
   const left = BigInt(top) - BigInt(low.slice(1));
-  return left < 0 ? null : { question: { a: Number(top), b: Number(low.slice(1)) }, answer: { kind: "whole-number", value: String(left) } };
+  return left < 0 ? null : { question: { a: Number(top), b: Number(low.slice(1)) }, answer: wholeNumber(String(left)) };
 }
 
 function steps(q: SubColumnQuestion): Step[] {

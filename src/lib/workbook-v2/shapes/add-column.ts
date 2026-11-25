@@ -7,7 +7,7 @@ import {
   chooseQuestion, countQuestions, NOT_ONLY, NUMBER_RANGES, numberRules, readColumnLimits, scoreOf, scoreRange, widestQuestion, WORD, ZERO_WORDS,
   type ColumnQuestion, type ColumnRules, type NumberLimits, type Word,
 } from "./column-count";
-import type { Item, Range, Shape } from "./shape";
+import { wholeNumber, type Item, type Range, type Shape } from "./shape";
 
 export interface AddColumnLimits extends NumberLimits {
   sum: Range;
@@ -45,15 +45,15 @@ function columns({ a, b }: AddColumnQuestion): Column[] {
 }
 
 /** The answer is what the columns write. */
-const answer = (q: AddColumnQuestion): Answer =>
-  ({ kind: "whole-number", value: columns(q).map(({ value, isLast }) => String(isLast ? value : value % 10)).reverse().join("") });
+const valueOf = (q: AddColumnQuestion): string => columns(q).map(({ value, isLast }) => String(isLast ? value : value % 10)).reverse().join("");
+const answer = (q: AddColumnQuestion): Answer => wholeNumber(valueOf(q));
 const item = (question: AddColumnQuestion): Item<AddColumnQuestion> => ({ question, answer: answer(question) });
 
 /** Reads the two printed rows as whole numbers and adds these, with no look at a column. */
 function solveAgain(rows: readonly string[]): Item<AddColumnQuestion> | null {
   const [top, low, ...more] = rows;
   if (more.length > 0 || !/^[1-9][0-9]{0,3}$/.test(top ?? "") || !/^\+[1-9][0-9]{0,3}$/.test(low ?? "") || low.length - 1 > top.length) return null;
-  return { question: { a: Number(top), b: Number(low.slice(1)) }, answer: { kind: "whole-number", value: String(BigInt(top) + BigInt(low.slice(1))) } };
+  return { question: { a: Number(top), b: Number(low.slice(1)) }, answer: wholeNumber(String(BigInt(top) + BigInt(low.slice(1)))) };
 }
 
 function columnStep({ top, low, carry, value, isLast }: Column, place: number): Step {
@@ -69,7 +69,7 @@ function columnStep({ top, low, carry, value, isLast }: Column, place: number): 
   };
 }
 
-const steps = (q: AddColumnQuestion): Step[] => [...columns(q).map(columnStep), { text: answer(q).value, marks: [] }];
+const steps = (q: AddColumnQuestion): Step[] => [...columns(q).map(columnStep), { text: valueOf(q), marks: [] }];
 
 /** Two questions that differ only by the order of their numbers are equally hard: the longer number goes on top. */
 function difficulty(q: AddColumnQuestion): number {

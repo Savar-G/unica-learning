@@ -2,7 +2,7 @@
 // 90,899,091 and 49,995,000. The columns are filled from the ones up. All that the columns so far can change in the ones
 // above is one number, a `Low`, and each Low knows in how many ways the columns reach it. Digits that change a Low in the
 // same way are one `Move`.
-import { emptyProblem, readLimitFields, type Range } from "./shape";
+import { emptyProblem, readLimitFields, within, type Range } from "./shape";
 
 export type Word = "never" | "allowed" | "only";
 export const WORD: readonly Word[] = ["never", "allowed", "only"];
@@ -44,7 +44,6 @@ export interface ColumnRules {
 export interface ColumnKind { digits: number; passes: number; chain: boolean; zerosCrossed: number }
 
 const MOST_DIGITS = 4;
-const within = (n: number, r: Range) => n >= r.min && n <= r.max;
 const meets = (word: Word, has: boolean) => word === "allowed" || (word === "only") === has;
 
 /** The bits of a Low: first what the columns have done, then what the bounds of the three numbers say of the low digits. */

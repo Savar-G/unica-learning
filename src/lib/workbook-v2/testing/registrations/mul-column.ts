@@ -1,7 +1,7 @@
 // The facts of mul.column. The shape works column by column and counts by place; this file takes each carry from the
 // product of the last digits, and counts with a table of every question.
 import type { Step } from "../../contract";
-import { neverLimit, oftenWide, onlyLimit, rangeLimit, step, type LargeSpace, type Limits, type Printed, type Rows, type ShapeRegistration } from "../shape-registration";
+import { neverLimit, oftenWide, onlyLimit, rangeLimit, step, wholeAnswer, type LargeSpace, type Limits, type Printed, type Rows, type ShapeRegistration } from "../shape-registration";
 
 interface Facts { digits: number; carry: readonly [tens: number, hundreds: number, thousands: number]; carries: number; product: number; zero: boolean; wholeTens: boolean }
 
@@ -50,7 +50,7 @@ function read(rows: Rows): Printed | null {
   const facts = factsOf(Number(top), b);
   const [carryIntoTens, carryIntoHundreds, carryIntoThousands] = facts.carry;
   return {
-    answer: { kind: "whole-number", value: String(facts.product) },
+    answer: wholeAnswer(String(facts.product)),
     features: { digits: top.length, a: Number(top), b, carries: facts.carries, carryIntoTens, carryIntoHundreds, carryIntoThousands, product: facts.product, zeroInProduct: facts.zero, wholeTens: facts.wholeTens },
     widths: { product: facts.product },
     steps: readSteps(top, b, facts),
@@ -139,6 +139,7 @@ const q = (text: string): Rows => text.split(" ");
 
 export const mulColumnRegistration: ShapeRegistration = {
   id: "mul.column",
+  working: "columns",
   limits: {
     digits: range(2, 4), a: range(10, 9999), b: range(2, 9), carries: range(0, 3),
     carryIntoTens: range(0, 8), carryIntoHundreds: range(0, 8), carryIntoThousands: range(0, 8),
@@ -241,7 +242,7 @@ export const mulColumnRegistration: ShapeRegistration = {
     ["a carry that makes the next carry", "1667 ×6", ["6 × 7 = 42, write 2, carry 4", "6 × 6 = 36, plus 4 is 40, write 0, carry 4", "6 × 6 = 36, plus 4 is 40, write 0, carry 4", "6 × 1 = 6, plus 4 is 10", "10002"], ["w2@0 c4@1", "w0@1 c4@2", "w0@2 c4@3", "w0@3 w1@4"]],
     ["the largest question", "9999 ×9", ["9 × 9 = 81, write 1, carry 8", "9 × 9 = 81, plus 8 is 89, write 9, carry 8", "9 × 9 = 81, plus 8 is 89, write 9, carry 8", "9 × 9 = 81, plus 8 is 89", "89991"], ["w1@0 c8@1", "w9@1 c8@2", "w9@2 c8@3", "w9@3 w8@4"]],
   ] as const).map(([name, rows, texts, marks]) => ({
-    name, rows: q(rows), answer: { kind: "whole-number" as const, value: texts[texts.length - 1] }, steps: texts.map((text, i) => step(text, marks[i])),
+    name, rows: q(rows), answer: wholeAnswer(texts[texts.length - 1]), steps: texts.map((text, i) => step(text, marks[i])),
   })),
   refusedLimits: [
     { name: "not an object", raw: "wide", problem: "the limits must be an object" },

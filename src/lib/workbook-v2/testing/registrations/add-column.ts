@@ -1,7 +1,7 @@
 // The facts of add.column. The shape works column by column; this file takes each carry from the sum of the last digits.
 import type { Step } from "../../contract";
 import { absentMeet, endsOf, inside, meets, zeroAt, zerosMeet, type SumRules } from "../column-facts";
-import { neverLimit, oftenWide, onlyLimit, rangeLimit, step, type LimitRule, type Limits, type Printed, type Rows, type ShapeRegistration } from "../shape-registration";
+import { neverLimit, oftenWide, onlyLimit, rangeLimit, step, wholeAnswer, type LimitRule, type Limits, type Printed, type Rows, type ShapeRegistration } from "../shape-registration";
 
 /** The carry into a place, from the digits below it. */
 const carriesInto = (a: number, b: number, place: number): boolean => (a % 10 ** place) + (b % 10 ** place) >= 10 ** place;
@@ -52,7 +52,7 @@ function read(rows: Rows): Printed | null {
   const facts = factsOf(a, b);
   const answer = String(facts.sum);
   return {
-    answer: { kind: "whole-number", value: answer },
+    answer: wholeAnswer(answer),
     features: addColumnFeatures(a, b),
     widths: { places: Math.max(found[1].length, 1 + found[2].length, answer.length) },
     steps: readSteps(found[1], found[2], facts),
@@ -93,6 +93,7 @@ const LISTED: Rows[] = Array.from({ length: 99 }, (_, i) => i + 1).flatMap((a) =
 
 export const addColumnRegistration: ShapeRegistration = {
   id: "add.column",
+  working: "columns",
   limits: {
     aDigits: range(1, 4), bDigits: range(1, 4), a: range(1, 9999), b: range(1, 9999), sum: range(2, 19_998), carries: range(0, 3),
     carryIntoTens: range(0, 1), carryIntoHundreds: range(0, 1), carryIntoThousands: range(0, 1), carryChain: word(onlyLimit()),
@@ -193,7 +194,7 @@ export const addColumnRegistration: ShapeRegistration = {
     ["zeros in both numbers", "300 +200", ["0 + 0 = 0, write 0", "0 + 0 = 0, write 0", "3 + 2 = 5", "500"], ["w0@0", "w0@1", "w5@2"]],
     ["the widest question", "9999 +9999", ["9 + 9 = 18, write 8, carry 1", "9 + 9 = 18, plus 1 is 19, write 9, carry 1", "9 + 9 = 18, plus 1 is 19, write 9, carry 1", "9 + 9 = 18, plus 1 is 19", "19998"], ["w8@0 c1@1", "w9@1 c1@2", "w9@2 c1@3", "w9@3 w1@4"]],
   ] as const).map(([name, rows, texts, marks]) => ({
-    name, rows: q(rows), answer: { kind: "whole-number" as const, value: texts[texts.length - 1] }, steps: texts.map((text, i) => step(text, marks[i])),
+    name, rows: q(rows), answer: wholeAnswer(texts[texts.length - 1]), steps: texts.map((text, i) => step(text, marks[i])),
   })),
   refusedLimits: [
     { name: "not an object", raw: "wide", problem: "the limits must be an object" },

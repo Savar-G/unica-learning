@@ -3,6 +3,13 @@ import type { ShapeRegistration } from "./shape-registration";
 import { addColumnRegistration } from "./registrations/add-column";
 import { mulColumnRegistration } from "./registrations/mul-column";
 import { subColumnRegistration } from "./registrations/sub-column";
+import { factAddRegistration } from "./registrations/fact-add";
+import { factSubRegistration } from "./registrations/fact-sub";
+import { factMulRegistration } from "./registrations/fact-mul";
+import { repeatedAddRegistration } from "./registrations/add-repeated";
+import { skipCountRegistration } from "./registrations/count-skip";
+import { missingFactorRegistration } from "./registrations/missing-factor";
+import { missingAddendRegistration } from "./registrations/missing-addend";
 
 // Keep at least three lines between the shape imports and the list below so git merge=union merges each block on its own.
 // Adding a shape on two branches inserts one line in each block without conflict or hand edits.
@@ -11,4 +18,11 @@ export const SHAPE_REGISTRATIONS: readonly ShapeRegistration[] = [
   addColumnRegistration,
   mulColumnRegistration,
   subColumnRegistration,
+  factAddRegistration,
+  factSubRegistration,
+  factMulRegistration,
+  repeatedAddRegistration,
+  skipCountRegistration,
+  missingFactorRegistration,
+  missingAddendRegistration,
 ];

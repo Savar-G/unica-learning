@@ -1,6 +1,6 @@
 // A book proves its own pages: what the page model says is read back from each finished page image. The image is made
 // apart from the report of the typesetter, so text that is reported and not printed is found here.
-import { IMAGE_PIXELS_PER_INCH, type Ink, type PageModel, type Rect, type Region } from "../contract";
+import { IMAGE_PIXELS_PER_INCH, PRINT_RULES, type Ink, type PageModel, type Rect, type Region } from "../contract";
 import { isDark, readQr, strayQrTexts, type Box } from "./find-qr";
 import { readPageImage, type PageImage } from "./page-image";
 import { regionName } from "./page-rules";
@@ -53,6 +53,8 @@ function isDrawn(image: PageImage, ink: Ink): boolean {
 }
 
 function checkInk(image: PageImage, region: Region, tell: Tell): void {
+  // The outline shows where an answer goes, so it is looked for whatever the model says of its ink.
+  if (region.role === "answer" && !isDrawn(image, { kind: "outline", rect: region.rect, color: "black", width: PRINT_RULES.answer.outline })) tell(`the image has no outline of ${regionName(region)}`);
   for (const ink of region.ink) {
     if (isDrawn(image, ink)) continue;
     if (ink.kind === "text") tell(`${regionName(region)} must print "${ink.text}" and the image has no ink there`);

@@ -4,6 +4,12 @@ import type { Answer, AnswerKind, Face, Step } from "../contract";
 
 export interface Item<Q> { question: Q; answer: Answer }
 
+/** An answer of one whole number in one answer area. */
+export const wholeNumber = (value: number | string): Answer => ({ parts: [{ name: "answer", kind: "whole-number", value: String(value) }] });
+
+/** The same question turned round, such as 7 × 5 for 5 × 7. */
+export interface Swapped<Q> { question: Q; inLimits: boolean }
+
 export interface Shape<L = unknown, Q = unknown> {
   id: string;
   /** Whole number starting at 1. Bump whenever output changes. */
@@ -30,7 +36,18 @@ export interface Shape<L = unknown, Q = unknown> {
   /** How many different questions the limits allow. */
   count(limits: L): number;
   face(question: Q): Face;
+  /** Every question of the limits. Only a shape whose whole space is small has it. */
+  list?(limits: L): Q[];
+  /** The widest question of each form: each place that a blank can have. Without it, all questions have the form of `worstCase`. */
+  forms?(limits: L): Item<Q>[];
+  /** Every row of this length in the order of its table, for limits that ask for one. Null for limits that mix the questions. A shape with it has a list. */
+  orderedRuns?(limits: L, items: number): Q[][] | null;
+  /** The swapped form and whether the limits allow it, or null for a question that has none. */
+  swapped?(question: Q, limits: L): Swapped<Q> | null;
 }
+
+/** The widest question of each form of a row. */
+export const formsOf = (shape: Shape, limits: unknown): Item<unknown>[] => shape.forms?.(limits) ?? [shape.worstCase(limits)];
 
 const hasOwn = (o: object, key: string) => Object.prototype.hasOwnProperty.call(o, key);
 export const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -51,19 +68,33 @@ export function readRange(raw: Record<string, unknown>, name: string, bounds: Ra
   return { min, max };
 }
 
+/** A set of whole numbers inside its bounds, in rising order so that a set has one form, or the problem. */
+export function readSet(raw: Record<string, unknown>, name: string, bounds: Range): number[] | string {
+  const value = hasOwn(raw, name) ? raw[name] : undefined;
+  if (!Array.isArray(value) || value.length === 0) return `${name} must be a list of 1 or more numbers`;
+  for (const [i, n] of (value as unknown[]).entries()) {
+    if (typeof n !== "number" || !Number.isSafeInteger(n)) return `${name} must hold whole numbers`;
+    if (n < bounds.min || n > bounds.max) return `${name} must be from ${bounds.min} to ${bounds.max}`;
+    if (i > 0 && n <= value[i - 1]) return `${name} must rise, with no number twice`;
+  }
+  return [...value] as number[];
+}
+
 /**
- * Limits with these names and no other: ranges inside their bounds, and words from their lists. It gives the limits, or
- * the first thing that is wrong.
+ * Limits with these names and no other: ranges and sets inside their bounds, and words from their lists. It gives the
+ * limits, or the first thing that is wrong.
  */
-export function readLimitFields(raw: unknown, ranges: Readonly<Record<string, Range>>, words: Readonly<Record<string, readonly string[]>>): Record<string, unknown> | string {
+export function readLimitFields(raw: unknown, ranges: Readonly<Record<string, Range>>, words: Readonly<Record<string, readonly string[]>>, sets: Readonly<Record<string, Range>> = {}): Record<string, unknown> | string {
   if (!isRecord(raw)) return "the limits must be an object";
-  const unknown = Object.keys(raw).find((k) => !hasOwn(ranges, k) && !hasOwn(words, k));
+  const unknown = Object.keys(raw).find((k) => !hasOwn(ranges, k) && !hasOwn(words, k) && !hasOwn(sets, k));
   if (unknown !== undefined) return `unknown limit "${unknown}"`;
   const limits: Record<string, unknown> = {};
-  for (const [name, bounds] of Object.entries(ranges)) {
-    const range = readRange(raw, name, bounds);
-    if (typeof range === "string") return range;
-    limits[name] = range;
+  for (const [read, all] of [[readRange, ranges], [readSet, sets]] as const) {
+    for (const [name, bounds] of Object.entries(all)) {
+      const value = read(raw, name, bounds);
+      if (typeof value === "string") return value;
+      limits[name] = value;
+    }
   }
   for (const [name, allowed] of Object.entries(words)) {
     const word = hasOwn(raw, name) ? raw[name] : undefined;
@@ -71,6 +102,14 @@ export function readLimitFields(raw: unknown, ranges: Readonly<Record<string, Ra
     limits[name] = word;
   }
   return limits;
+}
+
+export const within = (n: number, { min, max }: Range): boolean => n >= min && n <= max;
+
+/** Limits of a shape that some question meets. */
+export function readLimitsThat<L>(fields: Record<string, unknown> | string, count: (limits: L) => number): { ok: true; limits: L } | { ok: false; problem: string } {
+  if (typeof fields === "string") return { ok: false, problem: fields };
+  return count(fields as L) > 0 ? { ok: true, limits: fields as L } : { ok: false, problem: "no question meets these limits" };
 }
 
 /**

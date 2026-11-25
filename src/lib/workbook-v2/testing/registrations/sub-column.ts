@@ -2,7 +2,7 @@
 // both numbers: a place gives a ten when the digits below it are less than the same digits of the lower number.
 import type { Step } from "../../contract";
 import { absentMeet, endsOf, inside, meets, zeroAt, zerosMeet, type SumRules } from "../column-facts";
-import { neverLimit, oftenWide, onlyLimit, rangeLimit, step, type LimitRule, type Limits, type Printed, type Rows, type ShapeRegistration } from "../shape-registration";
+import { neverLimit, oftenWide, onlyLimit, rangeLimit, step, wholeAnswer, type LimitRule, type Limits, type Printed, type Rows, type ShapeRegistration } from "../shape-registration";
 
 const digitAt = (n: number, place: number) => Math.floor(n / 10 ** place) % 10;
 
@@ -70,7 +70,7 @@ function read(rows: Rows): Printed | null {
   const facts = factsOf(a, b);
   const { columns, left } = facts;
   return {
-    answer: { kind: "whole-number", value: String(left) },
+    answer: wholeAnswer(String(left)),
     features: subColumnFeatures(a, b),
     widths: { places: Math.max(columns, 1 + found[2].length) },
     steps: readSteps(a, b, facts),
@@ -113,6 +113,7 @@ const LISTED: Rows[] = Array.from({ length: 99 }, (_, i) => i + 1).flatMap((a) =
 
 export const subColumnRegistration: ShapeRegistration = {
   id: "sub.column",
+  working: "columns",
   limits: {
     aDigits: range(1, 4), bDigits: range(1, 4), a: range(1, 9999), b: range(1, 9999), difference: range(0, 9998), borrows: range(0, 3),
     borrowFromTens: range(0, 1), borrowFromHundreds: range(0, 1), borrowFromThousands: range(0, 1),
@@ -229,7 +230,7 @@ export const subColumnRegistration: ShapeRegistration = {
     ["a zero in the middle of the answer", "512 -308", ["borrow 1 ten, 1 ten becomes 0 tens", "12 - 8 = 4, write 4", "0 - 0 = 0, write 0", "5 - 3 = 2", "204"], ["x1@1 b0@1 b12@0", "w4@0", "w0@1", "w2@2"]],
     ["the widest question", "9999 -9999", ["9 - 9 = 0, write 0", "9 - 9 = 0, write nothing", "9 - 9 = 0, write nothing", "9 - 9 = 0, write nothing", "0"], ["w0@0"]],
   ] as const).map(([name, rows, texts, marks]) => ({
-    name, rows: q(rows), answer: { kind: "whole-number" as const, value: texts[texts.length - 1] }, steps: texts.map((text, i) => step(text, marks.at(i))),
+    name, rows: q(rows), answer: wholeAnswer(texts[texts.length - 1]), steps: texts.map((text, i) => step(text, marks.at(i))),
   })),
   refusedLimits: [
     { name: "not an object", raw: "wide", problem: "the limits must be an object" },

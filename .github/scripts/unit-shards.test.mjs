@@ -12,6 +12,8 @@ const EXCLUDED = new Set([
   "src/lib/maya-gate/word-count-grade-1.test.ts",
   "src/lib/maya-gate/word-count-grade-4.test.ts",
   "src/lib/scan-binding-scale-chromium.test.ts",
+  "src/lib/scan-binding-scale-2-chromium.test.ts",
+  "src/lib/scan-binding-scale-3-chromium.test.ts",
 ]);
 
 function walkTests(dir, out = []) {

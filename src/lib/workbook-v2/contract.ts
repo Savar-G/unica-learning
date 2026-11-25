@@ -2,7 +2,7 @@
 // it, so it imports nothing. All lengths are points (72 to the inch) from the top left corner of the page.
 
 /** Changes when the same input can give other bytes. A book records it, so a replay can tell which part differs. */
-export const ENGINE_VERSION = "2.0.0-s3";
+export const ENGINE_VERSION = "2.0.0-s5";
 
 export interface Rect { x: number; y: number; w: number; h: number }
 
@@ -12,11 +12,24 @@ export type Side = "front" | "back";
 export const ANSWER_KINDS = ["whole-number"] as const;
 export type AnswerKind = (typeof ANSWER_KINDS)[number];
 
-export interface Answer { kind: AnswerKind; value: string }
+/** What one answer area must hold. The name is unique in its question: "answer", "blank-1", and later "quotient". */
+export interface AnswerPart { name: string; kind: AnswerKind; value: string }
+/** The parts of an answer in reading order, each with an answer area of its own. A question with one area has one part. */
+export interface Answer { parts: AnswerPart[] }
+
+/** The line that ends the worked steps: the value of each part. */
+export const answerLine = ({ parts }: Answer): string => parts.map((p) => p.value).join(", ");
 
 /** What a question looks like, with no knowledge of its math: the layout draws it, and nothing else reads it. */
+export const FACE_KINDS = ["column", "equation", "sequence"] as const;
 export interface ColumnFace { kind: "column"; top: string; sign: string; bottom: string }
-export type Face = ColumnFace;
+/** A printed text, or a blank: the answer area of the part with that name. */
+export type FaceToken = { text: string } | { blank: string };
+/** Tokens on one line, such as 5 × 7 = and a blank. */
+export interface EquationFace { kind: "equation"; tokens: FaceToken[] }
+/** Terms one after the other, down the page. */
+export interface SequenceFace { kind: "sequence"; tokens: FaceToken[] }
+export type Face = ColumnFace | EquationFace | SequenceFace;
 
 /**
  * What a step puts on the paper. "write" is a digit of the answer; "carry" is the small digit above the next column.
@@ -49,7 +62,7 @@ export interface BookItem {
   difficulty: number;
 }
 
-/** Every role a printed rectangle can have. `slot` holds the other rectangles of one item; `reach` holds its answer. */
+/** Every role a printed rectangle can have. `slot` holds the other rectangles of one item; `reach` holds one of its answers. */
 export const REGION_ROLES = ["heading", "instruction", "footer", "qr", "scan-mark", "slot", "label", "question", "answer", "reach", "work"] as const;
 export type RegionRole = (typeof REGION_ROLES)[number];
 
@@ -65,8 +78,13 @@ export interface Region {
   rect: Rect;
   /** The item that a slot, label, question, answer, reach or work rectangle belongs to. */
   item: string | null;
+  /** The answer part that an answer or reach rectangle belongs to. */
+  part: string | null;
   ink: Ink[];
 }
+
+/** The last part of the id of a rectangle of a question. The part of a question with one answer area is "answer", and needs no other name. */
+export const partRegionName = (role: RegionRole, number: number, part: string | null): string => `${role}-${number}${part === null || part === "answer" ? "" : `-${part}`}`;
 
 export interface PageModel {
   id: string;
@@ -107,8 +125,8 @@ export const PRINT_RULES = {
   qrModuleMin: 1.2,
   /** Clear space around an answer area. */
   reach: { left: 19.2, right: 28.8, top: 9.6, bottom: 9.6 },
-  /** The smallest answer area: a width for each character, plus room, and never less than the minimum. */
-  answer: { perCharacter: 14.4, extra: 14.4, minWidth: 72, minHeight: 42 },
+  /** The smallest answer area: a width for each character, plus room, and never less than the minimum. Its outline is a line. */
+  answer: { perCharacter: 14.4, extra: 14.4, minWidth: 72, minHeight: 42, outline: 0.75 },
   maxAnswerColumns: 2,
   maxInstructionCharacters: 60,
   maxTitleCharacters: 44,
