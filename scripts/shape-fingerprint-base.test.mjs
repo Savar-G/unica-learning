@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { after, test } from "node:test";
-import { readFileSync } from "node:fs";
-import { changedFingerprints, checkBase, FINGERPRINTS } from "./shape-fingerprint-base.mjs";
+import { fileURLToPath } from "node:url";
+import { changedFingerprints, checkBase, FINGERPRINTS_DIR, LEGACY_FINGERPRINTS } from "./shape-fingerprint-base.mjs";
 
 const A = "a".repeat(64);
 const B = "b".repeat(64);
@@ -17,8 +17,20 @@ function repository() {
   folders.push(root);
   const git = (...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.test", "-c", "core.hooksPath=/dev/null", ...args], { cwd: root, encoding: "utf8" }).trim();
   const write = (value) => {
-    mkdirSync(dirname(join(root, FINGERPRINTS)), { recursive: true });
-    writeFileSync(join(root, FINGERPRINTS), typeof value === "string" ? value : JSON.stringify(value));
+    const dir = join(root, FINGERPRINTS_DIR);
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir, { recursive: true });
+    if (typeof value === "string") {
+      writeFileSync(join(dir, "s.json"), value);
+      return;
+    }
+    for (const [id, versions] of Object.entries(value)) {
+      writeFileSync(join(dir, `${id}.json`), JSON.stringify({ [id]: versions }));
+    }
+  };
+  const writeLegacy = (value) => {
+    mkdirSync(dirname(join(root, LEGACY_FINGERPRINTS)), { recursive: true });
+    writeFileSync(join(root, LEGACY_FINGERPRINTS), typeof value === "string" ? value : JSON.stringify(value));
   };
   const commit = (value) => {
     if (value !== undefined) write(value);
@@ -27,7 +39,7 @@ function repository() {
     return git("rev-parse", "HEAD");
   };
   git("init", "--quiet", "-b", "main");
-  return { root, git, write, commit };
+  return { root, git, write, writeLegacy, commit };
 }
 
 for (const [name, base, now, problem] of [
@@ -61,7 +73,33 @@ test("a laptop compares the files on disk with the merge base of origin/main", (
   assert.deepEqual([checkBase(root, { ci: false }).ok, /version 1 changed/.test(checkBase(root, { ci: false }).text.join())], [false, true]);
   write("not json");
   assert.equal(checkBase(root, { ci: false }).ok, false);
-  rmSync(join(root, FINGERPRINTS));
+  rmSync(join(root, FINGERPRINTS_DIR), { recursive: true, force: true });
+  assert.equal(checkBase(root, { ci: false }).ok, false);
+});
+
+test("reads a legacy single fingerprint file from the base commit during migration to the folder", () => {
+  const { root, git, writeLegacy, write, commit } = repository();
+  writeLegacy({ "mul.column": { 1: A } });
+  const base = commit();
+  git("update-ref", "refs/remotes/origin/main", base);
+  rmSync(join(root, LEGACY_FINGERPRINTS));
+  write({ "mul.column": { 1: A, 2: B } });
+  commit();
+  assert.equal(checkBase(root, { ci: false }).ok, true);
+  write({ "mul.column": { 1: B, 2: B } });
+  assert.equal(checkBase(root, { ci: false }).ok, false);
+});
+
+test("the files of the base may have other names, and the files now may not", () => {
+  const { root, git, write, commit } = repository();
+  const rename = (name, value) => writeFileSync(join(root, FINGERPRINTS_DIR, name), JSON.stringify(value));
+  write({});
+  rename("mul-column.json", { "mul.column": { 1: A } });
+  git("update-ref", "refs/remotes/origin/main", commit());
+  assert.equal(checkBase(root, { ci: false }).ok, false);
+  write({ "mul.column": { 1: A } });
+  assert.equal(checkBase(root, { ci: false }).ok, true);
+  write({ "mul.column": { 1: B } });
   assert.equal(checkBase(root, { ci: false }).ok, false);
 });
 
@@ -137,4 +175,68 @@ test("the job of CI that always runs has the parent and runs the check", () => {
   const scope = ci.slice(ci.indexOf("\n  scope:"), ci.indexOf("\n  unit:"));
   assert.match(scope, /fetch-depth: 2\n/);
   assert.match(scope, /EVENT_BEFORE: \$\{\{ github\.event\.before \}\}\n {8}run: node scripts\/shape-fingerprint-base\.mjs\n/);
+});
+
+test("two branches that each add a shape merge cleanly with the committed .gitattributes and per-shape fingerprint folder", () => {
+  const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+  const attrs = readFileSync(join(repoRoot, ".gitattributes"), "utf8");
+  const idxFile = "src/lib/workbook-v2/shapes/index.ts";
+  const regFile = "src/lib/workbook-v2/testing/shape-registrations.ts";
+  const makeIdx = (names) => [
+    ...names.map((n) => `import { ${n} } from "./${n}";`),
+    'import type { Shape } from "./shape";',
+    "",
+    'export type { Item, Shape } from "./shape";',
+    "export type ShapeLibrary = ReadonlyMap<string, Shape>;",
+    "export function shapeLibrary(shapes: readonly Shape[]): ShapeLibrary { return new Map(shapes.map((s) => [s.id, s])); }",
+    "export const SHAPES: ShapeLibrary = shapeLibrary([",
+    ...names.map((n) => `  ${n},`),
+    "]);",
+    "",
+  ].join("\n");
+  const makeReg = (names) => [
+    "// Registrations.",
+    'import type { ShapeRegistration } from "./shape-registration";',
+    ...names.map((n) => `import { ${n} } from "./registrations/${n}";`),
+    "",
+    "// Separator line 1.",
+    "// Separator line 2.",
+    "// Separator line 3.",
+    "export const SHAPE_REGISTRATIONS: readonly ShapeRegistration[] = [",
+    ...names.map((n) => `  ${n},`),
+    "];",
+    "",
+  ].join("\n");
+  for (const [label, baseNames, aNames, bNames, addedA, addedB] of [
+    ["same middle", ["aShape", "zShape"], ["aShape", "m1Shape", "zShape"], ["aShape", "m2Shape", "zShape"], "m1.shape", "m2.shape"],
+    ["end", ["aShape", "mShape"], ["aShape", "mShape", "xShape"], ["aShape", "mShape", "yShape"], "x.shape", "y.shape"],
+    ["start", ["mShape", "zShape"], ["aShape", "mShape", "zShape"], ["bShape", "mShape", "zShape"], "a.shape", "b.shape"],
+  ]) {
+    const { root, git } = repository();
+    const put = (rel, text) => { mkdirSync(dirname(join(root, rel)), { recursive: true }); writeFileSync(join(root, rel), text); };
+    put(".gitattributes", attrs);
+    put(idxFile, makeIdx(baseNames));
+    put(regFile, makeReg(baseNames));
+    put(`${FINGERPRINTS_DIR}/base.shape.json`, JSON.stringify({ "base.shape": { 1: A } }));
+    git("add", "-A"); git("commit", "--quiet", "-m", "base");
+    git("checkout", "--quiet", "-b", "branch-a");
+    put(idxFile, makeIdx(aNames));
+    put(regFile, makeReg(aNames));
+    put(`${FINGERPRINTS_DIR}/${addedA}.json`, JSON.stringify({ [addedA]: { 1: A } }));
+    git("add", "-A"); git("commit", "--quiet", "-m", "a");
+    git("checkout", "--quiet", "main");
+    git("checkout", "--quiet", "-b", "branch-b");
+    put(idxFile, makeIdx(bNames));
+    put(regFile, makeReg(bNames));
+    put(`${FINGERPRINTS_DIR}/${addedB}.json`, JSON.stringify({ [addedB]: { 1: B } }));
+    git("add", "-A"); git("commit", "--quiet", "-m", "b");
+    git("merge", "--quiet", "--no-edit", "branch-a");
+    for (const file of [idxFile, regFile]) {
+      const merged = readFileSync(join(root, file), "utf8");
+      assert.equal(merged.includes("<<<<"), false, `${label}: ${file} conflict`);
+      assert.equal((merged.match(/^export const /gm) ?? []).length, 1, `${label}: ${file} duplicate export`);
+      assert.equal((merged.match(/^  \w+Shape,$/gm) ?? []).length, baseNames.length + 2, `${label}: ${file} items`);
+    }
+    assert.equal(checkBase(root, { ci: true }).ok, true, `${label}: fingerprint check`);
+  }
 });

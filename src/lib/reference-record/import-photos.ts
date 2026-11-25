@@ -1,19 +1,30 @@
-import { createHash } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import { lstat, open, realpath, stat } from "node:fs/promises";
 import { extname, isAbsolute, join, resolve } from "node:path";
-import { isPlainObject, parseStrictUtf8Json, readJsonNote } from "./read-file";
+import type { ReferenceStore } from "./import";
+import { isPlainObject, parseStrictUtf8Json, readJsonNote, sha256Hex } from "./read-file";
 import type { ReferenceRecord } from "./types";
 
 const PATH_SEGMENT_RE = /^[A-Za-z0-9_-]+$/;
 const SHA256_HEX_RE = /^[0-9a-f]{64}$/i;
 
-const EXT_TO_CONTENT_TYPE = new Map<string, string>([
-  ["jpg", "image/jpeg"],
-  ["jpeg", "image/jpeg"],
-  ["png", "image/png"],
-  ["webp", "image/webp"],
-]);
+// The endings of one type. A new path gets the first one.
+const PHOTO_TYPES: ReadonlyArray<{ endings: readonly string[]; contentType: string }> = [
+  { endings: ["jpg", "jpeg"], contentType: "image/jpeg" },
+  { endings: ["png"], contentType: "image/png" },
+  { endings: ["webp"], contentType: "image/webp" },
+];
+
+// The limit for a stored key: a page id or a photo path. An object key may have 1024 bytes in S3, and
+// Storage puts its project, bucket and version (about 100 bytes) before and after the path. An index
+// entry of Postgres may have about 2700 bytes.
+const MAX_STORED_KEY_BYTES = 512;
+
+// What is wrong with a key that the import would store, or null.
+export function storedKeyProblem(key: string): string | null {
+  const length = Buffer.byteLength(key);
+  return length > MAX_STORED_KEY_BYTES ? `the key has ${length} bytes, and at most ${MAX_STORED_KEY_BYTES} are allowed` : null;
+}
 
 // Same limit as the bucket (file_size_limit in the migration). A larger file is refused before any write.
 export const MAX_REFERENCE_PHOTO_BYTES = 20 * 1024 * 1024;
@@ -96,7 +107,11 @@ export function parsePhotoList(raw: unknown): Array<Record<string, unknown>> {
 }
 
 export interface PlannedPhoto {
+  // The path that names the page and the bytes of the photo.
   storagePath: string;
+  // Every path that a row of this page keeps when the object there has the bytes of the photo: also
+  // the older form, and the other ending of the type. They are only read, never written.
+  keptPaths: readonly string[];
   contentType: string;
   bytes: Uint8Array;
   sha256: string;
@@ -193,10 +208,16 @@ export async function readRegularFileNoFollow(
   }
 }
 
+// How much of the SHA-256 of a photo its path holds. The bytes at the path are always compared too.
+const PATH_SHA_LENGTH = 16;
+
+// <source>/<level>/<page>.<part of the SHA-256>.<ext>. A page id segment holds no ".", so this is
+// never the older form (<page>.<ext>) of any page, and two pages never share a path.
 export function buildReferencePhotoPath(
   sourceRef: string,
   fileName: string,
-): { ok: true; path: string; contentType: string } | { ok: false; error: string } {
+  sha256: string,
+): { ok: true; path: string; keptPaths: string[]; contentType: string } | { ok: false; error: string } {
   const segments = sourceRef.split(":");
   if (segments.length === 0 || !segments.every((seg) => PATH_SEGMENT_RE.test(seg))) {
     return {
@@ -207,19 +228,67 @@ export function buildReferencePhotoPath(
 
   const rawExt = extname(fileName).toLowerCase();
   const ext = rawExt.startsWith(".") ? rawExt.slice(1) : "";
-  const contentType = EXT_TO_CONTENT_TYPE.get(ext);
-  if (contentType === undefined) {
+  const type = PHOTO_TYPES.find(({ endings }) => endings.includes(ext));
+  if (type === undefined) {
     return {
       ok: false,
       error: `unsupported photo extension "${rawExt || "(none)"}" for "${fileName}" (expected jpg, jpeg, png, or webp)`,
     };
   }
 
-  return {
-    ok: true,
-    path: `${segments.join("/")}.${ext}`,
-    contentType,
-  };
+  const page = segments.join("/");
+  const keptPaths = type.endings.flatMap((end) => [`${page}.${sha256.slice(0, PATH_SHA_LENGTH)}.${end}`, `${page}.${end}`]);
+  const [path] = keptPaths;
+  const keyProblem = storedKeyProblem(path);
+  if (keyProblem !== null) return { ok: false, error: `the photo path is too long: ${keyProblem}` };
+  return { ok: true, path, keptPaths, contentType: type.contentType };
+}
+
+// Where the row of a page gets its photo from.
+export interface PhotoTarget {
+  path: string;
+  // The photo is not at the path yet.
+  upload: boolean;
+}
+
+// Reads only. A row keeps its path of this page while the object there has the bytes of the photo.
+// Else the photo belongs at its content path: an object there is the photo, or it is a problem.
+export async function findPhotoTarget(
+  store: ReferenceStore,
+  photo: PlannedPhoto,
+  storedPath: string | null,
+): Promise<{ ok: true; target: PhotoTarget } | { ok: false; problem: string }> {
+  const { storagePath, keptPaths, sha256 } = photo;
+  const storedSha = storedPath !== null && keptPaths.includes(storedPath) ? await store.objectSha256(storedPath) : null;
+  if (storedPath !== null && storedSha === sha256) return { ok: true, target: { path: storedPath, upload: false } };
+  const sha = storedPath === storagePath ? storedSha : await store.objectSha256(storagePath);
+  if (sha !== null && sha !== sha256) return { ok: false, problem: otherBytesProblem(storagePath, sha, sha256) };
+  return { ok: true, target: { path: storagePath, upload: sha === null } };
+}
+
+function otherBytesProblem(path: string, sha: string, plannedSha: string): string {
+  return `the object at "${path}" has other bytes (sha256 ${sha}) than the photo (${plannedSha}); a person must look at this object and remove it by hand when no row uses it`;
+}
+
+// Just before a row gets the path: uploads the photo when it is not there, and stops unless the
+// object at the path has the bytes of the photo. Never writes over an object. onUploaded runs when the
+// upload has an answer.
+export async function ensurePhotoObject(
+  store: ReferenceStore,
+  photo: PlannedPhoto,
+  target: PhotoTarget,
+  onUploaded: () => void,
+): Promise<void> {
+  const { path, upload } = target;
+  const before = await store.objectSha256(path);
+  const uploads = before === null && upload;
+  if (uploads) {
+    await store.uploadObject(path, photo.bytes, photo.contentType);
+    onUploaded();
+  }
+  const now = uploads ? await store.objectSha256(path) : before;
+  if (now === null) throw new Error(`the photo at "${path}" is not in the bucket any more`);
+  if (now !== photo.sha256) throw new Error(otherBytesProblem(path, now, photo.sha256));
 }
 
 export async function readPlannedPhotos(
@@ -284,12 +353,6 @@ export async function readPlannedPhotos(
       continue;
     }
 
-    const pathCheck = buildReferencePhotoPath(record.source_ref, entry.file);
-    if (!pathCheck.ok) {
-      problems.push(`photos-manifest.json: ${record.source_ref}: ${pathCheck.error}`);
-      entryValid = false;
-    }
-
     const expectedSha =
       typeof entry.sha256 === "string" && SHA256_HEX_RE.test(entry.sha256)
         ? entry.sha256.toLowerCase()
@@ -298,6 +361,12 @@ export async function readPlannedPhotos(
       problems.push(
         `photos-manifest.json: ${record.source_ref} (${entry.file}): sha256 must be a 64-character hex string`,
       );
+      entryValid = false;
+    }
+
+    const pathCheck = buildReferencePhotoPath(record.source_ref, entry.file, expectedSha ?? "");
+    if (!pathCheck.ok) {
+      problems.push(`photos-manifest.json: ${record.source_ref}: ${pathCheck.error}`);
       entryValid = false;
     }
 
@@ -325,7 +394,7 @@ export async function readPlannedPhotos(
       );
       entryValid = false;
     }
-    const actualSha = createHash("sha256").update(bytes).digest("hex");
+    const actualSha = sha256Hex(bytes);
     if (expectedSha && actualSha !== expectedSha) {
       problems.push(
         `photos: ${record.source_ref} (${entry.file}): sha256 mismatch (expected ${expectedSha}, got ${actualSha})`,
@@ -336,6 +405,7 @@ export async function readPlannedPhotos(
     if (entryValid && pathCheck.ok && expectedSha) {
       planned.set(record.source_ref, {
         storagePath: pathCheck.path,
+        keptPaths: pathCheck.keptPaths,
         contentType: pathCheck.contentType,
         bytes,
         sha256: actualSha,

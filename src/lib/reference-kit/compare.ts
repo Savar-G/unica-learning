@@ -6,9 +6,11 @@ import {
   type Expr,
   type PageItem,
   type PageRecord,
+  type PageSection,
   type ReferenceRecord,
 } from "@/lib/reference-record";
-import { applyComputedAnswers, findEmptyAnswers } from "./answers";
+import { applyComputedAnswers, findEmptyAnswers, scaffoldPlaces } from "./answers";
+import { pairedItem, pairSections, readerBPlace } from "./compare-align";
 import {
   ANSWER_DISAGREEMENT_REASON,
   EXPRESSION_DISAGREEMENT_REASON,
@@ -26,7 +28,6 @@ import {
   isOneSidedNumberedEntry,
   locateNumberedDiff,
   locateOnceRead,
-  resolveDiffPath,
   resolveSingleReadPaths,
   stripKeptRecordLocations,
 } from "./compare-locate";
@@ -60,6 +61,8 @@ export {
 };
 
 export const PAGE_IDENTITY_DISAGREEMENT_REASON = "readers disagree on the page" as const;
+export const UNPROVED_ANSWERS_REASON = "stored answers do not fit the computed answer" as const;
+export const PRINTED_EXPRESSION_REASON = "printed line differs from the expression" as const;
 const PAGE_IDENTITY_PATHS: ReadonlySet<string> = new Set(["source_ref", "kind"]);
 
 export const PAGE_STOP_REASONS = [
@@ -71,6 +74,8 @@ export const PAGE_STOP_REASONS = [
   PAGE_IDENTITY_DISAGREEMENT_REASON,
   "stored answer conflicts with computed answer",
   READER_ANSWER_CONFLICT_REASON,
+  UNPROVED_ANSWERS_REASON,
+  PRINTED_EXPRESSION_REASON,
   "empty answer place",
   ANSWER_DISAGREEMENT_REASON,
   EXPRESSION_DISAGREEMENT_REASON,
@@ -104,11 +109,13 @@ export function agreementPercentage(agreed: number, compared: number): number | 
 
 function comparePageItems(
   path: string,
-  aItems: readonly PageItem[],
-  bItems: readonly PageItem[],
+  sectionA: PageSection,
+  sectionB: PageSection,
   diffs: RecordDifference[],
   counts?: CompareCounts,
 ): void {
+  const aItems = sectionA.items;
+  const bItems = sectionB.items;
   const aMap = new Map<number, PageItem>();
   const bMap = new Map<number, PageItem>();
   const orderedNs: number[] = [];
@@ -172,7 +179,13 @@ function comparePageItems(
 
     compareField(`${iPath}.form`, ia.form, ib.form, {}, diffs, counts);
     compareExpr(`${iPath}.expr`, ia.expr, ib.expr, diffs, counts);
-    compareResponses(`${iPath}.responses`, ia.responses, ib.responses, diffs, counts);
+    compareResponses(
+      `${iPath}.responses`,
+      { list: ia.responses, scaffoldPlaces: scaffoldPlaces(ia, sectionA.scaffolds) },
+      { list: ib.responses, scaffoldPlaces: scaffoldPlaces(ib, sectionB.scaffolds) },
+      diffs,
+      counts,
+    );
   }
 }
 
@@ -187,15 +200,17 @@ function comparePageRecords(
   compareScoreBands("score_bands", a.score_bands, b.score_bands, diffs, counts);
   compareExamples("examples", a.examples, b.examples, diffs, counts);
 
-  const maxSections = Math.max(a.sections.length, b.sections.length);
-  for (let si = 0; si < maxSections; si += 1) {
+  const sectionPairs = new Map(pairSections(a.sections, b.sections));
+  const equalSections = new Set<number>();
+  a.sections.forEach((sa, si) => {
     const sPath = `sections[${si}]`;
-    const sa = a.sections[si];
-    const sb = b.sections[si];
-    if (!sa || !sb) {
-      recordDiff(diffs, { path: sPath, a: sa ?? null, b: sb ?? null, kind: "value" }, counts);
-      continue;
+    const idxB = sectionPairs.get(si);
+    if (idxB === undefined) {
+      recordDiff(diffs, { path: sPath, a: sa, b: null, kind: "once_read" }, counts);
+      return;
     }
+    const sb = b.sections[idxB];
+    const before = diffs.length;
     compareField(
       `${sPath}.instruction`,
       sa.instruction,
@@ -212,8 +227,15 @@ function comparePageRecords(
       { a: sa.items.map((item) => item.n), b: sb.items.map((item) => item.n) },
       counts,
     );
-    comparePageItems(`${sPath}.items`, sa.items, sb.items, diffs, counts);
-  }
+    comparePageItems(`${sPath}.items`, sa, sb, diffs, counts);
+    if (diffs.slice(before).every((d) => d.kind === "wording")) equalSections.add(si);
+  });
+  const pairedSections = new Set(sectionPairs.values());
+  b.sections.forEach((sb, si) => {
+    if (pairedSections.has(si)) return;
+    const placeB = readerBPlace(si, a.sections.length, b.sections.length, sectionPairs, equalSections);
+    recordDiff(diffs, { path: `sections[b:${si}]`, a: null, b: sb, kind: "once_read", ...placeB }, counts);
+  });
 }
 
 function compareContentsRecords(
@@ -319,10 +341,17 @@ export function emptyAnswerDiffs(
 ): RecordDifference[] {
   // The same rule as reference:check: answer places are judged after computed answers are applied.
   const computed = finalRecord ? applyComputedAnswers(finalRecord).record : null;
+  // The answer of a reader at that place; undefined when the place cannot be found in its reading.
+  const answerOf = (reader: ReferenceRecord | null, path: string): unknown => {
+    const match = /^sections\[(\d+)\]\.items\[n=(\d+)\]\.responses\[(\d+)\]$/.exec(path);
+    if (!match || finalRecord?.kind !== "page" || reader?.kind !== "page") return undefined;
+    const item = pairedItem(finalRecord, reader, Number(match[1]), Number(match[2]));
+    return item?.responses[Number(match[3])]?.answer;
+  };
   return findEmptyAnswers(computed).map((path) => ({
     path,
-    a: a ? (resolveDiffPath(a, `${path}.answer`).value ?? null) : null,
-    b: b ? (resolveDiffPath(b, `${path}.answer`).value ?? null) : null,
+    a: answerOf(a, path),
+    b: answerOf(b, path),
     kind: "empty_answer",
   }));
 }
@@ -367,6 +396,8 @@ export interface DecideStatusInput {
   counts?: CompareCounts;
   hasAnswerConflict?: boolean;
   hasReaderAnswerConflict?: boolean;
+  hasUnprovedAnswers?: boolean;
+  hasPrintedConflict?: boolean;
   needsPersonRead?: boolean;
   editedByPerson?: boolean;
   // Why the check of a page that a person checked does not count now.
@@ -406,6 +437,8 @@ export function decidePageOutcome(input: DecideStatusInput): PageDecision {
   if (input.hasReaderAnswerConflict) {
     stopReasons.push(READER_ANSWER_CONFLICT_REASON);
   }
+  if (input.hasUnprovedAnswers) stopReasons.push(UNPROVED_ANSWERS_REASON);
+  if (input.hasPrintedConflict) stopReasons.push(PRINTED_EXPRESSION_REASON);
   if (input.diffs.some((d) => d.kind === "empty_answer")) {
     stopReasons.push("empty answer place");
   }

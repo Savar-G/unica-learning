@@ -18,7 +18,7 @@ import {
   type ReferenceRecord,
   type Scaffold,
 } from "@/lib/reference-record";
-import { applyComputedAnswers, collectExampleAnswerConflicts } from "./answers";
+import { applyComputedAnswers } from "./answers";
 import {
   agreementPercentage,
   ANSWER_DISAGREEMENT_REASON,
@@ -27,6 +27,7 @@ import {
   compareRecordsWithCounts,
   decidePageOutcome,
   decideStatus,
+  emptyAnswerDiffs,
   EXPRESSION_DISAGREEMENT_REASON,
   findAnswerDisagreements,
   findExpressionDisagreements,
@@ -36,12 +37,17 @@ import {
   normalizeProseText,
   PAGE_IDENTITY_DISAGREEMENT_REASON,
   PAGE_STOP_REASONS,
+  PRINTED_EXPRESSION_REASON,
   READER_ANSWER_CONFLICT_REASON,
   resolveSingleReadPaths,
+  UNPROVED_ANSWERS_REASON,
   type DecideStatusInput,
   type PageStopReason,
 } from "./compare";
 import { resolveDiffPath } from "./compare-locate";
+import { collectExampleAnswerConflicts, findExampleAnswerConflicts } from "./example-answers";
+import { findPrintedConflicts } from "./printed-line";
+import { findUnprovedAnswers } from "./unproved-answers";
 
 function makePage(overrides?: Partial<PageRecord>): PageRecord {
   return {
@@ -936,6 +942,41 @@ describe("answer sources, scaffold lists, once-read places, empty answers, and u
   });
 });
 
+describe("sections that have another number in each reading", () => {
+  it("looks up items and answers in the paired section of reader B", () => {
+    const a = makePage();
+    const b = makePage();
+    const [box, tick] = [
+      { position: "box" as const, cue: null, answer: "17", answer_source: "reader" as const },
+      { position: "checkbox" as const, cue: null, answer: null, answer_source: "unchecked" as const },
+    ];
+    const item = (responses: PageRecord["sections"][0]["items"][0]["responses"]) => ({
+      ...makePage().sections[0].items[0],
+      responses,
+    });
+    const section = (instruction: string, responses: Parameters<typeof item>[0]) => ({
+      instruction,
+      scaffolds: [],
+      items: [item(responses)],
+    });
+    a.sections = [section("Read.", [tick]), section("Add.", [{ ...box, answer: null, place: "answer" }, tick])];
+    b.sections = [section("Add.", [box, { ...tick, answer: "done" }]), section("Extra.", [{ ...box, answer: "99" }, box])];
+    const diffs = compareRecords(a, b);
+    expect(diffs.filter((d) => d.kind === "once_read").map((d) => d.path)).toEqual(
+      expect.arrayContaining(["sections[0]", "sections[b:1]"]),
+    );
+    // The tick box of the paired section is no answer, although reader B's section 1 has a box there.
+    expect(diffs.map((d) => d.path)).toContain("sections[1].items[n=1].responses[1].answer");
+    expect(findAnswerDisagreements(diffs, { a, b })).not.toContain("sections[1].items[n=1].responses[1].answer");
+
+    const open = { ...makePage(), sections: structuredClone(a.sections) };
+    open.sections[1].items[0].expr = { kind: "notation", latex: "x + 1" };
+    expect(emptyAnswerDiffs(open, open, b)).toEqual([
+      expect.objectContaining({ path: "sections[1].items[n=1].responses[0]", a: null, b: "17" }),
+    ]);
+  });
+});
+
 describe("decideStatus", () => {
   it("returns double_read only for two different families with no open diffs or once_read", () => {
     expect(
@@ -1286,7 +1327,6 @@ describe("worked-example step alignment and wording differences", () => {
     if (Array.isArray(blockB.examples)) {
       blockB.examples[0].text = "Find x.";
       blockB.examples[0].cross_ref = "See 2a";
-      blockB.examples[0].parts[0].caption = "Other part";
       if (Array.isArray(blockB.examples[0].steps)) {
         blockB.examples[0].steps[0].note = "Different note";
       }
@@ -1294,7 +1334,6 @@ describe("worked-example step alignment and wording differences", () => {
         blockB.examples[0].marks[1].description = "GCF";
       }
     }
-    blockB.sections[0].instruction = "Subtract the numbers.";
     blockB.sections[0].items[0].printed = "1/2 + 1/5 =";
     blockB.sections[0].items[0].responses[0].cue = "x =";
     if (Array.isArray(blockA.sections[0].scaffolds) && Array.isArray(blockB.sections[0].scaffolds)) {
@@ -1309,10 +1348,8 @@ describe("worked-example step alignment and wording differences", () => {
     expect(blockingDiffs.map((d) => d.path).sort()).toEqual([
       "examples[0].cross_ref",
       "examples[0].marks[1].description",
-      "examples[0].parts[0].caption",
       "examples[0].steps[n=1].note",
       "examples[0].text",
-      "sections[0].instruction",
       "sections[0].items[n=1].printed",
       "sections[0].items[n=1].responses[0].cue",
       "sections[0].scaffolds[4].label",
@@ -1536,7 +1573,9 @@ describe("worked-example step alignment and wording differences", () => {
       const placeB = makePage();
       placeA.sections[0].scaffolds = [{ kind: "answer_boxes", applies_to: [1], places: [...placesA] }];
       placeB.sections[0].scaffolds = [{ kind: "answer_boxes", applies_to: [1], places: [...placesB] }];
-      expect(compareRecords(placeA, placeB), `${placesA[0]} vs ${placesB[0]}`).toEqual([
+      // (The place of the answer differs too; see "never pairs two entries" in compare-batch.test.ts.)
+      const scaffoldDiffs = compareRecords(placeA, placeB).filter((d) => d.path.includes("scaffolds"));
+      expect(scaffoldDiffs, `${placesA[0]} vs ${placesB[0]}`).toEqual([
         {
           path: "sections[0].scaffolds[0].places[0]",
           a: placesA[0],
@@ -1881,6 +1920,25 @@ describe("90% reader agreement rule", () => {
       'reader b: examples[0].parts[0].shown_answer: shown "6", computed "5"',
     ]);
 
+    const chainAndStepPage = makeGridPage(3);
+    chainAndStepPage.examples = [
+      {
+        position: "top",
+        relation: "sequence",
+        parts: [{ form: "horizontal", expr: { kind: "chain", terms: [2, null, 6], step: 2 }, shown_answer: "99" }],
+        steps: [{ n: 1, shows: "answer", printed: "98" }],
+      },
+    ];
+    const twoPlacesPage = makeGridPage(3);
+    twoPlacesPage.sections[0].items[0].responses = ["2", "3"].map((answer) => ({
+      position: "box",
+      cue: null,
+      answer,
+      answer_source: "reader",
+    }));
+    const printedPage = makeGridPage(3);
+    printedPage.sections[0].items[0].printed = "1 - 1 =";
+
     type StopScenario =
       | { at95: Partial<DecideStatusInput>; at100?: Partial<DecideStatusInput>; custom?: never }
       | { at95?: Partial<DecideStatusInput>; at100: Partial<DecideStatusInput>; custom?: never }
@@ -1960,6 +2018,24 @@ describe("90% reader agreement rule", () => {
         label: "reader-only worked-example shown_answer conflict",
         at95: { hasReaderAnswerConflict: exReaderConflict.exConflicts.readerMessages.length > 0 },
         at100: { hasReaderAnswerConflict: exReaderConflict.exConflicts.readerMessages.length > 0 },
+      },
+      {
+        reason: "stored answer conflicts with computed answer",
+        label: "worked-example chain and answer step conflict",
+        at95: { hasAnswerConflict: findExampleAnswerConflicts(chainAndStepPage).length === 2 },
+        at100: { hasAnswerConflict: findExampleAnswerConflicts(chainAndStepPage).length === 2 },
+      },
+      {
+        reason: UNPROVED_ANSWERS_REASON,
+        label: "stored answers that code cannot place",
+        at95: { hasUnprovedAnswers: findUnprovedAnswers(twoPlacesPage).length > 0 },
+        at100: { hasUnprovedAnswers: findUnprovedAnswers(twoPlacesPage).length > 0 },
+      },
+      {
+        reason: PRINTED_EXPRESSION_REASON,
+        label: "printed line of an item",
+        at95: { hasPrintedConflict: findPrintedConflicts(printedPage).length > 0 },
+        at100: { hasPrintedConflict: findPrintedConflicts(printedPage).length > 0 },
       },
       {
         reason: "empty answer place",
@@ -2612,7 +2688,7 @@ describe("90% reader agreement rule", () => {
         a: exBase,
         b: extraSecB,
       }),
-    ).toEqual(["sections[1]"]);
+    ).toEqual(["sections[b:1]"]);
 
     const extraPartB = structuredClone(exBase);
     if (Array.isArray(extraPartB.examples)) {
@@ -2627,7 +2703,7 @@ describe("90% reader agreement rule", () => {
         a: exBase,
         b: extraPartB,
       }),
-    ).toEqual(["examples[0].parts[1]"]);
+    ).toEqual(["examples[0].parts[b:1]"]);
 
     const unclearStepsB = structuredClone(exBase);
     if (Array.isArray(unclearStepsB.examples)) {
@@ -3402,7 +3478,7 @@ describe("90% reader agreement rule", () => {
         expect(only.outcome, tag).toEqual({ status: "double_read", stopReasons: [] });
 
         // At 99% (one more difference, outside expr) the page stays agreement_accepted.
-        b.sections[0].instruction = "Subtract.";
+        b.topic.title = "Other title";
         const at99 = decide(a, b);
         expect(at99.cmp.diffs.map((d) => d.kind).sort(), tag).toEqual(["value", "wording"]);
         expect(agreementPercentage(at99.cmp.counts.agreed, at99.cmp.counts.compared), tag).toBeGreaterThanOrEqual(99);
@@ -3426,7 +3502,7 @@ describe("90% reader agreement rule", () => {
     outsideDiff.topic.title = "expr heading";
     outsideDiff.sections[0].items[0].printed = "2 + 3 = ?";
     if (Array.isArray(outsideDiff.examples)) {
-      outsideDiff.examples[0].parts[0].caption = "Part B";
+      outsideDiff.examples[0].parts[0].caption = null;
       if (Array.isArray(outsideDiff.examples[0].marks)) {
         outsideDiff.examples[0].marks[0].description = "Frame around 2";
       }
@@ -3514,7 +3590,7 @@ describe("90% reader agreement rule", () => {
         mutateB: (b) => {
           b.sections.push(exprSection);
         },
-        expectedExprPaths: ["sections[1]"],
+        expectedExprPaths: ["sections[b:1]"],
         expectedStatus: "machine_read",
       },
       {
@@ -3564,7 +3640,7 @@ describe("90% reader agreement rule", () => {
             b.examples[0].parts.push(exprPartNoAns);
           }
         },
-        expectedExprPaths: ["examples[0].parts[1]"],
+        expectedExprPaths: ["examples[0].parts[b:1]"],
         expectedStatus: "machine_read",
       },
       {

@@ -5,6 +5,8 @@ import type { PageTemplate } from "../layout/templates";
 import type { Limits } from "./shape-registration";
 
 export interface BookSpace { limits: Limits; count: number; fitting: readonly PageTemplate[] }
+/** The input, and the limits of each row under the name of its sheet and its own. */
+export interface SampleBook { input: BuildInput; limitsOf: ReadonlyMap<string, Limits> }
 /** One side of a sheet, before it is written down. */
 interface BookSide { space: BookSpace; template: PageTemplate; items: number }
 type BookSheet = [front: BookSide, back: BookSide];
@@ -22,7 +24,7 @@ const roomOf = (template: PageTemplate, name: Side): number => template.sides[na
  * First each side of each template that fits any limits, with a question in each place. Then enough sheets for the seeds
  * and for all limits, the largest first. With few questions a sheet has a full side and a side with one question.
  */
-export function sampleBook(shapeId: string, spaces: readonly BookSpace[], seeds: number): BuildInput {
+export function sampleBook(shapeId: string, spaces: readonly BookSpace[], seeds: number): SampleBook {
   const order = [...spaces].sort((a, b) => b.count - a.count);
   const templates = [...new Map(order.flatMap((s) => s.fitting).map((t) => [t.id, t])).values()];
   const targets = templates.flatMap((template) => {
@@ -54,7 +56,8 @@ export function sampleBook(shapeId: string, spaces: readonly BookSpace[], seeds:
   const ids = sheets.map((sheet) => sheet.id);
   const snapshot = { format: 1, id: "harness", level: { id: "level", name: "1" }, topics: [{ id: "topic", code: "1-1", title: "Harness", sheets: ids }], sheets };
   const book = { bookId: "book", childId: "child", sheets: ids.map((sheetId, i) => ({ sheetId, attempt: 1 + (i % 3), qr: { front: `f${i}`, back: `b${i}` } })) };
-  return { snapshot, book };
+  const limitsOf = new Map(sheets.flatMap(({ id, front, back }) => [...front.rows, ...back.rows].map((row) => [`${id}/${row.id}`, row.limits] as const)));
+  return { input: { snapshot, book }, limitsOf };
 }
 
 /** The sides of these templates that no page fills. */

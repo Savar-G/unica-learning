@@ -1,0 +1,46 @@
+{
+  "bookId": "example-facts",
+  "childId": "example-child",
+  "sheets": [
+    {
+      "sheetId": "times-facts",
+      "attempt": 1,
+      "qr": {
+        "front": "https://unicalearning.com/tutor/p/example-facts-121",
+        "back": "https://unicalearning.com/tutor/p/example-facts-122"
+      }
+    },
+    {
+      "sheetId": "add-and-take-away",
+      "attempt": 1,
+      "qr": {
+        "front": "https://unicalearning.com/tutor/p/example-facts-123",
+        "back": "https://unicalearning.com/tutor/p/example-facts-124"
+      }
+    },
+    {
+      "sheetId": "equal-groups",
+      "attempt": 1,
+      "qr": {
+        "front": "https://unicalearning.com/tutor/p/example-facts-125",
+        "back": "https://unicalearning.com/tutor/p/example-facts-126"
+      }
+    },
+    {
+      "sheetId": "missing-numbers",
+      "attempt": 1,
+      "qr": {
+        "front": "https://unicalearning.com/tutor/p/example-facts-127",
+        "back": "https://unicalearning.com/tutor/p/example-facts-128"
+      }
+    },
+    {
+      "sheetId": "long-counts",
+      "attempt": 1,
+      "qr": {
+        "front": "https://unicalearning.com/tutor/p/example-facts-129",
+        "back": "https://unicalearning.com/tutor/p/example-facts-130"
+      }
+    }
+  ]
+}

@@ -37,15 +37,21 @@ function chunk(type: string, data: Uint8Array): Buffer {
   return out;
 }
 
-/** `filter` is the number that PNG puts before each line; the lines themselves are not filtered. */
-export function toPng({ width, height, grey }: Canvas, filter = 0): Uint8Array {
+/** A PNG file of 8 bits a part. `lines` holds the filter number and the bytes of each line; `colours` is the colour type. */
+export function pngFile(width: number, height: number, colours: number, lines: Uint8Array): Uint8Array {
   const header = Buffer.alloc(13);
   header.writeUInt32BE(width, 0);
   header.writeUInt32BE(height, 4);
   header[8] = 8;
+  header[9] = colours;
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", header), chunk("IDAT", deflateSync(lines, { level: 1 })), chunk("IEND", new Uint8Array())]);
+}
+
+/** `filter` is the number that PNG puts before each line; the lines themselves are not filtered. */
+export function toPng({ width, height, grey }: Canvas, filter = 0): Uint8Array {
   const lines = Buffer.alloc((width + 1) * height, filter);
   for (let y = 0; y < height; y++) lines.set(grey.subarray(y * width, (y + 1) * width), y * (width + 1) + 1);
-  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", header), chunk("IDAT", deflateSync(lines, { level: 1 })), chunk("IEND", new Uint8Array())]);
+  return pngFile(width, height, 0, lines);
 }
 
 export const pagePng = (page: PageModel): Uint8Array => toPng(drawPage(page));

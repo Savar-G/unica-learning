@@ -1,4 +1,13 @@
+import { addColumn } from "./add-column";
+import { factAdd, factMul, factSub } from "./facts";
+import { missingAddend, missingFactor } from "./missing";
 import { mulColumn } from "./mul-column";
+import { subColumn } from "./sub-column";
+import { repeatedAdd } from "./repeated-add";
+import { skipCount } from "./skip-count";
+import { divFact } from "./div-fact";
+import { divRemainder } from "./div-remainder";
+import { divLong } from "./div-long";
 import type { Shape } from "./shape";
 
 export type { Item, Shape } from "./shape";
@@ -16,4 +25,18 @@ export function shapeLibrary(shapes: readonly Shape[]): ShapeLibrary {
   }
   return library;
 }
-export const SHAPES: ShapeLibrary = shapeLibrary([mulColumn]);
+export const SHAPES: ShapeLibrary = shapeLibrary([
+  addColumn,
+  mulColumn,
+  subColumn,
+  factAdd,
+  factSub,
+  factMul,
+  repeatedAdd,
+  skipCount,
+  missingFactor,
+  missingAddend,
+  divFact,
+  divRemainder,
+  divLong,
+]);

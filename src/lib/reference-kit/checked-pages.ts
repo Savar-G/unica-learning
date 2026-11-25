@@ -6,15 +6,18 @@ import {
   CHECK_PHOTO_MISSING_REASON,
   findCheckProblems,
   loadReportSummary,
+  parseStrictUtf8Json,
   readCheckedDigests,
   readRegularFileIfExists,
   readRegularFileNoFollow,
   readStatusMap,
   sha256Hex,
+  validateReferenceRecord,
   writeCheckedDigests,
   type CheckedDigests,
   type CheckProblemReason,
   type PagePhoto,
+  type ReferenceRecord,
   type ReportDigests,
   type TranscriptStatus,
 } from "@/lib/reference-record";
@@ -27,7 +30,7 @@ export interface CheckedPages {
   status: ReadonlyMap<string, TranscriptStatus>;
   digests: CheckedDigests;
   refs: Set<string>;
-  // What the report of the last compare gives for each page.
+  // What the report of the last compare gives for each page (see withDamagedRecords).
   reported: ReadonlyMap<string, ReportDigests>;
 }
 
@@ -41,7 +44,43 @@ export function loadCheckedPages(finalDir: string): CheckedPages {
     ...digests.checkedBefore,
     ...report.checkedRefs,
   ]);
-  return { status, digests, refs, reported: report.digests };
+  return { status, digests, refs, reported: withDamagedRecords(finalDir, report.digests, status.keys()) };
+}
+
+// The record on disk, or null when the file is missing or is not a valid record (a typing mistake of a
+// person). A link is an error.
+export function loadExistingFinalRecord(filePath: string): ReferenceRecord | null {
+  const bytes = readRegularFileIfExists(filePath);
+  if (bytes === null) return null;
+  try {
+    const check = validateReferenceRecord(parseStrictUtf8Json(bytes));
+    return check.ok ? check.record : null;
+  } catch {
+    return null;
+  }
+}
+
+export function isDamagedFinalRecord(filePath: string): boolean {
+  return fileExists(filePath) && loadExistingFinalRecord(filePath) === null;
+}
+
+const NO_HASH_OF_DAMAGED_RECORD = "no hash, the record was damaged";
+
+// Compare writes only valid records, so a damaged one is the edit of a person. When the report has no
+// hash for its page, no hash matches it: compare keeps the file like each other edited record.
+function withDamagedRecords(
+  finalDir: string,
+  reported: ReadonlyMap<string, ReportDigests>,
+  statusRefs: Iterable<string>,
+): ReadonlyMap<string, ReportDigests> {
+  const next = new Map(reported);
+  for (const ref of new Set([...reported.keys(), ...statusRefs])) {
+    const digests = reported.get(ref) ?? { record: null, photo: null, finalPhoto: null };
+    if (digests.record === null && isDamagedFinalRecord(finalRecordPath(finalDir, ref))) {
+      next.set(ref, { ...digests, record: NO_HASH_OF_DAMAGED_RECORD });
+    }
+  }
+  return next;
 }
 
 // The final record file of a page.

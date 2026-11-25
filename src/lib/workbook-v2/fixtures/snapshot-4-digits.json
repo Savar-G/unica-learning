@@ -1,0 +1,50 @@
+{
+  "format": 1,
+  "id": "invented-level-3-wide-v1",
+  "level": { "id": "level-3", "name": "3" },
+  "topics": [
+    { "id": "topic-11", "code": "3-11", "title": "Multiplying 4 digits by 1 digit", "sheets": ["column-multiplication-wide"] }
+  ],
+  "sheets": [
+    {
+      "id": "column-multiplication-wide",
+      "firstPage": 219,
+      "front": {
+        "instruction": "Multiply. Start with the ones.",
+        "template": "columns-2x4-wide",
+        "rows": [
+          {
+            "id": "no-carry",
+            "shape": "mul.column",
+            "items": 4,
+            "limits": { "digits": { "min": 4, "max": 4 }, "a": { "min": 1000, "max": 9999 }, "b": { "min": 2, "max": 4 }, "carries": { "min": 0, "max": 0 }, "carryIntoTens": { "min": 0, "max": 0 }, "carryIntoHundreds": { "min": 0, "max": 0 }, "carryIntoThousands": { "min": 0, "max": 0 }, "product": { "min": 2000, "max": 9999 }, "zeroInProduct": "never", "wholeTens": "never" }
+          },
+          {
+            "id": "one-carry",
+            "shape": "mul.column",
+            "items": 4,
+            "limits": { "digits": { "min": 4, "max": 4 }, "a": { "min": 1000, "max": 9999 }, "b": { "min": 2, "max": 6 }, "carries": { "min": 1, "max": 1 }, "carryIntoTens": { "min": 0, "max": 8 }, "carryIntoHundreds": { "min": 0, "max": 8 }, "carryIntoThousands": { "min": 0, "max": 8 }, "product": { "min": 2000, "max": 9999 }, "zeroInProduct": "never", "wholeTens": "never" }
+          }
+        ]
+      },
+      "back": {
+        "instruction": "Multiply. Write each carry above the next column.",
+        "template": "columns-2x4-wide",
+        "rows": [
+          {
+            "id": "two-carries",
+            "shape": "mul.column",
+            "items": 4,
+            "limits": { "digits": { "min": 4, "max": 4 }, "a": { "min": 1000, "max": 9999 }, "b": { "min": 3, "max": 9 }, "carries": { "min": 2, "max": 2 }, "carryIntoTens": { "min": 0, "max": 8 }, "carryIntoHundreds": { "min": 0, "max": 8 }, "carryIntoThousands": { "min": 0, "max": 8 }, "product": { "min": 10000, "max": 99999 }, "zeroInProduct": "never", "wholeTens": "never" }
+          },
+          {
+            "id": "every-carry",
+            "shape": "mul.column",
+            "items": 4,
+            "limits": { "digits": { "min": 4, "max": 4 }, "a": { "min": 1000, "max": 9999 }, "b": { "min": 3, "max": 9 }, "carries": { "min": 3, "max": 3 }, "carryIntoTens": { "min": 0, "max": 8 }, "carryIntoHundreds": { "min": 0, "max": 8 }, "carryIntoThousands": { "min": 0, "max": 8 }, "product": { "min": 10000, "max": 99999 }, "zeroInProduct": "allowed", "wholeTens": "allowed" }
+          }
+        ]
+      }
+    }
+  ]
+}
