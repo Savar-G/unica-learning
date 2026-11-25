@@ -254,6 +254,13 @@ describe("no question repeats on a side while there are enough different ones", 
     expect([...starts].sort()).toEqual([0, 1, 2]);
   });
 
+  it("rows in order stay apart when they can, also on a side that must repeat a question", () => {
+    for (const child of children) {
+      const values = valuesOf(sheetOf([row(2, 0, 1, "up"), row(2, 0, 3, "up"), row(3, 0, 2)]), child);
+      expect([values.get("front-0"), values.get("front-1")]).toEqual([[0, 1], [2, 3]]);
+    }
+  });
+
   // Brute force: every run of a row in order and every set of a mixed row, one row after the other.
   const choicesOf = ({ items, min, max, order }: Small): number[][] => {
     const all = Array.from({ length: max - min + 1 }, (_, i) => min + i);
