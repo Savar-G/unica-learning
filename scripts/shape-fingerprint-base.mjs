@@ -55,13 +55,14 @@ function parse(text) {
   }
 }
 
-function mergeFiles(entries) {
+/** One object for each shape, from files that hold one shape each. A base may name its files in another way. */
+function mergeFiles(entries, { named }) {
   const merged = {};
   for (const [name, text] of entries) {
     const parsed = parse(text);
     if (!isRecord(parsed)) return null;
     const keys = Object.keys(parsed);
-    if (keys.length !== 1 || `${keys[0]}.json` !== name) return null;
+    if (keys.length !== 1 || (named && `${keys[0]}.json` !== name) || Object.hasOwn(merged, keys[0])) return null;
     merged[keys[0]] = parsed[keys[0]];
   }
   return merged;
@@ -71,7 +72,7 @@ function readDiskFingerprints(root) {
   try {
     const dir = join(root, FINGERPRINTS_DIR);
     const files = readdirSync(dir).filter((name) => name.endsWith(".json")).sort();
-    return mergeFiles(files.map((name) => [name, readFileSync(join(dir, name), "utf8")]));
+    return mergeFiles(files.map((name) => [name, readFileSync(join(dir, name), "utf8")]), { named: true });
   } catch {
     return null;
   }
@@ -83,7 +84,7 @@ function readGitFingerprints(root, base) {
   const jsonPaths = folderFiles.split("\n").filter((p) => p.endsWith(".json")).sort();
   if (jsonPaths.length > 0) {
     const entries = jsonPaths.map((p) => [p.slice(FINGERPRINTS_DIR.length + 1), git(root, ["show", `${base}:${p}`]) ?? ""]);
-    return { status: "found", data: mergeFiles(entries) };
+    return { status: "found", data: mergeFiles(entries, { named: false }) };
   }
   const legacy = git(root, ["ls-tree", "--name-only", base, "--", LEGACY_FINGERPRINTS]);
   if (legacy === null) return { status: "error" };

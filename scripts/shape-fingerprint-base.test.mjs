@@ -90,6 +90,19 @@ test("reads a legacy single fingerprint file from the base commit during migrati
   assert.equal(checkBase(root, { ci: false }).ok, false);
 });
 
+test("the files of the base may have other names, and the files now may not", () => {
+  const { root, git, write, commit } = repository();
+  const rename = (name, value) => writeFileSync(join(root, FINGERPRINTS_DIR, name), JSON.stringify(value));
+  write({});
+  rename("mul-column.json", { "mul.column": { 1: A } });
+  git("update-ref", "refs/remotes/origin/main", commit());
+  assert.equal(checkBase(root, { ci: false }).ok, false);
+  write({ "mul.column": { 1: A } });
+  assert.equal(checkBase(root, { ci: false }).ok, true);
+  write({ "mul.column": { 1: B } });
+  assert.equal(checkBase(root, { ci: false }).ok, false);
+});
+
 test("a laptop with no origin/main warns", () => {
   const { root, commit } = repository();
   commit({ s: { 1: A } });
