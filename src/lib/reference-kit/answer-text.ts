@@ -21,6 +21,10 @@ export function plainMinus(text: string): string {
   return text.replace(/[‐-―−]/g, "-");
 }
 
+function withoutFirstEquals(text: string): string {
+  return text.replace(/^\s*=/, "");
+}
+
 const PLAIN_NUMBER_RE = /^(?:-?\d+(?:\.\d+)?|\d+ R\d+)$/;
 
 function canonicalNumber(text: string): string {
@@ -33,7 +37,7 @@ function canonicalNumber(text: string): string {
 // The one number (or quotient with remainder) that a text holds, also after "=". Null when it holds
 // anything else.
 export function plainNumber(text: string): string | null {
-  const norm = normalizeAnswerCompare(plainMinus(text).replace(/^\s*=/, ""));
+  const norm = normalizeAnswerCompare(withoutFirstEquals(plainMinus(text)));
   return PLAIN_NUMBER_RE.test(norm) ? norm.split(" R").map(canonicalNumber).join(" R") : null;
 }
 
@@ -50,7 +54,7 @@ export function sameValue(a: string, b: string): boolean {
 export function stepNumbers(text: string): { numbers: string[]; isRemainder: boolean } {
   const remainder = /^\s*[rR]\s*=?\s*(\d+)\s*$/.exec(text);
   if (remainder) return { numbers: [remainder[1]], isRemainder: true };
-  const sides = text.replace(/^\s*=/, "").split("=").map(plainNumber);
+  const sides = withoutFirstEquals(text).split("=").map(plainNumber);
   const numbers = sides.filter((side): side is string => side !== null);
   return { numbers: numbers.length === sides.length ? numbers : [], isRemainder: false };
 }
@@ -76,9 +80,9 @@ function wholeNumberList(text: string): string[] | null {
   return out.length > 0 ? out : null;
 }
 
-// Every way to read a text as a list of whole numbers: a comma can group digits or separate values.
+// Every way to read a text as a list of whole numbers (also after "="): a comma can group digits or separate values.
 export function wholeNumberLists(text: string): string[][] {
-  const plain = plainMinus(text);
+  const plain = withoutFirstEquals(plainMinus(text));
   const spaced = plain.trim().replace(/\s+/g, " ").replace(/(\d)\s*[rR]\s*(\d+)/g, "$1 R$2");
   return [normalizeAnswerCompare(plain), spaced]
     .map(wholeNumberList)

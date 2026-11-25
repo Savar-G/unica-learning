@@ -131,7 +131,7 @@ function unprovedItemAnswers(stored: PageItem, section: PageSection, path: strin
     else add(path, `answer places hold ${held}, computed ${values}`);
   }
   // Code writes no answer into an item that stores notation, so its answers are compared here.
-  const placed = fromLine && plan.kind === "fill" ? plan.values : new Map<number, string>();
+  const placed = new Map(fromLine && plan.kind === "fill" ? [...plan.unreached.map((idx) => [idx, "0"] as const), ...plan.values] : []);
   const right = answerForms(item.expr).flat().map((form) => form.value);
   item.responses.forEach((resp, idx) => {
     if (!isConcreteAnswer(resp.answer)) return;

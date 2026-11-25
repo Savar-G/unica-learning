@@ -163,6 +163,13 @@ describe("findUnprovedAnswers", () => {
       ["0.5 + 0.25 =", "0.5 + 0.25", "99"],
     ];
     for (const row of passes) expect(noted(...row), row.join(" | ")).toBe(0);
+    const places = (tens: string | null): number =>
+      findUnprovedAnswers(
+        pageOf([
+          { n: 1, printed: "2 + 3 =", form: "horizontal", expr: { kind: "notation", latex: "2 + 3" }, responses: [named("ones", "5"), named("tens", tens)] },
+        ]),
+      ).length;
+    expect(["9", "0", "00", null].map(places)).toEqual([1, 0, 0, 0]);
   });
 
   // One correct item in one of the forms in which a page can ask for its answer.

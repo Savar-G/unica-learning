@@ -8,7 +8,7 @@ import {
   type Expr,
   type ReferenceRecord,
 } from "@/lib/reference-record";
-import { isConcreteAnswer, normalizeAnswerCompare, plainNumber, sameValue, stepNumbers, wholeNumberLists } from "./answer-text";
+import { isConcreteAnswer, normalizeAnswerCompare, plainMinus, plainNumber, sameValue, stepNumbers, wholeNumberLists } from "./answer-text";
 import type { AnswerNote } from "./answers";
 import {
   compareLineWithExpr,
@@ -86,7 +86,7 @@ function falseLeftSide(step: StepText): string | null {
 // What a part that code cannot compute says about a step: its shown answer is all that is known.
 function shownVerdict(step: StepText, part: ExamplePart): LineVerdict {
   if (!isConcreteAnswer(part.shown_answer)) return part.expr === null ? "differs" : "unknown";
-  const shown: string[] = normalizeAnswerCompare(part.shown_answer).match(/-?\d+(?:\.\d+)?(?: R\d+)?/g) ?? [];
+  const shown: string[] = normalizeAnswerCompare(plainMinus(part.shown_answer)).match(/-?\d+(?:\.\d+)?(?: R\d+)?/g) ?? [];
   return step.numbers.every((value) => shown.some((s) => sameValue(s, value))) ? "match" : "differs";
 }
 
