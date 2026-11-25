@@ -11,7 +11,7 @@ import { ADD_WIDE, addColumnEnds, addColumnFeatures, addColumnRegistration } fro
 import { SUB_WIDE, subColumnEnds, subColumnFeatures, subColumnRegistration } from "../testing/registrations/sub-column";
 import { hasFeatures, type Limits, type Rows, type ShapeRegistration } from "../testing/shape-registration";
 import { addColumn, addColumnRules, type AddColumnLimits } from "./add-column";
-import { chooseQuestion, scoreRange, widestQuestion, type ColumnQuestion, type ColumnRules } from "./column-count";
+import { chooseQuestion, placeOfQuestion, scoreRange, widestQuestion, type ColumnQuestion, type ColumnRules } from "./column-count";
 import type { Shape } from "./shape";
 import { subColumn, subColumnRules, type SubColumnLimits } from "./sub-column";
 
@@ -141,6 +141,18 @@ describe.each(both)("the count of %s", (_id, subject) => {
     }
   });
 
+  it("has the question of each place at that place: the place of the question of a place is the place", () => {
+    const [second, third] = subject.parts.slice(1);
+    for (const limits of [wide, { ...wide, aDigits: r(4, 4) }, second, third, subject.lists[1][1]]) {
+      const rules = subject.rules(limits);
+      const total = shape.count(limits);
+      fc.assert(fc.property(fc.integer({ min: 0, max: total - 1 }), (i) => {
+        expect(placeOfQuestion(rules, chooseQuestion(rules, () => i))).toBe(i);
+      }), { numRuns: 100, seed: 237, examples: [0, 1, 666_665, 666_666, 666_667, total - 1].filter((i) => i < total).map((i): [number] => [i]) });
+    }
+    expect(placeOfQuestion(subject.rules({ ...wide, a: r(1, 5) }), { a: 6, b: 1 })).toBe(-1);
+  });
+
   it("asks for a question that the seed alone picks, and changes no limits", () => {
     const limits = structuredClone(wide) as { a: { max: number } } & Limits;
     const one = shape.generate(limits, "seed");
@@ -155,11 +167,10 @@ describe.each(both)("the count of %s", (_id, subject) => {
 });
 
 describe("the difficulty", () => {
-  it("does not change when the numbers of an addition change places", () => {
-    fc.assert(fc.property(fc.integer({ min: 1, max: 4 }), fc.nat(), fc.nat(), (digits, one, other) => {
-      const [a, b] = [one, other].map((n) => 10 ** (digits - 1) + (n % (9 * 10 ** (digits - 1))));
-      expect(addColumn.difficulty({ a, b })).toBe(addColumn.difficulty({ a: b, b: a }));
-    }));
+  const lengths = [1, 2, 3, 4].flatMap((one) => [1, 2, 3, 4].map((other) => [one, other] as const));
+  it.each(lengths)("does not change when the numbers of an addition change places, with %i and %i digits", (one, other) => {
+    const number = (digits: number) => fc.integer({ min: 10 ** (digits - 1), max: 10 ** digits - 1 });
+    fc.assert(fc.property(number(one), number(other), (a, b) => { expect(addColumn.difficulty({ a, b })).toBe(addColumn.difficulty({ a: b, b: a })); }), { numRuns: 40 });
   });
 
   // Each range holds all questions of its kind, so this says it of any limits inside them.

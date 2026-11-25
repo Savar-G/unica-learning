@@ -250,7 +250,7 @@ export const subColumnRegistration: ShapeRegistration = {
     { name: "a top number that is less", raw: { ...TWO, a: r(10, 20), b: r(30, 40) }, problem: "no question meets these limits (a wider a or b has some)" },
     { name: "across two zeros and never across one", raw: { ...FOUR, acrossZero: "never", acrossTwoZeros: "only" }, problem: "no question meets these limits (a wider acrossZero or acrossTwoZeros has some)" },
     { name: "only the answer 0 and never", raw: { ...TWO, difference: r(0, 0), zeroAnswer: "never" }, problem: "no question meets these limits (a wider difference or zeroAnswer has some)" },
-    { name: "limits that no one change can mend", raw: { ...TWO, a: r(50, 59), acrossZero: "only", borrows: r(3, 3) }, problem: "no question meets these limits" },
+    { name: "limits that no one change can mend", raw: { ...TWO, a: r(50, 59), acrossZero: "only", borrows: r(3, 3) }, problem: "no question meets these limits (together they are too narrow: aDigits, bDigits, a, borrows, acrossZero)" },
   ],
   refusedRows: ([
     ["nothing", []], ["one row", ["24"]], ["three rows", ["24", "-3", "21"]], ["turned rows", ["-3", "24"]], ["another sign", ["24", "+3"]], ["a long dash", ["24", "–3"]], ["no sign", ["24", "3"]],

@@ -2,7 +2,7 @@
 // 90,899,091 and 49,995,000. The columns are filled from the ones up. All that the columns so far can change in the ones
 // above is one number, a `Low`, and each Low knows in how many ways the columns reach it. Digits that change a Low in the
 // same way are one `Move`.
-import { readLimitFields, type Range } from "./shape";
+import { emptyProblem, readLimitFields, type Range } from "./shape";
 
 export type Word = "never" | "allowed" | "only";
 export const WORD: readonly Word[] = ["never", "allowed", "only"];
@@ -297,15 +297,15 @@ function placesOf(given: ColumnRules, forKinds: boolean): Places {
   return { rules, kept, moves, below, whole };
 }
 
-const countOf = ({ whole }: Places): number => whole.reduce((sum, ends) => [...ends.values()].reduce((n, group) => n + group.ways, sum), 0);
+const countOf = (whole: Places["whole"]): number => whole.reduce((sum, ends) => [...ends.values()].reduce((n, group) => n + group.ways, sum), 0);
 
-export const countQuestions = (rules: ColumnRules): number => countOf(placesOf(rules, false));
+export const countQuestions = (rules: ColumnRules): number => countOf(placesOf(rules, false).whole);
 
 /** One question: `choose` gets how many there are, and gives a place in their order. */
 export function chooseQuestion(given: ColumnRules, choose: (count: number) => number): ColumnQuestion {
   const places = placesOf(given, false);
   const { rules, kept, moves, below } = places;
-  let left = choose(countOf(places));
+  let left = choose(countOf(places.whole));
   const question = { a: 0, b: 0 };
   /** Takes the digits at a place that make a wanted Low. It gives the Low below them, or NONE when the question is further on. */
   const take = (place: number, isWanted: (move: Move, made: Low) => boolean): Low => {
@@ -336,6 +336,33 @@ export function chooseQuestion(given: ColumnRules, choose: (count: number) => nu
     return question;
   }
   throw new Error("there is no question at this place");
+}
+
+/** The place of a question in the order of `chooseQuestion`, or -1 when it does not meet the limits. */
+export function placeOfQuestion(given: ColumnRules, { a, b }: ColumnQuestion): number {
+  const { rules, kept, moves, below, whole } = placesOf(given, false);
+  const last = lengthOf(a) - 1;
+  if (last >= moves.length) return -1;
+  // From the ones up, where the question stands in the group that its columns so far are in.
+  let [low, inGroup] = [BOUNDS, 0];
+  for (let place = 0; place <= last; place++) {
+    const pair = (Math.floor(a / 10 ** place) % 10) * 10 + (Math.floor(b / 10 ** place) % 10);
+    const isClosed = place >= lengthOf(b) - 1;
+    const holds = (move: Move) => move.isLast === (place === last) && (((move.set | low) & CLOSED) !== 0) === isClosed && move.cells.some((cell) => cell.pairs.includes(pair));
+    const taken = movesOn(moves[place], low).find((move) => holds(move) && after(rules, kept, low, move) !== NONE);
+    if (!taken) return -1;
+    const next = after(rules, kept, low, taken);
+    inGroup += taken.cells.flatMap((cell) => cell.pairs).indexOf(pair) * (below[place].get(low)?.ways ?? 0);
+    before: for (const [other, { ways }] of below[place]) {
+      for (const move of movesOn(moves[place], other)) {
+        if (other === low && move === taken) break before;
+        const made = after(rules, kept, other, move);
+        if (made !== NONE && move.isLast === taken.isLast && (move.isLast || made === next)) inGroup += ways * move.pairs;
+      }
+    }
+    low = next;
+  }
+  return countOf(whole.slice(0, last)) + inGroup;
 }
 
 const kindOf = (low: Low, place: number): ColumnKind =>
@@ -372,7 +399,7 @@ export function widestQuestion(rules: ColumnRules): ColumnQuestion {
   return { a: key % KEY, b: sizeOf(key) - (key % KEY) };
 }
 
-/** The limits of a shape, read and counted, or what is wrong with them: the limits that alone leave no question. */
+/** The limits of a shape, read and counted, or what is wrong with them. */
 export function readColumnLimits<L>(
   raw: unknown, ranges: Readonly<Record<string, Range>>, words: Readonly<Record<string, readonly Word[]>>, rulesOf: (limits: L) => ColumnRules,
 ): { ok: true; limits: L } | { ok: false; problem: string } {
@@ -380,9 +407,7 @@ export function readColumnLimits<L>(
   if (typeof read === "string") return { ok: false, problem: read };
   const count = (limits: Record<string, unknown>) => countQuestions(rulesOf(limits as L));
   if (count(read) > 0) return { ok: true, limits: read as L };
-  const widest: Record<string, unknown> = { ...ranges, ...Object.fromEntries(Object.keys(words).map((name) => [name, "allowed"])) };
-  const names = Object.keys(widest).filter((name) => count({ ...read, [name]: widest[name] }) > 0);
-  return { ok: false, problem: `no question meets these limits${names.length > 0 ? ` (a wider ${names.join(" or ")} has some)` : ""}` };
+  return { ok: false, problem: emptyProblem(read, ranges, words, count) };
 }
 
 /** The limits that both shapes share, as ranges and words. */

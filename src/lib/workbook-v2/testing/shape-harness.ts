@@ -202,8 +202,9 @@ class Harness {
         this.tell("steps-true", `${at}: the step "${text}" holds "${wrong[0]}"`);
       }
     }
-    // Wrong answers, ends and unreadable steps have their own checks; the marks are compared with a good step list.
-    const marks = textOk && answer.kind === "whole-number" && hasAnswerForm(answer) && end === answer.value ? marksProblem(steps, answer.value, rows) : null;
+    // Wrong answers, rows that cannot be printed, ends and unreadable steps have their own checks; the marks are compared with a good step list.
+    const isGood = textOk && rows.every(isPrintable) && end === answer.value && canonicalJson(answer) === canonicalJson(printed.answer);
+    const marks = isGood && answer.kind === "whole-number" && hasAnswerForm(answer) ? marksProblem(steps, answer.value, rows) : null;
     if (marks) this.tell("steps-marks", `${at}: ${marks}`);
     const said = canonicalJson(steps);
     const wanted = canonicalJson(printed.steps);

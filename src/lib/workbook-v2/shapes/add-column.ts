@@ -71,9 +71,9 @@ function columnStep({ top, low, carry, value, isLast }: Column, place: number): 
 
 const steps = (q: AddColumnQuestion): Step[] => [...columns(q).map(columnStep), { text: answer(q).value, marks: [] }];
 
-/** Two questions that differ only by the order of their numbers are equally hard. */
+/** Two questions that differ only by the order of their numbers are equally hard: the longer number goes on top. */
 function difficulty(q: AddColumnQuestion): number {
-  const all = columns(q);
+  const all = columns({ a: Math.max(q.a, q.b), b: Math.min(q.a, q.b) });
   const carrying = all.filter(({ carry }) => carry > 0);
   const chain = carrying.some(({ top, low, isLast }) => !isLast && top + (low ?? 0) === 9);
   return scoreOf({ digits: all.length, passes: carrying.length, chain, zerosCrossed: 0 }, q);

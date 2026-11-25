@@ -1,10 +1,11 @@
-// What the marks and clauses of worked steps must be, for an answer that is one whole number. It knows no shape:
-// it parses each step with the closed clause grammar and compares marks, clauses, carries and the answer. For a
-// subtraction in columns it works on the paper: it starts from the two printed rows and applies each step in order.
+// What the marks and clauses of worked steps must be, for an answer that is one whole number. It knows signs and columns
+// and no shape: it parses each step with the closed clause grammar and compares marks, clauses, carries and the answer.
+// When the printed rows are a column, it also works on the paper: it starts from the two rows, goes column by column from
+// the ones, and each step must say exactly what its column shows then.
 import { STEP_MARKS, type Step, type StepMark } from "../contract";
 import { canonicalJson } from "../hash";
 import { hasNames, type Rows } from "./shape-registration";
-import { clauseOf, parseStep, UNITS } from "./steps-evaluator";
+import { clauseOf, parseStep, UNITS, type ParsedStep } from "./steps-evaluator";
 
 type WrittenMark = Extract<StepMark, { mark: "write" | "carry" }>;
 
@@ -23,20 +24,44 @@ function digitsOf(marks: readonly WrittenMark[]): string {
   return Array.from({ length: places.length === 0 ? 0 : Math.max(...places) + 1 }, (_, i) => byPlace.get(i) ?? "?").reverse().join("");
 }
 
-/** The two printed rows of a column: their numbers from the ones, and the sign. */
-interface Paper { sign: string; top: number[]; bottom: number[] }
+/** A step before the answer, read one time. */
+interface Working extends ParsedStep { step: Step }
+
+/** The two printed rows of a column: their digits from the ones, the lower number whole, and the sign. */
+interface Paper { sign: string; top: number[]; bottom: number[]; times: number }
 
 function paperOf(rows: Rows): Paper | null {
-  const found = rows.length === 2 ? /^(\d+)\n([-+])(\d+)$/.exec(rows.join("\n")) : null;
-  return found && { sign: found[2], top: [...found[1]].reverse().map(Number), bottom: [...found[3]].reverse().map(Number) };
+  const found = rows.length === 2 ? /^(\d+)\n([-+×])(\d+)$/.exec(rows.join("\n")) : null;
+  return found && { sign: found[2], top: [...found[1]].reverse().map(Number), bottom: [...found[3]].reverse().map(Number), times: Number(found[3]) };
 }
+
+/** What a column shows now: both digits with the sign, or the only digit. A multiplication takes the whole lower number. */
+function lineOf({ sign, top, bottom, times }: Paper, place: number): string {
+  if (sign === "×") return `${times} × ${top[place]}`;
+  return [top.at(place), bottom.at(place)].filter((n) => n !== undefined).join(` ${sign} `);
+}
+
+/** The columns of an addition or a multiplication, in order from the ones. A subtraction borrows, so it has its own check. */
+function columnsProblem(working: readonly Working[], paper: Paper): string | null {
+  const count = paper.sign === "×" ? paper.top.length : Math.max(paper.top.length, paper.bottom.length);
+  if (working.length !== count) return `the steps have ${working.length} columns and the paper has ${count}`;
+  for (const [place, { step, clauses }] of working.entries()) {
+    const said = saidBy(clauses);
+    if (said !== lineOf(paper, place)) return `the step "${step.text}" says ${said} and the paper shows ${lineOf(paper, place)}`;
+    const first = Math.min(...marksOf(step, "write").map((m) => m.place));
+    if (first !== place) return `the step "${step.text}" must write the place ${place} and writes ${first}`;
+  }
+  return null;
+}
+
+/** The operands of a step: the left side of its equation, or its only digit. */
+const saidBy = (clauses: ParsedStep["clauses"]): string | undefined => clauseOf(clauses, "equation")?.left ?? clauseOf(clauses, "digit")?.text;
 
 const write = (place: number, digit: number): StepMark => ({ mark: "write", place, digit: String(digit) });
 const onTop = (mark: "cross-out" | "borrow", place: number, digit: number): StepMark => ({ mark, row: "top", place, digit: String(digit) });
 
 /** One step that borrows for the column at `place`. It changes the numbers that the paper shows. */
-function borrowProblem({ text, marks }: Step, { top, bottom }: Paper, place: number): string | null {
-  const { clauses } = parseStep(text);
+function borrowProblem({ step: { marks }, clauses }: Working, { top, bottom }: Paper, place: number): string | null {
   const [unit, shown] = [clauseOf(clauses, "borrow")?.unit, clauseOf(clauses, "becomes")?.from];
   if (place >= top.length) return "comes after its last column";
   if (top[place] >= (bottom[place] ?? 0)) return `needs no borrow: the paper shows ${top[place]} above ${bottom[place] ?? 0}`;
@@ -52,14 +77,14 @@ function borrowProblem({ text, marks }: Step, { top, bottom }: Paper, place: num
 }
 
 /** One step that subtracts the column at `place`. A zero in front of the answer is not written. */
-function columnProblem({ text, marks }: Step, { top, bottom }: Paper, place: number, answer: string): string | null {
+function differenceProblem({ step: { marks }, clauses }: Working, paper: Paper, place: number, answer: string): string | null {
+  const { top, bottom } = paper;
   if (place >= top.length) return "comes after its last column";
-  const low = bottom.at(place);
-  if (top[place] < (low ?? 0)) return `needs a borrow: the paper shows ${top[place]} above ${low}`;
-  const { clauses } = parseStep(text);
-  const [line, left] = [low === undefined ? String(top[place]) : `${top[place]} - ${low}`, top[place] - (low ?? 0)];
-  const said = clauseOf(clauses, "equation")?.left ?? clauseOf(clauses, "digit")?.text;
+  const low = bottom.at(place) ?? 0;
+  if (top[place] < low) return `needs a borrow: the paper shows ${top[place]} above ${low}`;
+  const [line, said, left] = [lineOf(paper, place), saidBy(clauses), top[place] - low];
   if (said !== line) return `says ${said} and the paper shows ${line}`;
+  if (clauseOf(clauses, "equation")?.value === null) return "has no whole-number equation";
   if (clauseOf(clauses, "plus")) return "adds a number";
   const isWritten = place < answer.length;
   const wanted = isWritten ? [write(place, left)] : [];
@@ -70,15 +95,12 @@ function columnProblem({ text, marks }: Step, { top, bottom }: Paper, place: num
   return words === (isWritten ? String(left) : "") ? null : `must say "write ${isWritten ? left : "nothing"}"`;
 }
 
-function subtractionProblem(working: readonly Step[], answer: string, paper: Paper): string | null {
+function subtractionProblem(working: readonly Working[], answer: string, paper: Paper): string | null {
   let place = 0;
-  for (const step of working) {
-    const parsed = parseStep(step.text);
-    if (parsed.problem) return `the step "${step.text}": ${parsed.problem}`;
-    if (parsed.answerOnly) return `the step "${step.text}" has no equation`;
-    const isBorrow = clauseOf(parsed.clauses, "borrow") !== undefined;
-    const problem = isBorrow ? borrowProblem(step, paper, place) : columnProblem(step, paper, place, answer);
-    if (problem) return `the step "${step.text}" ${problem}`;
+  for (const read of working) {
+    const isBorrow = clauseOf(read.clauses, "borrow") !== undefined;
+    const problem = isBorrow ? borrowProblem(read, paper, place) : differenceProblem(read, paper, place, answer);
+    if (problem) return `the step "${read.step.text}" ${problem}`;
     if (!isBorrow) place++;
   }
   // A first digit that became 0 has nothing below it and nothing to write.
@@ -87,21 +109,18 @@ function subtractionProblem(working: readonly Step[], answer: string, paper: Pap
 }
 
 /** Checks one working step against the closed clause grammar, the incoming carry and its marks. */
-function stepProblem(step: Step, index: number, isLast: boolean, incomingCarry: WrittenMark | undefined, paper: Paper | null): { problem: string | null; carry: WrittenMark | undefined } {
+function stepProblem({ step, clauses }: Working, index: number, isLast: boolean, incomingCarry: WrittenMark | undefined, paper: Paper | null): { problem: string | null; carry: WrittenMark | undefined } {
   const at = `the step "${step.text}"`;
-  const parsed = parseStep(step.text);
-  if (parsed.problem) return { problem: `${at}: ${parsed.problem}`, carry: undefined };
-  if (parsed.answerOnly) return { problem: `${at} has no equation`, carry: undefined };
-  if (clauseOf(parsed.clauses, "borrow") || step.marks.some((m) => m.mark === "borrow" || m.mark === "cross-out")) {
+  if (clauseOf(clauses, "borrow") || step.marks.some((m) => m.mark === "borrow" || m.mark === "cross-out")) {
     return { problem: `${at} borrows and the printed rows are no subtraction`, carry: undefined };
   }
-  const [eq, digit] = [clauseOf(parsed.clauses, "equation"), clauseOf(parsed.clauses, "digit")];
+  const [eq, digit] = [clauseOf(clauses, "equation"), clauseOf(clauses, "digit")];
   if (digit && !paper) return { problem: `${at} has no equation`, carry: undefined };
   const value = eq ? eq.value : BigInt(digit?.text ?? 0);
   if (value === null) return { problem: `${at} has no whole-number equation`, carry: undefined };
-  const plus = clauseOf(parsed.clauses, "plus");
-  const write = clauseOf(parsed.clauses, "write");
-  const carryClause = clauseOf(parsed.clauses, "carry");
+  const plus = clauseOf(clauses, "plus");
+  const write = clauseOf(clauses, "write");
+  const carryClause = clauseOf(clauses, "carry");
 
   if (index === 0 && plus) return { problem: `the first step adds ${plus.added}`, carry: undefined };
   const expectedAdded = incomingCarry ? BigInt(incomingCarry.digit) : undefined;
@@ -115,12 +134,6 @@ function stepProblem(step: Step, index: number, isLast: boolean, incomingCarry: 
   if (writes.some((m, i) => m.place !== writes[0].place + i)) return { problem: `${at} writes places that are not next to each other`, carry: undefined };
   if (incomingCarry && writes[0].place !== incomingCarry.place) {
     return { problem: `the step before carries to the place ${incomingCarry.place} and ${at} does not write that place`, carry: undefined };
-  }
-
-  if (digit && paper) {
-    const { place } = writes[0];
-    if (place < paper.bottom.length) return { problem: `${at} has one digit and its column has a digit below`, carry: undefined };
-    if (paper.top.at(place) !== Number(digit.text)) return { problem: `${at}: the paper shows ${paper.top.at(place)} and not ${digit.text}`, carry: undefined };
   }
 
   const carries = marksOf(step, "carry");
@@ -166,15 +179,19 @@ export function marksProblem(steps: readonly Step[], answer: string, rows: Rows)
   if (far) return `the steps write the place ${far.place} and the answer is "${answer}"`;
   if (digitsOf(writes) !== answer) return `the steps write "${digitsOf(writes)}" and not the answer "${answer}"`;
 
+  const working = steps.slice(0, -1).map((step): Working => ({ step, ...parseStep(step.text) }));
+  for (const { step, problem, answerOnly } of working) {
+    if (problem) return `the step "${step.text}": ${problem}`;
+    if (answerOnly) return `the step "${step.text}" has no equation`;
+  }
   const paper = paperOf(rows);
-  if (paper?.sign === "-") return subtractionProblem(steps.slice(0, -1), answer, paper);
+  if (paper?.sign === "-") return subtractionProblem(working, answer, paper);
 
   let incomingCarry: WrittenMark | undefined;
-  const workingCount = steps.length - 1;
-  for (let i = 0; i < workingCount; i++) {
-    const { problem, carry } = stepProblem(steps[i], i, i === workingCount - 1, incomingCarry, paper);
+  for (const [i, read] of working.entries()) {
+    const { problem, carry } = stepProblem(read, i, i === working.length - 1, incomingCarry, paper);
     if (problem) return problem;
     incomingCarry = carry;
   }
-  return null;
+  return paper && columnsProblem(working, paper);
 }

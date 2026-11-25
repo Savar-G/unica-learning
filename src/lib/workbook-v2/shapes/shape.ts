@@ -72,3 +72,15 @@ export function readLimitFields(raw: unknown, ranges: Readonly<Record<string, Ra
   }
   return limits;
 }
+
+/**
+ * Why limits have no question: the limits that alone could be wider, or, when no one change is enough, all that are
+ * narrower than they could be. `ranges` and `words` are those that read the limits.
+ */
+export function emptyProblem(limits: Record<string, unknown>, ranges: Readonly<Record<string, Range>>, words: Readonly<Record<string, readonly string[]>>, count: (limits: Record<string, unknown>) => number): string {
+  const widest: Record<string, unknown> = { ...ranges, ...Object.fromEntries(Object.keys(words).map((name) => [name, "allowed"])) };
+  const isNarrow = (name: string) => JSON.stringify(limits[name]) !== JSON.stringify(widest[name]);
+  const narrow = Object.keys(widest).filter(isNarrow);
+  const alone = narrow.filter((name) => count({ ...limits, [name]: widest[name] }) > 0);
+  return `no question meets these limits (${alone.length > 0 ? `a wider ${alone.join(" or ")} has some` : `together they are too narrow: ${narrow.join(", ")}`})`;
+}

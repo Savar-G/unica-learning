@@ -4,7 +4,7 @@
 import { pick } from "../hash";
 import type { Answer, Step, StepMark } from "../contract";
 import { chooseQuestion, countQuestions, scoreRange, widestQuestion, type Kind, type MulColumnLimits, type MulColumnQuestion } from "./mul-column-count";
-import { readLimitFields, type Item, type Shape } from "./shape";
+import { emptyProblem, readLimitFields, type Item, type Shape } from "./shape";
 
 export type { MulColumnLimits, MulColumnQuestion } from "./mul-column-count";
 
@@ -84,7 +84,8 @@ function readLimits(raw: unknown): { ok: true; limits: MulColumnLimits } | { ok:
   const read = readLimitFields(raw, RANGES, WORDS);
   if (typeof read === "string") return { ok: false, problem: read };
   const limits = read as unknown as MulColumnLimits;
-  return countQuestions(limits) > 0 ? { ok: true, limits } : { ok: false, problem: "no question meets these limits" };
+  if (countQuestions(limits) > 0) return { ok: true, limits };
+  return { ok: false, problem: emptyProblem(read, RANGES, WORDS, (wider) => countQuestions(wider as unknown as MulColumnLimits)) };
 }
 
 export const mulColumn: Shape<MulColumnLimits, MulColumnQuestion> = {

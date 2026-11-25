@@ -214,7 +214,7 @@ export const addColumnRegistration: ShapeRegistration = {
     { name: "a carry into a column that is not there", raw: { ...TWO, carryIntoHundreds: r(1, 1) }, problem: "no question meets these limits (a wider aDigits or carryIntoHundreds has some)" },
     { name: "more digits below than on top", raw: { ...WIDE, ...digits(2, 3) }, problem: "no question meets these limits (a wider aDigits or bDigits has some)" },
     { name: "digits that the range of the number does not have", raw: { ...WIDE, bDigits: r(3, 3), b: r(10, 99) }, problem: "no question meets these limits (a wider bDigits or b has some)" },
-    { name: "limits that no one change can mend", raw: { ...ONE, sum: r(150, 160), carries: r(3, 3) }, problem: "no question meets these limits" },
+    { name: "limits that no one change can mend", raw: { ...ONE, sum: r(150, 160), carries: r(3, 3) }, problem: "no question meets these limits (together they are too narrow: aDigits, bDigits, sum, carries)" },
     { name: "a zero in a place that the number does not have", raw: { ...TWO, aZeroInTens: "only" }, problem: "no question meets these limits (a wider aDigits or aZeroInTens has some)" },
   ],
   refusedRows: ([

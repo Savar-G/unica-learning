@@ -259,9 +259,10 @@ export const mulColumnRegistration: ShapeRegistration = {
     { name: "an unknown word", raw: { ...ONE_CARRY, zeroInProduct: "sometimes" }, problem: 'zeroInProduct must be "never" or "allowed"' },
     { name: "another unknown word", raw: { ...ONE_CARRY, wholeTens: "sometimes" }, problem: 'wholeTens must be "never" or "allowed" or "only"' },
     { name: "an unknown limit", raw: { ...ONE_CARRY, carrys: r(0, 0) }, problem: 'unknown limit "carrys"' },
-    { name: "limits that no question meets", raw: { ...ONE_CARRY, a: r(11, 12) }, problem: "no question meets these limits" },
-    { name: "a carry into a column that is not there", raw: { ...ONE_CARRY, carryIntoHundreds: r(1, 8) }, problem: "no question meets these limits" },
-    { name: "digits that the range of the first number does not have", raw: { ...ONE_CARRY, digits: r(3, 3) }, problem: "no question meets these limits" },
+    { name: "limits that no question meets", raw: { ...ONE_CARRY, a: r(11, 12) }, problem: "no question meets these limits (a wider a or b or carries has some)" },
+    { name: "a carry into a column that is not there", raw: { ...ONE_CARRY, carryIntoHundreds: r(1, 8) }, problem: "no question meets these limits (a wider carryIntoHundreds has some)" },
+    { name: "limits that no one change can mend", raw: { ...ONE_CARRY, b: r(2, 2), a: r(11, 12), carryIntoTens: r(8, 8) }, problem: "no question meets these limits (together they are too narrow: digits, a, b, carries, carryIntoTens, carryIntoHundreds, carryIntoThousands, product, zeroInProduct)" },
+    { name: "digits that the range of the first number does not have", raw: { ...ONE_CARRY, digits: r(3, 3) }, problem: "no question meets these limits (a wider digits has some)" },
   ],
   refusedRows: ([
     ["nothing", []], ["one row", ["24"]], ["three rows", ["24", "×3", "72"]], ["turned rows", ["×3", "24"]], ["another sign", ["24", "+3"]], ["no sign", ["24", "3"]],

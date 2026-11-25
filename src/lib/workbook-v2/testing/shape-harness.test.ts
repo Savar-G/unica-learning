@@ -6,13 +6,14 @@ import { TEMPLATES, type PageTemplate } from "../layout/templates";
 import { shapeLibrary, type Item, type Shape } from "../shapes";
 import { readLimitFields } from "../shapes/shape";
 import * as example from "./example-shapes";
-import { addItem, addQuestions, addRegistration, addShape, lessRegistration, lessShape, type AddLimits, type AddQuestion, type LessLimits, type LessQuestion } from "./example-shapes";
+import { addItem, addQuestions, addRegistration, addShape, lessRegistration, lessShape, BY_HAND, type AddLimits, type AddQuestion, type LessLimits, type LessQuestion } from "./example-shapes";
 import { sampleBook } from "./shape-book";
 import { shapeFingerprint } from "./shape-fingerprints";
 import { CHECKS, checkShape, checkShapes, runChecks, SEEDS, type Check, type HarnessOptions, type ShapeReport } from "./shape-harness";
 import { neverLimit, onlyLimit, rangeLimit, registryProblems, step, type LargeSpace, type Limits, type Rows, type ShapeRegistration } from "./shape-registration";
 import { readStep } from "./steps-evaluator";
 import { marksProblem } from "./step-marks";
+import { addColumn } from "../shapes/add-column";
 import { mulColumn } from "../shapes/mul-column";
 import { subColumn } from "../shapes/sub-column";
 import { mulColumnRegistration } from "./registrations/mul-column";
@@ -213,39 +214,39 @@ const REFUSED: readonly Refused[] = [
   ["steps-true", "a false step with a negative result that the reader says too", () => bothSay(...said("2 - 3 = -2", "22")), /holds "2 - 3 = -2"/],
   ["steps-true", "a step with an equals sign that nothing can read", () => bothSay(...said("6 and 6 = 12", "22")), /cannot read "6 and 6 = 12"/],
   ["steps-true", "a step with an unknown prose clause that the reader says too", () => bothSay(step("6 + 6 = 12, as you know", "w2@0 w2@1"), step("22")), /cannot read "as you know"/],
-  ["steps-true", "a step with a repeated carry that the reader says too", () => bothSay(step("6 + 6 = 12, write 2, carry 1, carry 2", "w2@0 c1@1"), step("1 + 0 = 1, plus 1 is 2", "w2@1"), step("22")), /holds "carry 2"/],
-  ["steps-true", "a step with a wrong plus result that the reader says too", () => bothSay(step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@1"), step("1 + 0 = 1, plus 1 is 99", "w2@1"), step("22")), /holds "plus 1 is 99"/],
+  ["steps-true", "a step with a repeated carry that the reader says too", () => bothSay(step("6 + 6 = 12, write 2, carry 1, carry 2", "w2@0 c1@1"), step("1, plus 1 is 2", "w2@1"), step("22")), /holds "carry 2"/],
+  ["steps-true", "a step with a wrong plus result that the reader says too", () => bothSay(step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@1"), step("1, plus 1 is 99", "w2@1"), step("22")), /holds "plus 1 is 99"/],
   ...([
-    ["a valid one-step form", [step("16 + 6 = 22", "w2@0 w2@1"), step("22")]],
-    ["an explicit write on the last column", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@1"), step("1 + 0 = 1, plus 1 is 2, write 2", "w2@1"), step("22")]],
-    ["valid column steps of another question with the same answer", [step("5 + 7 = 12, write 2, carry 1", "w2@0 c1@1"), step("1 + 0 = 1, plus 1 is 2", "w2@1"), step("22")]],
+    ["an explicit write on the last column", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@1"), step("1, plus 1 is 2, write 2", "w2@1"), step("22")]],
+    ["the same marks in another order", [step("6 + 6 = 12, write 2, carry 1", "c1@1 w2@0"), step("1, plus 1 is 2", "w2@1"), step("22")]],
   ] as [string, Step[]][]).map(([fault, steps]): Refused => ["steps-reader", fault, () => ({ shape: add({ steps: onQuiet(addShape.steps, steps) }) }), /the steps are .* and must be .*"6 \+ 6 = 12, write 2, carry 1"/]),
   ...([
     ["a place that no step writes", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@1"), step("22")], /write "2" and not the answer "22"/],
-    ["a place that two steps write", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@1"), step("1 + 0 = 1, plus 1 is 2", "w2@1 w2@0"), step("22")], /write the place 0 more than once/],
-    ["another digit than the answer has", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@1"), step("1 + 0 = 1, plus 1 is 2", "w1@1"), step("22")], /write "12" and not the answer "22"/],
-    ["a place above the answer", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@1"), step("1 + 0 = 1, plus 1 is 2", "w2@2"), step("22")], /write the place 2 and the answer is "22"/],
-    ["a place far above the answer", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@1"), step("1 + 0 = 1, plus 1 is 2", "w2@1000000000"), step("22")], /write the place 1000000000 and the answer is "22"/],
+    ["a place that two steps write", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@1"), step("1, plus 1 is 2", "w2@1 w2@0"), step("22")], /write the place 0 more than once/],
+    ["another digit than the answer has", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@1"), step("1, plus 1 is 2", "w1@1"), step("22")], /write "12" and not the answer "22"/],
+    ["a place above the answer", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@1"), step("1, plus 1 is 2", "w2@2"), step("22")], /write the place 2 and the answer is "22"/],
+    ["a place far above the answer", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@1"), step("1, plus 1 is 2", "w2@1000000000"), step("22")], /write the place 1000000000 and the answer is "22"/],
     ["a last step that writes", [step("16 + 6 = 22", "w2@0"), step("22", "w2@1")], /the last step draws something/],
     ["a mark of no kind", [{ text: "16 + 6 = 22", marks: [{ mark: "circle", place: 0, digit: "2" }] }, step("22")], /"16 \+ 6 = 22" holds a mark that is not one/],
     ["a mark of two digits", [{ text: "16 + 6 = 22", marks: [{ mark: "write", place: 0, digit: "22" }] }, step("22")], /holds a mark that is not one/],
     ["a mark at no place", [{ text: "16 + 6 = 22", marks: [{ mark: "write", place: -1, digit: "2" }] }, step("22")], /holds a mark that is not one/],
     ["a mark with a field more", [{ text: "16 + 6 = 22", marks: [{ mark: "write", place: 0, digit: "2", color: "red" }] }, step("22")], /holds a mark that is not one/],
     ["a step with a field more", [{ ...step("16 + 6 = 22", "w2@0 w2@1"), note: "" }, step("22")], /is not a text with marks/],
-    ["a step that writes another digit than its equation gives", [step("1 + 2 = 3, write 3", "w2@0"), step("2 + 0 = 2", "w2@1"), step("22")], /says "write 3" and must write "3"|writes "2" and must write "3"/],
-    ["a carry that is not said", [step("1 + 1 = 2, write 2", "w2@0 c1@1"), step("1 + 0 = 1, plus 1 is 2", "w2@1"), step("22")], /says no carry and carries 1/],
-    ["a carry that is said and not drawn", [step("6 + 6 = 12, write 2, carry 1", "w2@0"), step("1 + 0 = 1, plus 1 is 2", "w2@1"), step("22")], /says "carry 1" and carries nothing/],
-    ["a carry of 0", [step("1 + 1 = 2, write 2", "w2@0 c0@1"), step("2 + 0 = 2", "w2@1"), step("22")], /carries 0/],
-    ["two carries of one step", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@1 c1@1"), step("1 + 0 = 1, plus 1 is 2", "w2@1"), step("22")], /has 2 carries/],
-    ["a carry above its own column", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@0"), step("1 + 0 = 1, plus 1 is 2", "w2@1"), step("22")], /its carry stands at the place 0 and must stand at 1/],
-    ["a carry two places above its column", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@2"), step("1 + 0 = 1, plus 1 is 2", "w2@1"), step("22")], /its carry stands at the place 2 and must stand at 1/],
+    ["a step that writes another digit than its equation gives", [step("1 + 2 = 3, write 3", "w2@0"), step("2, write 2", "w2@1"), step("22")], /says "write 3" and must write "3"|writes "2" and must write "3"/],
+    ["a carry that is not said", [step("1 + 1 = 2, write 2", "w2@0 c1@1"), step("1, plus 1 is 2", "w2@1"), step("22")], /says no carry and carries 1/],
+    ["a carry that is said and not drawn", [step("6 + 6 = 12, write 2, carry 1", "w2@0"), step("1, plus 1 is 2", "w2@1"), step("22")], /says "carry 1" and carries nothing/],
+    ["a carry of 0", [step("1 + 1 = 2, write 2", "w2@0 c0@1"), step("2, write 2", "w2@1"), step("22")], /carries 0/],
+    ["two carries of one step", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@1 c1@1"), step("1, plus 1 is 2", "w2@1"), step("22")], /has 2 carries/],
+    ["a carry above its own column", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@0"), step("1, plus 1 is 2", "w2@1"), step("22")], /its carry stands at the place 0 and must stand at 1/],
+    ["a carry two places above its column", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@2"), step("1, plus 1 is 2", "w2@1"), step("22")], /its carry stands at the place 2 and must stand at 1/],
     ["a carry that the next column does not add", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@1"), step("1 + 1 = 2", "w2@1"), step("22")], /carries 1 and .* adds nothing/],
-    ["a carry that the next column adds as another number", [step("15 + 7 = 22, write 2, carry 2", "w2@0 c2@1"), step("1 + 0 = 1, plus 1 is 2", "w2@1"), step("22")], /carries 2 and .* adds 1/],
-    ["a column that adds a carry that no step made", [step("1 + 1 = 2, write 2", "w2@0"), step("1 + 0 = 1, plus 1 is 2", "w2@1"), step("22")], /carries nothing and .* adds 1/],
-    ["a first column that adds a carry", [step("1 + 0 = 1, plus 1 is 2, write 2", "w2@0"), step("2 + 0 = 2", "w2@1"), step("22")], /the first step adds 1/],
-    ["a carry that the step of another place adds", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@1"), step("1 + 0 = 1, plus 1 is 2, write 2", "w2@1"), step("0 + 0 = 0", ""), step("22")], /writes nothing/],
+    ["a carry that the next column adds as another number", [step("15 + 7 = 22, write 2, carry 2", "w2@0 c2@1"), step("1, plus 1 is 2", "w2@1"), step("22")], /carries 2 and .* adds 1/],
+    ["a column that adds a carry that no step made", [step("1 + 1 = 2, write 2", "w2@0"), step("1, plus 1 is 2", "w2@1"), step("22")], /carries nothing and .* adds 1/],
+    ["a first column that adds a carry", [step("1, plus 1 is 2, write 2", "w2@0"), step("2, write 2", "w2@1"), step("22")], /the first step adds 1/],
+    ["a carry that the step of another place adds", [step("6 + 6 = 12, write 2, carry 1", "w2@0 c1@1"), step("1, plus 1 is 2, write 2", "w2@1"), step("0, write 0", ""), step("22")], /writes nothing/],
+    ["one whole equation", [step("16 + 6 = 22", "w2@0 w2@1"), step("22")], /1 columns and the paper has 2/],
+    ["the columns of another question with the same answer", [step("5 + 7 = 12, write 2, carry 1", "w2@0 c1@1"), step("1, plus 1 is 2", "w2@1"), step("22")], /says 5 \+ 7 and the paper shows 6 \+ 6/],
   ] as [string, Step[], RegExp][]).map(([fault, steps, message]): Refused => ["steps-marks", fault, () => bothSay(...steps), message]),
-  ["steps-reader", "another mark than the reader says", () => ({ shape: add({ steps: onQuiet(addShape.steps, [step("16 + 6 = 22", "w2@0 w2@1"), step("22")]) }) }), /the steps are .* and must be /],
   ["steps-reader", "other steps than the reader says", () => ({ shape: add(), registration: readQuiet({ steps: said("12 + 10 = 22", "22") }) }), /the steps are .* and must be .*"12 \+ 10 = 22"/],
   ["steps-reader", "a reader that says no steps", () => ({ shape: add(), registration: readQuiet({ steps: undefined }) }), /the steps are .* and must be undefined/],
   ["difficulty", "a score that is not a number", () => ({ shape: add({ difficulty: onQuiet(addShape.difficulty, Number.NaN), difficultyRange: addShape.difficultyRange }) }), /the score is NaN/],
@@ -259,7 +260,7 @@ const REFUSED: readonly Refused[] = [
     return { seeds: SEEDS, shape: { ...shape, worstCase: (l) => shape.worstCase({ a: { min: (l as PlusOneLimits).a.min, max: (l as PlusOneLimits).a.min } }) }, registration: { ...registration, space: large } };
   }, /needs 3 digit places, more than 2/],
   ["harder", "one score for all", () => ({ shape: add({ difficulty: () => 5, difficultyRange: () => ({ easiest: 5, hardest: 5 }) }) }), /"a carry": the score of .* is 5 and of .* is 5/],
-  ["examples", "other true steps than the example", () => ({ shape: add({ steps: ({ a, b }) => (a === 17 && b === 6 ? [step("6 + 7 = 13, write 3, carry 1", "w3@0 c1@1"), step("1 + 0 = 1, plus 1 is 2", "w2@1"), step("23")] : addShape.steps({ a, b })) }), registration: { read: (rows) => { const p = addRegistration.read(rows); return p && rows.join() === "17,+6" ? { ...p, steps: [step("6 + 7 = 13, write 3, carry 1", "w3@0 c1@1"), step("1 + 0 = 1, plus 1 is 2", "w2@1"), step("23")] } : p; } } }), /"a carry" gives .*6 \+ 7 = 13/],
+  ["examples", "other true steps than the example", () => ({ shape: add({ steps: ({ a, b }) => (a === 17 && b === 6 ? [step("7 + 6 = 13, write 3, carry 1", "w3@0 c1@1"), step("1, plus 1 is 2, write 2", "w2@1"), step("23")] : addShape.steps({ a, b })) }), registration: { read: (rows) => { const p = addRegistration.read(rows); return p && rows.join() === "17,+6" ? { ...p, steps: [step("7 + 6 = 13, write 3, carry 1", "w3@0 c1@1"), step("1, plus 1 is 2, write 2", "w2@1"), step("23")] } : p; } } }), /"a carry" gives .*plus 1 is 2, write 2/],
   ["examples", "another answer in the registration", () => ({ shape: add(), registration: { examples: [{ ...addRegistration.examples[0], answer: whole("33") }] } }), /"a carry" gives .*"23"/],
   ["refused-rows", "a zero in front of a number", () => ({ shape: add({ solveAgain: (rows) => addShape.solveAgain(rows[0] === "017" ? ["17", rows[1]] : rows) }) }), /\["017","\+6"\]: the shape reads .* and the reader refuses it/],
   ["refused-rows", "named rows", () => ({ shape: add({ solveAgain: (rows) => (rows[0] === "31" ? addItem({ a: 30, b: 3 }) : addShape.solveAgain(rows)) }) }), /\["31","\+3"\]: the shape reads/],
@@ -282,6 +283,16 @@ describe("the harness refuses", () => {
       const report = check({ shape, seeds: SEEDS, options: { fingerprints: { [shape.id]: { 1: shapeFingerprint(shape, registration) } } } });
       expect(report.failures).toEqual([]);
       expect(report.evidence.seeds).toBeGreaterThanOrEqual(1000);
+    }
+  });
+
+  it("has steps and marks written by hand for questions of test.less, and the production writer and its reader say the same", () => {
+    expect(BY_HAND.length).toBeGreaterThan(1);
+    for (const { a, b, steps } of BY_HAND) {
+      expect(lessShape.steps({ a, b })).toBe(steps);
+      expect(marksProblem(steps, String(a - b), [String(a), `-${b}`])).toBeNull();
+      expect(subColumn.steps({ a, b })).toEqual(steps);
+      expect(lessRegistration.examples.map((e) => e.steps)).toContain(steps);
     }
   });
 
@@ -383,8 +394,7 @@ type PlusOneLimits = { a: { min: number; max: number } };
 function plusOne(min: number, max: number): { shape: Shape; registration: ShapeRegistration } {
   const item = ({ a }: { a: number }): Item<{ a: number }> => ({ question: { a }, answer: whole(String(a + 1)) });
   const isOne = (rows: Rows) => rows.length === 2 && /^[1-9]\d*$/.test(rows[0]) && rows[1] === "+1" && Number(rows[0]) >= min && Number(rows[0]) <= max;
-  const marks = (n: number) => [...String(n)].reverse().map((digit, place) => `w${digit}@${place}`).join(" ");
-  const stepsOf = (a: number) => [step(`${a} + 1 = ${a + 1}`, marks(a + 1)), step(String(a + 1))];
+  const stepsOf = (a: number) => addColumn.steps({ a, b: 1 });
   const shape: Shape<PlusOneLimits, { a: number }> = {
     id: "test.plus", version: 1, answerKind: "whole-number",
     readLimits: (raw) => { const read = readLimitFields(raw, { a: { min, max } }, {}); return typeof read === "string" ? { ok: false, problem: read } : { ok: true, limits: read as unknown as PlusOneLimits }; },
@@ -571,13 +581,13 @@ describe("reading a worked step", () => {
 
   // No clause is left alone: every piece of a step that passes must be a known valid clause or plain answer.
   it("leaves no clause unread", () => {
-    const piece = fc.constantFrom("1", "2", "12", " ", " + ", " = ", "=", "-", "−", ",", ", ", ".", ". ", "½", "x", "write", "carry", "plus", "nothing", "borrow ", "ten", "tens", "become", " become ");
+    const piece = fc.constantFrom("1", "2", "12", " ", " + ", " = ", "=", "-", "−", ",", ", ", ".", ". ", "½", "x", "write", "carry", "plus", "nothing", "borrow ", "borrow 1 ", "ten", "tens", "hundred", "hundreds", "thousand", "thousands", " become ", " becomes ");
     fc.assert(fc.property(fc.array(piece, { maxLength: 9 }), (pieces) => {
       const step = pieces.join("");
       const { wrong, unread } = readStep(step);
       if (wrong.length + unread.length > 0) return;
       if (/^(?:0|[1-9]\d*)$/.test(step)) return;
-      const clause = /^(?:-?(?:0|[1-9]\d*)(?:\.\d+)?(?: [+-] -?(?:0|[1-9]\d*)(?:\.\d+)?)+ = -?(?:0|[1-9]\d*)(?:\.\d+)?|\d|plus [1-9]\d* is (?:0|[1-9]\d*)|write (?:nothing|0|[1-9]\d*)|carry [1-9]\d*|borrow 1 ten|\d+ tens? becomes? \d tens?)$/;
+      const clause = /^(?:-?(?:0|[1-9]\d*)(?:\.\d+)?(?: [+-] -?(?:0|[1-9]\d*)(?:\.\d+)?)+ = -?(?:0|[1-9]\d*)(?:\.\d+)?|\d|plus [1-9]\d* is (?:0|[1-9]\d*)|write (?:nothing|0|[1-9]\d*)|carry [1-9]\d*|borrow 1 (?:ten|hundred|thousand)|(?:[1-9]|10) (?:(?:ten|hundred|thousand)s become|(?:ten|hundred|thousand) becomes) \d (?:ten|hundred|thousand)s?)$/;
       for (const part of step.replaceAll("−", "-").split(", ")) expect(part).toMatch(clause);
     }));
   });
@@ -595,11 +605,36 @@ describe("the clauses of columns that borrow or have one digit", () => {
     "borrow 1 ten, 4 tens become 2 tens", "borrow 1 ten, 4 tens become 4 tens", "borrow 1 ten, 0 tens become 9 tens", "borrow 1 ten, 11 tens become 10 tens",
     "borrow 1 ten, 1 tens become 0 tens", "borrow 1 ten, 1 tens becomes 0 tens", "borrow 1 ten, 4 ten become 3 tens", "borrow 1 ten, 1 ten become 0 tens", "borrow 1 ten, 2 tens become 1 tens", "borrow 1 ten, 1 ten becomes 0 ten", "borrow 1 ten, 4 tens becomes 3 tens",
     "borrow 1 ten, 4 hundreds become 3 hundreds", "borrow 1 hundred, 4 hundreds become 3 tens", "borrow 2 tens, 4 tens become 2 tens", "borrow 1 one, 4 ones become 3 ones",
+    "borrow 1 tens, 4 tens become 3 tens", "borrow 1 ten, 010 tens become 9 tens", "borrow 1 ten, 4 tens become 03 tens", "borrow 01 ten, 4 tens become 3 tens", "borrow 1 hundreds, 4 hundreds become 3 hundreds", "borrow 1 thousands, 4 thousands become 3 thousands",
     "borrow 1 ten", "4 tens become 3 tens", "4 tens become 3 tens, borrow 1 ten", "borrow 1 ten, 4 tens become 3 tens, write 3", "borrow 1 ten, 4 tens become 3 tens, 12 - 7 = 5", "borrow 1 ten, 12 - 7 = 5, write 5",
     "borrow 1 ten, borrow 1 ten, 4 tens become 3 tens", "4 - 3 = 1, write nothing", "3, plus 1 is 4, write nothing", "3, write nothing", "10 - 10 = 0, write nothing, carry 1", "write nothing",
   ])("refuses %s", (text) => {
     const { wrong, unread } = readStep(text);
     expect(wrong.length + unread.length).toBeGreaterThan(0);
+  });
+});
+
+describe("a step that borrows", () => {
+  it("is read only with one unit, one less, and the words of one or of more", () => {
+    type Word = [unit: string, plural: string];
+    type Sentence = [gives: Word, from: number, has: Word, verb: string, to: number, left: Word];
+    const units = ["ten", "hundred", "thousand"];
+    const word: fc.Arbitrary<Word> = fc.tuple(fc.constantFrom(...units), fc.constantFrom("", "s"));
+    const sentence: fc.Arbitrary<Sentence> = fc.tuple(word, fc.nat(12), word, fc.constantFrom("become", "becomes"), fc.nat(12), word);
+    const right = fc.tuple(fc.constantFrom(...units), fc.integer({ min: 1, max: 10 })).map(([unit, n]): Sentence =>
+      [[unit, ""], n, [unit, n === 1 ? "" : "s"], n === 1 ? "becomes" : "become", n - 1, [unit, n === 2 ? "" : "s"]]);
+    // A right sentence, and one with a single part of another sentence.
+    const nearly = fc.tuple(right, sentence, fc.nat(5)).map(([good, other, at]) => good.map((part, i) => (i === at ? other[i] : part)) as Sentence);
+    let read = 0;
+    fc.assert(fc.property(fc.oneof(right, nearly, sentence), ([[gives, plural], from, [has, hasMore], verb, to, [left, leftMore]]) => {
+      const said = `borrow 1 ${gives}${plural}, ${from} ${has}${hasMore} ${verb} ${to} ${left}${leftMore}`;
+      const isRight = plural === "" && gives === has && has === left && from >= 1 && from <= 10 && to === from - 1
+        && hasMore === (from === 1 ? "" : "s") && verb === (from === 1 ? "becomes" : "become") && leftMore === (to === 1 ? "" : "s");
+      const { wrong, unread } = readStep(said);
+      expect(wrong.length + unread.length === 0, said).toBe(isRight);
+      if (isRight) read++;
+    }), { numRuns: 300 });
+    expect(read).toBeGreaterThan(50);
   });
 });
 
@@ -642,7 +677,7 @@ describe("the paper of a subtraction in columns", () => {
     ["the marks of a borrow one place too far", "42 -17", but(GOOD, 0, "borrow 1 ten, 4 tens become 3 tens | x4@2 b3@2 b12@1"), /marks/],
     ["a borrow of another unit than its place", "42 -17", but(GOOD, 0, "borrow 1 hundred, 4 hundreds become 3 hundreds | x4@1 b3@1 b12@0"), /hundred/],
     ["a borrow from a place that is not on the paper", "42 -17", ["borrow 1 thousand, 4 thousands become 3 thousands | x4@3 b3@3 b10@2", ...GOOD], /thousand/],
-    ["a borrow that is not needed", "58 -23", ["borrow 1 ten, 5 tens become 4 tens | x5@1 b4@1 b18@0", "18 - 3 = 15, write 5 | w5@0", "4 - 2 = 2 | w3@1", "35"], /needs no borrow/],
+    ["a borrow that is not needed", "58 -23", ["borrow 1 ten, 5 tens become 4 tens | x5@1 b4@1 b18@0", "8 - 3 = 5, write 5 | w5@0", "5 - 2 = 3 | w3@1", "35"], /needs no borrow/],
     ["a borrow two times", "42 -17", [TEN, "borrow 1 ten, 3 tens become 2 tens | x3@1 b2@1 b22@0", ...GOOD.slice(1)], /not one|needs no borrow/],
     ["a borrow after the last column", "42 -17", but(GOOD, 3, "borrow 1 ten, 3 tens become 2 tens | x3@1 b2@1 b10@0", "25"), /after its last column/],
     ["a borrow that is forgotten", "42 -17", GOOD.slice(1), /needs a borrow/],
@@ -662,6 +697,14 @@ describe("the paper of a subtraction in columns", () => {
     ["a column too many", "42 -17", but(GOOD, 3, "0 - 0 = 0, write nothing", "25"), /after its last column/],
     ["an equation for a column with no digit below", "45 -3", ["5 - 3 = 2, write 2 | w2@0", "4 - 0 = 4 | w4@1", "42"], /the paper shows 4/],
     ["only the top digit for a column with a digit below", "45 -40", ["5, write 5 | w5@0", "4 - 4 = 0, write nothing", "5"], /the paper shows 5 - 0/],
+    ["a difference of -0", "5 -5", ["5 - 5 = -0 | w0@0", "0"], /no whole-number equation/],
+    ["a difference of -0 that is last and written", "15 -5", ["5 - 5 = -0, write 0 | w0@0", "1, write 1 | w1@1", "10"], /not a whole number/],
+    ["a difference of 2.0", "42 -17", but(GOOD, 2, "3 - 1 = 2.0 | w2@1"), /no whole-number equation/],
+    ["a difference of 2.0 and a word", "42 -17", but(GOOD, 2, "3 - 1 = 2.0, write 2 | w2@1"), /not a whole number/],
+    ["a top digit of 3.0", "42 -17", but(GOOD, 2, "3.0 - 1 = 2 | w2@1"), /the paper shows 3 - 1/],
+    ["the columns in another order", "42 -17", [GOOD[0], GOOD[2], GOOD[1], GOOD[3]], /needs a borrow|the paper shows|marks/],
+    ["the operands in another order", "98 -44", ["8 - 4 = 4, write 4 | w4@0", "4 - 9 = -5 | w5@1", "54"], /the paper shows 9 - 4/],
+    ["another sign", "42 -17", but(GOOD, 2, "1 + 1 = 2 | w2@1"), /the paper shows 3 - 1/],
     ["a carry", "42 -17", but(GOOD, 1, "12 - 7 = 5, write 5 | w5@0 c1@1"), /marks/],
     ["an added number", "42 -17", but(GOOD, 2, "1 - 0 = 1, plus 1 is 2 | w2@1"), /the paper shows 3 - 1|adds/],
     ["one equation for the whole question", "200 -5", ["200 - 5 = 195 | w5@0 w9@1 w1@2", "195"], /needs a borrow|the paper shows/],
@@ -700,17 +743,49 @@ describe("the paper of a subtraction in columns", () => {
   });
 });
 
-describe("the paper of an addition in columns", () => {
-  it.each<[string, string[], string[], string | null]>([
-    ["a column with no digit below", ["195", "+8"], ["5 + 8 = 13, write 3, carry 1 | w3@0 c1@1", "9, plus 1 is 10, write 0, carry 1 | w0@1 c1@2", "1, plus 1 is 2 | w2@2", "203"], null],
-    ["only the top digit of a column with a digit below", ["15", "+20"], ["5, write 5 | w5@0", "1 + 2 = 3 | w3@1", "35"], "has a digit below"],
-    ["another top digit than the paper", ["45", "+3"], ["5 + 3 = 8, write 8 | w8@0", "3, write 3 | w3@1", "38"], "shows 4 and not 3"],
-    ["a digit with no paper", ["45"], ["5 + 3 = 8, write 8 | w8@0", "4, write 4 | w4@1", "48"], "has no equation"],
-  ])("with %s", (_name, rows, lines, message) => {
+describe("the paper of an addition or a multiplication in columns", () => {
+  const problem = (rows: string, lines: readonly string[]) => {
     const steps = lines.map((line) => step(...(line.split(" | ") as [string, string?])));
-    const found = marksProblem(steps, steps[steps.length - 1].text, rows);
-    if (message === null) expect(found).toBeNull();
-    else expect(found).toContain(message);
+    return marksProblem(steps, steps[steps.length - 1].text, rows.split(" "));
+  };
+  const SUM = ["2 + 3 = 5, write 5 | w5@0", "5 + 1 = 6 | w6@1", "65"];
+
+  it.each<[string, string, string[]]>([
+    ["an addition", "52 +13", SUM],
+    ["columns with no digit below", "195 +8", ["5 + 8 = 13, write 3, carry 1 | w3@0 c1@1", "9, plus 1 is 10, write 0, carry 1 | w0@1 c1@2", "1, plus 1 is 2 | w2@2", "203"]],
+    ["columns with no digit on top", "8 +195", ["8 + 5 = 13, write 3, carry 1 | w3@0 c1@1", "9, plus 1 is 10, write 0, carry 1 | w0@1 c1@2", "1, plus 1 is 2 | w2@2", "203"]],
+    ["a multiplication", "247 ×3", ["3 × 7 = 21, write 1, carry 2 | w1@0 c2@1", "3 × 4 = 12, plus 2 is 14, write 4, carry 1 | w4@1 c1@2", "3 × 2 = 6, plus 1 is 7 | w7@2", "741"]],
+  ])("accepts %s", (_name, rows, lines) => expect(problem(rows, lines)).toBeNull());
+
+  it.each<[string, string, string[], RegExp]>([
+    ["other operands with the same sums", "52 +13", ["1 + 4 = 5, write 5 | w5@0", "3 + 3 = 6 | w6@1", "65"], /says 1 \+ 4 and the paper shows 2 \+ 3/],
+    ["another sign", "52 +13", ["8 - 3 = 5, write 5 | w5@0", "2 × 3 = 6 | w6@1", "65"], /the paper shows 2 \+ 3/],
+    ["the operands in another order", "52 +13", ["3 + 2 = 5, write 5 | w5@0", SUM[1], "65"], /the paper shows 2 \+ 3/],
+    ["the columns in another order", "52 +13", ["5 + 1 = 6, write 6 | w6@1", "2 + 3 = 5 | w5@0", "65"], /the paper shows 2 \+ 3|place/],
+    ["the columns in order that write in another order", "55 +11", ["5 + 1 = 6, write 6 | w6@1", "5 + 1 = 6 | w6@0", "66"], /must write the place 0/],
+    ["one whole equation", "52 +13", ["52 + 13 = 65 | w5@0 w6@1", "65"], /1 columns and the paper has 2/],
+    ["a whole equation in the first column", "52 +13", ["52 + 13 = 65, write 5, carry 6 | w5@0 c6@1", "0, plus 6 is 6 | w6@1", "65"], /the paper shows 2 \+ 3/],
+    ["a column that is left out", "152 +13", ["2 + 3 = 5, write 5 | w5@0", "15 + 1 = 16 | w6@1 w1@2", "165"], /2 columns and the paper has 3/],
+    ["a column too many", "52 +13", ["2 + 3 = 5, write 5 | w5@0", "5 + 1 = 6, write 6 | w6@1", "0 + 0 = 0 | w0@2", "65"], /the place 2/],
+    ["a zero for an empty place", "45 +3", ["5 + 3 = 8, write 8 | w8@0", "4 + 0 = 4 | w4@1", "48"], /says 4 \+ 0 and the paper shows 4/],
+    ["only the top digit of a column with a digit below", "15 +20", ["5, write 5 | w5@0", "1 + 2 = 3 | w3@1", "35"], /the paper shows 5 \+ 0/],
+    ["another top digit", "45 +3", ["5 + 3 = 8, write 8 | w8@0", "3, plus 1 is 4 | w4@1", "48"], /adds 1/],
+    ["a zero that is written as a decimal", "52 +13", ["2 + 3 = 5.0, write 5 | w5@0", SUM[1], "65"], /not a whole number/],
+    ["a digit with no paper", "45", ["5 + 3 = 8, write 8 | w8@0", "4, write 4 | w4@1", "48"], /has no equation/],
+    ["a multiplication in the other order", "21 ×3", ["1 × 3 = 3, write 3 | w3@0", "3 × 2 = 6 | w6@1", "63"], /the paper shows 3 × 1/],
+    ["a multiplication with another multiplier", "20 ×3", ["4 × 0 = 0, write 0 | w0@0", "3 × 2 = 6 | w6@1", "60"], /the paper shows 3 × 0/],
+    ["a multiplication as one equation", "21 ×3", ["3 × 21 = 63 | w3@0 w6@1", "63"], /1 columns and the paper has 2/],
+    ["an addition in the place of a multiplication", "21 ×2", ["1 + 1 = 2, write 2 | w2@0", "2 + 2 = 4 | w4@1", "42"], /the paper shows 2 × 1/],
+  ])("refuses %s", (_name, rows, lines, message) => expect(problem(rows, lines)).toMatch(message));
+
+  it("takes the steps of one question for no other with the same answer and the same number of digits", () => {
+    fc.assert(fc.property(fc.integer({ min: 10, max: 99 }), fc.integer({ min: 10, max: 99 }), fc.integer({ min: 1, max: 40 }), (a, b, move) => {
+      const [x, y] = [a + move, b - move];
+      if (x > 99 || y < 10) return;
+      const answer = String(a + b);
+      expect(marksProblem(addColumn.steps({ a, b }), answer, [String(a), `+${b}`])).toBeNull();
+      expect(marksProblem(addColumn.steps({ a, b }), answer, [String(x), `+${y}`])).not.toBeNull();
+    }));
   });
 });
 
@@ -805,16 +880,13 @@ describe("closed grammar of worked steps and marks", () => {
       const next = String(original + delta);
       const editedText = `${target.text.slice(0, chosen.index)}${next}${target.text.slice((chosen.index ?? 0) + chosen[0].length)}`;
       const editedSteps = steps.map((s, i) => (i === stepIndex % steps.length ? { ...s, text: editedText } : s));
-      // Every single number edit fails the full reader comparison; every edit except the multiplier in `b × 0 = 0` also fails the shape-free grammar + marks check alone.
+      // Every single number edit fails the full reader comparison, and the shape-free check of the grammar and the paper alone.
       const readerSteps = mulColumnRegistration.read([String(a), `×${b}`])?.steps;
       expect(canonicalJson(editedSteps)).not.toBe(canonicalJson(readerSteps));
-      const isZeroMultiplier = (stepIndex % steps.length) < steps.length - 1 && (matchIndex % matches.length) === 0 && target.text.startsWith(`${b} × 0 = 0`);
-      if (!isZeroMultiplier) {
-        const endWrong = editedSteps.at(-1)?.text !== answer;
-        const evalWrong = readStep(editedText).wrong.length > 0 || readStep(editedText).unread.length > 0;
-        const marksWrong = marksProblem(editedSteps, answer, [String(a), `×${b}`]) !== null;
-        expect(endWrong || evalWrong || marksWrong, `${a}×${b} step "${editedText}"`).toBe(true);
-      }
+      const endWrong = editedSteps.at(-1)?.text !== answer;
+      const evalWrong = readStep(editedText).wrong.length > 0 || readStep(editedText).unread.length > 0;
+      const marksWrong = marksProblem(editedSteps, answer, [String(a), `×${b}`]) !== null;
+      expect(endWrong || evalWrong || marksWrong, `${a}×${b} step "${editedText}"`).toBe(true);
     };
     // All 720 two-digit questions, deterministic random edit of a number per question.
     let state = 239;
