@@ -2,6 +2,7 @@
 // The store's `put` and `finish` carry the terminal-state rules: each needs an active, unexpired photo revision and this
 // job's current lease (fence_scan_object and finish_scan_calibration on the database). A job that lost either stops, and it
 // cannot bring a photo back. No AI runs here, and no mark or learning event is written.
+import type { CoveredRegionDetails, ScanCalibrationDetails } from "@/lib/scan-calibration-details";
 import { monitorProduct } from "@/lib/product-monitoring";
 import sharp from "sharp";
 import {
@@ -84,6 +85,7 @@ export interface ScanCalibrationResult {
    */
   cutOff?: number[];
   reason?: ScanRefusal;
+  details?: ScanCalibrationDetails;
   /**
    * The sheet check a ready result passed (SHEET_CHECK_VERSION). A ready result with an older or no version was made before
    * that check: it is not taken as ready anywhere, and is checked again (#456).
@@ -312,18 +314,19 @@ export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: s
   if (input === CHECK_TIMEOUT) return timedOut();
   if (!input) return finished("refused", { reason: "printed-page-changed" }, 0);
   const [photo, printed] = input;
-  if (!frame.page.qrToken) return finished("refused", { reason: "qr-mismatch" }, 0);
+  if (!frame.page.qrToken) return finished("refused", { reason: "qr-mismatch", details: { qrRead: 0 } }, 0);
   const writing = frame.page.questions.flatMap((q) => (q.regions ?? []).flatMap((r) => (r.box ? [r.box] : [])));
   const firstOthers = frame.page.others.length ? fetchOthers(store, frame.page.others, 0) : undefined;
   const result = calibratePhoto({ photo, printed, contract, pageLink: pageUrl(frame.page.qrToken), writing });
   if (Date.now() >= deadline) return timedOut();
   if (result.status === "unavailable") return { status: "unavailable", reason: result.reason };
-  if (result.status === "refused") return finished("refused", { reason: result.reason }, 0);
+  if (result.status === "refused") return finished("refused", { reason: result.reason, details: result.details }, 0);
   const calibration = result.status === "calibrated" ? result.calibration : null;
   let review: ScanCalibrationResult["review"] = result.status === "review" ? result.reason : undefined;
   const planned = cropPlan(frame.page.questions);
   const cutOff: number[] = [];
   const held = new Map<number, QuestionHold>();
+  const covered: CoveredRegionDetails[] = [];
   const snaps: AnswerSnap[] = [];
   const crops: typeof planned.crops = [];
   if (calibration) {
@@ -357,6 +360,12 @@ export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: s
           const check = hidden.some((m) => (m.x < page.width / 2) === (x < page.width / 2) && (m.y < page.height / 2) === (y < page.height / 2));
           return { regionId: region.id, ...place(region.box, check) };
         });
+        for (const region of regions) {
+          if (region.issue === "covered") {
+            const index = question.regions?.findIndex(r => r.id === region.regionId) ?? -1;
+            if (index >= 0) covered.push({ question: crop.number, region: index + 1, ...region.ring });
+          }
+        }
         snaps.push(...regions.map(({ regionId, box, offset }) => ({ number: crop.number, regionId, box, offset })));
         const issue = regions.find((r) => r.issue === "covered")?.issue ?? regions.find((r) => r.issue)?.issue;
         if (issue) { held.set(crop.number, issue); continue; }
@@ -389,6 +398,7 @@ export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: s
   return finished("ready", {
     sheetCheck: SHEET_CHECK_VERSION, ...(calibration && !review ? { calibration } : {}), ...(review ? { review } : {}),
     parts: uploads.map((u) => u.part), straight: { width: straight.width, height: straight.height }, notSupported: planned.notSupported,
+    ...(review || held.size ? { details: { ...result.details, ...(covered.length ? { covered } : {}) } } : {}),
     ...(held.size ? { held: Array.from(held, ([number, issue]) => ({ number, issue })).sort((a, b) => a.number - b.number) } : {}),
     ...(snaps.length ? { snaps } : {}),
     ...(cutOff.length || held.size ? { cutOff: [...cutOff, ...held.keys()] } : {}),
