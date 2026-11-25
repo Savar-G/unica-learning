@@ -299,7 +299,7 @@ describe.skipIf(skipTypstTests()).concurrent("with the real Typst", () => {
         "wide-left": line("100", box(1, 30, 28), "left"), "wide-center": line("100", box(1, 30, 28, 200), "center"), "wide-right": line("100", box(1, 30, 28, 300), "right"),
         "wide-words": line("Two words and more", box(2, 100, 28), "left", 15), "wide-hyphens": line("one-two-three-four", box(2, 80, 28, 300), "center", 15),
         "high": line("8", box(3, 30, 12), "center"), "deep": line("gypq", box(3, 100, 14, 200), "left"), "not-deep": line("8888", box(3, 100, 14, 320), "left"),
-        "bold": line("100", box(4, 31, 28), "left", 18, 600),
+        "tall": line("2", box(5, 30, 13), "center"), "bold": line("100", box(4, 31, 28), "left", 18, 600),
       });
       const out = await draw(pages);
       expect(checkTexts(pages, out.texts)).toEqual([]);
@@ -309,6 +309,7 @@ describe.skipIf(skipTypstTests()).concurrent("with the real Typst", () => {
         'Page 381: the text "one-two-three-four" of "wide-hyphens" is 134.16 points wide and its place is 80.',
         'Page 381: the text "8" of "high" is 13.36 points high and its place is 12.',
         'Page 381: the text "gypq" of "deep" is 18.61 points high and its place is 14.',
+        'Page 381: the text "2" of "tall" is 13.36 points high and its place is 13.',
         'Page 381: the text "100" of "bold" is 32.2 points wide and its place is 31.',
       ]);
     });

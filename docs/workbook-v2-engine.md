@@ -49,7 +49,7 @@ The snapshot file holds the content of one level. The book file holds the book i
 
 ## Fit and ink
 
-No check repairs a page: a text is never clipped, made smaller or wrapped to fit. A book that fails one stops with the list of problems, each with its page and place. The checks know no face, part or template; they read the model, the paper and the print rules.
+No check repairs a page: a text is never clipped, made smaller or wrapped to fit. A book that fails one stops with the list of problems, each with its page and place. The checks know no face, part or template; they read the model, the paper and the print rules. Only the place value check knows a face, the stack.
 
 | Layer | What it proves | When |
 |---|---|---|

@@ -95,6 +95,15 @@ describe("a bank with a problem", () => {
     expect(problems.some((p) => problem.test(p))).toBe(true);
   });
 
+  it("in one of two rows of a side names that row and not the other", async () => {
+    const two = snapshotWith((s) => { s.sheets[0].front.rows = structuredClone(rawSnapshot.sheets[0].front.rows).map((row) => ({ ...row, items: 2 })); });
+    const [first, second] = two.sheets[0].front.rows;
+    const bad = JSON.stringify(second.limits);
+    expect(JSON.stringify(first.limits)).not.toBe(bad);
+    const options = withShape((s) => ({ generate: (l, seed) => { if (JSON.stringify(l) === bad) throw new Error("no such number"); return s.generate(l, seed); } }));
+    expect((await checkBank(two, fake(), options)).problems).toEqual([`Sheet "column-multiplication-1", front side, row "${second.id}", seed 1: a question cannot be made (no such number).`]);
+  });
+
   it("that only one seed has names the row and the seed", async () => {
     let wrong = "";
     const options = withShape((s) => ({ generate: (l, seed) => { const item = s.generate(l, seed); if (wrong === "" && JSON.stringify(l) !== "") wrong = seed; return seed === wrong ? { ...item, answer: { parts: [{ name: "answer", kind: "whole-number", value: "" }] } } : item; } }));
