@@ -102,10 +102,13 @@ function checkRunLinks(slotDir: string, photos: readonly PhotoRunEntry[]): void 
       if (owner !== undefined) throw new Error(`photos[${owner}] and photos[${index}] name one file "${name}"`);
       owners.set(name.toLowerCase(), index);
     }
-    if (entry.record_file === undefined || entry.source_ref === undefined) return;
+    if (entry.record_file === undefined) return;
+    if (entry.record_file.toLowerCase().endsWith(".invalid.json")) {
+      throw new Error(`photos[${index}] names "${entry.record_file}" as its reading, which compare does not read`);
+    }
     const ref = readingRef(join(slotDir, entry.record_file));
     if (ref !== null && ref !== entry.source_ref) {
-      throw new Error(`photos[${index}] gives the page ${entry.source_ref}, but its reading "${entry.record_file}" is of ${ref}`);
+      throw new Error(`photos[${index}] gives the page ${entry.source_ref || "(no page id)"}, but its reading "${entry.record_file}" is of ${ref}`);
     }
   });
 }

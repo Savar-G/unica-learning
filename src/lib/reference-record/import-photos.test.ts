@@ -282,7 +282,7 @@ describe("importReferenceRecords photo and file safety", () => {
     expect(first.stopped).toBe(true);
     expect(first.counts.inserted).toBe(1);
     expect(first.unreferencedPhotos).toEqual([contentPath("sample:M:3b", "png", img2)]);
-    expect(formatImportResult(first)).toContain("run the command again first (it reuses this photo");
+    expect(formatImportResult(first)).toContain("run the command again first (it uses this photo");
     expect(store.objects.has(contentPath("sample:M:3b", "png", img2))).toBe(true);
     expect(store.rows.has("sample:M:3b")).toBe(false);
 

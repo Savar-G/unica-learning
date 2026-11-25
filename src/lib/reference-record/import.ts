@@ -422,7 +422,8 @@ export async function importReferenceRecords(options: ImportOptions): Promise<Im
       const store = options.store;
       const outcome = await applyReplace({ store, record, prev, plannedStatus, photo, target, decision, dryRun });
       if (outcome.photoWritten) photosUploaded += 1;
-      if (decision.leftoverPath !== null && (outcome.ok || outcome.rowWritten)) oldPaths.add(decision.leftoverPath);
+      // Also when the update failed, because its answer can be lost. A path that a row uses is not named.
+      if (decision.leftoverPath !== null) oldPaths.add(decision.leftoverPath);
       if (!outcome.ok) {
         if (outcome.photoWritten && !outcome.rowWritten && target) looseUploads.add(target.path);
         return finish([
@@ -523,7 +524,7 @@ export function formatImportResult(result: ImportResult): string {
   }
   for (const path of result.unreferencedPhotos ?? []) {
     lines.push(
-      `unreferenced_photo: "${path}" was uploaded, but its row was not written; run the command again first (it reuses this photo for the same files), else ${REMOVE_BY_HAND}`,
+      `unreferenced_photo: "${path}" was uploaded, but its row was not written; run the command again first (it uses this photo when it writes the row with the same files; when the row of another run stays, look at that row and at --replace), else ${REMOVE_BY_HAND}`,
     );
   }
   lines.push(...formatReplaceLines(result));

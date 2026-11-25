@@ -455,16 +455,17 @@ describe("a replace never pairs the text of a page with another photo", () => {
     expect(result.problems.join("\n")).toContain('"demo/Z/1a.jpg", "demo/Z/2b.jpg"');
   });
 
-  it("names the old photo in the run whose row write lost its answer", async () => {
+  it.each([false, true])("names the old photo in the run whose row write lost its answer (status changed by a person then: %s)", async (changed) => {
     const store = startStore("today's path");
     const update = store.updateRow.bind(store);
     store.updateRow = async (row, seen) => {
       await update(row, seen);
+      if (changed) Object.assign(store.rows.get(REFS[0]) ?? {}, { transcript_status: "double_read" });
       throw new Error("no answer");
     };
     const result = await writeRun(KINDS["text and photo"], [REFS[0]])(store);
     expect(result).toMatchObject({ ok: false, counts: { replaced: 0 }, leftoverPhotos: ["demo/Z/1a.jpg"] });
-    expect(result.problems.join("\n")).toContain("holds the new values");
+    expect(result.problems.join("\n")).toContain(changed ? "may or may not be replaced" : "holds the new values");
   });
 
   describe("two runs that overlap", () => {
@@ -578,6 +579,7 @@ describe("a replace never pairs the text of a page with another photo", () => {
         expect(heldOf(store)).toBe(wantedText(pages[1]));
         expect(resultA.counts.inserted).toBe(0);
         expect(resultA.unreferencedPhotos).toEqual([newPathOf(REF, pages[0].photo ?? OLD)]);
+        expect(formatImportResult(resultA)).toContain("when the row of another run stays, look at that row and at --replace");
         expect(resultA.ok).toBe(!replace);
         if (replace) expect(formatImportResult(resultA)).toContain(`problem: ${REF}: another run wrote this row first`);
         else expect(resultA.skippedDifferentRefs).toEqual([REF]);

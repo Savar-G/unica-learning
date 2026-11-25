@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -153,6 +153,16 @@ describe("a damaged final record", () => {
       expect(readFinals()).toEqual(before);
     },
   );
+
+  it.each(["double_read", "human_checked"])("stops for a file name in other letter case (page %s)", (status) => {
+    const variant = fileOf(REF).toUpperCase().replace("JSON", "json");
+    renameSync(finalPath(fileOf(REF)), finalPath(variant));
+    writeFileSync(finalPath(variant), "{ damaged");
+    writeFileSync(finalPath("status.json"), JSON.stringify({ [REF]: status, [OTHER]: "double_read" }));
+    const before = readFinals();
+    expect(compare).toThrow(finalPath(variant));
+    expect(readFinals()).toEqual(before);
+  });
 
   it("stays the file of a page that a person checked", () => {
     writeFileSync(finalPath(fileOf(REF)), "{ damaged");

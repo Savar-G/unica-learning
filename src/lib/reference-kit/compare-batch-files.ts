@@ -31,13 +31,14 @@ export function sha256OfFile(filePath: string): string {
 const FINAL_META_FILES: ReadonlySet<string> = new Set(["status.json", "report.json"]);
 
 // A damaged final record stays when its page is checked, or is in this run as an edited page. Else
-// compare would write over it or remove it as a file of no page, so it stops.
+// compare would write over it or remove it as a file of no page, so it stops. A name in other letter
+// case is another file on some disks.
 function assertNoLostRecords(pairs: readonly PairedPage[], finalDir: string): void {
   const { refs, reported } = loadCheckedPages(finalDir);
   const inRun = pairs.map(pairSourceRef).filter((ref) => ref !== null);
-  const keptFiles = new Set([...refs, ...inRun.filter((ref) => typeof reported.get(ref)?.record === "string")].map(finalFileKey));
+  const keptFiles = new Set([...refs, ...inRun.filter((ref) => typeof reported.get(ref)?.record === "string")].map(finalFileName));
   for (const name of readdirSync(finalDir)) {
-    if (!name.endsWith(".json") || FINAL_META_FILES.has(name) || keptFiles.has(name.toLowerCase())) continue;
+    if (!name.endsWith(".json") || FINAL_META_FILES.has(name) || keptFiles.has(name)) continue;
     const filePath = join(finalDir, name);
     if (isDamagedFinalRecord(filePath)) {
       throw new Error(
