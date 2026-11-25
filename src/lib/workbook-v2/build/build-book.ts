@@ -3,11 +3,9 @@
 // it touches files and starts a program (render/typst.ts). Every check runs before anything is returned.
 import { plainCopy } from "../bank/plain";
 import { validateSnapshot, type TemplateLibrary } from "../bank/snapshot";
-import { checkImages } from "../checks/images";
+import { checkDrawing } from "../checks/drawn";
 import { checkPage } from "../checks/page-rules";
-import { checkPositions, checkTexts } from "../checks/positions";
 import { checkAnswerForms, checkPrintedAnswers } from "../checks/printed-answers";
-import { checkRendering } from "../checks/rendering";
 import { ENGINE_VERSION, type BookItem, type PageModel, type Position } from "../contract";
 import { canonicalJson, sha256 } from "../hash";
 import { buildPages } from "../layout/build-pages";
@@ -94,10 +92,8 @@ export async function buildBook(input: BuildInput, renderer: Renderer, shapes: S
   const { pages, items } = plan;
   const drawn = await draw(renderer, pages);
   if (typeof drawn === "string") return failed([drawn]);
-  const missing = checkRendering(pages, drawn);
-  if (missing.length > 0) return failed(missing);
-  const drawnProblems = [...checkPositions(pages, drawn.positions), ...checkTexts(pages, drawn.texts), ...checkImages(pages, drawn.images)];
-  if (drawnProblems.length > 0) return failed(drawnProblems);
+  const problems = checkDrawing(pages, items, drawn);
+  if (problems.length > 0) return failed(problems);
 
   return {
     status: "built",

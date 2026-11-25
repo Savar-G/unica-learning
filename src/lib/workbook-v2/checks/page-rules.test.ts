@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Ink, PageModel, Region, RegionRole } from "../contract";
+import { mathToken, wordToken, type FlowToken, type Ink, type PageModel, type Region, type RegionRole } from "../contract";
 import { factsBook, goodBook, type GoodBook } from "../testing/sample";
 import { checkPage } from "./page-rules";
 
@@ -185,4 +185,33 @@ describe("a question with blanks", () => {
     find(book.pages[0], "answer").part = "quotient";
     expect(problemsOf(book).join("\n")).toMatch(/question 1 has no "answer" rectangle for the part "answer"[^]*"answer-1" belongs to the answer part "quotient"/);
   });
+});
+
+describe("flow text on a page", () => {
+  const problemsWith = (tokens: FlowToken[], overOther = false): string => {
+    const book = goodBook();
+    const question = find(book.pages[0], "question");
+    const { rect } = question;
+    const ink: Ink = { kind: "flow", rect: { ...rect, h: 20 }, color: "black", tokens, size: 12, weight: 400, leading: 4 };
+    question.ink = overOther ? [...question.ink, ink] : [ink];
+    return problemsOf(book).join("\n");
+  };
+
+  it("with good tokens breaks only the rule that this question prints something else", () => {
+    expect(problemsWith([wordToken("Mia"), wordToken("hand-woven"), mathToken("12 - 5")])).toMatch(/^Page 381: question 1 prints "Mia hand-woven 12 - 5" and must print "[^"]*"\.$/);
+  });
+
+  it.each<[string, FlowToken[], RegExp]>([
+    ["a character that the fonts do not hold", [wordToken("二")], /"question-1" has the text "二", which the fonts cannot print/],
+    ["a word that is split in another place", [{ kind: "word", pieces: ["wo", "ven"] }], /"question-1" has the token "woven", which may not be split like that/],
+    ["a word that is not split after its hyphen", [{ kind: "word", pieces: ["hand-woven"] }], /the token "hand-woven", which may not be split like that/],
+    ["a word with a space", [wordToken("two words")], /the token "two words", which may not be split like that/],
+    ["math in two pieces", [{ kind: "math", pieces: ["5 +", " 5"] }], /the token "5 \+ 5", which may not be split like that/],
+    ["math with a space at its end", [mathToken("5 + ")], /the token "5 \+ ", which may not be split like that/],
+    ["an empty word", [wordToken("")], /the token "", which may not be split like that/],
+    ["a token with no piece", [{ kind: "math", pieces: [] }], /the token "", which may not be split like that/],
+    ["no token", [], /"question-1" has flow text with no token/],
+  ])("%s is a problem", (_name, tokens, problem) => expect(problemsWith(tokens)).toMatch(problem));
+
+  it("over other ink is a problem", () => expect(problemsWith([wordToken("Mia")], true)).toMatch(/the text "Mia" of "question-1" is over other ink/));
 });

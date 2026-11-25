@@ -1,7 +1,8 @@
 // A book proves its own pages: what the page model says is read back from each finished page image. The image is made
 // apart from the report of the typesetter, so text that is reported and not printed is found here.
 import { IMAGE_PIXELS_PER_INCH, PRINT_RULES, type Ink, type PageModel, type Rect, type Region } from "../contract";
-import { isDark, readQr, strayQrTexts, type Box } from "./find-qr";
+import { flatGrey, inner, outer, strayInk, type Box } from "./blank";
+import { readQr, strayQrTexts } from "./find-qr";
 import { readPageImage, type PageImage } from "./page-image";
 import { regionName } from "./page-rules";
 import { bottom, right } from "./rects";
@@ -12,18 +13,21 @@ const QR_CORNER_ROOM = 4;
 
 type Tell = (problem: string) => void;
 
-const outer = (r: Rect): Box => ({ left: Math.floor(r.x * SCALE), top: Math.floor(r.y * SCALE), right: Math.ceil(right(r) * SCALE), bottom: Math.ceil(bottom(r) * SCALE) });
-/** The pixels that are in the rectangle with all of their area, so that ink of a neighbour does not count. */
-const inner = (r: Rect): Box => ({ left: Math.ceil(r.x * SCALE), top: Math.ceil(r.y * SCALE), right: Math.floor(right(r) * SCALE), bottom: Math.floor(bottom(r) * SCALE) });
+/** The grey of each colour of the model, as the image has it. */
+const GREYS: Readonly<Record<string, number>> = { black: 0 };
+const PAPER_WHITE = 255;
 
-function hasInk(image: PageImage, box: Box): boolean {
-  for (let y = box.top; y < box.bottom; y++) for (let x = box.left; x < box.right; x++) if (isDark(image, x, y)) return true;
+/** Each letter and each thin line has a pixel that is at least this dark, so that grey in place of black is found. */
+const SOLID = 72;
+
+function hasInk({ width, height, low }: PageImage, box: Box): boolean {
+  for (let y = Math.max(0, box.top); y < Math.min(height, box.bottom); y++) for (let x = Math.max(0, box.left); x < Math.min(width, box.right); x++) if (low[y * width + x] < SOLID) return true;
   return false;
 }
 
-/** Whether a fill is drawn in all of its area: a part of it, or a neighbour that shares a corner, is not enough. */
-function isFilled(image: PageImage, box: Box): boolean {
-  for (let y = box.top; y < box.bottom; y++) for (let x = box.left; x < box.right; x++) if (!isDark(image, x, y)) return false;
+/** Whether a fill is drawn in all of its area and in its colour: a part of it, or a neighbour that shares a corner, is not enough. */
+function isFilled({ width, low }: PageImage, box: Box, grey: number): boolean {
+  for (let y = box.top; y < box.bottom; y++) for (let x = box.left; x < box.right; x++) if (low[y * width + x] !== grey) return false;
   return box.right > box.left && box.bottom > box.top;
 }
 
@@ -49,7 +53,7 @@ function sidesOf({ x, y, w, h }: Rect, line: number): Rect[] {
 
 function isDrawn(image: PageImage, ink: Ink): boolean {
   if (ink.kind === "outline") return sidesOf(ink.rect, ink.width).every((side) => isWholeLine(image, outer(side)));
-  return ink.kind === "fill" ? isFilled(image, inner(ink.rect)) : hasInk(image, inner(ink.rect));
+  return ink.kind === "fill" ? isFilled(image, inner(ink.rect), GREYS[ink.color]) : hasInk(image, inner(ink.rect));
 }
 
 function checkInk(image: PageImage, region: Region, tell: Tell): void {
@@ -79,6 +83,16 @@ function checkQr(image: PageImage, page: PageModel, tell: Tell): void {
   for (const text of strayQrTexts(image, box)) tell(`the image has a second QR code, which reads "${text}"`);
 }
 
+const points = (at: { x: number; y: number }) => `(${Math.round(at.x)}, ${Math.round(at.y)})`;
+
+/** Ink that the model does not have, and colours that it does not use. */
+function checkBlank(image: PageImage, page: PageModel, tell: Tell): void {
+  if (image.colour) tell(`the image has a colour that is not a grey, at ${points({ x: image.colour.x / SCALE, y: image.colour.y / SCALE })}`);
+  const grey = flatGrey(image, [...Object.values(GREYS), PAPER_WHITE]);
+  if (grey) tell(`the image has the grey ${grey.grey}, which the model does not use, at ${points(grey)}`);
+  for (const { place, ...at } of strayInk(page, image)) tell(`the image has ink that the model does not have, at ${points(at)} in ${place}`);
+}
+
 function checkImage(page: PageModel, png: Uint8Array, tell: Tell): void {
   const image = readPageImage(png);
   if (typeof image === "string") return tell(image);
@@ -86,6 +100,7 @@ function checkImage(page: PageModel, png: Uint8Array, tell: Tell): void {
   if (image.width !== width || image.height !== height) return tell(`the page image is ${image.width} by ${image.height} pixels and must be ${width} by ${height}`);
   checkQr(image, page, tell);
   for (const region of page.regions) checkInk(image, region, tell);
+  checkBlank(image, page, tell);
 }
 
 /** What the page images do not prove, in plain words. `images` has one image a page, in page order. */

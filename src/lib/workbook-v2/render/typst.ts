@@ -129,7 +129,9 @@ function typst(program: string, folder: string, args: readonly string[], timeout
   });
 }
 
-const REPORT = "(positions: query(<position>).map(it => it.value), texts: query(<drawn>).map(it => it.value))";
+const REPORT = "(positions: query(<position>), texts: query(<drawn>), starts: query(<start>), ends: query(<end>)).pairs().map(((name, all)) => (name, all.map(it => it.value))).to-dict()";
+/** How Typst names the weights of the fonts. */
+const WEIGHTS: Readonly<Record<string, number>> = { regular: 400, semibold: 600 };
 
 /** What Typst says that it drew. A number that cannot be read becomes NaN, which matches no place in the model. */
 function readReport(json: string): { positions: Position[]; texts: DrawnText[] } {
@@ -140,9 +142,16 @@ function readReport(json: string): { positions: Position[]; texts: DrawnText[] }
     return values;
   };
   const number = (value: unknown) => (typeof value === "number" ? value : Number.NaN);
+  const point = (value: unknown) => (isRecord(value) ? { x: number(value.x), y: number(value.y) } : { x: Number.NaN, y: Number.NaN });
+  // Each text has one start and one end, in the order of the pages.
+  const [starts, ends] = [list("starts"), list("ends")];
   return {
     positions: list("positions").map((p) => ({ id: String(p.id), sheet: number(p.sheet), rect: { x: number(p.x), y: number(p.y), w: number(p.w), h: number(p.h) } })),
-    texts: list("texts").map((t) => ({ sheet: number(t.sheet), x: number(t.x), y: number(t.y), text: String(t.text) })),
+    texts: list("texts").map((t, i) => ({
+      sheet: number(t.sheet), x: number(t.x), y: number(t.y), text: String(t.text),
+      size: number(t.size), weight: number(WEIGHTS[String(t.weight)]), start: point(starts[i]), end: point(ends[i]),
+      natural: { w: number(t.width), capitals: number(t.capitals), above: number(t.above), below: number(t.below) },
+    })),
   };
 }
 
@@ -168,7 +177,7 @@ async function draw(
   const runs = await Promise.allSettled([
     typst(executable, folder, ["compile", ...still, "page.typ", "book.pdf"], timeoutMs),
     typst(executable, folder, ["compile", ...still, "--ppi", String(IMAGE_PIXELS_PER_INCH), "page.typ", "page-{p}.png"], timeoutMs),
-    typst(executable, folder, ["eval", ...fonts, REPORT, "--in", "page.typ"], timeoutMs),
+    typst(executable, folder, ["eval", ...fonts, "--input", "report=yes", REPORT, "--in", "page.typ"], timeoutMs),
   ]);
   // All three have ended here, so a failed one leaves nothing that still writes to the folder.
   const failed = runs.find((r) => r.status === "rejected");

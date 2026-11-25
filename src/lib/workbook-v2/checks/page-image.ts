@@ -5,8 +5,10 @@ import { inflateSync } from "node:zlib";
 export interface PageImage {
   width: number;
   height: number;
-  /** One number for each pixel, line by line: 0 is black and 255 is paper white. */
-  grey: Uint8Array;
+  /** The lowest part of the colour of each pixel on white paper, line by line: 0 is black, red or any full colour, and 255 is paper white. */
+  low: Uint8Array;
+  /** The first pixel that is not a grey. */
+  colour: { x: number; y: number } | null;
 }
 
 const CANNOT_READ = "the page image cannot be read";
@@ -74,13 +76,17 @@ function paeth(left: number, above: number, corner: number): number {
  */
 function unfilter(lines: Uint8Array, { height, parts }: Header, stride: number): boolean {
   const up = stride + 1;
+  const bytes = Buffer.from(lines.buffer, lines.byteOffset, lines.length);
+  const nothing = Buffer.alloc(stride);
   for (let y = 0; y < height; y++) {
     const start = y * up + 1;
     const first = start + parts;
     const end = start + stride;
     const filter = lines[start - 1];
     if (filter > 4) return false;
-    if (filter === 1 || (filter === 4 && y === 0)) for (let i = first; i < end; i++) lines[i] += lines[i - parts];
+    // Most lines of a page are the line above, with no difference.
+    if (filter === 2 && y > 0 && bytes.compare(nothing, 0, stride, start, end) === 0) lines.copyWithin(start, start - up, end - up);
+    else if (filter === 1 || (filter === 4 && y === 0)) for (let i = first; i < end; i++) lines[i] += lines[i - parts];
     else if (filter === 2 && y > 0) for (let i = start; i < end; i++) lines[i] += lines[i - up];
     else if (filter === 3 && y === 0) for (let i = first; i < end; i++) lines[i] += lines[i - parts] >> 1;
     else if (filter === 3) {
@@ -94,14 +100,11 @@ function unfilter(lines: Uint8Array, { height, parts }: Header, stride: number):
   return true;
 }
 
-/** How light a pixel of 3 or 4 parts prints on white paper. */
-function lightness(lines: Uint8Array, at: number, parts: number): number {
-  const red = lines[at];
-  const green = lines[at + 1];
-  const blue = lines[at + 2];
-  const light = red === green && red === blue ? red : (red * 299 + green * 587 + blue * 114) / 1000;
-  return parts === 3 || lines[at + 3] === 255 ? light : 255 - ((255 - light) * lines[at + 3]) / 255;
-}
+/** A part of a colour as it prints on white paper. */
+const onPaper = (part: number, cover: number): number => (cover === 255 ? part : 255 - ((255 - part) * cover) / 255);
+
+/** Whether a line is made of the same pixels as the line above it: most lines of a page are white. */
+const isSameAsAbove = (lines: Buffer, start: number, stride: number): boolean => lines.compare(lines, start - stride - 1, start - 1, start, start + stride) === 0;
 
 export function readPageImage(png: Uint8Array): PageImage | string {
   const chunks = chunksOf(png);
@@ -111,11 +114,20 @@ export function readPageImage(png: Uint8Array): PageImage | string {
   const stride = width * parts;
   const lines = unpack(chunks, (stride + 1) * height);
   if (!lines || !unfilter(lines, header, stride)) return CANNOT_READ;
-  const grey = new Uint8Array(width * height);
-  for (let y = 0, to = 0; y < height; y++) {
+  const low = new Uint8Array(width * height);
+  const bytes = Buffer.from(lines.buffer, lines.byteOffset, lines.length);
+  let colour: PageImage["colour"] = null;
+  for (let y = 0; y < height; y++) {
     const start = y * (stride + 1) + 1;
-    if (parts === 1) grey.set(lines.subarray(start, start + stride), y * width);
-    else for (let x = 0, from = start; x < width; x++, from += parts) grey[to++] = lightness(lines, from, parts);
+    const to = y * width;
+    if (parts === 1) low.set(lines.subarray(start, start + stride), to);
+    else if (y > 0 && isSameAsAbove(bytes, start, stride)) low.copyWithin(to, to - width, to);
+    else for (let x = 0, at = start; x < width; x++, at += parts) {
+      const [red, green, blue] = [lines[at], lines[at + 1], lines[at + 2]];
+      const cover = parts === 4 ? lines[at + 3] : 255;
+      if (cover > 0 && (red !== green || green !== blue)) colour ??= { x, y };
+      low[to + x] = onPaper(Math.min(red, green, blue), cover);
+    }
   }
-  return { width, height, grey };
+  return { width, height, low, colour };
 }
