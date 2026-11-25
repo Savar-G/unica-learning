@@ -13,8 +13,8 @@ import { createSupabaseTopicMethodStore } from "./store";
 import { add, KEY, makeContents, makeExample, makeItem, makePage, statusesOf } from "./test-records";
 import type { MethodKey, TopicMethodRecord } from "./types";
 
-// Runs after the methods folder is listed.
-const listed = vi.hoisted(() => ({ after: (): void => undefined }));
+// Runs after the methods folder is listed, and after a method file is read.
+const listed = vi.hoisted(() => ({ after: (): void => undefined, file: ((): void => undefined) as (path: string) => void }));
 vi.mock("node:fs/promises", async (original) => {
   const real = await original<typeof import("node:fs/promises")>();
   const readdir = async (...args: Parameters<typeof real.readdir>) => {
@@ -22,7 +22,12 @@ vi.mock("node:fs/promises", async (original) => {
     if (String(args[0]).endsWith("methods")) listed.after();
     return entries;
   };
-  return { ...real, readdir };
+  const open = async (...args: Parameters<typeof real.open>) => {
+    const file = await real.open(...args);
+    listed.file(String(args[0]));
+    return file;
+  };
+  return { ...real, readdir, open };
 });
 
 class MemoryStore implements TopicMethodStore {
@@ -131,6 +136,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  listed.file = () => undefined;
   listed.after = () => undefined;
   rmSync(root, { recursive: true, force: true });
 });
@@ -186,7 +192,7 @@ describe("import (M8)", () => {
     }
     expect(announced).toEqual([
       "status_lowered: demo:Z:topic-1 approved -> drafted",
-      "status_lowered: demo:Z:topic-1 approved -> drafted (the import replaces this row now)",
+      "status_lowered: demo:Z:topic-1 approved -> drafted (planned: see the replaced lines for what was written)",
     ]);
     expect(new Set(writesBefore)).toEqual(new Set([store.writes.length - 1]));
     expect(store.rows.get("demo:Z:topic-1")?.status).toBe("drafted");
@@ -312,8 +318,11 @@ describe("import (M8)", () => {
   });
 
   it("checks the records against the pages as they are after the records were read", async () => {
-    listed.after = () => {
-      if (store.calls.length > 0) writeFileSync(join(recordsDir, "demo-Z-13a.json"), JSON.stringify({ ...pages[1], readers: ["x"] }));
+    // The second pass reads the last method record, and then the page changes.
+    listed.file = (path) => {
+      if (path.endsWith("demo-Z-topic-2.json") && store.calls.length > 0) {
+        writeFileSync(join(recordsDir, "demo-Z-13a.json"), JSON.stringify({ ...pages[1], readers: ["x"] }));
+      }
     };
     const result = await run();
     expect(result.problems.join()).toContain("demo:Z:13a changed");

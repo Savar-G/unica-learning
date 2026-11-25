@@ -148,7 +148,7 @@ export async function importTopicMethods(opts: ImportMethodsOptions): Promise<Co
   }
   for (const { row, before } of planned) {
     if (before?.status === "approved" && row.status !== "approved") {
-      opts.announce(`status_lowered: ${methodRef(row)} approved -> ${row.status}${opts.dryRun ? "" : " (the import replaces this row now)"}`);
+      opts.announce(`status_lowered: ${methodRef(row)} approved -> ${row.status}${opts.dryRun ? "" : " (planned: see the replaced lines for what was written)"}`);
     }
   }
 

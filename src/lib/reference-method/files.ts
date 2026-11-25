@@ -175,6 +175,8 @@ export async function withTopicLock(
 
 function heldBy(path: string): string {
   try {
+    // A pipe in this place must not make the command wait.
+    if (!lstatSync(path).isFile()) return "a lock that is not a file";
     return readFileSync(path, "utf8") || `a lock of ${statSync(path).mtime.toISOString()}`;
   } catch {
     return "a lock that cannot be read";

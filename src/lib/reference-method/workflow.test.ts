@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
@@ -10,6 +11,7 @@ import {
   rmSync,
   statSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -374,7 +376,8 @@ describe("approve (M6)", () => {
   ])(
     "counts %j and %j as one person",
     async (a, b) => {
-      await approve(a, b);
+      expect((await approve(a)).ok).toBe(true);
+      expect((await approve(b)).ok).toBe(true);
       expect(stored().status).toBe("drafted");
       expect(stored().approvals).toHaveLength(1);
     },
@@ -646,6 +649,12 @@ describe("the lock of a topic (Y4)", () => {
     expect(statSync(filePath()).size).toBe(21 * 1024 * 1024);
   });
 
+  it("does not wait for a pipe in the place of the lock", async () => {
+    mkdirSync(methodsDir);
+    execFileSync("mkfifo", [lockPath()]);
+    expect((await draft()).problems.join()).toContain("a lock that is not a file");
+  });
+
   it("leaves no lock when it cannot write one", async () => {
     disk.full = true;
     try {
@@ -660,8 +669,9 @@ describe("the lock of a topic (Y4)", () => {
   it("stops at a stale lock, names its time, and writes nothing", async () => {
     await draft();
     const before = readFileSync(filePath(), "utf8");
-    for (const [content, named] of [["2026-01-01T00:00:00.000Z draft (process 1, x)", "2026-01-01T00:00:00.000Z"], ["", `a lock of ${new Date().getUTCFullYear()}`]]) {
+    for (const [content, named] of [["2026-01-01T00:00:00.000Z draft (process 1, x)", "2026-01-01T00:00:00.000Z"], ["", "a lock of 2025-06-07T08:09:10.000Z"]]) {
       writeFileSync(lockPath(), content);
+      utimesSync(lockPath(), new Date("2025-06-07T08:09:10.000Z"), new Date("2025-06-07T08:09:10.000Z"));
       const result = await draft({ replace: true });
       expect([result.ok, result.problems.join()]).toEqual([false, expect.stringContaining(named)]);
       expect(readFileSync(lockPath(), "utf8")).toBe(content);
