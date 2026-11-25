@@ -1,15 +1,46 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import fc from "fast-check";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { NOT_STATED, UNCLEAR, type ContentsRecord, type PageRecord } from "@/lib/reference-record";
 import {
+  EXPR_KINDS,
+  NOT_STATED,
+  recordPathResolves,
+  UNCLEAR,
+  type ContentsRecord,
+  type ExampleMark,
+  type ExampleStep,
+  type Expr,
+  type ExprKind,
+  type PageRecord,
+  type ReferenceRecord,
+  type Scaffold,
+} from "@/lib/reference-record";
+import { applyComputedAnswers, collectExampleAnswerConflicts } from "./answers";
+import {
+  agreementPercentage,
+  ANSWER_DISAGREEMENT_REASON,
   classifyComparison,
   compareRecords,
-  locateOnceReadInKeptRecord,
+  compareRecordsWithCounts,
+  decidePageOutcome,
   decideStatus,
+  EXPRESSION_DISAGREEMENT_REASON,
+  findAnswerDisagreements,
+  findExpressionDisagreements,
+  meetsAgreementThreshold,
   needsPersonRead,
   normalizeNotationText,
   normalizeProseText,
+  PAGE_IDENTITY_DISAGREEMENT_REASON,
+  PAGE_STOP_REASONS,
+  READER_ANSWER_CONFLICT_REASON,
+  resolveSingleReadPaths,
+  type DecideStatusInput,
+  type PageStopReason,
 } from "./compare";
+import { resolveDiffPath } from "./compare-locate";
 
 function makePage(overrides?: Partial<PageRecord>): PageRecord {
   return {
@@ -835,42 +866,6 @@ describe("answer sources, scaffold lists, once-read places, empty answers, and u
     expect(compareRecords(helpA, helpB)).toEqual([]);
   });
 
-  it("keeps a once-read final_path for an edited or checked record only when the entry is there with equal content", () => {
-    const arrow = { kind: "arrow" as const, applies_to: [2], label: "carry" };
-    const onceRead = [
-      { path: "sections[0].scaffolds[b:0]", a: null, b: arrow, kind: "once_read" as const, reader: "b" as const, final_path: "sections[0].scaffolds[]" },
-      { path: "sections[0].items[n=3].responses[0].cue", a: null, b: "Sample cue", kind: "once_read" as const, reader: "b" as const, final_path: "sections[0].items[2].responses[0].cue" },
-    ];
-    // The person copied the arrow in as the second scaffold and removed item 1.
-    const kept = makePage();
-    kept.sections[0].scaffolds = [{ kind: "arrow", applies_to: [1], label: "other" }, arrow];
-    kept.sections[0].items = kept.sections[0].items.slice(1);
-    expect(locateOnceReadInKeptRecord(onceRead, kept)).toEqual([
-      { ...onceRead[0], final_path: "sections[0].scaffolds[1]" },
-      { path: onceRead[1].path, a: null, b: "Sample cue", kind: "once_read", reader: "b" },
-    ]);
-    // A kept record that cannot be read: no path.
-    expect(locateOnceReadInKeptRecord(onceRead, null).every((d) => d.final_path === undefined)).toBe(true);
-
-    // Reader a has the arrow in two sections; the kept record has it only in the second section.
-    // The entry of the first section is not pointed at the second section.
-    const twoSections = makePage();
-    twoSections.sections = [
-      { ...twoSections.sections[0], scaffolds: [{ kind: "caption", applies_to: "all", text: "Sample caption" }] },
-      { ...twoSections.sections[0], scaffolds: [arrow] },
-    ];
-    const fromA = [
-      { path: "sections[0].scaffolds[1]", a: arrow, b: null, kind: "once_read" as const, reader: "a" as const },
-      { path: "sections[1].scaffolds[b:0]", a: null, b: arrow, kind: "once_read" as const, reader: "b" as const },
-      { path: "topic.title", a: "Sample", b: null, kind: "once_read" as const, reader: "a" as const },
-    ];
-    expect(locateOnceReadInKeptRecord(fromA, twoSections).map((d) => d.final_path)).toEqual([
-      undefined,
-      "sections[1].scaffolds[0]",
-      undefined,
-    ]);
-  });
-
   it("gives each once-read entry its reader and its JSON path in the final record", () => {
     const a = makePage();
     const b = makePage();
@@ -963,6 +958,18 @@ describe("decideStatus", () => {
     expect(
       decideStatus({ hasA: true, hasB: true, familyA: "claude", familyB: "claude", diffs: [] }),
     ).toBe("machine_read");
+
+    // unknown family -> machine_read with clear reason
+    for (const [familyA, familyB] of [
+      ["codex", "invented-reader"],
+      ["invented-reader", "claude"],
+      ["invented-a", "invented-b"],
+      ["", "codex"],
+    ] as const) {
+      expect(
+        decidePageOutcome({ hasA: true, hasB: true, familyA, familyB, diffs: [] }),
+      ).toEqual({ status: "machine_read", stopReasons: ["same or unknown model family"] });
+    }
 
     // single reader -> machine_read
     expect(
@@ -1625,32 +1632,6 @@ describe("worked-example step alignment and wording differences", () => {
       },
     ]);
 
-    // Kept-record lookup preserves missing_step only when the mark is not yet in the kept record
-    const keptWithMark = structuredClone(midA);
-    expect(locateOnceReadInKeptRecord(midSummary.once_read, keptWithMark)[2]).toEqual({
-      path: "examples[0].marks[b:0]",
-      a: null,
-      b: { kind: "circle", step: 2, description: "Circle the result" },
-      kind: "once_read",
-      reader: "b",
-      final_path: "examples[0].marks[0]",
-    });
-    const keptOtherMark = pageWithExample(
-      [
-        { n: 1, shows: "setup", printed: "2 + 3" },
-        { n: 2, shows: "answer", printed: "5" },
-      ],
-      [{ kind: "underline", step: 2, description: "Underline the result" }],
-    );
-    expect(locateOnceReadInKeptRecord(midSummary.once_read, keptOtherMark)[2]).toEqual({
-      path: "examples[0].marks[b:0]",
-      a: null,
-      b: { kind: "circle", step: 2, description: "Circle the result" },
-      kind: "once_read",
-      reader: "b",
-      missing_step: true,
-    });
-
     // Anchors with repeated printed text prefer the pairing where `shows` agrees too
     const repA = pageWithExample([
       { n: 1, shows: "setup", printed: "2 + 3" },
@@ -1716,5 +1697,2818 @@ describe("worked-example step alignment and wording differences", () => {
         diffs: [...compareRecords(a, b), ...summary.empty_answer],
       }),
     ).toBe("machine_read");
+  });
+});
+
+describe("90% reader agreement rule", () => {
+  // Builds a clean page with `itemCount` simple arithmetic items and no examples/prose flags.
+  // Each item has 8 non-empty compared leaf fields (printed, form, op, 2 operands, position, answer, answer_source).
+  // Page header has 14 compared leaf fields (source_ref, topic.title, topic.number, 5x2 score_bands, section.instruction).
+  function makeGridPage(itemCount: number): PageRecord {
+    const items = Array.from({ length: itemCount }, (_, idx) => {
+      const n = idx + 1;
+      return {
+        n,
+        printed: `${n} + 1 =`,
+        form: "horizontal" as const,
+        expr: { kind: "arith" as const, op: "add" as const, operands: [n, 1] },
+        responses: [
+          {
+            position: "after_equals" as const,
+            cue: null,
+            answer: String(n + 1),
+            answer_source: "computed" as const,
+          },
+        ],
+      };
+    });
+    return makePage({
+      sections: [{ instruction: "Add.", scaffolds: [], items }],
+    });
+  }
+
+  it("distinguishes 89% (machine_read), exactly 90% (agreement_accepted), and 100% (double_read)", () => {
+    // 14 header fields + 1 order check + 10 items * 8 fields = 95 compared fields.
+    const base = makeGridPage(10);
+    // Add 5 more leaf fields via a 4-value number_strip scaffold: applies_to (1) + 4 values (4) = 5 -> total 100.
+    base.sections[0].scaffolds = [
+      { kind: "number_strip", applies_to: "all", values: [1, 2, 3, 4] },
+    ];
+    const identical = compareRecordsWithCounts(base, structuredClone(base));
+    expect(identical.counts).toEqual({ compared: 100, agreed: 100 });
+    expect(agreementPercentage(100, 100)).toBe(100);
+    expect(
+      decideStatus({
+        hasA: true,
+        hasB: true,
+        familyA: "claude",
+        familyB: "codex",
+        diffs: identical.diffs,
+        counts: identical.counts,
+      }),
+    ).toBe("double_read");
+
+    // Mutate exactly 10 fields -> 90/100 = 90% -> agreement_accepted
+    const at90 = structuredClone(base);
+    for (let i = 0; i < 10; i += 1) {
+      at90.sections[0].items[i].printed = `${i + 1} + 2 =`;
+    }
+    const cmp90 = compareRecordsWithCounts(base, at90);
+    expect(cmp90.counts).toEqual({ compared: 100, agreed: 90 });
+    expect(agreementPercentage(cmp90.counts.agreed, cmp90.counts.compared)).toBe(90);
+    expect(
+      decideStatus({
+        hasA: true,
+        hasB: true,
+        familyA: "claude",
+        familyB: "codex",
+        diffs: cmp90.diffs,
+        counts: cmp90.counts,
+      }),
+    ).toBe("agreement_accepted");
+
+    // Mutate 11 fields -> 89/100 = 89% -> machine_read (sent to a person)
+    const at89 = structuredClone(at90);
+    at89.topic.title = "Different Title";
+    const cmp89 = compareRecordsWithCounts(base, at89);
+    expect(cmp89.counts).toEqual({ compared: 100, agreed: 89 });
+    expect(agreementPercentage(cmp89.counts.agreed, cmp89.counts.compared)).toBe(89);
+    const decision89 = decidePageOutcome({
+      hasA: true,
+      hasB: true,
+      familyA: "claude",
+      familyB: "codex",
+      diffs: cmp89.diffs,
+      counts: cmp89.counts,
+    });
+    expect(decision89.status).toBe("machine_read");
+    expect(decision89.stopReasons).toEqual([]);
+  });
+
+  it("counts both_unclear and once_read as disagreements and wording as agreement", () => {
+    const a = makeGridPage(2); // 14 header + 1 order + 16 item fields = 31 compared fields
+    const b = structuredClone(a);
+
+    // 1. both_unclear counts as 1 disagreement
+    a.topic.title = UNCLEAR;
+    b.topic.title = UNCLEAR;
+    const unclearCmp = compareRecordsWithCounts(a, b);
+    expect(unclearCmp.diffs).toEqual([{ path: "topic.title", a: UNCLEAR, b: UNCLEAR, kind: "both_unclear" }]);
+    expect(unclearCmp.counts).toEqual({ compared: 31, agreed: 30 });
+
+    // 2. once_read counts as 1 disagreeing compared field
+    const aOnce = makeGridPage(2);
+    const bOnce = structuredClone(aOnce);
+    bOnce.sections[0].scaffolds = [{ kind: "arrow", applies_to: [1], label: "next" }];
+    const onceCmp = compareRecordsWithCounts(aOnce, bOnce);
+    expect(onceCmp.diffs).toHaveLength(1);
+    expect(onceCmp.diffs[0].kind).toBe("once_read");
+    expect(onceCmp.counts).toEqual({ compared: 32, agreed: 31 });
+
+    // 3. wording counts as agreement (100% -> double_read)
+    const aWord = makeGridPage(2);
+    const bWord = structuredClone(aWord);
+    aWord.sections[0].scaffolds = [{ kind: "helper_digit", applies_to: [1], description: "Small 1 above tens" }];
+    bWord.sections[0].scaffolds = [{ kind: "helper_digit", applies_to: [1], description: "Tiny 1 printed above tens" }];
+    const wordCmp = compareRecordsWithCounts(aWord, bWord);
+    expect(wordCmp.diffs).toHaveLength(1);
+    expect(wordCmp.diffs[0].kind).toBe("wording");
+    expect(wordCmp.counts.agreed).toBe(wordCmp.counts.compared);
+    expect(
+      decideStatus({
+        hasA: true,
+        hasB: true,
+        familyA: "claude",
+        familyB: "codex",
+        diffs: wordCmp.diffs,
+        counts: wordCmp.counts,
+      }),
+    ).toBe("double_read");
+  });
+
+  it("stops a page at 95% and (where reachable) 100% for every stop reason in PAGE_STOP_REASONS, while prose is advisory", () => {
+    const oneNonStopDiff = [{ path: "topic.title", a: "Sums", b: "Totals", kind: "value" as const }];
+    const base95: DecideStatusInput = {
+      hasA: true,
+      hasB: true,
+      familyA: "codex",
+      familyB: "claude",
+      sameDigest: true,
+      diffs: oneNonStopDiff,
+      counts: { agreed: 19, compared: 20 },
+    };
+    const base100: DecideStatusInput = {
+      hasA: true,
+      hasB: true,
+      familyA: "codex",
+      familyB: "claude",
+      sameDigest: true,
+      diffs: [],
+      counts: { agreed: 20, compared: 20 },
+    };
+
+    // Control pages without any stop trigger pass as agreement_accepted (95%) and double_read (100%).
+    expect(decidePageOutcome(base95)).toEqual({ status: "agreement_accepted", stopReasons: [] });
+    expect(decidePageOutcome(base100)).toEqual({ status: "double_read", stopReasons: [] });
+    // needs_person_read is advisory and does not stop acceptance at >= 90%.
+    expect(decidePageOutcome({ ...base95, needsPersonRead: true })).toEqual({
+      status: "agreement_accepted",
+      stopReasons: [],
+    });
+    expect(meetsAgreementThreshold(0, 0)).toBe(false);
+
+    // Worked-example shown_answer conflict helper feeds the real answer conflict flags.
+    const makeExConflictPage = (shownA: string, shownB: string) => {
+      const a = makeGridPage(3);
+      a.examples = [
+        {
+          position: "top",
+          relation: "compare",
+          parts: [{ form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 3] }, shown_answer: shownA }],
+        },
+      ];
+      const b = structuredClone(a);
+      if (Array.isArray(b.examples)) {
+        b.examples[0].parts[0].shown_answer = shownB;
+      }
+      return { a, b, exConflicts: collectExampleAnswerConflicts(a, a, b, { finalIsFreshA: true }) };
+    };
+    const exFinalConflict = makeExConflictPage("6", "6");
+    expect(exFinalConflict.exConflicts.finalMessages).toHaveLength(1);
+    const exReaderConflict = makeExConflictPage("5", "6");
+    expect(exReaderConflict.exConflicts.readerMessages).toEqual([
+      'reader b: examples[0].parts[0].shown_answer: shown "6", computed "5"',
+    ]);
+
+    type StopScenario =
+      | { at95: Partial<DecideStatusInput>; at100?: Partial<DecideStatusInput>; custom?: never }
+      | { at95?: Partial<DecideStatusInput>; at100: Partial<DecideStatusInput>; custom?: never }
+      | { at95?: never; at100?: never; custom: DecideStatusInput };
+
+    const stopTable: Array<{ reason: PageStopReason; label: string } & StopScenario> = [
+      {
+        reason: "edited by a person (not checked yet)",
+        label: "editedByPerson",
+        at95: { editedByPerson: true },
+        at100: { editedByPerson: true },
+      },
+      {
+        reason: "missing reader",
+        label: "missing reader B",
+        at95: { hasB: false },
+        at100: { hasB: false },
+      },
+      {
+        reason: "different photo digest",
+        label: "sameDigest false",
+        at95: { sameDigest: false },
+        at100: { sameDigest: false },
+      },
+      {
+        reason: "same or unknown model family",
+        label: "same model family",
+        at95: { familyA: "codex", familyB: "codex" },
+        at100: { familyA: "codex", familyB: "codex" },
+      },
+      {
+        reason: "same or unknown model family",
+        label: "unknown model family",
+        at95: { familyA: "codex", familyB: "invented-family" },
+        at100: { familyA: "codex", familyB: "invented-family" },
+      },
+      {
+        reason: PAGE_IDENTITY_DISAGREEMENT_REASON,
+        label: "source_ref mismatch",
+        at95: {
+          diffs: [{ path: "source_ref", a: "sample:M:7a", b: "sample:M:7b", kind: "value" }],
+        },
+      },
+      {
+        reason: PAGE_IDENTITY_DISAGREEMENT_REASON,
+        label: "kind mismatch",
+        at95: {
+          diffs: [{ path: "kind", a: "page", b: "contents", kind: "value" }],
+        },
+      },
+      {
+        reason: "stored answer conflicts with computed answer",
+        label: "item answer conflict",
+        at95: { hasAnswerConflict: true },
+        at100: { hasAnswerConflict: true },
+      },
+      {
+        reason: "stored answer conflicts with computed answer",
+        label: "worked-example shown_answer conflict",
+        at95: { hasAnswerConflict: exFinalConflict.exConflicts.finalMessages.length > 0 },
+        at100: { hasAnswerConflict: exFinalConflict.exConflicts.finalMessages.length > 0 },
+      },
+      {
+        reason: READER_ANSWER_CONFLICT_REASON,
+        label: "reader item answer conflict",
+        at95: { hasReaderAnswerConflict: true },
+        at100: { hasReaderAnswerConflict: true },
+      },
+      {
+        reason: READER_ANSWER_CONFLICT_REASON,
+        label: "reader-only worked-example shown_answer conflict",
+        at95: { hasReaderAnswerConflict: exReaderConflict.exConflicts.readerMessages.length > 0 },
+        at100: { hasReaderAnswerConflict: exReaderConflict.exConflicts.readerMessages.length > 0 },
+      },
+      {
+        reason: "empty answer place",
+        label: "empty_answer diff",
+        at95: {
+          diffs: [
+            ...oneNonStopDiff,
+            { path: "sections[0].items[n=1].responses[0]", a: null, b: null, kind: "empty_answer" },
+          ],
+        },
+        at100: {
+          diffs: [
+            { path: "sections[0].items[n=1].responses[0]", a: null, b: null, kind: "empty_answer" },
+          ],
+        },
+      },
+      {
+        reason: ANSWER_DISAGREEMENT_REASON,
+        label: "item answer disagreement at 95% and read-time unclear_filled at 100%",
+        at95: {
+          diffs: [
+            { path: "sections[0].items[n=1].responses[0].answer", a: "4", b: "5", kind: "value" },
+          ],
+        },
+        at100: {
+          answerDisagreements: ["sections[0].items[n=1].responses[0].answer"],
+        },
+      },
+      {
+        reason: EXPRESSION_DISAGREEMENT_REASON,
+        label: "item expression disagreement",
+        at95: {
+          diffs: [
+            { path: "sections[0].items[n=1].expr.operands[0]", a: 2, b: 1, kind: "value" },
+          ],
+        },
+      },
+      {
+        reason: "no compared fields",
+        label: "zero compared fields",
+        custom: { ...base100, counts: { agreed: 0, compared: 0 } },
+      },
+    ];
+
+    // Guard: every stop reason in PAGE_STOP_REASONS must have at least one case in the table.
+    const coveredReasons = new Set<PageStopReason>(stopTable.map((row) => row.reason));
+    expect([...coveredReasons].sort()).toEqual([...PAGE_STOP_REASONS].sort());
+
+    for (const row of stopTable) {
+      let ran = 0;
+      if (row.at95) {
+        ran += 1;
+        const res = decidePageOutcome({ ...base95, ...row.at95 });
+        expect(res.status, `${row.label} @ 95%`).toBe("machine_read");
+        expect(res.stopReasons, `${row.label} @ 95%`).toContain(row.reason);
+      }
+      if (row.at100) {
+        ran += 1;
+        const res = decidePageOutcome({ ...base100, ...row.at100 });
+        expect(res.status, `${row.label} @ 100%`).toBe("machine_read");
+        expect(res.stopReasons, `${row.label} @ 100%`).toContain(row.reason);
+      }
+      if (row.custom) {
+        ran += 1;
+        const res = decidePageOutcome(row.custom);
+        expect(res.status, row.label).toBe("machine_read");
+        expect(res.stopReasons, row.label).toContain(row.reason);
+      }
+      expect(ran, `${row.label} must exercise at least one scenario`).toBeGreaterThan(0);
+    }
+  });
+
+  it("resolves single_read paths into reader A's record and excludes wording diffs", () => {
+    const a = makeGridPage(2);
+    const b = structuredClone(a);
+    b.topic.title = "Other Title";
+    b.sections[0].items[1].printed = "2 + 9 =";
+    a.sections[0].scaffolds = [{ kind: "helper_digit", applies_to: [1], description: "Small 1 above tens" }];
+    b.sections[0].scaffolds = [{ kind: "helper_digit", applies_to: [1], description: "Tiny 1 printed above tens" }];
+
+    const cmp = compareRecordsWithCounts(a, b);
+    expect(resolveSingleReadPaths(a, cmp.diffs)).toEqual([
+      "topic.title",
+      "sections[0].items[1].printed",
+    ]);
+  });
+
+  it("maps entries absent from reader A to the existing containing list or object in single_read for both page and contents records", () => {
+    // Page: reader A omitted item 1 and a scaffold, and omitted optional topic.number and response unit.
+    const pageA = makeGridPage(3);
+    pageA.topic = { title: "Adding Numbers" };
+    pageA.sections[0].items = pageA.sections[0].items.slice(1); // items [2, 3]
+    const pageB = makeGridPage(3);
+    pageB.topic = { title: "Adding Numbers", number: 2 };
+    pageB.sections[0].scaffolds = [{ kind: "arrow", applies_to: "all", from: "left", to: "right" }];
+    pageB.sections[0].items[1].responses[0].unit = "cm"; // on item n=2
+
+    const pageCmp = compareRecordsWithCounts(pageA, pageB);
+    const pagePaths = resolveSingleReadPaths(pageA, pageCmp.diffs);
+    expect(pagePaths).toEqual([
+      "topic",
+      "sections[0].scaffolds",
+      "sections[0].items[0].responses[0]",
+      "sections[0].items",
+    ]);
+    for (const p of pagePaths) expect(recordPathResolves(pageA, p)).toBe(true);
+
+    // Page: when item 2 IS in reader A and omitted by reader B, single_read resolves to exact item 2 (index 0).
+    const aHasExtra = makeGridPage(3);
+    aHasExtra.sections[0].items = aHasExtra.sections[0].items.slice(1); // items [2, 3]
+    const bMissing2 = makeGridPage(3);
+    bMissing2.sections[0].items = [bMissing2.sections[0].items[2]]; // items [3]
+    const extraCmp = compareRecordsWithCounts(aHasExtra, bMissing2);
+    const extraPaths = resolveSingleReadPaths(aHasExtra, extraCmp.diffs);
+    expect(extraPaths).toEqual(["sections[0].items[0]"]);
+    for (const p of extraPaths) expect(recordPathResolves(aHasExtra, p)).toBe(true);
+
+    // Contents: reader A omitted topic 1 -> single_read marks "topics", never "topics[0]" (which is topic 2).
+    const contentsA: ContentsRecord = {
+      kind: "contents",
+      source_ref: "sample:M:contents",
+      topics: [2, 3, 4].map((n) => ({ n, title: `Topic ${n}`, sheets: [n, n], std_time_min: [1, 2] })),
+    };
+    const contentsB: ContentsRecord = {
+      kind: "contents",
+      source_ref: "sample:M:contents",
+      topics: [1, 2, 3, 4].map((n) => ({ n, title: `Topic ${n}`, sheets: [n, n], std_time_min: [1, 2] })),
+    };
+    const contentsCmp = compareRecordsWithCounts(contentsA, contentsB);
+    const contentsPaths = resolveSingleReadPaths(contentsA, contentsCmp.diffs);
+    expect(contentsPaths).toEqual(["topics"]);
+    for (const p of contentsPaths) expect(recordPathResolves(contentsA, p)).toBe(true);
+
+    // Contents: when topic 2 IS in reader A and omitted by reader B, single_read resolves to "topics[0]".
+    const contentsBMissing2: ContentsRecord = {
+      kind: "contents",
+      source_ref: "sample:M:contents",
+      topics: [3, 4].map((n) => ({ n, title: `Topic ${n}`, sheets: [n, n], std_time_min: [1, 2] })),
+    };
+    const contentsExtraCmp = compareRecordsWithCounts(contentsA, contentsBMissing2);
+    const contentsExtraPaths = resolveSingleReadPaths(contentsA, contentsExtraCmp.diffs);
+    expect(contentsExtraPaths).toEqual(["topics[0]"]);
+    for (const p of contentsExtraPaths) expect(recordPathResolves(contentsA, p)).toBe(true);
+  });
+
+  it("counts the item order check only when both readers share at least two items, in both matching and reversed order", () => {
+    const makeItemsFromNs = (ns: number[]): PageRecord => {
+      const page = makePage({
+        topic: { title: "Addition practice" },
+        sections: [
+          {
+            instruction: "Add.",
+            scaffolds: [],
+            items: ns.map((n) => ({
+              n,
+              printed: `${n} + 1 =`,
+              form: "horizontal" as const,
+              expr: { kind: "arith" as const, op: "add" as const, operands: [n, 1] },
+              responses: [
+                {
+                  position: "after_equals" as const,
+                  cue: null,
+                  answer: String(n + 1),
+                  answer_source: "computed" as const,
+                },
+              ],
+            })),
+          },
+        ],
+      });
+      return page;
+    };
+
+    // 1 source_ref + 1 topic.title + 10 score_bands + 1 instruction = 13 header fields.
+    // Each shared item contributes 8 compared fields; each unshared item contributes 1 diff.
+    const orderCases: Array<{
+      label: string;
+      aNs: number[];
+      bNs: number[];
+      expectedOrderCounted: boolean;
+      expectedOrderDiff: boolean;
+      expectedCompared: number;
+      expectedAgreed: number;
+    }> = [
+      {
+        label: "0 shared (both empty)",
+        aNs: [],
+        bNs: [],
+        expectedOrderCounted: false,
+        expectedOrderDiff: false,
+        expectedCompared: 13,
+        expectedAgreed: 13,
+      },
+      {
+        label: "0 shared (disjoint 1 vs 1)",
+        aNs: [1],
+        bNs: [2],
+        expectedOrderCounted: false,
+        expectedOrderDiff: false,
+        expectedCompared: 15,
+        expectedAgreed: 13,
+      },
+      {
+        label: "0 shared (disjoint 2 vs 2)",
+        aNs: [1, 2],
+        bNs: [3, 4],
+        expectedOrderCounted: false,
+        expectedOrderDiff: false,
+        expectedCompared: 17,
+        expectedAgreed: 13,
+      },
+      {
+        label: "1 shared (single item each)",
+        aNs: [1],
+        bNs: [1],
+        expectedOrderCounted: false,
+        expectedOrderDiff: false,
+        expectedCompared: 21,
+        expectedAgreed: 21,
+      },
+      {
+        label: "1 shared with extra unshared items",
+        aNs: [1, 2],
+        bNs: [3, 1],
+        expectedOrderCounted: false,
+        expectedOrderDiff: false,
+        expectedCompared: 23,
+        expectedAgreed: 21,
+      },
+      {
+        label: "2 shared in matching order",
+        aNs: [1, 2],
+        bNs: [1, 2],
+        expectedOrderCounted: true,
+        expectedOrderDiff: false,
+        expectedCompared: 30,
+        expectedAgreed: 30,
+      },
+      {
+        label: "2 shared in differing order",
+        aNs: [1, 2],
+        bNs: [2, 1],
+        expectedOrderCounted: true,
+        expectedOrderDiff: true,
+        expectedCompared: 30,
+        expectedAgreed: 29,
+      },
+      {
+        label: "2 shared in matching order with unshared items",
+        aNs: [1, 9, 2],
+        bNs: [8, 1, 2],
+        expectedOrderCounted: true,
+        expectedOrderDiff: false,
+        expectedCompared: 32,
+        expectedAgreed: 30,
+      },
+      {
+        label: "2 shared in differing order with unshared items",
+        aNs: [1, 9, 2],
+        bNs: [2, 8, 1],
+        expectedOrderCounted: true,
+        expectedOrderDiff: true,
+        expectedCompared: 32,
+        expectedAgreed: 29,
+      },
+    ];
+
+    for (const c of orderCases) {
+      const cmp = compareRecordsWithCounts(makeItemsFromNs(c.aNs), makeItemsFromNs(c.bNs));
+      expect(cmp.counts, c.label).toEqual({
+        compared: c.expectedCompared,
+        agreed: c.expectedAgreed,
+      });
+      const orderDiffs = cmp.diffs.filter((d) => d.kind === "order");
+      expect(orderDiffs.length === 1, c.label).toBe(c.expectedOrderDiff);
+      // Confirm expectedOrderCounted matches compared minus header/shared/unshared field counts.
+      const shared = c.aNs.filter((n) => c.bNs.includes(n)).length;
+      const unshared = c.aNs.length + c.bNs.length - 2 * shared;
+      expect(cmp.counts.compared - (13 + shared * 8 + unshared), c.label).toBe(
+        c.expectedOrderCounted ? 1 : 0,
+      );
+    }
+
+    // Same denominator at the 90% boundary: matching order passes (27/30), reversed fails (26/30).
+    const aOrder = makeItemsFromNs([1, 2]);
+    const bSameOrder = structuredClone(aOrder);
+    bSameOrder.topic.title = "Alternate title";
+    for (const item of bSameOrder.sections[0].items) item.printed += " \u25A1";
+
+    const sameCmp = compareRecordsWithCounts(aOrder, bSameOrder);
+    expect(sameCmp.counts).toEqual({ compared: 30, agreed: 27 });
+    expect(agreementPercentage(sameCmp.counts.agreed, sameCmp.counts.compared)).toBe(90);
+    expect(
+      decideStatus({
+        hasA: true,
+        hasB: true,
+        familyA: "codex",
+        familyB: "claude",
+        diffs: sameCmp.diffs,
+        counts: sameCmp.counts,
+      }),
+    ).toBe("agreement_accepted");
+
+    const bReversed = structuredClone(bSameOrder);
+    bReversed.sections[0].items.reverse();
+    const reversedCmp = compareRecordsWithCounts(aOrder, bReversed);
+    expect(reversedCmp.counts).toEqual({ compared: 30, agreed: 26 });
+    expect(reversedCmp.diffs.some((d) => d.kind === "order")).toBe(true);
+    expect(
+      decideStatus({
+        hasA: true,
+        hasB: true,
+        familyA: "codex",
+        familyB: "claude",
+        diffs: reversedCmp.diffs,
+        counts: reversedCmp.counts,
+      }),
+    ).toBe("machine_read");
+  });
+
+  it("sends a page to a person at any agreement percentage when readers disagree on an item answer, unclear answer, or one-sided item with an answer", () => {
+    const base = makeGridPage(10);
+    base.sections[0].scaffolds = [
+      { kind: "number_strip", applies_to: "all", values: [1, 2, 3, 4] },
+    ];
+    // 100% matching page stays double_read.
+    const sameCmp = compareRecordsWithCounts(base, structuredClone(base));
+    expect(
+      decidePageOutcome({
+        hasA: true,
+        hasB: true,
+        familyA: "codex",
+        familyB: "claude",
+        diffs: sameCmp.diffs,
+        counts: sameCmp.counts,
+        recordA: base,
+        recordB: base,
+      }),
+    ).toEqual({ status: "double_read", stopReasons: [] });
+
+    // 95% page with only non-answer diffs (5 printed diffs out of 100) stays agreement_accepted.
+    const nonAnswer95 = structuredClone(base);
+    for (let i = 0; i < 5; i += 1) {
+      nonAnswer95.sections[0].items[i].printed = `${i + 1} + 2 =`;
+    }
+    const nonAnswerCmp = compareRecordsWithCounts(base, nonAnswer95);
+    expect(nonAnswerCmp.counts).toEqual({ compared: 100, agreed: 95 });
+    expect(agreementPercentage(nonAnswerCmp.counts.agreed, nonAnswerCmp.counts.compared)).toBe(95);
+    expect(findAnswerDisagreements(nonAnswerCmp.diffs, { a: base, b: nonAnswer95 })).toEqual([]);
+    expect(
+      decidePageOutcome({
+        hasA: true,
+        hasB: true,
+        familyA: "codex",
+        familyB: "claude",
+        diffs: nonAnswerCmp.diffs,
+        counts: nonAnswerCmp.counts,
+        recordA: base,
+        recordB: nonAnswer95,
+      }),
+    ).toEqual({ status: "agreement_accepted", stopReasons: [] });
+
+    // Same 95% page with one item answer difference (42 vs 43) -> machine_read with reason, counts unchanged.
+    const ansBase = structuredClone(base);
+    ansBase.sections[0].items[0].responses[0] = {
+      position: "after_equals",
+      cue: null,
+      answer: "42",
+      answer_source: "reader",
+    };
+    const ansDiff = structuredClone(ansBase);
+    for (let i = 1; i <= 4; i += 1) {
+      ansDiff.sections[0].items[i].printed = `${i + 1} + 2 =`;
+    }
+    ansDiff.sections[0].items[0].responses[0].answer = "43";
+    const ansCmp = compareRecordsWithCounts(ansBase, ansDiff);
+    expect(ansCmp.counts).toEqual({ compared: 100, agreed: 95 });
+    expect(findAnswerDisagreements(ansCmp.diffs, { a: ansBase, b: ansDiff })).toEqual([
+      "sections[0].items[n=1].responses[0].answer",
+    ]);
+    expect(
+      decidePageOutcome({
+        hasA: true,
+        hasB: true,
+        familyA: "codex",
+        familyB: "claude",
+        diffs: ansCmp.diffs,
+        counts: ansCmp.counts,
+        recordA: ansBase,
+        recordB: ansDiff,
+      }),
+    ).toEqual({ status: "machine_read", stopReasons: [ANSWER_DISAGREEMENT_REASON] });
+
+    // one_unclear on an answer
+    const oneUnclearB = structuredClone(ansBase);
+    oneUnclearB.sections[0].items[0].responses[0].answer = UNCLEAR;
+    const oneUnclearCmp = compareRecordsWithCounts(ansBase, oneUnclearB);
+    expect(oneUnclearCmp.diffs).toEqual([
+      {
+        path: "sections[0].items[n=1].responses[0].answer",
+        a: "42",
+        b: UNCLEAR,
+        kind: "one_unclear",
+      },
+    ]);
+    expect(
+      decidePageOutcome({
+        hasA: true,
+        hasB: true,
+        familyA: "codex",
+        familyB: "claude",
+        diffs: oneUnclearCmp.diffs,
+        counts: oneUnclearCmp.counts,
+        recordA: ansBase,
+        recordB: oneUnclearB,
+      }),
+    ).toEqual({ status: "machine_read", stopReasons: [ANSWER_DISAGREEMENT_REASON] });
+
+    // both_unclear on an answer
+    const bothA = structuredClone(ansBase);
+    const bothB = structuredClone(ansBase);
+    bothA.sections[0].items[0].responses[0].answer = UNCLEAR;
+    bothB.sections[0].items[0].responses[0].answer = UNCLEAR;
+    const bothCmp = compareRecordsWithCounts(bothA, bothB);
+    expect(bothCmp.diffs).toEqual([
+      {
+        path: "sections[0].items[n=1].responses[0].answer",
+        a: UNCLEAR,
+        b: UNCLEAR,
+        kind: "both_unclear",
+      },
+    ]);
+    expect(
+      decidePageOutcome({
+        hasA: true,
+        hasB: true,
+        familyA: "codex",
+        familyB: "claude",
+        diffs: bothCmp.diffs,
+        counts: bothCmp.counts,
+        recordA: bothA,
+        recordB: bothB,
+      }),
+    ).toEqual({ status: "machine_read", stopReasons: [ANSWER_DISAGREEMENT_REASON] });
+
+    // One-sided item that has an answer (both real compare diff and once_read diff) stops the page.
+    const missingItemA = structuredClone(base);
+    missingItemA.sections[0].items = missingItemA.sections[0].items.slice(1);
+    const missingItemCmp = compareRecordsWithCounts(missingItemA, base);
+    expect(agreementPercentage(missingItemCmp.counts.agreed, missingItemCmp.counts.compared)).toBeGreaterThanOrEqual(90);
+    expect(findAnswerDisagreements(missingItemCmp.diffs, { a: missingItemA, b: base })).toEqual([
+      "sections[0].items[n=1]",
+    ]);
+    expect(
+      decidePageOutcome({
+        hasA: true,
+        hasB: true,
+        familyA: "codex",
+        familyB: "claude",
+        diffs: missingItemCmp.diffs,
+        counts: missingItemCmp.counts,
+        recordA: missingItemA,
+        recordB: base,
+      }),
+    ).toEqual({
+      status: "machine_read",
+      stopReasons: [ANSWER_DISAGREEMENT_REASON, EXPRESSION_DISAGREEMENT_REASON],
+    });
+
+    const onceReadItemOutcome = decidePageOutcome({
+      hasA: true,
+      hasB: true,
+      familyA: "codex",
+      familyB: "claude",
+      diffs: [
+        {
+          path: "sections[0].items[n=11]",
+          a: null,
+          b: base.sections[0].items[0],
+          kind: "once_read",
+        },
+      ],
+      counts: { agreed: 19, compared: 20 },
+    });
+    expect(onceReadItemOutcome).toEqual({
+      status: "machine_read",
+      stopReasons: [ANSWER_DISAGREEMENT_REASON, EXPRESSION_DISAGREEMENT_REASON],
+    });
+
+    // One-sided action item with no answer (checkbox, answer: null) does NOT trigger the answer stop rule.
+    const actionB = structuredClone(base);
+    actionB.sections[0].items.push({
+      n: 11,
+      printed: "Read aloud",
+      form: null,
+      expr: null,
+      responses: [{ position: "checkbox", cue: null, answer: null, answer_source: "unchecked" }],
+    });
+    const actionCmp = compareRecordsWithCounts(base, actionB);
+    expect(findAnswerDisagreements(actionCmp.diffs, { a: base, b: actionB })).toEqual([]);
+    expect(
+      decidePageOutcome({
+        hasA: true,
+        hasB: true,
+        familyA: "codex",
+        familyB: "claude",
+        diffs: actionCmp.diffs,
+        counts: actionCmp.counts,
+        recordA: base,
+        recordB: actionB,
+      }),
+    ).toEqual({ status: "agreement_accepted", stopReasons: [] });
+  });
+
+  it("catches worked-example step answers, shown_answer, parts inside an answer (digit boxes, remainders, sub-paths), wording on an answer, and printed answers on worked_item scaffolds", () => {
+    // 1. Worked-example step answer (shows: "answer" and shows: "remainder"): value, one_unclear, both_unclear, once_read, and shows mismatch.
+    const exBase = makeGridPage(10);
+    exBase.examples = [
+      {
+        position: "top",
+        relation: "sequence",
+        parts: [
+          {
+            form: "horizontal",
+            expr: { kind: "arith", op: "div", operands: [9, 2] },
+            shown_answer: "4 R1",
+          },
+        ],
+        steps: [
+          { n: 1, shows: "setup", printed: "9 / 2" },
+          { n: 2, shows: "answer", printed: "4" },
+          { n: 3, shows: "remainder", printed: "R1" },
+        ],
+        marks: [],
+      },
+    ];
+
+    // Non-answer step (shows: "setup") differing printed does NOT trigger answer rule.
+    const setupDiff = structuredClone(exBase);
+    if (Array.isArray(setupDiff.examples) && Array.isArray(setupDiff.examples[0].steps)) {
+      setupDiff.examples[0].steps[0].printed = "10 / 2";
+    }
+    const setupCmp = compareRecordsWithCounts(exBase, setupDiff);
+    expect(setupCmp.diffs).toHaveLength(1);
+    expect(findAnswerDisagreements(setupCmp.diffs, { a: exBase, b: setupDiff })).toEqual([]);
+    expect(
+      decidePageOutcome({
+        hasA: true,
+        hasB: true,
+        familyA: "codex",
+        familyB: "claude",
+        diffs: setupCmp.diffs,
+        counts: setupCmp.counts,
+        recordA: exBase,
+        recordB: setupDiff,
+      }).status,
+    ).toBe("agreement_accepted");
+
+    // Step with shows: "answer" differing printed (value, one_unclear, both_unclear) and shows mismatch -> machine_read
+    const stepAnsDiff = structuredClone(exBase);
+    if (Array.isArray(stepAnsDiff.examples) && Array.isArray(stepAnsDiff.examples[0].steps)) {
+      stepAnsDiff.examples[0].steps[1].printed = "5";
+    }
+    const stepAnsCmp = compareRecordsWithCounts(exBase, stepAnsDiff);
+    expect(findAnswerDisagreements(stepAnsCmp.diffs, { a: exBase, b: stepAnsDiff })).toEqual([
+      "examples[0].steps[n=2].printed",
+    ]);
+    expect(
+      decidePageOutcome({
+        hasA: true,
+        hasB: true,
+        familyA: "codex",
+        familyB: "claude",
+        diffs: stepAnsCmp.diffs,
+        counts: stepAnsCmp.counts,
+        recordA: exBase,
+        recordB: stepAnsDiff,
+      }),
+    ).toEqual({ status: "machine_read", stopReasons: [ANSWER_DISAGREEMENT_REASON] });
+
+    const stepShowsDiff = structuredClone(exBase);
+    if (Array.isArray(stepShowsDiff.examples) && Array.isArray(stepShowsDiff.examples[0].steps)) {
+      stepShowsDiff.examples[0].steps[1].shows = "partial_sum";
+    }
+    const stepShowsCmp = compareRecordsWithCounts(exBase, stepShowsDiff);
+    expect(findAnswerDisagreements(stepShowsCmp.diffs, { a: exBase, b: stepShowsDiff })).toEqual([
+      "examples[0].steps[n=2].shows",
+    ]);
+
+    const stepUnclearA = structuredClone(exBase);
+    const stepUnclearB = structuredClone(exBase);
+    if (
+      Array.isArray(stepUnclearA.examples) &&
+      Array.isArray(stepUnclearA.examples[0].steps) &&
+      Array.isArray(stepUnclearB.examples) &&
+      Array.isArray(stepUnclearB.examples[0].steps)
+    ) {
+      stepUnclearB.examples[0].steps[1].printed = UNCLEAR;
+      expect(
+        findAnswerDisagreements(compareRecordsWithCounts(stepUnclearA, stepUnclearB).diffs, {
+          a: stepUnclearA,
+          b: stepUnclearB,
+        }),
+      ).toEqual(["examples[0].steps[n=2].printed"]);
+      stepUnclearA.examples[0].steps[1].printed = UNCLEAR;
+      expect(
+        findAnswerDisagreements(compareRecordsWithCounts(stepUnclearA, stepUnclearB).diffs, {
+          a: stepUnclearA,
+          b: stepUnclearB,
+        }),
+      ).toEqual(["examples[0].steps[n=2].printed"]);
+    }
+
+    // Whole once_read Example containing an answer stops the page; one with no answer does not.
+    const noExPage = makeGridPage(10);
+    const exWithAnsCmp = compareRecordsWithCounts(noExPage, exBase);
+    expect(findAnswerDisagreements(exWithAnsCmp.diffs, { a: noExPage, b: exBase })).toEqual([
+      "examples[b:0]",
+    ]);
+    const exNoAns = makeGridPage(10);
+    exNoAns.examples = [
+      {
+        position: "top",
+        relation: "compare",
+        parts: [{ form: "horizontal", expr: { kind: "arith", op: "add", operands: [1, 2] } }],
+        steps: [{ n: 1, shows: "setup", printed: "1 + 2" }],
+        marks: [],
+      },
+    ];
+    const exNoAnsCmp = compareRecordsWithCounts(noExPage, exNoAns);
+    expect(findAnswerDisagreements(exNoAnsCmp.diffs, { a: noExPage, b: exNoAns })).toEqual([]);
+
+    // One-sided section with an answer item, one-sided example part with shown_answer, and one_unclear steps list containing an answer step
+    const extraSecB = structuredClone(exBase);
+    extraSecB.sections.push({
+      instruction: "Extra.",
+      scaffolds: [],
+      items: [
+        {
+          n: 1,
+          printed: "1 + 1 =",
+          form: "horizontal",
+          expr: { kind: "arith", op: "add", operands: [1, 1] },
+          responses: [{ position: "after_equals", cue: null, answer: "2", answer_source: "computed" }],
+        },
+      ],
+    });
+    expect(
+      findAnswerDisagreements(compareRecordsWithCounts(exBase, extraSecB).diffs, {
+        a: exBase,
+        b: extraSecB,
+      }),
+    ).toEqual(["sections[1]"]);
+
+    const extraPartB = structuredClone(exBase);
+    if (Array.isArray(extraPartB.examples)) {
+      extraPartB.examples[0].parts.push({
+        form: "horizontal",
+        expr: { kind: "arith", op: "add", operands: [2, 2] },
+        shown_answer: "4",
+      });
+    }
+    expect(
+      findAnswerDisagreements(compareRecordsWithCounts(exBase, extraPartB).diffs, {
+        a: exBase,
+        b: extraPartB,
+      }),
+    ).toEqual(["examples[0].parts[1]"]);
+
+    const unclearStepsB = structuredClone(exBase);
+    if (Array.isArray(unclearStepsB.examples)) {
+      unclearStepsB.examples[0].steps = UNCLEAR;
+    }
+    expect(
+      findAnswerDisagreements(compareRecordsWithCounts(exBase, unclearStepsB).diffs, {
+        a: exBase,
+        b: unclearStepsB,
+      }),
+    ).toEqual(["examples[0].steps"]);
+
+    // Step with shows: "remainder" differing printed -> machine_read
+    const stepRemDiff = structuredClone(exBase);
+    if (Array.isArray(stepRemDiff.examples) && Array.isArray(stepRemDiff.examples[0].steps)) {
+      stepRemDiff.examples[0].steps[2].printed = "R2";
+    }
+    const stepRemCmp = compareRecordsWithCounts(exBase, stepRemDiff);
+    expect(findAnswerDisagreements(stepRemCmp.diffs, { a: exBase, b: stepRemDiff })).toEqual([
+      "examples[0].steps[n=3].printed",
+    ]);
+
+    // once_read worked-example step that has shows: "answer" -> machine_read
+    const missingAnsStep = structuredClone(exBase);
+    if (Array.isArray(missingAnsStep.examples) && Array.isArray(missingAnsStep.examples[0].steps)) {
+      missingAnsStep.examples[0].steps = [missingAnsStep.examples[0].steps[0]];
+    }
+    const onceStepCmp = compareRecordsWithCounts(exBase, missingAnsStep);
+    expect(findAnswerDisagreements(onceStepCmp.diffs, { a: exBase, b: missingAnsStep })).toEqual([
+      "examples[0].steps[n=2]",
+      "examples[0].steps[n=3]",
+    ]);
+
+    // ExamplePart.shown_answer differing value and once_read -> machine_read
+    const shownDiff = structuredClone(exBase);
+    if (Array.isArray(shownDiff.examples)) {
+      shownDiff.examples[0].parts[0].shown_answer = "4 R2";
+    }
+    const shownCmp = compareRecordsWithCounts(exBase, shownDiff);
+    expect(findAnswerDisagreements(shownCmp.diffs, { a: exBase, b: shownDiff })).toEqual([
+      "examples[0].parts[0].shown_answer",
+    ]);
+    const shownOnce = structuredClone(exBase);
+    if (Array.isArray(shownOnce.examples)) {
+      delete shownOnce.examples[0].parts[0].shown_answer;
+    }
+    const shownOnceCmp = compareRecordsWithCounts(exBase, shownOnce);
+    expect(shownOnceCmp.diffs[0]?.kind).toBe("once_read");
+    expect(findAnswerDisagreements(shownOnceCmp.diffs, { a: exBase, b: shownOnce })).toEqual([
+      "examples[0].parts[0].shown_answer",
+    ]);
+
+    // 2. Parts inside an answer value: digit boxes, separate remainder box, and nested path under .answer.
+    const boxA = makeGridPage(10);
+    boxA.sections[0].scaffolds = [
+      { kind: "answer_boxes", applies_to: [1], box_count: 2, places: ["tens", "ones"] },
+    ];
+    boxA.sections[0].items[0] = {
+      n: 1,
+      printed: "20 + 22 = □□",
+      form: "horizontal",
+      expr: { kind: "arith", op: "add", operands: [20, 22] },
+      responses: [
+        { position: "box", cue: null, answer: "4", answer_source: "reader", place: "tens" },
+        { position: "box", cue: null, answer: "2", answer_source: "reader", place: "ones" },
+      ],
+    };
+    const boxB = structuredClone(boxA);
+    boxB.sections[0].items[0].responses[1].answer = "3";
+    const boxCmp = compareRecordsWithCounts(boxA, boxB);
+    expect(findAnswerDisagreements(boxCmp.diffs, { a: boxA, b: boxB })).toEqual([
+      "sections[0].items[n=1].responses[1].answer",
+    ]);
+
+    // Missing second digit box (whole response containing an answer)
+    const oneBoxB = structuredClone(boxA);
+    oneBoxB.sections[0].items[0].responses = [oneBoxB.sections[0].items[0].responses[0]];
+    const oneBoxCmp = compareRecordsWithCounts(boxA, oneBoxB);
+    expect(findAnswerDisagreements(oneBoxCmp.diffs, { a: boxA, b: oneBoxB })).toEqual([
+      "sections[0].items[n=1].responses[1]",
+    ]);
+
+    // Remainder inside an answer value ("4 R1" vs "4 R2") and separate remainder response box
+    const remA = makeGridPage(10);
+    remA.sections[0].items[0] = {
+      n: 1,
+      printed: "9 / 2 =",
+      form: "horizontal",
+      expr: { kind: "arith", op: "div", operands: [9, 2] },
+      responses: [
+        { position: "after_equals", cue: null, answer: "4 R1", answer_source: "reader" },
+      ],
+    };
+    const remB = structuredClone(remA);
+    remB.sections[0].items[0].responses[0].answer = "4 R2";
+    const remCmp = compareRecordsWithCounts(remA, remB);
+    expect(findAnswerDisagreements(remCmp.diffs, { a: remA, b: remB })).toEqual([
+      "sections[0].items[n=1].responses[0].answer",
+    ]);
+
+    const splitRemA = makeGridPage(10);
+    splitRemA.sections[0].items[0] = {
+      n: 1,
+      printed: "9 / 2 = □ R □",
+      form: "horizontal",
+      expr: { kind: "arith", op: "div", operands: [9, 2] },
+      responses: [
+        { position: "box", cue: null, answer: "4", answer_source: "reader" },
+        { position: "box", cue: "R", answer: "1", answer_source: "reader" },
+      ],
+    };
+    const splitRemB = structuredClone(splitRemA);
+    splitRemB.sections[0].items[0].responses[1].answer = "2";
+    const splitRemCmp = compareRecordsWithCounts(splitRemA, splitRemB);
+    expect(findAnswerDisagreements(splitRemCmp.diffs, { a: splitRemA, b: splitRemB })).toEqual([
+      "sections[0].items[n=1].responses[1].answer",
+    ]);
+
+    // Nested sub-path inside an answer value (e.g. remainder part) and wording diff on an answer field
+    expect(
+      findAnswerDisagreements([
+        { path: "sections[0].items[n=1].responses[0].answer.remainder", a: "1", b: "2", kind: "value" },
+        { path: "sections[0].items[n=1].responses[0].answer[1]", a: "2", b: "3", kind: "value" },
+        { path: "sections[0].items[n=2].responses[0].answer", a: "four", b: "4", kind: "wording" },
+        { path: "sections[0].scaffolds[0].description", a: "Hint A", b: "Hint B", kind: "wording" },
+        { path: "sections[0].items[n=3].responses[0]", a: null, b: null, kind: "empty_answer" },
+      ]),
+    ).toEqual([
+      "sections[0].items[n=1].responses[0].answer.remainder",
+      "sections[0].items[n=1].responses[0].answer[1]",
+      "sections[0].items[n=2].responses[0].answer",
+    ]);
+
+    // 3. Scaffolds: non-answer scaffold diffs do not trigger, while printed answer on a worked_item does.
+    const workedA = makeGridPage(10);
+    workedA.sections[0].scaffolds = [
+      { kind: "worked_item", applies_to: [1], description: "Item 1 printed solved" },
+    ];
+    workedA.sections[0].items[0].responses[0] = {
+      position: "after_equals",
+      cue: null,
+      answer: "17",
+      answer_source: "printed",
+    };
+    const workedDescB = structuredClone(workedA);
+    workedDescB.sections[0].scaffolds = [
+      { kind: "worked_item", applies_to: [1], description: "Item 2 printed solved" },
+    ];
+    const workedDescCmp = compareRecordsWithCounts(workedA, workedDescB);
+    expect(findAnswerDisagreements(workedDescCmp.diffs, { a: workedA, b: workedDescB })).toEqual([]);
+    const workedAnsB = structuredClone(workedA);
+    workedAnsB.sections[0].items[0].responses[0].answer = "18";
+    const workedAnsCmp = compareRecordsWithCounts(workedA, workedAnsB);
+    expect(findAnswerDisagreements(workedAnsCmp.diffs, { a: workedA, b: workedAnsB })).toEqual([
+      "sections[0].items[n=1].responses[0].answer",
+    ]);
+
+    // 4. Non-answer slots (checkbox, secondary work_area) do not trigger the answer stop;
+    // a sole work_area on a question item still triggers it.
+    const makeThreeItemPage = (): PageRecord =>
+      makePage({
+        sections: [
+          {
+            instruction: "Solve.",
+            scaffolds: [],
+            items: [1, 2, 3].map((n) => ({
+              n,
+              printed: `${n} + 1 =`,
+              form: "horizontal" as const,
+              expr:
+                n === 1
+                  ? ({ kind: "notation" as const, latex: "6^{2}+6" })
+                  : ({ kind: "arith" as const, op: "add" as const, operands: [n, 1] }),
+              responses: [
+                {
+                  position: "after_equals" as const,
+                  cue: null,
+                  answer: n === 1 ? "42" : String(n + 1),
+                  answer_source: n === 1 ? ("reader" as const) : ("computed" as const),
+                },
+              ],
+            })),
+          },
+        ],
+      });
+
+    for (const nonAnswerPos of ["checkbox", "work_area"] as const) {
+      const a = makeThreeItemPage();
+      a.sections[0].items[0].responses.push({
+        position: nonAnswerPos,
+        cue: null,
+        answer: null,
+        answer_source: "unchecked",
+      });
+      const b = structuredClone(a);
+      b.sections[0].items[0].responses[1].answer = UNCLEAR;
+      const cmp = compareRecordsWithCounts(a, b);
+      expect(agreementPercentage(cmp.counts.agreed, cmp.counts.compared)).toBeGreaterThanOrEqual(97);
+      expect(findAnswerDisagreements(cmp.diffs, { a, b })).toEqual([]);
+      expect(
+        decidePageOutcome({
+          hasA: true,
+          hasB: true,
+          familyA: "codex",
+          familyB: "claude",
+          diffs: cmp.diffs,
+          counts: cmp.counts,
+          recordA: a,
+          recordB: b,
+        }),
+      ).toEqual({ status: "agreement_accepted", stopReasons: [] });
+
+      // One-sided extra non-answer response (even with unclear) also does not stop.
+      const oneSidedA = makeThreeItemPage();
+      const oneSidedCmp = compareRecordsWithCounts(oneSidedA, b);
+      expect(findAnswerDisagreements(oneSidedCmp.diffs, { a: oneSidedA, b })).toEqual([]);
+    }
+
+    // Sole work_area on a question item IS answer-bearing and stops at >= 97%.
+    const soleWorkA = makeThreeItemPage();
+    soleWorkA.sections[0].items[0].responses = [
+      { position: "work_area", cue: null, answer: "42", answer_source: "reader" },
+    ];
+    const soleWorkB = structuredClone(soleWorkA);
+    soleWorkB.sections[0].items[0].responses[0].answer = "43";
+    const soleWorkCmp = compareRecordsWithCounts(soleWorkA, soleWorkB);
+    expect(agreementPercentage(soleWorkCmp.counts.agreed, soleWorkCmp.counts.compared)).toBeGreaterThanOrEqual(97);
+    expect(findAnswerDisagreements(soleWorkCmp.diffs, { a: soleWorkA, b: soleWorkB })).toEqual([
+      "sections[0].items[n=1].responses[0].answer",
+    ]);
+    expect(
+      decidePageOutcome({
+        hasA: true,
+        hasB: true,
+        familyA: "codex",
+        familyB: "claude",
+        diffs: soleWorkCmp.diffs,
+        counts: soleWorkCmp.counts,
+        recordA: soleWorkA,
+        recordB: soleWorkB,
+      }),
+    ).toEqual({ status: "machine_read", stopReasons: [ANSWER_DISAGREEMENT_REASON] });
+  });
+
+  it("stops a page at any agreement percentage when readers disagree on any part of an expression across every Expr kind, place, and difference kind", () => {
+    const makePlacePages = (
+      place: "item" | "example_part",
+      exprA: Expr | null,
+      exprB: Expr | null,
+    ): { a: PageRecord; b: PageRecord; prefix: string } => {
+      const a = makeGridPage(12);
+      if (place === "item") {
+        a.sections[0].items[0] = {
+          n: 1,
+          printed: "2 + 3 =",
+          form: "horizontal",
+          expr: exprA,
+          responses: [{ position: "after_equals", cue: null, answer: "5", answer_source: "reader" }],
+        };
+        const b = structuredClone(a);
+        b.sections[0].items[0].expr = exprB;
+        return { a, b, prefix: "sections[0].items[n=1].expr" };
+      }
+      a.examples = [
+        {
+          position: "top",
+          relation: "compare",
+          parts: [{ form: "horizontal", expr: exprA, shown_answer: "5" }],
+        },
+      ];
+      const b = structuredClone(a);
+      if (Array.isArray(b.examples)) {
+        b.examples[0].parts[0].expr = exprB;
+      }
+      return { a, b, prefix: "examples[0].parts[0].expr" };
+    };
+
+    const decide = (a: PageRecord, b: PageRecord) => {
+      const cmp = compareRecordsWithCounts(a, b);
+      const outcome = decidePageOutcome({
+        hasA: true,
+        hasB: true,
+        familyA: "codex",
+        familyB: "claude",
+        sameDigest: true,
+        diffs: cmp.diffs,
+        counts: cmp.counts,
+        recordA: a,
+        recordB: b,
+      });
+      return { cmp, outcome };
+    };
+
+    // Real bug reproduction: printed "2 + 3 =", reader A stores 1 x 5, reader B stores 2 + 3, both answers are 5 (>= 90% agreement).
+    const repro = makePlacePages(
+      "item",
+      { kind: "arith", op: "mul", operands: [1, 5] },
+      { kind: "arith", op: "add", operands: [2, 3] },
+    );
+    const reproRes = decide(repro.a, repro.b);
+    expect(agreementPercentage(reproRes.cmp.counts.agreed, reproRes.cmp.counts.compared)).toBeGreaterThanOrEqual(90);
+    expect(reproRes.cmp.counts.compared - reproRes.cmp.counts.agreed).toBe(3);
+    expect(findExpressionDisagreements(reproRes.cmp.diffs)).toEqual([
+      "sections[0].items[n=1].expr.op",
+      "sections[0].items[n=1].expr.operands[0]",
+      "sections[0].items[n=1].expr.operands[1]",
+    ]);
+    expect(reproRes.outcome).toEqual({
+      status: "machine_read",
+      stopReasons: [EXPRESSION_DISAGREEMENT_REASON],
+    });
+
+    // Both answer and expression disagreement on the same page shows both reasons (E3).
+    const bothA = structuredClone(repro.a);
+    const bothB = structuredClone(repro.b);
+    bothB.sections[0].items[0].responses[0].answer = "6";
+    const bothRes = decide(bothA, bothB);
+    expect(bothRes.outcome.status).toBe("machine_read");
+    expect(bothRes.outcome.stopReasons).toEqual([
+      ANSWER_DISAGREEMENT_REASON,
+      EXPRESSION_DISAGREEMENT_REASON,
+    ]);
+
+    // Table over every Expr kind in EXPR_KINDS x both places x every reachable difference kind.
+    const exprCases: Array<{
+      exprKind: ExprKind;
+      label: string;
+      a: Expr;
+      b: Expr;
+      expectedKind: "value" | "one_unclear" | "both_unclear" | "once_read";
+      expectedSuffix: string;
+    }> = [
+      // arith
+      {
+        exprKind: "arith",
+        label: "arith op value",
+        a: { kind: "arith", op: "add", operands: [2, 3] },
+        b: { kind: "arith", op: "mul", operands: [2, 3] },
+        expectedKind: "value",
+        expectedSuffix: ".op",
+      },
+      {
+        exprKind: "arith",
+        label: "arith operand value",
+        a: { kind: "arith", op: "add", operands: [2, 3] },
+        b: { kind: "arith", op: "add", operands: [2, 4] },
+        expectedKind: "value",
+        expectedSuffix: ".operands[1]",
+      },
+      {
+        exprKind: "arith",
+        label: "arith operand one_unclear",
+        a: { kind: "arith", op: "add", operands: [2, 3] },
+        b: { kind: "arith", op: "add", operands: [2, UNCLEAR] },
+        expectedKind: "one_unclear",
+        expectedSuffix: ".operands[1]",
+      },
+      {
+        exprKind: "arith",
+        label: "arith op both_unclear",
+        a: { kind: "arith", op: UNCLEAR, operands: [2, 3] },
+        b: { kind: "arith", op: UNCLEAR, operands: [2, 3] },
+        expectedKind: "both_unclear",
+        expectedSuffix: ".op",
+      },
+      // chain
+      {
+        exprKind: "chain",
+        label: "chain term value",
+        a: { kind: "chain", terms: [2, 4, null], step: 2 },
+        b: { kind: "chain", terms: [2, 6, null], step: 2 },
+        expectedKind: "value",
+        expectedSuffix: ".terms[1]",
+      },
+      {
+        exprKind: "chain",
+        label: "chain step value",
+        a: { kind: "chain", terms: [2, 4, null], step: 2 },
+        b: { kind: "chain", terms: [2, 4, null], step: 3 },
+        expectedKind: "value",
+        expectedSuffix: ".step",
+      },
+      {
+        exprKind: "chain",
+        label: "chain term one_unclear",
+        a: { kind: "chain", terms: [2, 4, null], step: 2 },
+        b: { kind: "chain", terms: [2, UNCLEAR, null], step: 2 },
+        expectedKind: "one_unclear",
+        expectedSuffix: ".terms[1]",
+      },
+      {
+        exprKind: "chain",
+        label: "chain step both_unclear",
+        a: { kind: "chain", terms: [2, 4, null], step: UNCLEAR },
+        b: { kind: "chain", terms: [2, 4, null], step: UNCLEAR },
+        expectedKind: "both_unclear",
+        expectedSuffix: ".step",
+      },
+      // missing
+      {
+        exprKind: "missing",
+        label: "missing result value",
+        a: { kind: "missing", op: "add", operands: [3, null], result: 8 },
+        b: { kind: "missing", op: "add", operands: [3, null], result: 9 },
+        expectedKind: "value",
+        expectedSuffix: ".result",
+      },
+      {
+        exprKind: "missing",
+        label: "missing operand one_unclear",
+        a: { kind: "missing", op: "add", operands: [3, null], result: 8 },
+        b: { kind: "missing", op: "add", operands: [UNCLEAR, null], result: 8 },
+        expectedKind: "one_unclear",
+        expectedSuffix: ".operands[0]",
+      },
+      {
+        exprKind: "missing",
+        label: "missing result both_unclear",
+        a: { kind: "missing", op: "add", operands: [3, null], result: UNCLEAR },
+        b: { kind: "missing", op: "add", operands: [3, null], result: UNCLEAR },
+        expectedKind: "both_unclear",
+        expectedSuffix: ".result",
+      },
+      // linked
+      {
+        exprKind: "linked",
+        label: "linked pair[0] value",
+        a: {
+          kind: "linked",
+          pair: [
+            { kind: "arith", op: "add", operands: [2, 3] },
+            { kind: "arith", op: "sub", operands: [5, 3] },
+          ],
+          connector: "then",
+        },
+        b: {
+          kind: "linked",
+          pair: [
+            { kind: "arith", op: "add", operands: [2, 4] },
+            { kind: "arith", op: "sub", operands: [5, 3] },
+          ],
+          connector: "then",
+        },
+        expectedKind: "value",
+        expectedSuffix: ".pair[0].operands[1]",
+      },
+      {
+        exprKind: "linked",
+        label: "linked pair[1] one_unclear",
+        a: {
+          kind: "linked",
+          pair: [
+            { kind: "arith", op: "add", operands: [2, 3] },
+            { kind: "arith", op: "sub", operands: [5, 3] },
+          ],
+          connector: "then",
+        },
+        b: {
+          kind: "linked",
+          pair: [
+            { kind: "arith", op: "add", operands: [2, 3] },
+            { kind: "arith", op: UNCLEAR, operands: [5, 3] },
+          ],
+          connector: "then",
+        },
+        expectedKind: "one_unclear",
+        expectedSuffix: ".pair[1].op",
+      },
+      {
+        exprKind: "linked",
+        label: "linked pair[0] both_unclear",
+        a: {
+          kind: "linked",
+          pair: [
+            { kind: "arith", op: UNCLEAR, operands: [2, 3] },
+            { kind: "arith", op: "sub", operands: [5, 3] },
+          ],
+        },
+        b: {
+          kind: "linked",
+          pair: [
+            { kind: "arith", op: UNCLEAR, operands: [2, 3] },
+            { kind: "arith", op: "sub", operands: [5, 3] },
+          ],
+        },
+        expectedKind: "both_unclear",
+        expectedSuffix: ".pair[0].op",
+      },
+      {
+        exprKind: "linked",
+        label: "linked connector once_read",
+        a: {
+          kind: "linked",
+          pair: [
+            { kind: "arith", op: "add", operands: [2, 3] },
+            { kind: "arith", op: "sub", operands: [5, 3] },
+          ],
+          connector: "and",
+        },
+        b: {
+          kind: "linked",
+          pair: [
+            { kind: "arith", op: "add", operands: [2, 3] },
+            { kind: "arith", op: "sub", operands: [5, 3] },
+          ],
+        },
+        expectedKind: "once_read",
+        expectedSuffix: ".connector",
+      },
+      {
+        exprKind: "linked",
+        label: "linked nested notation figure with different numbers",
+        a: {
+          kind: "linked",
+          pair: [
+            { kind: "notation", latex: "x + 1", figure: "Bar with 3 boxes" },
+            { kind: "arith", op: "add", operands: [1, 2] },
+          ],
+        },
+        b: {
+          kind: "linked",
+          pair: [
+            { kind: "notation", latex: "x + 1", figure: "Bar with 4 boxes" },
+            { kind: "arith", op: "add", operands: [1, 2] },
+          ],
+        },
+        expectedKind: "value",
+        expectedSuffix: ".pair[0].figure",
+      },
+      // word
+      {
+        exprKind: "word",
+        label: "word text value",
+        a: { kind: "word", text: "Add two apples", expr: { kind: "arith", op: "add", operands: [2, 3] }, unit: "apples" },
+        b: { kind: "word", text: "Add two pears", expr: { kind: "arith", op: "add", operands: [2, 3] }, unit: "apples" },
+        expectedKind: "value",
+        expectedSuffix: ".text",
+      },
+      {
+        exprKind: "word",
+        label: "word nested expr value",
+        a: { kind: "word", text: "Find the total", expr: { kind: "arith", op: "add", operands: [2, 3] } },
+        b: { kind: "word", text: "Find the total", expr: { kind: "arith", op: "add", operands: [2, 4] } },
+        expectedKind: "value",
+        expectedSuffix: ".expr.operands[1]",
+      },
+      {
+        exprKind: "word",
+        label: "word expr one_unclear",
+        a: { kind: "word", text: "Find the total", expr: { kind: "arith", op: "add", operands: [2, 3] } },
+        b: { kind: "word", text: "Find the total", expr: UNCLEAR },
+        expectedKind: "one_unclear",
+        expectedSuffix: ".expr",
+      },
+      {
+        exprKind: "word",
+        label: "word expr both_unclear",
+        a: { kind: "word", text: "Find the total", expr: UNCLEAR },
+        b: { kind: "word", text: "Find the total", expr: UNCLEAR },
+        expectedKind: "both_unclear",
+        expectedSuffix: ".expr",
+      },
+      {
+        exprKind: "word",
+        label: "word unit once_read",
+        a: { kind: "word", text: "Find the total", expr: null, unit: "cm" },
+        b: { kind: "word", text: "Find the total", expr: null },
+        expectedKind: "once_read",
+        expectedSuffix: ".unit",
+      },
+      {
+        exprKind: "word",
+        label: "word nested notation figure with different numbers",
+        a: { kind: "word", text: "Find x", expr: { kind: "notation", latex: "x + 1", figure: "Circle with 2 halves" } },
+        b: { kind: "word", text: "Find x", expr: { kind: "notation", latex: "x + 1", figure: "Circle with 3 halves" } },
+        expectedKind: "value",
+        expectedSuffix: ".expr.figure",
+      },
+      // notation
+      {
+        exprKind: "notation",
+        label: "notation latex value",
+        a: { kind: "notation", latex: "\\frac{1}{2} + \\frac{1}{4}" },
+        b: { kind: "notation", latex: "\\frac{1}{2} + \\frac{1}{3}" },
+        expectedKind: "value",
+        expectedSuffix: ".latex",
+      },
+      {
+        exprKind: "notation",
+        label: "notation latex one_unclear",
+        a: { kind: "notation", latex: "x + 1" },
+        b: { kind: "notation", latex: UNCLEAR },
+        expectedKind: "one_unclear",
+        expectedSuffix: ".latex",
+      },
+      {
+        exprKind: "notation",
+        label: "notation latex both_unclear",
+        a: { kind: "notation", latex: UNCLEAR },
+        b: { kind: "notation", latex: UNCLEAR },
+        expectedKind: "both_unclear",
+        expectedSuffix: ".latex",
+      },
+      {
+        exprKind: "notation",
+        label: "notation figure once_read",
+        a: { kind: "notation", latex: "x + 1", figure: "Number line" },
+        b: { kind: "notation", latex: "x + 1" },
+        expectedKind: "once_read",
+        expectedSuffix: ".figure",
+      },
+      {
+        exprKind: "notation",
+        label: "notation figure with different numbers",
+        a: { kind: "notation", latex: "x + 1", figure: "Bar with 4 squares" },
+        b: { kind: "notation", latex: "x + 1", figure: "Bar with 5 squares" },
+        expectedKind: "value",
+        expectedSuffix: ".figure",
+      },
+    ];
+
+    // Guard: every ExprKind in types.ts is covered in the table.
+    expect([...new Set(exprCases.map((c) => c.exprKind))].sort()).toEqual([...EXPR_KINDS].sort());
+
+    for (const place of ["item", "example_part"] as const) {
+      for (const c of exprCases) {
+        const { a, b, prefix } = makePlacePages(place, c.a, c.b);
+        const { cmp, outcome } = decide(a, b);
+        const tag = `${place}:${c.label}`;
+        expect(cmp.diffs, tag).toHaveLength(1);
+        expect(cmp.diffs[0]?.kind, tag).toBe(c.expectedKind);
+        expect(cmp.diffs[0]?.path, tag).toBe(`${prefix}${c.expectedSuffix}`);
+        // One expression difference counts 1 disagreement; the stop rule never changes the counts.
+        expect(cmp.counts.compared - cmp.counts.agreed, tag).toBe(1);
+        expect(agreementPercentage(cmp.counts.agreed, cmp.counts.compared), tag).toBeGreaterThanOrEqual(95);
+        expect(findExpressionDisagreements(cmp.diffs), tag).toEqual([`${prefix}${c.expectedSuffix}`]);
+        expect(outcome, tag).toEqual({
+          status: "machine_read",
+          stopReasons: [EXPRESSION_DISAGREEMENT_REASON],
+        });
+      }
+
+      // Kind mismatch and null vs Expr in both places
+      const kindPair = makePlacePages(
+        place,
+        { kind: "arith", op: "add", operands: [2, 3] },
+        { kind: "missing", op: "add", operands: [2, null], result: 5 },
+      );
+      const kindRes = decide(kindPair.a, kindPair.b);
+      expect(findExpressionDisagreements(kindRes.cmp.diffs), `${place}:kind`).toEqual([`${kindPair.prefix}.kind`]);
+      expect(kindRes.outcome, `${place}:kind`).toEqual({
+        status: "machine_read",
+        stopReasons: [EXPRESSION_DISAGREEMENT_REASON],
+      });
+
+      const nullPair = makePlacePages(place, { kind: "arith", op: "add", operands: [2, 3] }, null);
+      const nullRes = decide(nullPair.a, nullPair.b);
+      expect(findExpressionDisagreements(nullRes.cmp.diffs), `${place}:null`).toEqual([nullPair.prefix]);
+      expect(nullRes.outcome, `${place}:null`).toEqual({
+        status: "machine_read",
+        stopReasons: [EXPRESSION_DISAGREEMENT_REASON],
+      });
+
+      // Direct order difference on an expression path also stops (E1).
+      const orderPath = `${kindPair.prefix}.operands`;
+      expect(
+        findExpressionDisagreements([{ path: orderPath, a: [2, 3], b: [3, 2], kind: "order" }]),
+        `${place}:order`,
+      ).toEqual([orderPath]);
+      expect(
+        decidePageOutcome({
+          hasA: true,
+          hasB: true,
+          familyA: "codex",
+          familyB: "claude",
+          sameDigest: true,
+          diffs: [{ path: orderPath, a: [2, 3], b: [3, 2], kind: "order" }],
+          counts: { agreed: 19, compared: 20 },
+        }),
+        `${place}:order`,
+      ).toEqual({ status: "machine_read", stopReasons: [EXPRESSION_DISAGREEMENT_REASON] });
+    }
+
+    // Must-pass controls: equal expressions after compare's normalisations stay double_read.
+    const normCases: Array<{ label: string; a: Expr; b: Expr }> = [
+      {
+        label: "notation latex spacing and operator normalisation",
+        a: { kind: "notation", latex: "2 × 3" },
+        b: { kind: "notation", latex: "2  \\times  3" },
+      },
+      {
+        label: "notation figure prose normalisation",
+        a: { kind: "notation", latex: "x = 1", figure: "Shaded bar." },
+        b: { kind: "notation", latex: "x = 1", figure: "shaded   bar" },
+      },
+      {
+        label: "word text and unit prose normalisation",
+        a: { kind: "word", text: "Find the total.", expr: { kind: "arith", op: "add", operands: [2, 3] }, unit: "Apples." },
+        b: { kind: "word", text: "find  the total", expr: { kind: "arith", op: "add", operands: [2, 3] }, unit: "apples" },
+      },
+      {
+        label: "linked connector prose normalisation",
+        a: {
+          kind: "linked",
+          pair: [
+            { kind: "arith", op: "add", operands: [2, 3] },
+            { kind: "arith", op: "sub", operands: [5, 3] },
+          ],
+          connector: "Then.",
+        },
+        b: {
+          kind: "linked",
+          pair: [
+            { kind: "arith", op: "add", operands: [2, 3] },
+            { kind: "arith", op: "sub", operands: [5, 3] },
+          ],
+          connector: "then",
+        },
+      },
+    ];
+    for (const nc of normCases) {
+      for (const place of ["item", "example_part"] as const) {
+        const { a, b } = makePlacePages(place, nc.a, nc.b);
+        const res = decide(a, b);
+        expect(res.cmp.diffs, `${place}:${nc.label}`).toEqual([]);
+        expect(findExpressionDisagreements(res.cmp.diffs), `${place}:${nc.label}`).toEqual([]);
+        expect(res.outcome, `${place}:${nc.label}`).toEqual({ status: "double_read", stopReasons: [] });
+      }
+    }
+
+    // Must-pass controls: wording on expr.figure (same figure, same numbers and math symbols) never stops a page.
+    const wordingCases: Array<{ label: string; a: Expr; b: Expr; suffix: string }> = [
+      {
+        label: "notation figure wording",
+        a: { kind: "notation", latex: "x + 1", figure: "Bar with 4 squares" },
+        b: { kind: "notation", latex: "x + 1", figure: "Strip of 4 boxes" },
+        suffix: ".figure",
+      },
+      {
+        label: "word nested notation figure wording",
+        a: { kind: "word", text: "Find x", expr: { kind: "notation", latex: "x + 1", figure: "Circle with 2 halves" } },
+        b: { kind: "word", text: "Find x", expr: { kind: "notation", latex: "x + 1", figure: "Round shape in 2 parts" } },
+        suffix: ".expr.figure",
+      },
+      {
+        label: "linked nested notation figure wording",
+        a: {
+          kind: "linked",
+          pair: [
+            { kind: "notation", latex: "x + 1", figure: "Bar with 3 boxes" },
+            { kind: "arith", op: "add", operands: [1, 2] },
+          ],
+        },
+        b: {
+          kind: "linked",
+          pair: [
+            { kind: "notation", latex: "x + 1", figure: "Strip showing 3 boxes" },
+            { kind: "arith", op: "add", operands: [1, 2] },
+          ],
+        },
+        suffix: ".pair[0].figure",
+      },
+    ];
+    for (const wc of wordingCases) {
+      for (const place of ["item", "example_part"] as const) {
+        const tag = `${place}:${wc.label}`;
+        const { a, b, prefix } = makePlacePages(place, wc.a, wc.b);
+        const only = decide(a, b);
+        expect(only.cmp.diffs.map((d) => [d.path, d.kind]), tag).toEqual([[`${prefix}${wc.suffix}`, "wording"]]);
+        expect(only.cmp.counts.agreed, tag).toBe(only.cmp.counts.compared);
+        expect(findExpressionDisagreements(only.cmp.diffs), tag).toEqual([]);
+        expect(only.outcome, tag).toEqual({ status: "double_read", stopReasons: [] });
+
+        // At 99% (one more difference, outside expr) the page stays agreement_accepted.
+        b.sections[0].instruction = "Subtract.";
+        const at99 = decide(a, b);
+        expect(at99.cmp.diffs.map((d) => d.kind).sort(), tag).toEqual(["value", "wording"]);
+        expect(agreementPercentage(at99.cmp.counts.agreed, at99.cmp.counts.compared), tag).toBeGreaterThanOrEqual(99);
+        expect(findExpressionDisagreements(at99.cmp.diffs), tag).toEqual([]);
+        expect(at99.outcome, tag).toEqual({ status: "agreement_accepted", stopReasons: [] });
+      }
+    }
+
+    // Must-pass controls: differences and wording outside expr, plus paths containing "expr" elsewhere.
+    const outsideBase = makeGridPage(12);
+    outsideBase.examples = [
+      {
+        position: "top",
+        relation: "compare",
+        parts: [{ form: "horizontal", caption: "Part A", expr: { kind: "arith", op: "add", operands: [2, 3] }, shown_answer: "5" }],
+        steps: [{ n: 1, shows: "setup", printed: "2 + 3" }],
+        marks: [{ kind: "box", step: 1, description: "Box around 2" }],
+      },
+    ];
+    const outsideDiff = structuredClone(outsideBase);
+    outsideDiff.topic.title = "expr heading";
+    outsideDiff.sections[0].items[0].printed = "2 + 3 = ?";
+    if (Array.isArray(outsideDiff.examples)) {
+      outsideDiff.examples[0].parts[0].caption = "Part B";
+      if (Array.isArray(outsideDiff.examples[0].marks)) {
+        outsideDiff.examples[0].marks[0].description = "Frame around 2";
+      }
+    }
+    const outsideRes = decide(outsideBase, outsideDiff);
+    expect(findExpressionDisagreements(outsideRes.cmp.diffs)).toEqual([]);
+    expect(outsideRes.outcome).toEqual({ status: "agreement_accepted", stopReasons: [] });
+
+    // Wording outside expr only -> double_read.
+    const nonExprWordingB = structuredClone(outsideBase);
+    if (Array.isArray(nonExprWordingB.examples) && Array.isArray(nonExprWordingB.examples[0].marks)) {
+      nonExprWordingB.examples[0].marks[0].description = "Frame around 2";
+    }
+    const nonExprWordingRes = decide(outsideBase, nonExprWordingB);
+    expect(findExpressionDisagreements(nonExprWordingRes.cmp.diffs)).toEqual([]);
+    expect(nonExprWordingRes.outcome).toEqual({ status: "double_read", stopReasons: [] });
+
+    // Paths that merely contain the substring "expr" elsewhere never match.
+    const decoyPaths = [
+      "expr",
+      "topic.expr",
+      "sections[0].items[n=1].expr_note",
+      "sections[0].scaffolds[0].expr",
+      "examples[0].expr",
+      "examples[0].parts[0].expression",
+      "examples[0].steps[n=1].expr",
+      "topics[n=1].expr",
+    ];
+    expect(
+      findExpressionDisagreements(
+        decoyPaths.map((path) => ({ path, a: "expr A", b: "expr B", kind: "value" as const })),
+      ),
+    ).toEqual([]);
+  });
+
+  it("stops on any one-reader-only or unmatched container holding an expression (even with no answer) and passes entries with no expression", () => {
+    const exprItemNoAns = {
+      n: 99,
+      printed: "2 + 3",
+      form: "horizontal" as const,
+      expr: { kind: "arith" as const, op: "add" as const, operands: [2, 3] },
+      responses: [{ position: "work_area" as const, cue: null, answer: null, answer_source: "unchecked" as const }],
+    };
+    const nullExprItem = {
+      n: 99,
+      printed: "Read aloud",
+      form: null,
+      expr: null,
+      responses: [{ position: "checkbox" as const, cue: null, answer: null, answer_source: "unchecked" as const }],
+    };
+    const exprPartNoAns = {
+      form: "horizontal" as const,
+      expr: { kind: "arith" as const, op: "add" as const, operands: [1, 2] },
+    };
+    const nullExprPart = {
+      form: "horizontal" as const,
+      expr: null,
+    };
+    const exprExampleNoAns = {
+      position: "top" as const,
+      relation: "compare" as const,
+      parts: [exprPartNoAns],
+      steps: [{ n: 1, shows: "setup" as const, printed: "1 + 2" }],
+      marks: [],
+    };
+    const nullExprExample = {
+      position: "top" as const,
+      relation: "compare" as const,
+      parts: [nullExprPart],
+      steps: [{ n: 1, shows: "setup" as const, printed: "Read" }],
+      marks: [],
+    };
+    const exprSection = { instruction: "Extra.", scaffolds: [], items: [exprItemNoAns] };
+    const nullExprSection = { instruction: "Extra.", scaffolds: [], items: [nullExprItem] };
+
+    // Real compareRecordsWithCounts cases at >= 90% agreement (and with NO answer in the one-sided entry)
+    const realContainerCases: Array<{
+      label: string;
+      mutateB: (b: PageRecord) => void;
+      expectedExprPaths: string[];
+      expectedStatus: "machine_read" | "agreement_accepted";
+    }> = [
+      {
+        label: "one-sided section with expr (no answer)",
+        mutateB: (b) => {
+          b.sections.push(exprSection);
+        },
+        expectedExprPaths: ["sections[1]"],
+        expectedStatus: "machine_read",
+      },
+      {
+        label: "one-sided section with only expr: null",
+        mutateB: (b) => {
+          b.sections.push(nullExprSection);
+        },
+        expectedExprPaths: [],
+        expectedStatus: "agreement_accepted",
+      },
+      {
+        label: "one-sided item with expr (no answer)",
+        mutateB: (b) => {
+          b.sections[0].items.push(exprItemNoAns);
+        },
+        expectedExprPaths: ["sections[0].items[n=99]"],
+        expectedStatus: "machine_read",
+      },
+      {
+        label: "one-sided item with expr: null",
+        mutateB: (b) => {
+          b.sections[0].items.push(nullExprItem);
+        },
+        expectedExprPaths: [],
+        expectedStatus: "agreement_accepted",
+      },
+      {
+        label: "one-sided example with expr (no answer)",
+        mutateB: (b) => {
+          b.examples = [exprExampleNoAns];
+        },
+        expectedExprPaths: ["examples[b:0]"],
+        expectedStatus: "machine_read",
+      },
+      {
+        label: "one-sided example with expr: null",
+        mutateB: (b) => {
+          b.examples = [nullExprExample];
+        },
+        expectedExprPaths: [],
+        expectedStatus: "agreement_accepted",
+      },
+      {
+        label: "one-sided example part with expr (no answer)",
+        mutateB: (b) => {
+          if (Array.isArray(b.examples)) {
+            b.examples[0].parts.push(exprPartNoAns);
+          }
+        },
+        expectedExprPaths: ["examples[0].parts[1]"],
+        expectedStatus: "machine_read",
+      },
+      {
+        label: "one-sided example part with expr: null",
+        mutateB: (b) => {
+          if (Array.isArray(b.examples)) {
+            b.examples[0].parts.push(nullExprPart);
+          }
+        },
+        expectedExprPaths: [],
+        expectedStatus: "agreement_accepted",
+      },
+      {
+        label: "examples list with expr vs unclear sentinel",
+        mutateB: (b) => {
+          b.examples = UNCLEAR;
+        },
+        expectedExprPaths: ["examples"],
+        expectedStatus: "machine_read",
+      },
+      {
+        label: "item order diff on sections[0].items is not an expression disagreement",
+        mutateB: (b) => {
+          const [first, second, ...rest] = b.sections[0].items;
+          b.sections[0].items = [second, first, ...rest];
+        },
+        expectedExprPaths: [],
+        expectedStatus: "agreement_accepted",
+      },
+    ];
+
+    for (const c of realContainerCases) {
+      const a = makeGridPage(12);
+      if (c.label.includes("example part") || c.label.includes("examples list")) {
+        a.examples = [structuredClone(exprExampleNoAns)];
+      }
+      const b = structuredClone(a);
+      c.mutateB(b);
+      const cmp = compareRecordsWithCounts(a, b);
+      expect(agreementPercentage(cmp.counts.agreed, cmp.counts.compared), c.label).toBeGreaterThanOrEqual(90);
+      expect(findAnswerDisagreements(cmp.diffs, { a, b }), `${c.label}: no answer diff`).toEqual([]);
+      expect(findExpressionDisagreements(cmp.diffs), c.label).toEqual(c.expectedExprPaths);
+      const outcome = decidePageOutcome({
+        hasA: true,
+        hasB: true,
+        familyA: "codex",
+        familyB: "claude",
+        sameDigest: true,
+        diffs: cmp.diffs,
+        counts: cmp.counts,
+        recordA: a,
+        recordB: b,
+      });
+      expect(outcome.status, c.label).toBe(c.expectedStatus);
+      if (c.expectedStatus === "machine_read") {
+        expect(outcome.stopReasons, c.label).toEqual([EXPRESSION_DISAGREEMENT_REASON]);
+      } else {
+        expect(outcome.stopReasons, c.label).toEqual([]);
+      }
+    }
+
+    // Containing lists (sections, sections[i].items, examples, examples[i].parts) with and without expr.
+    const listContainerCases: Array<{
+      label: string;
+      path: string;
+      withExpr: unknown;
+      withoutExpr: unknown;
+    }> = [
+      { label: "sections list", path: "sections", withExpr: [exprSection], withoutExpr: [nullExprSection] },
+      { label: "items list", path: "sections[0].items", withExpr: [exprItemNoAns], withoutExpr: [nullExprItem] },
+      { label: "examples list", path: "examples", withExpr: [exprExampleNoAns], withoutExpr: [nullExprExample] },
+      { label: "example parts list", path: "examples[0].parts", withExpr: [exprPartNoAns], withoutExpr: [nullExprPart] },
+    ];
+    for (const lc of listContainerCases) {
+      expect(
+        findExpressionDisagreements([{ path: lc.path, a: lc.withExpr, b: null, kind: "value" }]),
+        `${lc.label}: with expr`,
+      ).toEqual([lc.path]);
+      expect(
+        findExpressionDisagreements([{ path: lc.path, a: null, b: lc.withExpr, kind: "once_read" }]),
+        `${lc.label}: b-only with expr`,
+      ).toEqual([lc.path]);
+      expect(
+        findExpressionDisagreements([{ path: lc.path, a: lc.withoutExpr, b: null, kind: "value" }]),
+        `${lc.label}: without expr`,
+      ).toEqual([]);
+    }
+  });
+
+  it("gives missing items and contents topics their insertion location in the final record", () => {
+    const makeItemsPage = (ns: number[]): PageRecord =>
+      makePage({
+        sections: [
+          {
+            instruction: "Add.",
+            scaffolds: [],
+            items: ns.map((n) => ({
+              n,
+              printed: `${n} + 1 =`,
+              form: "horizontal" as const,
+              expr: { kind: "arith" as const, op: "add" as const, operands: [n, 1] },
+              responses: [
+                { position: "after_equals" as const, cue: null, answer: String(n + 1), answer_source: "computed" as const },
+              ],
+            })),
+          },
+        ],
+      });
+
+    // Reader-B-only numbered items: no final_path, no insert_before; exact neighbours in reader B's list.
+    const itemStart = classifyComparison(makeItemsPage([2, 3]), makeItemsPage([1, 2, 3]));
+    expect(itemStart.differences).toHaveLength(1);
+    expect(itemStart.differences[0]).toMatchObject({
+      path: "sections[0].items[n=1]",
+      reader: "b",
+      reader_b_after: null,
+      reader_b_before: 2,
+    });
+    expect(itemStart.differences[0].final_path).toBeUndefined();
+    expect(itemStart.differences[0].insert_before).toBeUndefined();
+
+    const itemMid = classifyComparison(makeItemsPage([1, 3]), makeItemsPage([1, 2, 3]));
+    expect(itemMid.differences[0]).toMatchObject({
+      path: "sections[0].items[n=2]",
+      reader: "b",
+      reader_b_after: 1,
+      reader_b_before: 3,
+    });
+    expect(itemMid.differences[0].final_path).toBeUndefined();
+    expect(itemMid.differences[0].insert_before).toBeUndefined();
+
+    const itemEnd = classifyComparison(makeItemsPage([1, 2]), makeItemsPage([1, 2, 3]));
+    expect(itemEnd.differences[0]).toMatchObject({
+      path: "sections[0].items[n=3]",
+      reader: "b",
+      reader_b_after: 2,
+      reader_b_before: null,
+    });
+    expect(itemEnd.differences[0].final_path).toBeUndefined();
+    expect(itemEnd.differences[0].insert_before).toBeUndefined();
+
+    // Only item in reader B's list
+    const itemOnly = classifyComparison(makeItemsPage([2, 3]), makeItemsPage([1]));
+    const onlyDiff = itemOnly.differences.find((d) => d.path === "sections[0].items[n=1]");
+    expect(onlyDiff).toMatchObject({
+      path: "sections[0].items[n=1]",
+      reader: "b",
+      reader_b_after: null,
+      reader_b_before: null,
+    });
+    expect(onlyDiff?.final_path).toBeUndefined();
+    expect(onlyDiff?.insert_before).toBeUndefined();
+
+    // Present only in reader A: keeps exact final_path resolving to reader A's entry
+    const aOnlyPage = makeItemsPage([1, 2, 3]);
+    const itemAOnly = classifyComparison(aOnlyPage, makeItemsPage([2, 3]));
+    expect(itemAOnly.differences[0]).toMatchObject({
+      path: "sections[0].items[n=1]",
+      reader: "a",
+      final_path: "sections[0].items[0]",
+    });
+    expect(resolveDiffPath(aOnlyPage, itemAOnly.differences[0].final_path!).value).toEqual(
+      itemAOnly.differences[0].a,
+    );
+
+    const makeContents = (ns: number[]): ContentsRecord => ({
+      kind: "contents",
+      source_ref: "sample:M:contents",
+      topics: ns.map((n) => ({ n, title: `Topic ${n}`, sheets: [n, n], std_time_min: [1, 2] })),
+    });
+
+    const topicStart = classifyComparison(makeContents([2, 3, 4]), makeContents([1, 2, 3, 4]));
+    expect(topicStart.differences[0]).toMatchObject({
+      path: "topics[n=1]",
+      reader: "b",
+      reader_b_after: null,
+      reader_b_before: 2,
+    });
+    expect(topicStart.differences[0].final_path).toBeUndefined();
+    expect(topicStart.differences[0].insert_before).toBeUndefined();
+
+    const topicMid = classifyComparison(makeContents([1, 2, 4]), makeContents([1, 2, 3, 4]));
+    expect(topicMid.differences[0]).toMatchObject({
+      path: "topics[n=3]",
+      reader: "b",
+      reader_b_after: 2,
+      reader_b_before: 4,
+    });
+    expect(topicMid.differences[0].final_path).toBeUndefined();
+
+    const topicEnd = classifyComparison(makeContents([1, 2, 3]), makeContents([1, 2, 3, 4]));
+    expect(topicEnd.differences[0]).toMatchObject({
+      path: "topics[n=4]",
+      reader: "b",
+      reader_b_after: 3,
+      reader_b_before: null,
+    });
+    expect(topicEnd.differences[0].final_path).toBeUndefined();
+
+    const contentsAOnly = makeContents([1, 2, 3]);
+    const topicAOnly = classifyComparison(contentsAOnly, makeContents([2, 3]));
+    expect(topicAOnly.differences[0]).toMatchObject({
+      path: "topics[n=1]",
+      reader: "a",
+      final_path: "topics[0]",
+    });
+    expect(resolveDiffPath(contentsAOnly, topicAOnly.differences[0].final_path!).value).toEqual(
+      topicAOnly.differences[0].a,
+    );
+
+    // Non-ascending reader B list and item numbers above 16 report reader B's actual printed neighbours
+    const descendingItems = classifyComparison(makeItemsPage([3, 1]), makeItemsPage([3, 2, 1]));
+    const descDiff = descendingItems.differences.find((d) => d.path === "sections[0].items[n=2]");
+    expect(descDiff).toMatchObject({
+      path: "sections[0].items[n=2]",
+      reader: "b",
+      reader_b_after: 3,
+      reader_b_before: 1,
+    });
+    expect(descDiff?.final_path).toBeUndefined();
+    expect(descDiff?.insert_before).toBeUndefined();
+
+    const highItems = classifyComparison(makeItemsPage([15, 22]), makeItemsPage([15, 19, 22, 30]));
+    expect(highItems.differences.find((d) => d.path === "sections[0].items[n=19]")).toMatchObject({
+      reader: "b",
+      reader_b_after: 15,
+      reader_b_before: 22,
+    });
+    expect(highItems.differences.find((d) => d.path === "sections[0].items[n=30]")).toMatchObject({
+      reader: "b",
+      reader_b_after: 22,
+      reader_b_before: null,
+    });
+
+    // Independent parent-object existence check for "[]" append paths (not using the kit's resolver).
+    // The list property itself may be absent (the person creates it), but its parent object must exist.
+    const parentObjectExistsForAppend = (record: unknown, appendPath: string): boolean => {
+      if (!appendPath.endsWith("[]")) return false;
+      const listPath = appendPath.slice(0, -2);
+      const tokenRe = /([A-Za-z_][A-Za-z0-9_]*)|\[(\d+)\]/g;
+      const tokens: Array<{ kind: "prop"; name: string } | { kind: "index"; idx: number }> = [];
+      let matchedLen = 0;
+      for (const m of listPath.matchAll(tokenRe)) {
+        matchedLen += m[0].length + (m[1] !== undefined && tokens.length > 0 ? 1 : 0);
+        if (m[1] !== undefined) tokens.push({ kind: "prop", name: m[1] });
+        else if (m[2] !== undefined) tokens.push({ kind: "index", idx: Number(m[2]) });
+      }
+      if (matchedLen !== listPath.length || tokens.length === 0) return false;
+      const last = tokens[tokens.length - 1];
+      if (last.kind !== "prop") return false;
+      let node: unknown = record;
+      for (let i = 0; i < tokens.length - 1; i += 1) {
+        const tok = tokens[i];
+        if (tok.kind === "prop") {
+          if (typeof node !== "object" || node === null || Array.isArray(node)) return false;
+          if (!Object.hasOwn(node, tok.name)) return false;
+          node = (node as Record<string, unknown>)[tok.name];
+        } else {
+          if (!Array.isArray(node) || tok.idx < 0 || tok.idx >= node.length) return false;
+          node = node[tok.idx];
+        }
+      }
+      if (typeof node !== "object" || node === null || Array.isArray(node)) return false;
+      const listVal = (node as Record<string, unknown>)[last.name];
+      return listVal === undefined || Array.isArray(listVal);
+    };
+
+    // Absent optional lists (steps/marks omitted on reader A's example): parent object examples[0] exists.
+    const absentListA = makeItemsPage([1]);
+    absentListA.examples = [{ position: "top", relation: "sequence", parts: [{ form: "horizontal", expr: null }] }];
+    const absentListB = makeItemsPage([1]);
+    absentListB.examples = [
+      {
+        position: "top",
+        relation: "sequence",
+        parts: [{ form: "horizontal", expr: null }],
+        steps: [{ n: 1, shows: "answer", printed: "5" }],
+        marks: [{ kind: "box", step: 1, description: "Box" }],
+      },
+    ];
+    const absentSummary = classifyComparison(absentListA, absentListB);
+    expect(absentSummary.once_read.map((d) => d.final_path)).toEqual([
+      "examples[0].steps[]",
+      "examples[0].marks[]",
+    ]);
+    for (const d of absentSummary.once_read) {
+      expect(parentObjectExistsForAppend(absentListA, d.final_path!)).toBe(true);
+    }
+
+    // Property over random items (including numbers above 16), once-read scaffolds, steps, and marks:
+    // - reader-B-only numbered items give exact neighbours and no final_path or insert_before;
+    // - step alignment insertion positions and scaffold/mark append paths match independent
+    //   expectations computed directly from the generated lists (not from the kit's resolver);
+    // - every "[]" path has an existing parent object in recA; every non-"[]" final_path resolves.
+    const scaffoldPool: Scaffold[] = [
+      { kind: "caption", applies_to: "all", text: "Hint A" },
+      { kind: "arrow", applies_to: [1], from: "left", to: "right", label: "next" },
+      { kind: "helper_digit", applies_to: [2], description: "Small 1 above tens" },
+      { kind: "partial_working", applies_to: "all", description: "First step shown" },
+    ];
+    const stepPool: Array<{ shows: ExampleStep["shows"]; printed: string }> = [
+      { shows: "setup", printed: "2 + 3" },
+      { shows: "partial_sum", printed: "2 + 2 + 1" },
+      { shows: "carry", printed: "10" },
+      { shows: "answer", printed: "5" },
+      { shows: "check", printed: "5 - 3 = 2" },
+    ];
+    const markKindArb = fc.constantFrom<ExampleMark["kind"]>("box", "circle", "underline", "bracket");
+
+    fc.assert(
+      fc.property(
+        fc.uniqueArray(fc.integer({ min: 1, max: 60 }), { minLength: 1, maxLength: 10 }),
+        fc.uniqueArray(fc.integer({ min: 1, max: 60 }), { minLength: 1, maxLength: 10 }),
+        fc.subarray([0, 1, 2, 3]),
+        fc.subarray([0, 1, 2, 3]),
+        fc.subarray([0, 1, 2, 3, 4], { minLength: 1 }),
+        fc.subarray([0, 1, 2, 3, 4], { minLength: 1 }),
+        fc.array(fc.record({ kind: markKindArb, stepSlot: fc.integer({ min: 0, max: 4 }) }), { maxLength: 3 }),
+        fc.array(fc.record({ kind: markKindArb, stepSlot: fc.integer({ min: 0, max: 4 }) }), { maxLength: 3 }),
+        (aNs, bNs, aScIdx, bScIdx, aStepIdx, bStepIdx, aRawMarks, bRawMarks) => {
+          const buildSteps = (idxs: number[]): ExampleStep[] =>
+            idxs.map((poolIdx, pos) => ({ n: pos + 1, ...stepPool[poolIdx] }));
+          const buildMarks = (
+            raw: Array<{ kind: ExampleMark["kind"]; stepSlot: number }>,
+            stepCount: number,
+          ): ExampleMark[] =>
+            raw.map((m, idx) => ({
+              kind: m.kind,
+              step: (m.stepSlot % stepCount) + 1,
+              description: `Mark ${idx + 1}`,
+            }));
+          const aSteps = buildSteps(aStepIdx);
+          const bSteps = buildSteps(bStepIdx);
+          const recA = makeItemsPage(aNs);
+          const recB = makeItemsPage(bNs);
+          recA.sections[0].scaffolds = aScIdx.map((i) => structuredClone(scaffoldPool[i]));
+          recB.sections[0].scaffolds = bScIdx.map((i) => structuredClone(scaffoldPool[i]));
+          recA.examples = [
+            {
+              position: "top",
+              relation: "sequence",
+              parts: [{ form: "horizontal", expr: null }],
+              steps: aSteps,
+              marks: buildMarks(aRawMarks, aSteps.length),
+            },
+          ];
+          recB.examples = [
+            {
+              position: "top",
+              relation: "sequence",
+              parts: [{ form: "horizontal", expr: null }],
+              steps: bSteps,
+              marks: buildMarks(bRawMarks, bSteps.length),
+            },
+          ];
+          const summary = classifyComparison(recA, recB);
+          const aSet = new Set(aNs);
+          const bIndexByN = new Map(bNs.map((n, idx) => [n, idx]));
+          for (const d of summary.differences) {
+            const m = /^sections\[0\]\.items\[n=(\d+)\]$/.exec(d.path);
+            if (!m) continue;
+            const n = Number(m[1]);
+            if (!aSet.has(n)) {
+              const idx = bIndexByN.get(n)!;
+              expect(d.reader).toBe("b");
+              expect(d.final_path).toBeUndefined();
+              expect(d.insert_before).toBeUndefined();
+              expect(d.reader_b_after).toBe(idx > 0 ? bNs[idx - 1] : null);
+              expect(d.reader_b_before).toBe(idx + 1 < bNs.length ? bNs[idx + 1] : null);
+            } else {
+              expect(d.reader).toBe("a");
+              expect(d.final_path).toBeDefined();
+              expect(d.insert_before).toBeUndefined();
+              expect(resolveDiffPath(recA, d.final_path!).value).toEqual(d.a);
+            }
+          }
+
+          // Independent expected step insertion positions from the strictly ascending unique pool indices:
+          // anchors are the exact set intersection in order; gaps pair positionally; extra B steps
+          // insert before the next anchor in A, or append with "[]" after the last anchor.
+          const anchors: Array<[number, number]> = [];
+          for (let ai = 0; ai < aStepIdx.length; ai += 1) {
+            const bi = bStepIdx.indexOf(aStepIdx[ai]);
+            if (bi !== -1) anchors.push([ai, bi]);
+          }
+          const expectedBOnlySteps = new Map<
+            number,
+            { insert_before: number | undefined; final_path: string }
+          >();
+          let prevA = 0;
+          let prevB = 0;
+          for (const [nextA, nextB] of [...anchors, [aStepIdx.length, bStepIdx.length] as [number, number]]) {
+            const paired = Math.min(nextA - prevA, nextB - prevB);
+            for (let k = paired; k < nextB - prevB; k += 1) {
+              const bIdx = prevB + k;
+              const beforeA = nextA < aStepIdx.length ? nextA : undefined;
+              expectedBOnlySteps.set(bIdx, {
+                insert_before: beforeA,
+                final_path:
+                  beforeA !== undefined ? `examples[0].steps[${beforeA}]` : "examples[0].steps[]",
+              });
+            }
+            prevA = nextA + 1;
+            prevB = nextB + 1;
+          }
+          const actualBOnlySteps = summary.once_read.filter((d) =>
+            /^examples\[0\]\.steps\[b:\d+\]$/.test(d.path),
+          );
+          expect(actualBOnlySteps).toHaveLength(expectedBOnlySteps.size);
+          for (const d of actualBOnlySteps) {
+            const bIdx = Number(/^examples\[0\]\.steps\[b:(\d+)\]$/.exec(d.path)![1]);
+            const exp = expectedBOnlySteps.get(bIdx);
+            expect(exp).toBeDefined();
+            expect(d.reader).toBe("b");
+            expect(d.insert_before).toBe(exp!.insert_before);
+            expect(d.final_path).toBe(exp!.final_path);
+          }
+
+          // Independent expected scaffold appends: each scaffold in scaffoldPool has a unique kind,
+          // so B-only scaffolds are exactly those whose pool index is absent from aScIdx.
+          const aScSet = new Set(aScIdx);
+          const expectedBOnlyScaffolds = bScIdx
+            .map((poolIdx, bIdx) => (aScSet.has(poolIdx) ? null : bIdx))
+            .filter((bIdx): bIdx is number => bIdx !== null);
+          const actualBOnlyScaffolds = summary.once_read.filter((d) =>
+            /^sections\[0\]\.scaffolds\[b:\d+\]$/.test(d.path),
+          );
+          expect(actualBOnlyScaffolds.map((d) => d.path)).toEqual(
+            expectedBOnlyScaffolds.map((bIdx) => `sections[0].scaffolds[b:${bIdx}]`),
+          );
+          for (const d of actualBOnlyScaffolds) {
+            expect(d.reader).toBe("b");
+            expect(d.insert_before).toBeUndefined();
+            expect(d.final_path).toBe("sections[0].scaffolds[]");
+          }
+
+          const allLists = [
+            ...summary.differences,
+            ...summary.once_read,
+            ...summary.wording,
+            ...summary.both_unclear,
+            ...summary.one_unclear,
+            ...summary.empty_answer,
+          ];
+          for (const d of allLists) {
+            if (d.final_path === undefined) continue;
+            if (d.insert_before !== undefined) {
+              expect(recordPathResolves(recA, d.final_path)).toBe(true);
+              expect(d.final_path.endsWith(`[${d.insert_before}]`)).toBe(true);
+            } else if (d.final_path.endsWith("[]")) {
+              expect(parentObjectExistsForAppend(recA, d.final_path), d.final_path).toBe(true);
+            } else {
+              expect(recordPathResolves(recA, d.final_path)).toBe(true);
+              if (d.reader === "a") {
+                expect(resolveDiffPath(recA, d.final_path).value).toEqual(d.a);
+              }
+            }
+          }
+        },
+      ),
+      { numRuns: 150 },
+    );
+  });
+
+  it("stops a page at any agreement percentage when readers disagree on page identity (source_ref or kind)", () => {
+    const makeSizedPage = (sourceRef: string, itemCount: number): PageRecord =>
+      makePage({
+        source_ref: sourceRef,
+        sections: [
+          {
+            instruction: "Add.",
+            scaffolds: [],
+            items: Array.from({ length: itemCount }, (_, i) => ({
+              n: i + 1,
+              printed: `${i + 1} + 1 =`,
+              form: "horizontal" as const,
+              expr: { kind: "arith" as const, op: "add" as const, operands: [i + 1, 1] },
+              responses: [
+                { position: "after_equals" as const, cue: null, answer: String(i + 2), answer_source: "computed" as const },
+              ],
+            })),
+          },
+        ],
+      });
+
+    const decide = (a: ReferenceRecord, b: ReferenceRecord) => {
+      const cmp = compareRecordsWithCounts(a, b);
+      const outcome = decidePageOutcome({
+        hasA: true,
+        hasB: true,
+        familyA: "codex",
+        familyB: "claude",
+        diffs: cmp.diffs,
+        counts: cmp.counts,
+        sameDigest: true,
+        recordA: a,
+        recordB: b,
+      });
+      return { cmp, outcome };
+    };
+
+    // Equal ids with a non-identity diff at >= 90% passes
+    const sameA = makeSizedPage("sample:M:7a", 3);
+    const sameB = makeSizedPage("sample:M:7a", 3);
+    sameB.topic.title = "Different heading";
+    const sameRes = decide(sameA, sameB);
+    expect(agreementPercentage(sameRes.cmp.counts.agreed, sameRes.cmp.counts.compared)).toBeGreaterThanOrEqual(95);
+    expect(sameRes.outcome).toEqual({ status: "agreement_accepted", stopReasons: [] });
+
+    // Nested `.kind` diff (not top-level page kind) does not trigger page identity stop
+    const nestedA = makeSizedPage("sample:M:7a", 3);
+    const nestedB = makeSizedPage("sample:M:7a", 3);
+    nestedA.sections[0].scaffolds = [{ kind: "arrow", applies_to: "all", from: "top", to: "bottom" }];
+    nestedB.sections[0].scaffolds = [{ kind: "caption", applies_to: "all", text: "Hint" }];
+    const nestedRes = decide(nestedA, nestedB);
+    expect(nestedRes.outcome.stopReasons).not.toContain("readers disagree on the page");
+
+    // Table of page identity differences: side (95% and 99%), level, sheet, source, kind
+    const identityCases: Array<{
+      label: string;
+      a: ReferenceRecord;
+      b: ReferenceRecord;
+      minPct?: number;
+    }> = [
+      {
+        label: "7a vs 7b at >= 95%",
+        a: makeSizedPage("sample:M:7a", 3),
+        b: makeSizedPage("sample:M:7b", 3),
+        minPct: 95,
+      },
+      {
+        label: "7a vs 7b at >= 99%",
+        a: makeSizedPage("sample:M:7a", 15),
+        b: makeSizedPage("sample:M:7b", 15),
+        minPct: 99,
+      },
+      {
+        label: "different level",
+        a: makeSizedPage("sample:M:7a", 5),
+        b: makeSizedPage("sample:N:7a", 5),
+        minPct: 95,
+      },
+      {
+        label: "different sheet",
+        a: makeSizedPage("sample:M:7a", 5),
+        b: makeSizedPage("sample:M:8a", 5),
+        minPct: 95,
+      },
+      {
+        label: "different source",
+        a: makeSizedPage("sample:M:7a", 5),
+        b: makeSizedPage("other:M:7a", 5),
+        minPct: 95,
+      },
+      {
+        label: "different kind (page vs contents)",
+        a: makeSizedPage("sample:M:7a", 5),
+        b: {
+          kind: "contents",
+          source_ref: "sample:M:contents",
+          topics: [{ n: 1, title: "Topic 1", sheets: [1, 10], std_time_min: [1, 2] }],
+        },
+      },
+    ];
+
+    for (const c of identityCases) {
+      const { cmp, outcome } = decide(c.a, c.b);
+      if (c.minPct !== undefined) {
+        expect(agreementPercentage(cmp.counts.agreed, cmp.counts.compared), c.label).toBeGreaterThanOrEqual(
+          c.minPct,
+        );
+        // source_ref counts as exactly one disagreement in the agreement count
+        expect(cmp.counts.compared - cmp.counts.agreed, c.label).toBe(1);
+      }
+      expect(outcome.status, c.label).toBe("machine_read");
+      expect(outcome.stopReasons, c.label).toContain("readers disagree on the page");
+    }
+
+    // Different kind with artificially matching source_ref still stops
+    const kindOnly = decidePageOutcome({
+      hasA: true,
+      hasB: true,
+      familyA: "codex",
+      familyB: "claude",
+      diffs: [{ path: "kind", a: "page", b: "contents", kind: "value" }],
+      counts: { agreed: 99, compared: 100 },
+      sameDigest: true,
+    });
+    expect(kindOnly).toEqual({ status: "machine_read", stopReasons: ["readers disagree on the page"] });
+
+    // Property: any two distinct valid source_refs stop at any item count
+    fc.assert(
+      fc.property(
+        fc.constantFrom("sample", "demo"),
+        fc.constantFrom("A", "B", "M"),
+        fc.integer({ min: 1, max: 50 }),
+        fc.constantFrom("a", "b"),
+        fc.constantFrom("sample", "demo"),
+        fc.constantFrom("A", "B", "M"),
+        fc.integer({ min: 1, max: 50 }),
+        fc.constantFrom("a", "b"),
+        (s1, l1, sh1, side1, s2, l2, sh2, side2) => {
+          const ref1 = `${s1}:${l1}:${sh1}${side1}`;
+          const ref2 = `${s2}:${l2}:${sh2}${side2}`;
+          const { outcome } = decide(makeSizedPage(ref1, 4), makeSizedPage(ref2, 4));
+          if (ref1 === ref2) {
+            expect(outcome.status).toBe("double_read");
+            expect(outcome.stopReasons).toEqual([]);
+          } else {
+            expect(outcome.status).toBe("machine_read");
+            expect(outcome.stopReasons).toContain("readers disagree on the page");
+          }
+        },
+      ),
+    );
+  });
+
+  it("covers every place storing expr with an answer and every page-identity field with a stop, and guards types.ts against new uncovered expr+answer types", () => {
+    const evaluatePair = (a: ReferenceRecord, b: ReferenceRecord) => {
+      const cmp = compareRecordsWithCounts(a, b);
+      const computedA = applyComputedAnswers(a);
+      const computedB = applyComputedAnswers(b);
+      const exConflicts = collectExampleAnswerConflicts(computedA.record, a, b, {
+        finalIsFreshA: true,
+      });
+      const finalAnswerConflict =
+        computedA.details.some((d) => d.kind === "answer_differs") ||
+        exConflicts.finalMessages.length > 0;
+      const readerAnswerConflict =
+        computedB.details.some((d) => d.kind === "answer_differs") ||
+        exConflicts.readerMessages.length > 0;
+      return decidePageOutcome({
+        hasA: true,
+        hasB: true,
+        familyA: "codex",
+        familyB: "claude",
+        sameDigest: true,
+        diffs: cmp.diffs,
+        counts: cmp.counts,
+        hasAnswerConflict: finalAnswerConflict,
+        hasReaderAnswerConflict: readerAnswerConflict,
+        recordA: a,
+        recordB: b,
+      });
+    };
+
+    const pageWithWrongItemAnswer = (wrongA: boolean, wrongB: boolean) => {
+      const a = makeGridPage(5);
+      const b = makeGridPage(5);
+      if (wrongA) {
+        a.sections[0].items[0].responses[0] = {
+          position: "after_equals",
+          cue: null,
+          answer: "99",
+          answer_source: "reader",
+        };
+      }
+      if (wrongB) {
+        b.sections[0].items[0].responses[0] = {
+          position: "after_equals",
+          cue: null,
+          answer: "99",
+          answer_source: "reader",
+        };
+      }
+      return { a, b };
+    };
+
+    const pageWithWrongExampleAnswer = (wrongA: boolean, wrongB: boolean) => {
+      const makeRec = (shown: string): PageRecord => ({
+        ...makeGridPage(5),
+        examples: [
+          {
+            position: "top",
+            relation: "compare",
+            parts: [
+              {
+                form: "horizontal",
+                expr: { kind: "arith", op: "add", operands: [2, 3] },
+                shown_answer: shown,
+              },
+            ],
+          },
+        ],
+      });
+      return { a: makeRec(wrongA ? "6" : "5"), b: makeRec(wrongB ? "6" : "5") };
+    };
+
+    const guardedPlaces: Array<{
+      label: string;
+      pair: { a: ReferenceRecord; b: ReferenceRecord };
+      expectedReason: PageStopReason;
+    }> = [
+      {
+        label: "item response answer wrong on both readers (100%)",
+        pair: pageWithWrongItemAnswer(true, true),
+        expectedReason: "stored answer conflicts with computed answer",
+      },
+      {
+        label: "item response answer wrong on reader B only (>= 95%)",
+        pair: pageWithWrongItemAnswer(false, true),
+        expectedReason: READER_ANSWER_CONFLICT_REASON,
+      },
+      {
+        label: "worked-example shown_answer wrong on both readers (100%)",
+        pair: pageWithWrongExampleAnswer(true, true),
+        expectedReason: "stored answer conflicts with computed answer",
+      },
+      {
+        label: "worked-example shown_answer wrong on reader B only (>= 95%)",
+        pair: pageWithWrongExampleAnswer(false, true),
+        expectedReason: READER_ANSWER_CONFLICT_REASON,
+      },
+      {
+        label: "source_ref mismatch (>= 95%)",
+        pair: {
+          a: makePage({ source_ref: "sample:M:7a", sections: makeGridPage(5).sections }),
+          b: makePage({ source_ref: "sample:M:7b", sections: makeGridPage(5).sections }),
+        },
+        expectedReason: PAGE_IDENTITY_DISAGREEMENT_REASON,
+      },
+      {
+        label: "kind mismatch (page vs contents)",
+        pair: {
+          a: makeGridPage(5),
+          b: {
+            kind: "contents",
+            source_ref: "sample:M:3a",
+            topics: [{ n: 1, title: "Topic 1", sheets: [1, 10], std_time_min: [1, 2] }],
+          },
+        },
+        expectedReason: PAGE_IDENTITY_DISAGREEMENT_REASON,
+      },
+    ];
+
+    for (const row of guardedPlaces) {
+      const outcome = evaluatePair(row.pair.a, row.pair.b);
+      expect(outcome.status, row.label).toBe("machine_read");
+      expect(outcome.stopReasons, row.label).toContain(row.expectedReason);
+    }
+
+    // Schema-drift guard: parse src/lib/reference-record/types.ts with the TypeScript parser and
+    // verify every interface/type holding both an expr and an answer (directly or via a referenced
+    // member type) is in the covered set. Adding a new expr+answer type without wiring a stop fails.
+    // Note: intersection types (e.g. `A & B`) are out of scope for this AST guard.
+    const typesPath = resolve(process.cwd(), "src/lib/reference-record/types.ts");
+    const sourceFile = ts.createSourceFile(
+      typesPath,
+      readFileSync(typesPath, "utf8"),
+      ts.ScriptTarget.Latest,
+      true,
+    );
+
+    interface FieldInfo {
+      name: string;
+      referencedTypes: Set<string>;
+    }
+    const collectTypeRefs = (node: ts.TypeNode | undefined, out: Set<string>): void => {
+      if (!node) return;
+      if (ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName)) {
+        out.add(node.typeName.text);
+      }
+      ts.forEachChild(node, (child) => {
+        if (ts.isTypeNode(child)) collectTypeRefs(child, out);
+      });
+    };
+    const readMembers = (members: ts.NodeArray<ts.TypeElement>): FieldInfo[] => {
+      const fields: FieldInfo[] = [];
+      for (const m of members) {
+        if (!ts.isPropertySignature(m) || !m.name) continue;
+        const name = ts.isIdentifier(m.name)
+          ? m.name.text
+          : ts.isStringLiteral(m.name)
+            ? m.name.text
+            : "";
+        if (!name) continue;
+        const referencedTypes = new Set<string>();
+        collectTypeRefs(m.type, referencedTypes);
+        fields.push({ name, referencedTypes });
+      }
+      return fields;
+    };
+
+    const objectTypes = new Map<string, FieldInfo[]>();
+    const unionMembers = new Map<string, string[]>();
+    for (const stmt of sourceFile.statements) {
+      if (ts.isInterfaceDeclaration(stmt)) {
+        objectTypes.set(stmt.name.text, readMembers(stmt.members));
+      } else if (ts.isTypeAliasDeclaration(stmt)) {
+        if (ts.isTypeLiteralNode(stmt.type)) {
+          objectTypes.set(stmt.name.text, readMembers(stmt.type.members));
+        } else if (ts.isUnionTypeNode(stmt.type)) {
+          const names: string[] = [];
+          for (const member of stmt.type.types) {
+            if (ts.isTypeReferenceNode(member) && ts.isIdentifier(member.typeName)) {
+              names.push(member.typeName.text);
+            }
+          }
+          if (names.length > 0) unionMembers.set(stmt.name.text, names);
+        }
+      }
+    }
+
+    const EXPR_TYPE_NAMES = new Set(["Expr", "SimpleExpr", "ArithExpr", "ChainExpr", "MissingExpr", "WordExpr", "NotationExpr", "LinkedExpr"]);
+    const isAnswerField = (name: string): boolean => /answer/i.test(name) && name !== "answer_source";
+    const hasDirectExpr = (fields: FieldInfo[]): boolean =>
+      fields.some((f) => f.name === "expr" || [...f.referencedTypes].some((t) => EXPR_TYPE_NAMES.has(t)));
+    const hasDirectAnswer = (fields: FieldInfo[]): boolean =>
+      fields.some((f) => isAnswerField(f.name));
+    const hasAnswerWithinOneHop = (fields: FieldInfo[]): boolean =>
+      hasDirectAnswer(fields) ||
+      fields.some((f) =>
+        [...f.referencedTypes].some((refName) => {
+          const target = objectTypes.get(refName);
+          return target !== undefined && hasDirectAnswer(target);
+        }),
+      );
+
+    const typesWithExprAndAnswer: string[] = [];
+    const typesWithDirectExpr: string[] = [];
+    for (const [typeName, fields] of objectTypes) {
+      if (hasDirectExpr(fields)) {
+        typesWithDirectExpr.push(typeName);
+        if (hasAnswerWithinOneHop(fields)) {
+          typesWithExprAndAnswer.push(typeName);
+        }
+      }
+    }
+    expect(typesWithExprAndAnswer.sort()).toEqual(["ExamplePart", "PageItem"]);
+    // Guard against any new type in types.ts holding an Expr without updating findExpressionDisagreements.
+    expect(typesWithDirectExpr.sort()).toEqual(["ExamplePart", "LinkedExpr", "PageItem", "WordExpr"]);
+
+    // Also classify every top-level key of PageRecord and ContentsRecord from types.ts AST.
+    // Any new key added to either interface without an explicit classification fails here.
+    type TopLevelFieldClass =
+      | { kind: "identity" }
+      | { kind: "compared" }
+      | { kind: "not_compared"; reason: string };
+
+    const TOP_LEVEL_FIELD_CLASSES: Record<string, Record<string, TopLevelFieldClass>> = {
+      PageRecord: {
+        kind: { kind: "identity" },
+        source_ref: { kind: "identity" },
+        topic: { kind: "compared" },
+        sections: { kind: "compared" },
+        examples: { kind: "compared" },
+        score_bands: { kind: "compared" },
+        readers: {
+          kind: "not_compared",
+          reason: "reader provenance list; differs by reader slot and is merged onto the final record",
+        },
+        single_read: {
+          kind: "not_compared",
+          reason: "output-only metadata attached after comparison on agreement_accepted pages",
+        },
+      },
+      ContentsRecord: {
+        kind: { kind: "identity" },
+        source_ref: { kind: "identity" },
+        topics: { kind: "compared" },
+        readers: {
+          kind: "not_compared",
+          reason: "reader provenance list; differs by reader slot and is merged onto the final record",
+        },
+        single_read: {
+          kind: "not_compared",
+          reason: "output-only metadata attached after comparison on agreement_accepted pages",
+        },
+      },
+    };
+
+    const recordVariants = unionMembers.get("ReferenceRecord") ?? [];
+    expect(recordVariants.sort()).toEqual(["ContentsRecord", "PageRecord"]);
+    for (const variant of recordVariants) {
+      const classes = TOP_LEVEL_FIELD_CLASSES[variant];
+      expect(classes, variant).toBeDefined();
+      const fields = objectTypes.get(variant) ?? [];
+      const actualKeys = fields.map((f) => f.name).sort();
+      expect(actualKeys, `${variant} top-level keys must all be classified`).toEqual(
+        Object.keys(classes).sort(),
+      );
+      const identityKeys: string[] = [];
+      for (const [key, cls] of Object.entries(classes)) {
+        if (cls.kind === "identity") identityKeys.push(key);
+        if (cls.kind === "not_compared") {
+          expect(cls.reason.trim().length, `${variant}.${key} needs a reason`).toBeGreaterThan(0);
+        }
+      }
+      expect(identityKeys.sort(), `${variant} identity keys`).toEqual(["kind", "source_ref"]);
+    }
+  });
+
+  it("satisfies threshold and ratio invariants across arbitrary counts", () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 0, max: 500 }),
+        fc.integer({ min: 0, max: 500 }),
+        (aRaw, bRaw) => {
+          const compared = Math.max(aRaw, bRaw);
+          const agreed = Math.min(aRaw, bRaw);
+          const ratio = compared === 0 ? 0 : agreed / compared;
+          expect(ratio).toBeGreaterThanOrEqual(0);
+          expect(ratio).toBeLessThanOrEqual(1);
+          const accepted = meetsAgreementThreshold(agreed, compared);
+          expect(accepted).toBe(compared > 0 && agreed * 10 >= compared * 9);
+          const pct = agreementPercentage(agreed, compared);
+          if (compared === 0) {
+            expect(pct).toBeNull();
+          } else {
+            expect(pct).not.toBeNull();
+            expect((pct as number) >= 90).toBe(accepted);
+            expect((pct as number) === 100).toBe(agreed === compared);
+          }
+        },
+      ),
+    );
+  });
+
+  it("finds and locates an expression difference on the largest item number that a record can hold", () => {
+    const n = Number.MAX_SAFE_INTEGER;
+    const makePage = (operands: number[]): PageRecord => ({
+      kind: "page",
+      source_ref: "sample:M:3a",
+      topic: { title: "Adding" },
+      sections: [
+        {
+          instruction: "Add.",
+          scaffolds: [],
+          items: [
+            {
+              n,
+              printed: "2 + 3 =",
+              form: "horizontal",
+              expr: { kind: "arith", op: "add", operands },
+              responses: [{ position: "after_equals", cue: null, answer: "5", answer_source: "reader" }],
+            },
+          ],
+        },
+      ],
+      examples: [],
+      score_bands: [null, null, null, null, null],
+    });
+    const a = makePage([1, 4]);
+    const diffs = compareRecords(a, makePage([2, 3]));
+    expect(findExpressionDisagreements(diffs)).toEqual([
+      `sections[0].items[n=${n}].expr.operands[0]`,
+      `sections[0].items[n=${n}].expr.operands[1]`,
+    ]);
+    expect(resolveSingleReadPaths(a, diffs)).toEqual([
+      "sections[0].items[0].expr.operands[0]",
+      "sections[0].items[0].expr.operands[1]",
+    ]);
   });
 });

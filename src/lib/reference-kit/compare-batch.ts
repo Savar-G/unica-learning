@@ -1,29 +1,45 @@
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, unlinkSync } from "node:fs";
+import { existsSync, readdirSync, unlinkSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
   assertOutsideRepo,
   prepareSafeOutputDir,
   renderRecordToMarkdown,
-  validateReferenceRecord,
   writeSafeOutputFile,
   type ReferenceRecord,
 } from "@/lib/reference-record";
-import { applyComputedAnswers, fileSlugFromRef } from "./answers";
 import {
+  applyComputedAnswers,
+  collectExampleAnswerConflicts,
+  collectReadTimeAnswerConflicts,
+  collectReadTimeUnclearAnswers,
+  fileSlugFromRef,
+} from "./answers";
+import {
+  agreementPercentage,
   classifyComparison,
   collectUnnamedTeachingMarks,
   compareRecords,
-  decideStatus,
+  compareRecordsWithCounts,
+  decidePageOutcome,
   emptyAnswerDiffs,
-  locateOnceReadInKeptRecord,
+  findAnswerDisagreements,
+  findExpressionDisagreements,
+  resolveSingleReadPaths,
+  stripKeptRecordLocations,
   type PageStatus,
 } from "./compare";
+import {
+  assertNoFileCollisions,
+  loadExistingFinalRecord,
+  loadPreviousHashes,
+  sha256OfFile,
+  syncManifestSourceRefs,
+} from "./compare-batch-files";
 import {
   loadOriginalNamesByDigest,
   loadPrepareReport,
   loadSlot,
-  pairDigest,
   pairSlotPages,
   pickPageWinners,
   readJsonIfExists,
@@ -31,138 +47,34 @@ import {
 } from "./compare-pairing";
 import {
   formatCompareReportMarkdown,
+  formatPagesSentToPerson,
+  resultLabelForStatus,
   type CompareWorkReport,
   type DigestMismatchInfo,
   type FailedPhotoReport,
   type KeptHumanCheckedReport,
+  type PageAgreement,
   type PageCompareReport,
+  type PageResultLabel,
+  type PageSentToPerson,
   type SamePageIdConflict,
 } from "./compare-report";
-import { parsePhotosManifest, PHOTOS_MANIFEST_FILE } from "./prepare";
 
 export {
   formatCompareReportMarkdown,
+  formatPagesSentToPerson,
   type CompareWorkReport,
   type DigestMismatchInfo,
   type FailedPhotoReport,
   type KeptHumanCheckedReport,
+  type PageAgreement,
   type PageCompareReport,
+  type PageResultLabel,
+  type PageSentToPerson,
   type SamePageIdConflict,
 };
 
 const FINAL_META_FILES = new Set(["status.json", "report.json"]);
-
-function readStoredSourceRef(filePath: string): string | null {
-  if (!existsSync(filePath)) return null;
-  try {
-    const parsed = JSON.parse(readFileSync(filePath, "utf8")) as unknown;
-    if (
-      typeof parsed === "object" &&
-      parsed !== null &&
-      !Array.isArray(parsed) &&
-      typeof (parsed as Record<string, unknown>).source_ref === "string"
-    ) {
-      return (parsed as Record<string, unknown>).source_ref as string;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-function sha256OfFile(filePath: string): string {
-  return createHash("sha256").update(readFileSync(filePath)).digest("hex");
-}
-
-function loadExistingFinalRecord(filePath: string): ReferenceRecord | null {
-  if (!existsSync(filePath)) return null;
-  try {
-    const parsed = JSON.parse(readFileSync(filePath, "utf8")) as unknown;
-    const check = validateReferenceRecord(parsed);
-    return check.ok ? check.record : null;
-  } catch {
-    return null;
-  }
-}
-
-function assertNoFileCollisions(
-  pairs: readonly PairedPage[],
-  existingStatus: Record<string, PageStatus>,
-  finalDir: string,
-): void {
-  const fileToRef = new Map<string, string>();
-
-  for (const pair of pairs) {
-    const chosen = pair.recA ?? pair.recB;
-    if (!chosen) continue;
-    const sourceRef = chosen.source_ref;
-
-    const fileName = `${fileSlugFromRef(sourceRef)}.json`;
-    const prior = fileToRef.get(fileName);
-    if (prior && prior !== sourceRef) {
-      throw new Error(
-        `Refusing to write: "${sourceRef}" and "${prior}" both map to "${fileName}"`,
-      );
-    }
-    fileToRef.set(fileName, sourceRef);
-
-    const storedRef = readStoredSourceRef(join(finalDir, fileName));
-    if (storedRef !== null && storedRef !== sourceRef) {
-      throw new Error(
-        `Refusing to overwrite "${fileName}": existing file holds source_ref "${storedRef}", not "${sourceRef}"`,
-      );
-    }
-  }
-
-  for (const existingRef of Object.keys(existingStatus)) {
-    const fileName = `${fileSlugFromRef(existingRef)}.json`;
-    const prior = fileToRef.get(fileName);
-    if (prior && prior !== existingRef) {
-      throw new Error(
-        `Refusing to write: "${prior}" collides with existing "${existingRef}" on "${fileName}"`,
-      );
-    }
-    fileToRef.set(fileName, existingRef);
-  }
-}
-
-// The manifest gives a page id only to the photo whose readings made the final record, so it holds
-// at most one entry for each page id. A kept human_checked page with no current readings keeps the
-// page id it already has.
-function syncManifestSourceRefs(
-  workDir: string,
-  winners: readonly PairedPage[],
-  keptStaleRefs: ReadonlySet<string>,
-  repoRoot: string,
-): void {
-  const manifestPath = join(workDir, "photos", PHOTOS_MANIFEST_FILE);
-  if (!existsSync(manifestPath)) return;
-  let manifest;
-  try {
-    manifest = parsePhotosManifest(JSON.parse(readFileSync(manifestPath, "utf8")) as unknown);
-  } catch {
-    return;
-  }
-  const refByDigest = new Map<string, string>();
-  for (const pair of winners) {
-    const digest = pairDigest(pair);
-    const ref = (pair.recA ?? pair.recB)?.source_ref;
-    if (digest && ref && !refByDigest.has(digest)) refByDigest.set(digest, ref);
-  }
-  const assigned = new Set<string>();
-  const photos = manifest.photos.map((entry) => {
-    const { source_ref: oldRef, ...rest } = entry;
-    const winnerRef = refByDigest.get(entry.sha256);
-    const ref = winnerRef ?? (oldRef && keptStaleRefs.has(oldRef) ? oldRef : undefined);
-    if (!ref || assigned.has(ref)) return rest;
-    assigned.add(ref);
-    return { ...rest, source_ref: ref };
-  });
-  const next = `${JSON.stringify({ version: 1, photos }, null, 2)}\n`;
-  if (next !== `${JSON.stringify(manifest, null, 2)}\n`) {
-    writeSafeOutputFile(manifestPath, next, repoRoot);
-  }
-}
 
 // The final record holds reader a's content. When both readers read the same photo, it names both.
 function withBothReaders(chosen: ReferenceRecord, pair: PairedPage): ReferenceRecord {
@@ -205,19 +117,12 @@ export function compareWorkFolder(opts: {
 
   const existingStatus =
     readJsonIfExists<Record<string, PageStatus>>(join(finalDir, "status.json")) ?? {};
-  // The hash of each final record as the last compare wrote it. Another hash on disk means that a
-  // person changed the file.
-  const previousHashes = new Map<string, string>();
-  const previousReport = readJsonIfExists<Partial<CompareWorkReport>>(join(finalDir, "report.json"));
-  for (const page of previousReport?.pages ?? []) {
-    if (typeof page.final_record_sha256 === "string") {
-      previousHashes.set(page.source_ref, page.final_record_sha256);
-    }
-  }
+  const previousHashes = loadPreviousHashes(join(finalDir, "report.json"));
 
   assertNoFileCollisions(pairs, existingStatus, finalDir);
 
   const pages: PageCompareReport[] = [];
+  const pagesSentToPerson: PageSentToPerson[] = [];
   const singleReaderPages: Array<{ source_ref: string; reader: "a" | "b" }> = [];
   const keptHumanChecked: KeptHumanCheckedReport[] = [];
   const removedStalePages: string[] = [];
@@ -242,40 +147,65 @@ export function compareWorkFolder(opts: {
       singleReaderPages.push({ source_ref: sourceRef, reader: onlyIn });
     }
 
-    const allDiffs = pair.recA && pair.recB ? compareRecords(pair.recA, pair.recB) : [];
-    const classified = classifyComparison(pair.recA, pair.recB);
+    const comparison =
+      pair.recA && pair.recB
+        ? compareRecordsWithCounts(pair.recA, pair.recB)
+        : { diffs: [], counts: { compared: 0, agreed: 0 } };
+    const allDiffs = comparison.diffs;
+    const classified = classifyComparison(pair.recA, pair.recB, comparison);
+    const agreement: PageAgreement = {
+      agreed: comparison.counts.agreed,
+      compared: comparison.counts.compared,
+      percent: agreementPercentage(comparison.counts.agreed, comparison.counts.compared),
+    };
     const unnamedTeachingMarks = collectUnnamedTeachingMarks(pair.recA, pair.recB);
 
     const isChecked = existingStatus[sourceRef] === "human_checked" && existsSync(finalRecordPath);
     const existingKept = isChecked ? loadExistingFinalRecord(finalRecordPath) : null;
 
-    if (isChecked && !existingKept) {
-      // A person checked this page and the file is not a valid record now: never write over it.
+    if (isChecked) {
       statusMap[sourceRef] = "human_checked";
-      keptHumanChecked.push({
-        source_ref: sourceRef,
-        in_current_batch: true,
-        differs_from_reader_a: false,
-        differs_from_reader_b: false,
-        diff_count_a: 0,
-        diff_count_b: 0,
-        invalid: true,
-      });
+      if (!existingKept) {
+        // A person checked this page and the file is not a valid record now: never write over it.
+        keptHumanChecked.push({
+          source_ref: sourceRef,
+          in_current_batch: true,
+          differs_from_reader_a: false,
+          differs_from_reader_b: false,
+          diff_count_a: 0,
+          diff_count_b: 0,
+          invalid: true,
+        });
+      } else {
+        const diffsA = pair.recA ? compareRecords(existingKept, pair.recA) : [];
+        const diffsB = pair.recB ? compareRecords(existingKept, pair.recB) : [];
+        keptHumanChecked.push({
+          source_ref: sourceRef,
+          in_current_batch: true,
+          differs_from_reader_a: diffsA.length > 0,
+          differs_from_reader_b: diffsB.length > 0,
+          diff_count_a: diffsA.length,
+          diff_count_b: diffsB.length,
+        });
+      }
       pages.push({
         source_ref: sourceRef,
         photo: pair.photo,
         original_name: pair.originalName,
         photo_sha256: pair.photoSha256,
         status: "human_checked",
+        agreement,
+        result: resultLabelForStatus("human_checked"),
+        result_reason: null,
         only_in_reader: onlyIn,
         digest_mismatch: pair.digestMismatch,
-        differences: classified.differences,
+        differences: stripKeptRecordLocations(classified.differences),
         wording: classified.wording,
-        once_read: locateOnceReadInKeptRecord(classified.once_read, null),
+        once_read: stripKeptRecordLocations(classified.once_read),
         both_unclear: classified.both_unclear,
         one_unclear: classified.one_unclear,
-        // The kept file is not a valid record, so its answer places cannot be read.
-        empty_answer: [],
+        // An invalid kept file cannot have its answer places read.
+        empty_answer: existingKept ? emptyAnswerDiffs(existingKept, pair.recA, pair.recB) : [],
         needs_person_read: classified.needs_person_read,
         unnamed_teaching_marks: unnamedTeachingMarks,
         reader_notes: { a: pair.notesA, b: pair.notesB },
@@ -283,68 +213,110 @@ export function compareWorkFolder(opts: {
       continue;
     }
 
-    if (existingKept) {
-      statusMap[sourceRef] = "human_checked";
-      const diffsA = pair.recA ? compareRecords(existingKept, pair.recA) : [];
-      const diffsB = pair.recB ? compareRecords(existingKept, pair.recB) : [];
-      keptHumanChecked.push({
-        source_ref: sourceRef,
-        in_current_batch: true,
-        differs_from_reader_a: diffsA.length > 0,
-        differs_from_reader_b: diffsB.length > 0,
-        diff_count_a: diffsA.length,
-        diff_count_b: diffsB.length,
-      });
+    // A final record that a person changed since the last compare is kept until the person
+    // checks it. The page is then not double_read or agreement_accepted.
+    const previousHash = previousHashes.get(sourceRef);
+    const editedByPerson =
+      previousHash !== undefined &&
+      existsSync(finalRecordPath) &&
+      sha256OfFile(finalRecordPath) !== previousHash;
 
-      pages.push({
-        source_ref: sourceRef,
-        photo: pair.photo,
-        original_name: pair.originalName,
-        photo_sha256: pair.photoSha256,
-        status: "human_checked",
-        only_in_reader: onlyIn,
-        digest_mismatch: pair.digestMismatch,
-        differences: classified.differences,
-        wording: classified.wording,
-        once_read: locateOnceReadInKeptRecord(classified.once_read, existingKept),
-        both_unclear: classified.both_unclear,
-        one_unclear: classified.one_unclear,
-        empty_answer: emptyAnswerDiffs(existingKept, pair.recA, pair.recB),
-        needs_person_read: classified.needs_person_read,
-        unnamed_teaching_marks: unnamedTeachingMarks,
-        reader_notes: { a: pair.notesA, b: pair.notesB },
-      });
-      continue;
+    // The record that stays on disk: the edited file, or the record that compare writes.
+    const rawEditedRecord = editedByPerson ? loadExistingFinalRecord(finalRecordPath) : null;
+    let editedRecord = rawEditedRecord;
+    let strippedEditedSingleRead = false;
+    if (editedByPerson && rawEditedRecord && "single_read" in rawEditedRecord) {
+      const cleaned: ReferenceRecord = { ...rawEditedRecord };
+      delete cleaned.single_read;
+      editedRecord = cleaned;
+      strippedEditedSingleRead = true;
     }
 
-    const { record: finalRecord, notes: computedNotes } = applyComputedAnswers(
-      withBothReaders(chosen, pair),
+    const {
+      record: computedRecord,
+      notes: computedNotes,
+      details: computedDetails,
+    } = applyComputedAnswers(withBothReaders(chosen, pair));
+    const editedDetails = editedRecord ? applyComputedAnswers(editedRecord).details : [];
+    const finalIsFreshA = !editedByPerson && pair.recA !== null;
+    const finalItemDetails = (editedByPerson ? editedDetails : computedDetails).filter(
+      (d) => d.kind === "answer_differs",
     );
+    const finalItemConflictPaths = new Set(finalItemDetails.map((d) => d.path));
+    const exampleConflicts = collectExampleAnswerConflicts(
+      editedByPerson ? editedRecord : computedRecord,
+      pair.recA,
+      pair.recB,
+      { finalIsFreshA },
+    );
+    const answerConflicts = [
+      ...finalItemDetails.map((d) => `final record: ${d.message}`),
+      ...exampleConflicts.finalMessages,
+    ];
     const readerNotes = pair.recA
       ? { a: mergeNotes(pair.notesA, computedNotes), b: pair.notesB }
       : { a: pair.notesA, b: mergeNotes(pair.notesB, computedNotes) };
-    const finalEmptyAnswers = emptyAnswerDiffs(finalRecord, pair.recA, pair.recB);
-    const status = decideStatus({
+    const finalEmptyAnswers = editedByPerson
+      ? emptyAnswerDiffs(editedRecord, pair.recA, pair.recB)
+      : emptyAnswerDiffs(computedRecord, pair.recA, pair.recB);
+
+    const readTimeUnclearAnswers =
+      pair.recA && pair.recB
+        ? [
+            ...collectReadTimeUnclearAnswers("a", pair.noteDetailsA),
+            ...collectReadTimeUnclearAnswers("b", pair.noteDetailsB),
+          ]
+        : [];
+    const answerDisagreements = [
+      ...new Set([
+        ...findAnswerDisagreements(allDiffs, { a: pair.recA, b: pair.recB }),
+        ...readTimeUnclearAnswers,
+      ]),
+    ];
+    const expressionDisagreements = findExpressionDisagreements(allDiffs);
+    const readerAnswerConflicts = [
+      ...new Set([
+        ...collectReadTimeAnswerConflicts(
+          "a",
+          pair.notesA,
+          pair.noteDetailsA,
+          finalIsFreshA ? { excludePaths: finalItemConflictPaths } : undefined,
+        ),
+        ...collectReadTimeAnswerConflicts("b", pair.notesB, pair.noteDetailsB),
+        ...exampleConflicts.readerMessages,
+      ]),
+    ];
+    const decision = decidePageOutcome({
       hasA: pair.recA !== null,
       hasB: pair.recB !== null,
       familyA: slotA.meta?.family ?? null,
       familyB: slotB.meta?.family ?? null,
       diffs: [...allDiffs, ...finalEmptyAnswers],
       sameDigest: pair.sameDigest,
+      counts: comparison.counts,
+      hasAnswerConflict: answerConflicts.length > 0,
+      hasReaderAnswerConflict: readerAnswerConflicts.length > 0,
+      needsPersonRead: classified.needs_person_read,
+      editedByPerson,
+      recordA: pair.recA,
+      recordB: pair.recB,
+      answerDisagreements,
+      expressionDisagreements,
     });
-
-    // A final record that a person changed since the last compare is kept until the person
-    // checks it. The page is then not double_read: the file is no longer what the readers wrote.
-    const previousHash = previousHashes.get(sourceRef);
-    const editedByPerson =
-      previousHash !== undefined &&
-      existsSync(finalRecordPath) &&
-      sha256OfFile(finalRecordPath) !== previousHash;
-    // The record that stays on disk: the edited file, or the record that compare writes.
-    const editedRecord = editedByPerson ? loadExistingFinalRecord(finalRecordPath) : null;
-    const finalText = `${JSON.stringify(finalRecord, null, 2)}\n`;
-    const pageStatus: PageStatus = editedByPerson ? "machine_read" : status;
+    const pageStatus = decision.status;
     statusMap[sourceRef] = pageStatus;
+
+    // Strip any stale single_read; attach single_read paths only on agreement_accepted pages.
+    const baseRecord: ReferenceRecord = { ...computedRecord };
+    delete baseRecord.single_read;
+    const singleReadPaths =
+      pageStatus === "agreement_accepted" ? resolveSingleReadPaths(baseRecord, allDiffs) : [];
+    const finalRecord: ReferenceRecord =
+      pageStatus === "agreement_accepted" && singleReadPaths.length > 0
+        ? { ...baseRecord, single_read: singleReadPaths }
+        : baseRecord;
+
+    const finalText = `${JSON.stringify(finalRecord, null, 2)}\n`;
 
     if (!editedByPerson) {
       writeSafeOutputFile(finalRecordPath, finalText, repoRoot);
@@ -353,6 +325,39 @@ export function compareWorkFolder(opts: {
         `${renderRecordToMarkdown(finalRecord)}\n`,
         repoRoot,
       );
+    } else if (editedRecord) {
+      if (strippedEditedSingleRead) {
+        writeSafeOutputFile(
+          finalRecordPath,
+          `${JSON.stringify(editedRecord, null, 2)}\n`,
+          repoRoot,
+        );
+      }
+      writeSafeOutputFile(
+        join(viewDir, `${slug}.md`),
+        `${renderRecordToMarkdown(editedRecord)}\n`,
+        repoRoot,
+      );
+    }
+
+    const formattedReasons = decision.stopReasons.map((r) =>
+      r === "missing reader" && onlyIn ? `only reader ${onlyIn}` : r,
+    );
+    const nonPctReason = formattedReasons.length > 0 ? formattedReasons.join("; ") : null;
+    const resultReason =
+      pageStatus === "machine_read" ? (nonPctReason ?? "below 90% agreement") : null;
+    if (pageStatus === "machine_read") {
+      pagesSentToPerson.push({
+        source_ref: sourceRef,
+        agreement_percent: agreement.percent,
+        agreed: agreement.agreed,
+        compared: agreement.compared,
+        difference_count:
+          classified.differences.length +
+          classified.once_read.length +
+          classified.both_unclear.length,
+        reason: nonPctReason,
+      });
     }
 
     pages.push({
@@ -365,18 +370,25 @@ export function compareWorkFolder(opts: {
         : createHash("sha256").update(finalText, "utf8").digest("hex"),
       ...(editedByPerson ? { edited_by_person: true } : {}),
       status: pageStatus,
+      agreement,
+      result: resultLabelForStatus(pageStatus),
+      result_reason: resultReason,
+      ...(answerConflicts.length > 0 ? { answer_conflicts: answerConflicts } : {}),
+      ...(readerAnswerConflicts.length > 0 ? { reader_answer_conflicts: readerAnswerConflicts } : {}),
+      ...(answerDisagreements.length > 0 ? { answer_disagreements: answerDisagreements } : {}),
+      ...(expressionDisagreements.length > 0 ? { expression_disagreements: expressionDisagreements } : {}),
       only_in_reader: onlyIn,
       digest_mismatch: pair.digestMismatch,
-      differences: classified.differences,
+      differences: editedByPerson
+        ? stripKeptRecordLocations(classified.differences)
+        : classified.differences,
       wording: classified.wording,
       once_read: editedByPerson
-        ? locateOnceReadInKeptRecord(classified.once_read, editedRecord)
+        ? stripKeptRecordLocations(classified.once_read)
         : classified.once_read,
       both_unclear: classified.both_unclear,
       one_unclear: classified.one_unclear,
-      empty_answer: editedByPerson
-        ? emptyAnswerDiffs(editedRecord, pair.recA, pair.recB)
-        : finalEmptyAnswers,
+      empty_answer: finalEmptyAnswers,
       needs_person_read: classified.needs_person_read,
       unnamed_teaching_marks: unnamedTeachingMarks,
       reader_notes: readerNotes,
@@ -433,6 +445,7 @@ export function compareWorkFolder(opts: {
     reader_a: slotA.meta,
     reader_b: slotB.meta,
     pages,
+    pages_sent_to_person: pagesSentToPerson,
     single_reader_pages: singleReaderPages,
     failed_photos: failedPhotos,
     too_small_photos: prepareReport.tooSmall,

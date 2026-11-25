@@ -405,4 +405,17 @@ export const CSS = `
 .pg.consistent.stretch .chs>.chc.nowork{flex:1 0 auto}
 .pg.consistent .story .act{flex:1}
 .pg.consistent .story .act .wb,.pg.consistent .chc .act .wb{height:auto!important;min-height:var(--work-min);align-self:stretch}
+/* Longer numeric boxes keep their minimum width. Give them another line when the prompt or work area needs the space. */
+.q>.rgs:has(.long-number),:is(.seq,.obx):has(.long-number){max-width:100%;flex-wrap:wrap}
+.q>.rgs:has(.long-number){justify-content:flex-end}
+.q.seq-below>.rgs:has(.long-number){justify-content:flex-start}
+.facts .q:has(.long-number),.tc>.q:has(.long-number),.chc>.top:has(.long-number),
+.pcard .pb:has(.long-number),.act:has(.long-number),.story.nowork .head:has(.long-number),
+.mx .stp:has(.long-number),.ways2:has(.long-number){flex-wrap:wrap}
+.facts .fl:has(+ .rg .long-number){flex-basis:auto;min-width:min-content}
+.facts .rg:has(.long-number){margin-left:auto}
+/* Keep both prompts in a warm-up row on the same baseline even when one box wraps. */
+.pg.consistent .facts:has(.long-number) .q{flex-wrap:wrap;align-content:start}
+.pg.consistent .facts:has(.long-number) .fl{min-height:64px;flex-wrap:wrap;align-content:center}
+.cols>.col-wide{grid-column:1/-1}
 ` + LETTERED_CSS;

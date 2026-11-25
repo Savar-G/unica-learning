@@ -26,6 +26,7 @@
     "maya:family-review": "node scripts/maya-family-review.mjs",
     "voice:build": "node worker/maya-voice/build.mjs",
     "typecheck": "next typegen && tsgo --noEmit && tsgo -p tsconfig.scripts.json",
+    "engine:typecheck": "tsgo -p tsconfig.engine.json",
     "scripts:typecheck": "tsgo -p tsconfig.scripts.json",
     "voice:typecheck": "tsgo -p worker/maya-voice/tsconfig.json",
     "voice:test": "vitest run --config worker/maya-voice/vitest.config.mts",
@@ -47,7 +48,11 @@
     "reference:board": "node scripts/reference-board.mjs",
     "reference:extract": "node scripts/reference-extract.mjs",
     "reference:compare": "node scripts/reference-compare.mjs",
-    "reference:check": "node scripts/reference-check.mjs"
+    "reference:check": "node scripts/reference-check.mjs",
+    "reference:method": "node scripts/reference-method.mjs",
+    "typst:install": "node scripts/install-typst.mjs",
+    "typst:stage": "node scripts/stage-typst.mjs",
+    "workbook:v2": "node scripts/workbook-v2.mjs"
   },
   "dependencies": {
     "@sentry/nextjs": "11.16.0",

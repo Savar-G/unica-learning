@@ -129,6 +129,9 @@ describe("readPhoto and buildCliInvocation", () => {
     if (res.status === "ok") {
       expect(res.record.source_ref).toBe("sample:M:3a");
       expect(res.notes.length).toBeGreaterThan(0);
+      expect(res.noteDetails).toEqual([
+        { kind: "answer_differs", path: "sections[0].items[n=1].responses[0]" },
+      ]);
       if (res.record.kind === "page") {
         expect(res.record.sections[0].items[0].responses[0].answer).toBe("17");
         expect(res.record.sections[0].items[0].responses[0].answer_source).toBe("computed");
@@ -209,6 +212,11 @@ describe("readPhoto and buildCliInvocation", () => {
     expect(secondPrompt).toContain("readers must not write not_stated at topic.number");
     expect(secondPrompt).toContain("readers must not write not_stated at sections[0].scaffolds");
     expect(res.status).toBe("ok");
+    if (res.status === "ok") {
+      expect(res.noteDetails).toEqual([
+        { kind: "answer_differs", path: "sections[0].items[n=1].responses[0]" },
+      ]);
+    }
   });
 
   it("refuses model ids of the other family, invalid --source, and symlinked photoPath", async () => {

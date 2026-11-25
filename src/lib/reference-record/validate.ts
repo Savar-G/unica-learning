@@ -10,14 +10,15 @@ import {
 } from "./types";
 import { validateExample } from "./validate-example";
 import {
+  ENTRY_NUMBER_MESSAGE,
   checkAllowedKeys,
   checkIntRange,
   checkReaderEnum,
   checkReaderNumber,
   checkReaderString,
+  isEntryNumber,
   isNonEmptyString,
   isPlainObject,
-  isPositiveInt,
   isSentinel,
   joinPath,
   pushError,
@@ -36,10 +37,16 @@ function validateReaders(v: unknown, path: string, errors: ValidationError[]): v
   }
 }
 
+function validateSingleRead(v: unknown, path: string, errors: ValidationError[]): void {
+  if (!Array.isArray(v) || v.length === 0 || !v.every((p) => isNonEmptyString(p))) {
+    pushError(errors, path, "must be a non-empty list of field paths");
+  }
+}
+
 function validatePageRecord(obj: Record<string, unknown>, errors: ValidationError[]): void {
   checkAllowedKeys(
     obj,
-    ["kind", "source_ref", "topic", "sections", "examples", "score_bands", "readers"],
+    ["kind", "source_ref", "topic", "sections", "examples", "score_bands", "readers", "single_read"],
     "",
     errors,
   );
@@ -88,8 +95,8 @@ function validatePageRecord(obj: Record<string, unknown>, errors: ValidationErro
             return;
           }
           checkAllowedKeys(item, ["n", "printed", "form", "expr", "responses"], iPath, errors);
-          if (!isPositiveInt(item.n)) {
-            pushError(errors, joinPath(iPath, "n"), "must be a positive integer");
+          if (!isEntryNumber(item.n)) {
+            pushError(errors, joinPath(iPath, "n"), ENTRY_NUMBER_MESSAGE);
           } else if (seenN.has(item.n)) {
             pushError(errors, joinPath(iPath, "n"), `duplicate item number ${item.n} in section`);
           } else {
@@ -155,10 +162,13 @@ function validatePageRecord(obj: Record<string, unknown>, errors: ValidationErro
   if ("readers" in obj && obj.readers !== undefined) {
     validateReaders(obj.readers, "readers", errors);
   }
+  if ("single_read" in obj && obj.single_read !== undefined) {
+    validateSingleRead(obj.single_read, "single_read", errors);
+  }
 }
 
 function validateContentsRecord(obj: Record<string, unknown>, errors: ValidationError[]): void {
-  checkAllowedKeys(obj, ["kind", "source_ref", "topics", "readers"], "", errors);
+  checkAllowedKeys(obj, ["kind", "source_ref", "topics", "readers", "single_read"], "", errors);
   if (typeof obj.source_ref !== "string" || !CONTENTS_SOURCE_REF_RE.test(obj.source_ref)) {
     pushError(
       errors,
@@ -177,8 +187,8 @@ function validateContentsRecord(obj: Record<string, unknown>, errors: Validation
         return;
       }
       checkAllowedKeys(topic, ["n", "title", "sheets", "std_time_min"], tPath, errors);
-      if (!isPositiveInt(topic.n)) {
-        pushError(errors, joinPath(tPath, "n"), "must be a positive integer");
+      if (!isEntryNumber(topic.n)) {
+        pushError(errors, joinPath(tPath, "n"), ENTRY_NUMBER_MESSAGE);
       } else if (topic.n <= prevN) {
         pushError(
           errors,
@@ -195,6 +205,9 @@ function validateContentsRecord(obj: Record<string, unknown>, errors: Validation
   }
   if ("readers" in obj && obj.readers !== undefined) {
     validateReaders(obj.readers, "readers", errors);
+  }
+  if ("single_read" in obj && obj.single_read !== undefined) {
+    validateSingleRead(obj.single_read, "single_read", errors);
   }
 }
 

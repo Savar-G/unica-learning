@@ -40,6 +40,7 @@ import {
 import {
   assertModelMatchesFamily,
   assertValidSourceKey,
+  isReaderFamily,
   readPhoto,
   type PhotoRunEntry,
   type ReaderFamily,
@@ -51,6 +52,7 @@ import {
 
 export interface ExtractCounts {
   double_read: number;
+  agreement_accepted: number;
   machine_read: number;
   failed: number;
   too_small: number;
@@ -133,10 +135,10 @@ function validateExtractOptions(opts: ExtractFolderOptions): {
   assertValidSourceKey(opts.source);
   const readerA: ReaderFamily = opts.readerA ?? "codex";
   const readerB: ReaderFamily = opts.readerB ?? "claude";
-  if (readerA !== "claude" && readerA !== "codex") {
+  if (!isReaderFamily(readerA)) {
     throw new Error(`Invalid --reader-a "${String(readerA)}": expected "claude" or "codex"`);
   }
-  if (readerB !== "claude" && readerB !== "codex") {
+  if (!isReaderFamily(readerB)) {
     throw new Error(`Invalid --reader-b "${String(readerB)}": expected "claude" or "codex"`);
   }
   if (readerA === readerB) {
@@ -487,6 +489,7 @@ export async function extractFolder(opts: ExtractFolderOptions): Promise<Extract
   const report = compareWorkFolder({ workDir, repoRoot });
   const counts: ExtractCounts = {
     double_read: report.pages.filter((p) => p.status === "double_read").length,
+    agreement_accepted: report.pages.filter((p) => p.status === "agreement_accepted").length,
     machine_read: report.pages.filter((p) => p.status === "machine_read").length,
     failed: report.could_not_read_photos.length,
     too_small: report.too_small_photos.length,

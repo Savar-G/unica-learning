@@ -558,6 +558,42 @@ export type Database = {
         }
         Relationships: []
       }
+      bank_reference_topic_methods: {
+        Row: {
+          created_at: string
+          digest: string
+          id: string
+          level: string
+          record: Json
+          source: string
+          status: string
+          topic_number: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          digest: string
+          id?: string
+          level: string
+          record: Json
+          source: string
+          status?: string
+          topic_number: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          digest?: string
+          id?: string
+          level?: string
+          record?: Json
+          source?: string
+          status?: string
+          topic_number?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       booking_family_links: {
         Row: {
           hold_id: string
@@ -5220,6 +5256,7 @@ export type Database = {
           parent_id: string
           photo_check: Json | null
           printed_revision: string | null
+          reject_reason: string | null
           reserved_bytes: number
           send_after: string | null
           send_undone_at: string | null
@@ -5241,6 +5278,7 @@ export type Database = {
           parent_id: string
           photo_check?: Json | null
           printed_revision?: string | null
+          reject_reason?: string | null
           reserved_bytes: number
           send_after?: string | null
           send_undone_at?: string | null
@@ -5262,6 +5300,7 @@ export type Database = {
           parent_id?: string
           photo_check?: Json | null
           printed_revision?: string | null
+          reject_reason?: string | null
           reserved_bytes?: number
           send_after?: string | null
           send_undone_at?: string | null
@@ -10780,6 +10819,10 @@ export type Database = {
           p_previous_evidence: string
         }
         Returns: Json
+      }
+      reject_scan_photo: {
+        Args: { p_id: string; p_parent: string; p_reason: string }
+        Returns: string
       }
       release_card_lock: {
         Args: { p_card: string; p_token: string }

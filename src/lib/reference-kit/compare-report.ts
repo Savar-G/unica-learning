@@ -1,93 +1,186 @@
 import type { PageStatus, RecordDifference, UnnamedTeachingMark } from "./compare";
-import {
-  MIN_LONG_SIDE_PX,
-  MIN_SHORT_SIDE_PX,
-  type DuplicatePhotoReport,
-  type RemovedPhotoReport,
-  type TooSmallPhotoReport,
-  type UnreadablePhotoReport,
-} from "./prepare";
-import type { ReaderMeta } from "./read";
+import type {
+  CompareWorkReport,
+  DigestMismatchInfo,
+  FailedPhotoReport,
+  KeptHumanCheckedReport,
+  PageAgreement,
+  PageCompareReport,
+  PageResultLabel,
+  PageSentToPerson,
+  SamePageIdConflict,
+} from "./compare-report-types";
+import { MIN_LONG_SIDE_PX, MIN_SHORT_SIDE_PX } from "./prepare";
 
-export interface FailedPhotoReport {
-  slot: "a" | "b";
-  photo: string;
-  original_name?: string | null;
-  status: string;
-  reason?: string;
-}
+export type {
+  CompareWorkReport,
+  DigestMismatchInfo,
+  FailedPhotoReport,
+  KeptHumanCheckedReport,
+  PageAgreement,
+  PageCompareReport,
+  PageResultLabel,
+  PageSentToPerson,
+  SamePageIdConflict,
+};
 
-export interface DigestMismatchInfo {
-  a: string | null;
-  b: string | null;
-}
-
-export interface KeptHumanCheckedReport {
-  source_ref: string;
-  in_current_batch: boolean;
-  differs_from_reader_a: boolean;
-  differs_from_reader_b: boolean;
-  diff_count_a: number;
-  diff_count_b: number;
-  // The checked file could not be read as a valid record. It is kept as it is.
-  invalid?: boolean;
-}
-
-// A photo that claims a page id that another photo won. It gets no final record and keeps its readings.
-export interface SamePageIdConflict {
-  source_ref: string;
-  winner_original_name: string | null;
-  winner_photo: string | null;
-  photo: string | null;
-  original_name: string | null;
-  photo_sha256: string | null;
-  reader_a_source_ref: string | null;
-  reader_b_source_ref: string | null;
-}
-
-export interface PageCompareReport {
-  source_ref: string;
-  photo: string | null;
-  original_name: string | null;
-  photo_sha256: string | null;
-  status: PageStatus;
-  only_in_reader: "a" | "b" | null;
-  digest_mismatch: DigestMismatchInfo | null;
-  differences: RecordDifference[];
-  // Differences in the reader's own wording (do not block double_read). Absent in reports of older runs.
-  wording?: RecordDifference[];
-  once_read: RecordDifference[];
-  both_unclear: RecordDifference[];
-  one_unclear: RecordDifference[];
-  // Answer places of the final record with no answer. Absent in reports of older runs.
-  empty_answer?: RecordDifference[];
-  needs_person_read: boolean;
-  unnamed_teaching_marks: UnnamedTeachingMark[];
-  reader_notes: { a: string[]; b: string[] };
-  // sha256 of the final record file as the compare step wrote it. A file with another hash was
-  // changed by a person.
-  final_record_sha256?: string | null;
-  // The final record was changed by a person and is not checked yet. The compare step kept it.
-  edited_by_person?: boolean;
-}
-
-export interface CompareWorkReport {
-  reader_a: ReaderMeta | null;
-  reader_b: ReaderMeta | null;
-  pages: PageCompareReport[];
-  single_reader_pages: Array<{ source_ref: string; reader: "a" | "b" }>;
-  failed_photos: FailedPhotoReport[];
-  too_small_photos: TooSmallPhotoReport[];
-  could_not_read_photos: UnreadablePhotoReport[];
-  kept_human_checked: KeptHumanCheckedReport[];
-  removed_stale_pages: string[];
-  duplicate_photos: DuplicatePhotoReport[];
-  removed_photos: RemovedPhotoReport[];
-  same_page_id_conflicts: SamePageIdConflict[];
+function formatConflictEntry(entry: string): string {
+  const match = /^(final record|reader [ab]): (\S+?)(: [\s\S]+)?$/.exec(entry);
+  return match ? `${match[1]}: \`${match[2]}\`${match[3] ?? ""}` : `\`${entry}\``;
 }
 
 function formatVal(v: unknown): string {
   return JSON.stringify(v);
+}
+
+export function formatAgreementPercent(percent: number | null): string {
+  if (percent === null) return "-";
+  return Number.isInteger(percent) ? `${percent}%` : `${percent.toFixed(1)}%`;
+}
+
+export function resultLabelForStatus(status: PageStatus): PageResultLabel {
+  switch (status) {
+    case "double_read":
+      return "double read";
+    case "agreement_accepted":
+      return "accepted by the 90% rule";
+    case "human_checked":
+      return "checked by a person";
+    case "machine_read":
+      return "sent to a person";
+  }
+}
+
+function formatResultWithReason(p: PageCompareReport): string {
+  const label = p.result ?? resultLabelForStatus(p.status);
+  return p.result_reason ? `${label} (${p.result_reason})` : label;
+}
+
+function formatAgreementCell(agreement: PageAgreement | undefined): string {
+  if (!agreement || agreement.compared <= 0) return "-";
+  return `${formatAgreementPercent(agreement.percent)} (${agreement.agreed}/${agreement.compared})`;
+}
+
+function sentToPersonItems(report: CompareWorkReport): PageSentToPerson[] {
+  if (report.pages_sent_to_person !== undefined) return report.pages_sent_to_person;
+  return report.pages
+    .filter((p) => p.status === "machine_read")
+    .map((p) => ({
+      source_ref: p.source_ref,
+      agreement_percent: p.agreement?.percent ?? null,
+      agreed: p.agreement?.agreed ?? 0,
+      compared: p.agreement?.compared ?? 0,
+      difference_count: p.differences.length + p.once_read.length + p.both_unclear.length,
+      reason: p.result_reason && p.result_reason !== "below 90% agreement" ? p.result_reason : null,
+    }));
+}
+
+function formatSentToPersonLine(item: PageSentToPerson): string {
+  const pct =
+    item.agreement_percent === null
+      ? "no agreement"
+      : `${formatAgreementPercent(item.agreement_percent)} agreement`;
+  const diffWord = item.difference_count === 1 ? "difference" : "differences";
+  const reasonPart = item.reason ? ` (${item.reason})` : "";
+  return `${item.source_ref}: ${pct}, ${item.difference_count} ${diffWord}${reasonPart}`;
+}
+
+export function formatPagesSentToPerson(report: CompareWorkReport): string {
+  const list = sentToPersonItems(report);
+  if (list.length === 0) return "Pages sent to a person: none.";
+  const lines = [`Pages sent to a person (${list.length}):`];
+  for (const item of list) {
+    lines.push(`  - ${formatSentToPersonLine(item)}`);
+  }
+  return lines.join("\n");
+}
+
+function hasReaderBNeighbours(d: RecordDifference): boolean {
+  return d.reader_b_after !== undefined || d.reader_b_before !== undefined;
+}
+
+function formatReaderBNeighbours(d: RecordDifference): string {
+  const noun = d.path.startsWith("topics[") ? "topic" : "item";
+  const after = d.reader_b_after ?? null;
+  const before = d.reader_b_before ?? null;
+  if (after !== null && before !== null) {
+    return `reader b has it after ${noun} ${after} and before ${noun} ${before}`;
+  }
+  if (after === null && before !== null) {
+    return `reader b has it first, before ${noun} ${before}`;
+  }
+  if (after !== null && before === null) {
+    return `reader b has it last, after ${noun} ${after}`;
+  }
+  return `reader b has it as the only ${noun}`;
+}
+
+type ReviewInstructionKind =
+  | "edited_check"
+  | "invalid_human_checked"
+  | "once_read_heading_fresh"
+  | "once_read_heading_kept"
+  | "both_unclear_heading"
+  | "empty_answer_heading"
+  | "missing_step_note"
+  | "kept_find_place"
+  | "located_insert_before"
+  | "located_reader_a"
+  | "located_reader_b";
+
+const REVIEW_INSTRUCTIONS: Record<ReviewInstructionKind, { action: string; neutral: string }> = {
+  edited_check: { action: " Run reference:check for this page.", neutral: "" },
+  invalid_human_checked: { action: " Correct it, then run reference:check for this page.", neutral: "" },
+  once_read_heading_fresh: {
+    action: ' (look at the photo; copy an entry that is on the page into the final record at the given path, where "[]" means the end of that list and "insert before" means insert ahead of that element)',
+    neutral: "",
+  },
+  once_read_heading_kept: { action: " (look at the photo; a person changed the final record, so find the place in that record)", neutral: "" },
+  both_unclear_heading: { action: ' (look at the photo and write the value, or keep "unclear" and mark the page checked)', neutral: "" },
+  empty_answer_heading: { action: ' (write the answer from the photo, or "unclear")', neutral: "" },
+  missing_step_note: { action: "; its step is missing from reader A's record and must be added first", neutral: "; step absent from reader A's record" },
+  kept_find_place: { action: " has it; a person changed the final record, so find the place in that record", neutral: "" },
+  located_insert_before: { action: " has it; insert before", neutral: "; location in final record before" },
+  located_reader_a: { action: " has it; already in the final record at", neutral: "; in final record at" },
+  located_reader_b: { action: " has it; belongs in the final record at", neutral: "; location in final record" },
+};
+
+// Every review instruction goes through this gate. Non-machine_read pages never ask for action,
+// with one documented exemption: an invalid kept human_checked file that cannot be read.
+function reviewInstruction(status: PageStatus, kind: ReviewInstructionKind): string {
+  const entry = REVIEW_INSTRUCTIONS[kind];
+  return status === "machine_read" || kind === "invalid_human_checked" ? entry.action : entry.neutral;
+}
+
+function formatLocatedEntry(
+  prefix: string,
+  d: RecordDifference,
+  opts: { status: PageStatus; keptRecord: boolean },
+): string {
+  const entry = d.reader === "a" ? d.a : d.b;
+  if (d.reader === "b" && hasReaderBNeighbours(d)) {
+    return `${prefix}: ${formatReaderBNeighbours(d)}: ${formatVal(entry)}`;
+  }
+  const missingStepNote = d.missing_step
+    ? opts.keptRecord
+      ? REVIEW_INSTRUCTIONS.missing_step_note.neutral
+      : reviewInstruction(opts.status, "missing_step_note")
+    : "";
+  if (d.reader && d.final_path !== undefined && !opts.keptRecord) {
+    const whereKind: ReviewInstructionKind =
+      d.insert_before !== undefined
+        ? "located_insert_before"
+        : d.final_path.endsWith("[]")
+          ? "located_reader_b"
+          : d.reader === "a"
+            ? "located_reader_a"
+            : "located_reader_b";
+    return `${prefix}: only reader ${d.reader}${reviewInstruction(opts.status, whereKind)} \`${d.final_path}\`${missingStepNote}: ${formatVal(entry)}`;
+  }
+  if (d.reader && opts.keptRecord) {
+    return `${prefix}: only reader ${d.reader}${reviewInstruction(opts.status, "kept_find_place")}${missingStepNote}: ${formatVal(entry)}`;
+  }
+  return `${prefix}: a=${formatVal(d.a)} | b=${formatVal(d.b)}`;
 }
 
 export function formatCompareReportMarkdown(report: CompareWorkReport): string {
@@ -105,13 +198,13 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
   lines.push("## Summary");
   lines.push("");
   lines.push(
-    "| Page | Photo | Status | Differences | Wording | Once-read | Both unclear | Empty answers | Person read |",
+    "| Page | Photo | Status | Agreement | Result | Differences | Wording | Once-read | Both unclear | Empty answers | Has prose |",
   );
-  lines.push("|---|---|---|---:|---:|---:|---:|---:|---|");
+  lines.push("|---|---|---|---|---|---:|---:|---:|---:|---:|---|");
   for (const p of report.pages) {
     const photoCol = p.original_name ?? p.photo ?? "-";
     lines.push(
-      `| ${p.source_ref} | ${photoCol} | ${p.status} | ${p.differences.length} | ${(p.wording ?? []).length} | ${p.once_read.length} | ${p.both_unclear.length} | ${(p.empty_answer ?? []).length} | ${p.needs_person_read ? "yes" : "no"} |`,
+      `| ${p.source_ref} | ${photoCol} | ${p.status} | ${formatAgreementCell(p.agreement)} | ${formatResultWithReason(p)} | ${p.differences.length} | ${(p.wording ?? []).length} | ${p.once_read.length} | ${p.both_unclear.length} | ${(p.empty_answer ?? []).length} | ${p.needs_person_read ? "yes" : "no"} |`,
     );
   }
   lines.push("");
@@ -196,7 +289,7 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
     for (const k of report.kept_human_checked) {
       if (k.invalid) {
         lines.push(
-          `- ${k.source_ref}: kept as it is, but the file is not a valid record now. Correct it, then run reference:check for this page.`,
+          `- ${k.source_ref}: kept as it is, but the file is not a valid record now.${reviewInstruction("human_checked", "invalid_human_checked")}`,
         );
       } else if (!k.in_current_batch) {
         lines.push(`- ${k.source_ref}: stale human_checked page kept (not in current batch)`);
@@ -246,9 +339,15 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
   lines.push("");
   for (const p of report.pages) {
     lines.push(`### ${p.source_ref} (${p.status})`);
+    lines.push(`- Result: ${formatResultWithReason(p)}`);
+    if (p.agreement && p.agreement.compared > 0) {
+      lines.push(
+        `- Agreement: ${formatAgreementPercent(p.agreement.percent)} (${p.agreement.agreed}/${p.agreement.compared} compared fields)`,
+      );
+    }
     if (p.edited_by_person) {
       lines.push(
-        "- A person changed the final record and it is not checked yet. The file was kept. Run reference:check for this page.",
+        `- A person changed the final record and it is not checked yet. The file was kept.${reviewInstruction(p.status, "edited_check")}`,
       );
     }
     if (p.original_name && p.photo && p.original_name !== p.photo) {
@@ -262,8 +361,19 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
         `- Photo digest mismatch (kept machine_read): reader a=${p.digest_mismatch.a ?? "none"} | reader b=${p.digest_mismatch.b ?? "none"}`,
       );
     }
+    // A record that a person edited or checked is kept; reader a's words and indexes may not fit it.
+    const keptRecord = p.edited_by_person === true || p.status === "human_checked";
+
     if (p.needs_person_read) {
-      lines.push("- A person must read the prose on this page");
+      if (p.status === "agreement_accepted" && !keptRecord) {
+        lines.push(
+          "- Has worked examples or prose. Differing fields are in single_read and show as not checked.",
+        );
+      } else if (p.status === "double_read") {
+        lines.push("- Has worked examples or prose (both readers agreed).");
+      } else {
+        lines.push("- Has worked examples or prose.");
+      }
     }
 
     if (p.unnamed_teaching_marks.length > 0) {
@@ -276,12 +386,14 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
     if (p.differences.length > 0) {
       lines.push("- Differences:");
       for (const d of p.differences) {
-        lines.push(`  - \`${d.path}\` (${d.kind}): a=${formatVal(d.a)} | b=${formatVal(d.b)}`);
+        const prefix = `  - \`${d.path}\` (${d.kind})`;
+        if (d.reader && (hasReaderBNeighbours(d) || d.final_path !== undefined || keptRecord)) {
+          lines.push(formatLocatedEntry(prefix, d, { status: p.status, keptRecord }));
+        } else {
+          lines.push(`${prefix}: a=${formatVal(d.a)} | b=${formatVal(d.b)}`);
+        }
       }
     }
-
-    // A record that a person edited or checked is kept; reader a's words and indexes may not fit it.
-    const keptRecord = p.edited_by_person === true || p.status === "human_checked";
 
     const wording = p.wording ?? [];
     if (wording.length > 0) {
@@ -296,39 +408,18 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
     }
 
     if (p.once_read.length > 0) {
-      lines.push(
-        '- Once-read teaching fields (look at the photo; copy an entry that is on the page into the final record at the given path, where "[]" means the end of that list and "insert before" means insert ahead of that element):',
+      const headingNote = reviewInstruction(
+        p.status,
+        keptRecord ? "once_read_heading_kept" : "once_read_heading_fresh",
       );
+      lines.push(`- Once-read teaching fields${headingNote}:`);
       for (const d of p.once_read) {
-        const entry = d.reader === "a" ? d.a : d.b;
-        const missingStepNote = d.missing_step
-          ? "; its step is missing from reader A's record and must be added first"
-          : "";
-        if (d.reader && d.final_path !== undefined) {
-          const where = keptRecord
-            ? "found in the kept final record at"
-            : d.reader === "a"
-              ? "already in the final record at"
-              : d.insert_before !== undefined
-                ? "insert before"
-                : "belongs in the final record at";
-          lines.push(
-            `  - \`${d.path}\`: only reader ${d.reader} has it; ${where} \`${d.final_path}\`${keptRecord ? "" : missingStepNote}: ${formatVal(entry)}`,
-          );
-        } else if (d.reader && keptRecord) {
-          lines.push(
-            `  - \`${d.path}\`: only reader ${d.reader} has it; a person changed the final record, so find the place in that record${missingStepNote}: ${formatVal(entry)}`,
-          );
-        } else {
-          lines.push(`  - \`${d.path}\`: a=${formatVal(d.a)} | b=${formatVal(d.b)}`);
-        }
+        lines.push(formatLocatedEntry(`  - \`${d.path}\``, d, { status: p.status, keptRecord }));
       }
     }
 
     if (p.both_unclear.length > 0) {
-      lines.push(
-        '- Both readers marked unclear (look at the photo and write the value, or keep "unclear" and mark the page checked):',
-      );
+      lines.push(`- Both readers marked unclear${reviewInstruction(p.status, "both_unclear_heading")}:`);
       for (const d of p.both_unclear) {
         lines.push(`  - \`${d.path}\``);
       }
@@ -336,9 +427,43 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
 
     const emptyAnswers = p.empty_answer ?? [];
     if (emptyAnswers.length > 0) {
-      lines.push('- Answer places with no answer (write the answer from the photo, or "unclear"):');
+      lines.push(`- Answer places with no answer${reviewInstruction(p.status, "empty_answer_heading")}:`);
       for (const d of emptyAnswers) {
         lines.push(`  - \`${d.path}\`: a=${formatVal(d.a)} | b=${formatVal(d.b)}`);
+      }
+    }
+
+    const answerConflicts = p.answer_conflicts ?? [];
+    if (answerConflicts.length > 0) {
+      lines.push("- Answer conflicts (stored answer does not match computed answer):");
+      for (const msg of answerConflicts) {
+        lines.push(
+          `  - ${/^(final record|reader [ab]): /.test(msg) ? formatConflictEntry(msg) : msg}`,
+        );
+      }
+    }
+
+    const readerAnswerConflicts = p.reader_answer_conflicts ?? [];
+    if (readerAnswerConflicts.length > 0) {
+      lines.push("- Reader answer conflicts (a reader's answer differs from the computed answer):");
+      for (const entry of readerAnswerConflicts) {
+        lines.push(`  - ${formatConflictEntry(entry)}`);
+      }
+    }
+
+    const answerDisagreements = p.answer_disagreements ?? [];
+    if (answerDisagreements.length > 0) {
+      lines.push("- Answer disagreements (readers disagree on an answer):");
+      for (const entry of answerDisagreements) {
+        lines.push(`  - ${formatConflictEntry(entry)}`);
+      }
+    }
+
+    const expressionDisagreements = p.expression_disagreements ?? [];
+    if (expressionDisagreements.length > 0) {
+      lines.push("- Expression disagreements (readers disagree on an expression):");
+      for (const entry of expressionDisagreements) {
+        lines.push(`  - ${formatConflictEntry(entry)}`);
       }
     }
 
@@ -354,6 +479,10 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
       p.once_read.length === 0 &&
       p.both_unclear.length === 0 &&
       emptyAnswers.length === 0 &&
+      answerConflicts.length === 0 &&
+      readerAnswerConflicts.length === 0 &&
+      answerDisagreements.length === 0 &&
+      expressionDisagreements.length === 0 &&
       p.unnamed_teaching_marks.length === 0 &&
       !p.only_in_reader &&
       !p.digest_mismatch &&
@@ -363,6 +492,18 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
     }
     lines.push("");
   }
+
+  lines.push("## Pages sent to a person");
+  lines.push("");
+  const sent = sentToPersonItems(report);
+  if (sent.length === 0) {
+    lines.push("No pages sent to a person.");
+  } else {
+    for (const item of sent) {
+      lines.push(`- ${formatSentToPersonLine(item)}`);
+    }
+  }
+  lines.push("");
 
   return `${lines.join("\n")}\n`;
 }

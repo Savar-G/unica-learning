@@ -414,6 +414,42 @@ describe("checkAndMarkPage", () => {
     expect(saved.sections[0].items[0].responses[1].answer_source).toBe("unchecked");
   });
 
+  it("moves an agreement_accepted page to human_checked and removes single_read from the record and view", () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-chk-acc-repo-"));
+    const work = mkdtempSync(join(tmpdir(), "ref-chk-acc-work-"));
+    tempDirs.push(repo, work);
+
+    const finalDir = join(work, "final");
+    mkdirSync(finalDir, { recursive: true });
+    const acceptedPage: PageRecord = {
+      ...makeFinalPage(),
+      single_read: ["topic.title", "sections[0].items[0].printed"],
+    };
+    writeFileSync(join(finalDir, "sample-M-3a.json"), JSON.stringify(acceptedPage, null, 2));
+    writeFileSync(
+      join(finalDir, "status.json"),
+      JSON.stringify({ "sample:M:3a": "agreement_accepted" }, null, 2),
+    );
+
+    const res = checkAndMarkPage({
+      workDir: work,
+      page: "sample:M:3a",
+      repoRoot: repo,
+      photoCompared: true,
+    });
+
+    const updatedStatus = JSON.parse(readFileSync(res.statusPath, "utf8")) as Record<string, string>;
+    expect(updatedStatus["sample:M:3a"]).toBe("human_checked");
+
+    const saved = JSON.parse(readFileSync(res.recordPath, "utf8")) as PageRecord;
+    expect(saved.single_read).toBeUndefined();
+    expect("single_read" in saved).toBe(false);
+
+    const viewMd = readFileSync(res.viewPath, "utf8");
+    expect(viewMd).not.toContain("Single-read");
+    expect(viewMd).not.toContain("not checked");
+  });
+
   it("refuses to write when status.json has colliding source_ref values or the file on disk holds a different source_ref", () => {
     const repo = mkdtempSync(join(tmpdir(), "ref-chk-col-repo-"));
     const work = mkdtempSync(join(tmpdir(), "ref-chk-col-work-"));
@@ -442,5 +478,224 @@ describe("checkAndMarkPage", () => {
 
     const statusAfter = JSON.parse(readFileSync(join(finalDir, "status.json"), "utf8"));
     expect(statusAfter["demo-x:M:3a"]).toBe("machine_read");
+  });
+
+  it("allows reference:check to mark a page whose worked-example shown_answer differs from its expr (a person decides)", () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-chk-ex-repo-"));
+    const work = mkdtempSync(join(tmpdir(), "ref-chk-ex-work-"));
+    tempDirs.push(repo, work);
+
+    const finalDir = join(work, "final");
+    mkdirSync(finalDir, { recursive: true });
+    const rec: PageRecord = {
+      ...makeFinalPage(),
+      examples: [
+        {
+          position: "top",
+          relation: "compare",
+          parts: [
+            { form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 3] }, shown_answer: "6" },
+          ],
+        },
+      ],
+    };
+    writeFileSync(join(finalDir, "sample-M-3a.json"), JSON.stringify(rec, null, 2));
+    writeFileSync(join(finalDir, "status.json"), JSON.stringify({ "sample:M:3a": "machine_read" }, null, 2));
+
+    const res = checkAndMarkPage({ workDir: work, page: "sample:M:3a", repoRoot: repo, photoCompared: true });
+    const saved = JSON.parse(readFileSync(res.recordPath, "utf8")) as PageRecord;
+    expect(Array.isArray(saved.examples) && saved.examples[0].parts[0].shown_answer).toBe("6");
+    expect(JSON.parse(readFileSync(res.statusPath, "utf8"))["sample:M:3a"]).toBe("human_checked");
+  });
+
+  it("refuses invalid UTF-8 bytes in the final record, status.json, or photos-manifest.json, naming the file and writing nothing", () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-chk-utf8-repo-"));
+    const work = mkdtempSync(join(tmpdir(), "ref-chk-utf8-work-"));
+    tempDirs.push(repo, work);
+
+    const finalDir = join(work, "final");
+    mkdirSync(finalDir, { recursive: true });
+    const [left, right] = JSON.stringify({ ...makeFinalPage(), topic: { title: "MARK" } }).split("MARK");
+    const badRecordPath = join(finalDir, "sample-M-3a.json");
+    writeFileSync(
+      badRecordPath,
+      Buffer.concat([Buffer.from(left, "utf8"), Buffer.of(0xff), Buffer.from(right, "utf8")]),
+    );
+    writeFileSync(join(finalDir, "status.json"), JSON.stringify({ "sample:M:3a": "machine_read" }));
+
+    expect(() =>
+      checkAndMarkPage({ workDir: work, page: "sample:M:3a", repoRoot: repo, photoCompared: true }),
+    ).toThrow(/Invalid UTF-8 in .*sample-M-3a\.json/i);
+    expect(JSON.parse(readFileSync(join(finalDir, "status.json"), "utf8"))["sample:M:3a"]).toBe(
+      "machine_read",
+    );
+    expect(existsSync(join(work, "final-view"))).toBe(false);
+
+    const validRecordText = JSON.stringify(makeFinalPage());
+    writeFileSync(badRecordPath, validRecordText);
+    const [sLeft, sRight] = JSON.stringify({ "sample:M:3a": "MARK" }).split("MARK");
+    writeFileSync(
+      join(finalDir, "status.json"),
+      Buffer.concat([Buffer.from(sLeft, "utf8"), Buffer.of(0xff), Buffer.from(sRight, "utf8")]),
+    );
+    expect(() =>
+      checkAndMarkPage({ workDir: work, page: "sample:M:3a", repoRoot: repo, photoCompared: true }),
+    ).toThrow(/Invalid UTF-8 in .*status\.json/i);
+    expect(readFileSync(badRecordPath, "utf8")).toBe(validRecordText);
+    expect(existsSync(join(work, "final-view"))).toBe(false);
+
+    writeFileSync(join(finalDir, "status.json"), JSON.stringify({ "sample:M:3a": "machine_read" }));
+    const photosDir = join(work, "photos");
+    mkdirSync(photosDir, { recursive: true });
+    const [mLeft, mRight] = JSON.stringify({
+      version: 1,
+      photos: [
+        {
+          file: "abcdefabcdef.jpg",
+          sha256: "a".repeat(64),
+          original_name: "MARK",
+          width: 3000,
+          height: 4000,
+          source_ref: "sample:M:3a",
+        },
+      ],
+    }).split("MARK");
+    writeFileSync(
+      join(photosDir, "photos-manifest.json"),
+      Buffer.concat([Buffer.from(mLeft, "utf8"), Buffer.of(0xff), Buffer.from(mRight, "utf8")]),
+    );
+    expect(() =>
+      checkAndMarkPage({ workDir: work, page: "sample:M:3a", repoRoot: repo, photoCompared: false }),
+    ).toThrow(/Invalid UTF-8 in .*photos-manifest\.json/i);
+    expectNothingWritten(finalDir, validRecordText);
+    expect(existsSync(join(work, "final-view"))).toBe(false);
+  });
+
+  it("falls back to the folder hint without --photo-compared on malformed report.json or manifest shapes, while stopping on invalid UTF-8 or JSON", () => {
+    const fallbackCases: Array<{
+      name: string;
+      manifest?: unknown;
+      report?: unknown;
+      expectedPhotoPattern?: RegExp;
+    }> = [
+      { name: "report pages is a string", report: { pages: "not-a-list" } },
+      { name: "report pages is an object", report: { pages: {} } },
+      { name: "report pages is a number", report: { pages: 42 } },
+      { name: "report pages is null", report: { pages: null } },
+      { name: "report root is null", report: null },
+      { name: "report root is an array", report: [] },
+      { name: "report pages contains only null", report: { pages: [null] } },
+      {
+        name: "report pages contains null before matching entry",
+        report: {
+          pages: [
+            null,
+            { source_ref: "sample:M:3a", photo: "111111111111.jpg", original_name: "01.jpg" },
+          ],
+        },
+        expectedPhotoPattern: /111111111111\.jpg \(original name 01\.jpg\)/,
+      },
+      {
+        name: "report matching entry has non-string photo",
+        report: { pages: [{ source_ref: "sample:M:3a", photo: 123 }] },
+      },
+      {
+        name: "report matching entry has empty photo string",
+        report: { pages: [{ source_ref: "sample:M:3a", photo: "" }] },
+      },
+      ...[" ", "\t", " \n "].map((blank) => ({
+        name: `report matching entry has blank photo ${JSON.stringify(blank)}`,
+        report: { pages: [{ source_ref: "sample:M:3a", photo: blank, original_name: "01.jpg" }] },
+      })),
+      {
+        name: "report matching entry has a blank original name",
+        report: {
+          pages: [{ source_ref: "sample:M:3a", photo: "333333333333.jpg", original_name: " " }],
+        },
+        expectedPhotoPattern: /333333333333\.jpg\nRecord:/,
+      },
+      { name: "manifest root is null", manifest: null },
+      { name: "manifest root is an array", manifest: [] },
+      { name: "manifest photos is not a list", manifest: { version: 1, photos: "bad" } },
+      { name: "manifest photos contains null", manifest: { version: 1, photos: [null] } },
+      {
+        name: "bad manifest shape falls back to valid report",
+        manifest: { version: 2, photos: "bad" },
+        report: {
+          pages: [{ source_ref: "sample:M:3a", photo: "222222222222.jpg", original_name: "02.jpg" }],
+        },
+        expectedPhotoPattern: /222222222222\.jpg \(original name 02\.jpg\)/,
+      },
+    ];
+
+    for (const c of fallbackCases) {
+      const { repo, work, finalDir } = setUpWork(makeFinalPage());
+      const before = readFileSync(join(finalDir, "sample-M-3a.json"), "utf8");
+      if ("manifest" in c) {
+        mkdirSync(join(work, "photos"), { recursive: true });
+        writeFileSync(join(work, "photos", "photos-manifest.json"), JSON.stringify(c.manifest));
+      }
+      if ("report" in c) {
+        writeFileSync(join(finalDir, "report.json"), JSON.stringify(c.report));
+      }
+      const expected =
+        c.expectedPhotoPattern ??
+        new RegExp(`the photo of this page in ${join(work, "photos").replace(/[/\\]/g, ".")}`);
+      expect(
+        () =>
+          checkAndMarkPage({
+            workDir: work,
+            page: "sample:M:3a",
+            repoRoot: repo,
+            photoCompared: false,
+          }),
+        c.name,
+      ).toThrow(expected);
+      expectNothingWritten(finalDir, before);
+    }
+
+    const strictFailCases: Array<{
+      name: string;
+      relPath: string;
+      bytes: Buffer;
+      expected: RegExp;
+    }> = [
+      {
+        name: "invalid JSON in report.json",
+        relPath: join("final", "report.json"),
+        bytes: Buffer.from("{ bad", "utf8"),
+        expected: /Invalid JSON in .*report\.json/i,
+      },
+      {
+        name: "invalid UTF-8 in report.json",
+        relPath: join("final", "report.json"),
+        bytes: Buffer.concat([Buffer.from('{"pages":[{"source_ref":"', "utf8"), Buffer.of(0xff), Buffer.from('"}]}', "utf8")]),
+        expected: /Invalid UTF-8 in .*report\.json/i,
+      },
+      {
+        name: "invalid JSON in photos-manifest.json",
+        relPath: join("photos", "photos-manifest.json"),
+        bytes: Buffer.from("{ bad", "utf8"),
+        expected: /Invalid JSON in .*photos-manifest\.json/i,
+      },
+    ];
+
+    for (const c of strictFailCases) {
+      const { repo, work, finalDir } = setUpWork(makeFinalPage());
+      const before = readFileSync(join(finalDir, "sample-M-3a.json"), "utf8");
+      mkdirSync(join(work, "photos"), { recursive: true });
+      writeFileSync(join(work, c.relPath), c.bytes);
+      expect(
+        () =>
+          checkAndMarkPage({
+            workDir: work,
+            page: "sample:M:3a",
+            repoRoot: repo,
+            photoCompared: false,
+          }),
+        c.name,
+      ).toThrow(c.expected);
+      expectNothingWritten(finalDir, before);
+    }
   });
 });

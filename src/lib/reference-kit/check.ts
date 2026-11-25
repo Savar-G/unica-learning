@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
   assertOutsideRepo,
+  parseStrictUtf8Json,
   prepareSafeOutputDir,
   renderRecordToMarkdown,
   validateReferenceRecord,
@@ -19,30 +20,55 @@ export interface CheckPageResult {
   notes: string[];
 }
 
+function readStrictJsonFile(filePath: string): unknown {
+  const bytes = readFileSync(filePath);
+  try {
+    return parseStrictUtf8Json(bytes);
+  } catch (err) {
+    const kind = err instanceof SyntaxError ? "Invalid JSON" : "Invalid UTF-8";
+    throw new Error(
+      `${kind} in ${filePath}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
 // The photo of a page: the photos manifest names it; an older work folder may name it only in the
 // report. Without either, the photos folder is named.
 function describePagePhoto(workDir: string, page: string): string {
   const photosDir = join(workDir, "photos");
-  try {
-    const manifest = parsePhotosManifest(
-      JSON.parse(readFileSync(join(photosDir, PHOTOS_MANIFEST_FILE), "utf8")) as unknown,
-    );
-    const entry = manifest.photos.find((p) => p.source_ref === page);
-    if (entry) return `${join(photosDir, entry.file)} (original name ${entry.original_name})`;
-  } catch {
-    // No readable manifest: try the report.
-  }
-  try {
-    const report = JSON.parse(readFileSync(join(workDir, "final", "report.json"), "utf8")) as {
-      pages?: Array<{ source_ref?: unknown; photo?: unknown; original_name?: unknown }>;
-    };
-    const entry = report.pages?.find((p) => p.source_ref === page);
-    if (entry && typeof entry.photo === "string") {
-      const original = typeof entry.original_name === "string" ? ` (original name ${entry.original_name})` : "";
-      return `${join(photosDir, entry.photo)}${original}`;
+  const manifestPath = join(photosDir, PHOTOS_MANIFEST_FILE);
+  if (existsSync(manifestPath)) {
+    const rawManifest = readStrictJsonFile(manifestPath);
+    try {
+      const manifest = parsePhotosManifest(rawManifest);
+      const entry = manifest.photos.find((p) => p.source_ref === page);
+      if (entry) return `${join(photosDir, entry.file)} (original name ${entry.original_name})`;
+    } catch {
+      // Unrecognized manifest shape: try the report.
     }
-  } catch {
-    // No readable report: name the folder.
+  }
+  const reportPath = join(workDir, "final", "report.json");
+  if (existsSync(reportPath)) {
+    const rawReport = readStrictJsonFile(reportPath);
+    if (typeof rawReport === "object" && rawReport !== null && !Array.isArray(rawReport)) {
+      const pages = (rawReport as Record<string, unknown>).pages;
+      if (Array.isArray(pages)) {
+        const entry = pages.find(
+          (p): p is Record<string, unknown> =>
+            typeof p === "object" &&
+            p !== null &&
+            !Array.isArray(p) &&
+            (p as Record<string, unknown>).source_ref === page,
+        );
+        if (entry && typeof entry.photo === "string" && entry.photo.trim().length > 0) {
+          const original =
+            typeof entry.original_name === "string" && entry.original_name.trim().length > 0
+              ? ` (original name ${entry.original_name})`
+              : "";
+          return `${join(photosDir, entry.photo)}${original}`;
+        }
+      }
+    }
   }
   return `the photo of this page in ${photosDir}`;
 }
@@ -82,7 +108,11 @@ export function checkAndMarkPage(opts: {
   if (!existsSync(statusPath)) {
     throw new Error(`Missing status.json in ${finalDir}. Run reference:compare first.`);
   }
-  const statusMap = JSON.parse(readFileSync(statusPath, "utf8")) as Record<string, PageStatus>;
+  const rawStatus = readStrictJsonFile(statusPath);
+  if (typeof rawStatus !== "object" || rawStatus === null || Array.isArray(rawStatus)) {
+    throw new Error(`Invalid status map in ${statusPath}: expected a JSON object`);
+  }
+  const statusMap = rawStatus as Record<string, PageStatus>;
   if (!Object.prototype.hasOwnProperty.call(statusMap, page)) {
     throw new Error(`Page "${page}" is not listed in ${statusPath}. Run reference:compare first.`);
   }
@@ -105,14 +135,7 @@ export function checkAndMarkPage(opts: {
     throw new Error(`Final record not found for "${page}" at ${recordPath}`);
   }
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(readFileSync(recordPath, "utf8")) as unknown;
-  } catch (err) {
-    throw new Error(
-      `Invalid JSON in ${recordPath}: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
+  const parsed = readStrictJsonFile(recordPath);
 
   if (
     typeof parsed === "object" &&
@@ -158,7 +181,9 @@ export function checkAndMarkPage(opts: {
     }
     throw new Error(lines.join("\n"));
   }
-  const recheck = validateReferenceRecord(recomputed);
+  const checkedRecord = { ...recomputed };
+  delete checkedRecord.single_read;
+  const recheck = validateReferenceRecord(checkedRecord);
   if (!recheck.ok) {
     const details = recheck.errors.map((e) => `  ${e.path}: ${e.message}`).join("\n");
     throw new Error(`Validation failed after recomputing answers for ${page}:\n${details}`);

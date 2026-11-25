@@ -19,6 +19,67 @@ export const MAX_REFERENCE_PHOTO_BYTES = 20 * 1024 * 1024;
 
 const NOFOLLOW_FLAG = typeof fsConstants.O_NOFOLLOW === "number" ? fsConstants.O_NOFOLLOW : 0;
 const NONBLOCK_FLAG = typeof fsConstants.O_NONBLOCK === "number" ? fsConstants.O_NONBLOCK : 0;
+const STRICT_UTF8_DECODER = new TextDecoder("utf-8", { fatal: true });
+// A high surrogate with no low surrogate after it, or a low surrogate with no high surrogate before it.
+const UNPAIRED_SURROGATE_RE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+
+export function decodeStrictUtf8(bytes: Uint8Array): string {
+  return STRICT_UTF8_DECODER.decode(bytes);
+}
+
+export function parseStrictUtf8Json(bytes: Uint8Array): unknown {
+  return JSON.parse(decodeStrictUtf8(bytes)) as unknown;
+}
+
+function isUnstorableText(text: string): boolean {
+  return text.includes("\u0000") || text.includes("\uFFFD") || UNPAIRED_SURROGATE_RE.test(text);
+}
+
+// Path of the first string (key or value) that the import refuses: U+0000, half of a split
+// character, or U+FFFD (the replacement mark left by a permissive UTF-8 decoder).
+export function findUnstorableTextPath(value: unknown, path = "$"): string | null {
+  if (typeof value === "string") return isUnstorableText(value) ? path : null;
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i += 1) {
+      const found = findUnstorableTextPath(value[i], `${path}[${i}]`);
+      if (found !== null) return found;
+    }
+    return null;
+  }
+  if (value !== null && typeof value === "object") {
+    for (const [key, child] of Object.entries(value)) {
+      if (isUnstorableText(key)) return `${path}.<key>`;
+      const found = findUnstorableTextPath(child, `${path}.${key}`);
+      if (found !== null) return found;
+    }
+  }
+  return null;
+}
+
+export function parseImportJson(
+  fileName: string,
+  bytes: Uint8Array,
+  problems: string[],
+  jsonErrorLabel = "invalid JSON",
+): { ok: true; value: unknown } | { ok: false } {
+  let parsed: unknown;
+  try {
+    parsed = parseStrictUtf8Json(bytes);
+  } catch (err) {
+    const kind = err instanceof SyntaxError ? jsonErrorLabel : "invalid UTF-8";
+    const msg = err instanceof Error ? err.message : String(err);
+    problems.push(`${fileName}: ${kind} (${msg})`);
+    return { ok: false };
+  }
+  const badPath = findUnstorableTextPath(parsed);
+  if (badPath !== null) {
+    problems.push(
+      `${fileName}: ${badPath}: text holds a null character, half of a split character, or U+FFFD replacement character, which the import cannot store`,
+    );
+    return { ok: false };
+  }
+  return { ok: true, value: parsed };
+}
 
 export interface PlannedPhoto {
   storagePath: string;
@@ -186,14 +247,16 @@ export async function readPlannedPhotos(
     return planned;
   }
 
-  let parsedManifest: unknown;
-  try {
-    parsedManifest = JSON.parse(Buffer.from(manifestRead.bytes).toString("utf8")) as unknown;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    problems.push(`photos-manifest.json: could not be read or parsed (${msg})`);
+  const parsedResult = parseImportJson(
+    "photos-manifest.json",
+    manifestRead.bytes,
+    problems,
+    "could not be read or parsed",
+  );
+  if (!parsedResult.ok) {
     return planned;
   }
+  const parsedManifest = parsedResult.value;
 
   if (
     !isPlainObject(parsedManifest) ||

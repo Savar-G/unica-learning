@@ -252,7 +252,7 @@ export function computeExprAnswer(expr: Expr | null): ComputedAnswer | null {
   }
 }
 
-function digitCount(n: number): number {
+export function digitCount(n: number): number {
   return String(Math.abs(Math.trunc(n))).length;
 }
 

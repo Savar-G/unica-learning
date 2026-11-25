@@ -6,6 +6,14 @@ const f = vi.hoisted(() => ({ start: "started", identify: "identified" as string
   held: null as null | { id: string; printed_revision: string; sent_at: string | null }, keep: false, calibration: null as null | { state: string; printed_revision: string }, deleted: [] as string[],
   // The held photo's marking job (scan edge sweep, 2026-11-14).
   job: null as null | { state: string; blocked_reason: string | null }, swap: "pending" as string, cleaned: [] as string[] }));
+const rejection = vi.hoisted(() => ({
+  write: vi.fn<(args: { p_parent: string; p_id: string; p_reason: string }) =>
+    { data: string | null; error: { code: string } | null }>(),
+  legacy: vi.fn(),
+  spreadStart: null as string | null,
+  spreadFinish: null as string | null,
+  throwOnIdentify: false,
+}));
 const ai = vi.hoisted(() => vi.fn(() => { throw new Error("S1 must not dispatch AI"); }));
 vi.mock("@/lib/ai-client", () => ({ aiClient: ai }));
 // #915: the page check starts after the answer, for a family that gets checks.
@@ -36,13 +44,18 @@ vi.mock("@/lib/scan-photo-server", () => ({
         maybeSingle: async () => ({ data: table === "workbook_pages" ? { id: "page", page_number: 24, workbooks: f.candidateChild[token] ? { child_id: f.candidateChild[token] } : null } : table === "scan_photos" ? columns.includes("sent_at") ? f.held : { child_id: Array.isArray(f.filed) ? f.filed.shift() : f.filed } : table === "scan_calibrations" ? f.calibration : table === "scan_marking_jobs" ? f.job : null, error: null }) };
       return chain;
     } }),
-    rpc: async (name: string, args: { p_token?: string; p_id?: string; p_action?: string }) => {
+    rpc: async (name: string, args: { p_parent: string; p_token?: string; p_id: string; p_action?: string; p_reason: string }) => {
       f.calls.push(name);
       if (name === "identify_scan_photo") {
+        if (rejection.throwOnIdentify && args.p_id !== id) throw new Error("synthetic internal detail");
         f.tokens.push(args.p_token!);
         const answer = Array.isArray(f.identify) ? f.identify.shift() ?? "identified" : f.identify;
         return { data: answer };
       }
+      if (name === "reject_scan_photo") return rejection.write({ p_parent: args.p_parent, p_id: args.p_id, p_reason: args.p_reason });
+      if (name === "change_scan_photo" && args.p_action === "reject") { rejection.legacy(args); return { data: "rejected" }; }
+      if (name === "start_scan_photo" && args.p_id !== id && rejection.spreadStart) return { data: rejection.spreadStart };
+      if (name === "finish_scan_photo" && args.p_id !== id && rejection.spreadFinish) return { data: rejection.spreadFinish };
       if (name === "change_scan_photo" && args.p_action === "save") f.saved.push(args.p_id!);
       if (name === "change_scan_photo" && args.p_action === "delete") { f.deleted.push(args.p_id!); return { data: "deleted" }; }
       // The swap rechecks under the family lock; `keep` is its answer for a photo sent or marked meanwhile.
@@ -59,6 +72,12 @@ import { POST, PUT } from "./route";
 const id = "00000000-0000-4000-8000-000000000001";
 const put = () => PUT(new Request(`https://unicalearning.com/api/account/scans/${id}`, { method: "PUT", headers: { Origin: "https://unicalearning.com" }, body: new Uint8Array([1]) }), { params: Promise.resolve({ id }) });
 beforeEach(() => { vi.clearAllMocks(); setProductObserver(null); later.tasks = []; later.checks = true; later.crops = []; later.fail = false; later.preview = "ready"; later.photoChecks = []; f.start = "started"; f.identify = "identified"; f.normalize = true; f.uploads = 0; f.calls = []; f.spread = false; f.unsplit = false; f.admit = "reserved"; f.tokens = []; f.saved = []; f.refuse = "qr"; f.storageFails = 0; f.recover = "pending"; f.filed = "child"; f.candidateChild = {}; f.closed = []; f.held = null; f.calibration = null; f.deleted = []; f.job = null; f.swap = "pending"; f.cleaned = []; f.keep = false; ai.mockClear(); vi.stubEnv("OPENROUTER_API_KEY", "synthetic-configured-key"); });
+beforeEach(() => {
+  rejection.write.mockReset().mockReturnValue({ data: "rejected", error: null });
+  rejection.spreadStart = null;
+  rejection.spreadFinish = null;
+  rejection.throwOnIdentify = false;
+});
 afterEach(() => { setProductObserver(null); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 it("stores one normalized photo with zero AI dispatches when a key is configured", async () => {
   expect((await put()).status).toBe(200); expect(f.uploads).toBe(1);
@@ -67,6 +86,7 @@ it("stores one normalized photo with zero AI dispatches when a key is configured
 });
 it("does not create an object for a refused family admission, unreadable QR or wrong page", async () => {
   f.start = "busy"; expect((await put()).status).toBe(409); expect(f.uploads).toBe(0);
+  expect(rejection.write).not.toHaveBeenCalled();
   f.start = "started"; f.normalize = false; expect((await put()).status).toBe(422); expect(f.uploads).toBe(0);
   f.normalize = true; f.identify = "page"; expect((await put()).status).toBe(422); expect(f.uploads).toBe(0);
   expect(ai).not.toHaveBeenCalled();
@@ -196,7 +216,7 @@ it("files a sibling's page with that child only when the sibling's plan opens sc
   f.uploads = 0; f.calls = []; f.closed = ["sibling"];
   const refused = await put();
   expect(refused.status).toBe(422); expect(await refused.json()).toEqual({ error: "page" }); expect(f.uploads).toBe(0);
-  expect(f.calls).toContain("change_scan_photo");
+  expect(rejection.write).toHaveBeenCalledExactlyOnceWith({ p_parent: "family", p_id: id, p_reason: "page" });
 });
 
 it("a new photo of a page whose photo the check refused replaces it, however it was taken (F5)", async () => {
@@ -302,4 +322,61 @@ it("reports swallowed background crop failure while the upload stays committed",
   await later.tasks[0]();
   expect(observer).toHaveBeenCalledWith({ code: "scan.check_failed", attributes: { photoId: id } });
   expect(observer.mock.calls.filter(([e]) => e.code === "scan.upload_committed")).toHaveLength(1);
+});
+
+it.each([
+  ["qr", "qr", "qr"], ["size", "size", "size"], ["image", "image", "image"], ["flat", "flat", "flat"],
+  ["unavailable", "unavailable", "image"], ["synthetic internal detail", "unexpected", "image"],
+])("stores an upload processing refusal for %s and keeps the response code", async (error, reason, responseCode) => {
+  const observer = vi.fn(); setProductObserver(observer);
+  f.normalize = false; f.refuse = error;
+  const response = await put();
+  expect(response.status).toBe(422);
+  expect(await response.json()).toEqual({ error: responseCode });
+  expect(rejection.write).toHaveBeenCalledExactlyOnceWith({ p_parent: "family", p_id: id, p_reason: reason });
+  expect(observer).toHaveBeenCalledWith({ code: "scan.upload_refused", attributes: { photoId: id, reason } });
+  expect(f.cleaned).toEqual([id]);
+});
+
+it.each(["page", "duplicate", "refused", "expired"])("stores the page binding refusal %s", async (reason) => {
+  f.identify = reason;
+  expect((await put()).status).toBe(422);
+  expect(rejection.write).toHaveBeenCalledExactlyOnceWith({ p_parent: "family", p_id: id, p_reason: reason });
+});
+
+it.each([
+  { step: "start", state: "busy", reason: "busy" },
+  { step: "identify", state: "duplicate", reason: "duplicate" },
+  { step: "child access", state: "page", reason: "page" },
+  { step: "finish", state: "expired", reason: "expired" },
+  { step: "exception", state: "unavailable", reason: "unexpected" },
+])("records the second spread photo's refusal at $step", async ({ step, state, reason }) => {
+  const observer = vi.fn(); setProductObserver(observer);
+  f.spread = true;
+  if (step === "start") rejection.spreadStart = state;
+  if (step === "identify") f.identify = ["identified", state];
+  if (step === "child access") { f.filed = ["child", "sibling"]; f.closed = ["sibling"]; }
+  if (step === "finish") rejection.spreadFinish = state;
+  if (step === "exception") rejection.throwOnIdentify = true;
+  const response = await put();
+  expect(response.status).toBe(200);
+  const { spread } = await response.json();
+  expect(spread).toMatchObject({ state });
+  expect(rejection.write).toHaveBeenCalledExactlyOnceWith({ p_parent: "family", p_id: spread.id, p_reason: reason });
+  expect(observer).toHaveBeenCalledWith({ code: "scan.upload_refused", attributes: { photoId: spread.id, reason } });
+  expect(f.cleaned).toEqual([spread.id]);
+});
+
+it.each(["PGRST202", "42501"])("preserves the reject response and cleanup when the new RPC returns %s", async (code) => {
+  rejection.write.mockReturnValue({ data: null, error: { code } });
+  f.normalize = false;
+  const response = await put();
+  expect(response.status).toBe(422);
+  expect(await response.json()).toEqual({ error: "qr" });
+  expect(f.cleaned).toEqual([id]);
+  if (code === "PGRST202") {
+    expect(rejection.legacy).toHaveBeenCalledExactlyOnceWith({ p_parent: "family", p_id: id, p_action: "reject" });
+  } else {
+    expect(rejection.legacy).not.toHaveBeenCalled();
+  }
 });

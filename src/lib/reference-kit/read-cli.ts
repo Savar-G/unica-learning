@@ -1,7 +1,12 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { join } from "node:path";
 
-export type ReaderFamily = "claude" | "codex";
+export const READER_FAMILIES = ["claude", "codex"] as const;
+export type ReaderFamily = (typeof READER_FAMILIES)[number];
+
+export function isReaderFamily(value: unknown): value is ReaderFamily {
+  return typeof value === "string" && (READER_FAMILIES as readonly string[]).includes(value);
+}
 
 export const READER_PHOTO_FILE = "page.jpg";
 
@@ -51,6 +56,18 @@ export function assertModelMatchesFamily(family: ReaderFamily, model?: string): 
   }
 }
 
+// No settings, tool servers, skills or saved session: the model sees only its prompt.
+export const CLAUDE_ISOLATION_ARGS = [
+  "-p",
+  "--output-format",
+  "text",
+  "--restricted",
+  "--safe-mode",
+  "--strict-mcp-config",
+  "--no-session-persistence",
+  "--disable-slash-commands",
+] as const;
+
 export function buildCliInvocation(opts: {
   family: ReaderFamily;
   model?: string;
@@ -71,14 +88,7 @@ export function buildCliInvocation(opts: {
     ].join("\n");
 
     const args = [
-      "-p",
-      "--output-format",
-      "text",
-      "--restricted",
-      "--safe-mode",
-      "--strict-mcp-config",
-      "--no-session-persistence",
-      "--disable-slash-commands",
+      ...CLAUDE_ISOLATION_ARGS,
       "--tools",
       "Read",
       "--allowedTools",

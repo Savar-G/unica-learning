@@ -2,7 +2,11 @@ import { readdir, realpath } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import {
   buildReferencePhotoPath,
+  decodeStrictUtf8,
+  findUnstorableTextPath,
   isPlainObject,
+  parseImportJson,
+  parseStrictUtf8Json,
   readPlannedPhotos,
   readRegularFileNoFollow,
   type PlannedPhoto,
@@ -14,10 +18,11 @@ import {
   type ReplaceDecision,
   type StatusLowered,
 } from "./import-replace";
+import { checkStatusSingleRead } from "./record-path";
 import type { ReferenceRecord } from "./types";
 import { validateReferenceRecord } from "./validate";
 
-export { buildReferencePhotoPath };
+export { buildReferencePhotoPath, decodeStrictUtf8, findUnstorableTextPath, parseStrictUtf8Json };
 export type { StatusLowered };
 export { MAX_REFERENCE_PHOTO_BYTES } from "./import-photos";
 
@@ -26,6 +31,7 @@ export type ReferenceRecordKind = (typeof REFERENCE_RECORD_KINDS)[number];
 
 export const TRANSCRIPT_STATUSES = [
   "machine_read",
+  "agreement_accepted",
   "double_read",
   "human_checked",
 ] as const;
@@ -132,33 +138,6 @@ export function deepEqualJson(a: unknown, b: unknown): boolean {
   return true;
 }
 
-// A high surrogate with no low surrogate after it, or a low surrogate with no high surrogate before it.
-const UNPAIRED_SURROGATE_RE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
-
-function isUnstorableText(text: string): boolean {
-  return text.includes("\u0000") || UNPAIRED_SURROGATE_RE.test(text);
-}
-
-// Path of the first string (key or value) that a jsonb column refuses: U+0000 or half of a split character.
-export function findUnstorableTextPath(value: unknown, path = "$"): string | null {
-  if (typeof value === "string") return isUnstorableText(value) ? path : null;
-  if (Array.isArray(value)) {
-    for (let i = 0; i < value.length; i += 1) {
-      const found = findUnstorableTextPath(value[i], `${path}[${i}]`);
-      if (found !== null) return found;
-    }
-    return null;
-  }
-  if (value !== null && typeof value === "object") {
-    for (const [key, child] of Object.entries(value)) {
-      if (isUnstorableText(key)) return `${path}.<key>`;
-      const found = findUnstorableTextPath(child, `${path}.${key}`);
-      if (found !== null) return found;
-    }
-  }
-  return null;
-}
-
 function refusedResult(recordsRead: number, dryRun: boolean, problems: string[]): ImportResult {
   return {
     ok: false,
@@ -226,29 +205,21 @@ async function readRecords(
       continue;
     }
 
-    let parsed: unknown;
-    try {
-      const raw = Buffer.from(fileRead.bytes).toString("utf8");
-      parsed = JSON.parse(raw) as unknown;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      problems.push(`${fileName}: invalid JSON (${msg})`);
+    const parsedResult = parseImportJson(fileName, fileRead.bytes, problems);
+    if (!parsedResult.ok) {
       continue;
     }
+    const parsed = parsedResult.value;
 
     const check = validateReferenceRecord(parsed);
     if (!check.ok) {
+      const refHint =
+        isPlainObject(parsed) && typeof parsed.source_ref === "string"
+          ? ` (${parsed.source_ref})`
+          : "";
       for (const e of check.errors) {
-        problems.push(`${fileName}: ${e.path}: ${e.message}`);
+        problems.push(`${fileName}${refHint}: ${e.path}: ${e.message}`);
       }
-      continue;
-    }
-
-    const nulPath = findUnstorableTextPath(parsed);
-    if (nulPath !== null) {
-      problems.push(
-        `${fileName}: ${nulPath}: text holds a null character or half of a split character, which the database cannot store`,
-      );
       continue;
     }
 
@@ -289,14 +260,11 @@ async function readStatusMap(
     return statusByRef;
   }
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(Buffer.from(statusRead.bytes).toString("utf8")) as unknown;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    problems.push(`status.json: invalid JSON (${msg})`);
+  const parsedResult = parseImportJson("status.json", statusRead.bytes, problems);
+  if (!parsedResult.ok) {
     return statusByRef;
   }
+  const parsed = parsedResult.value;
 
   if (!isPlainObject(parsed)) {
     problems.push("status.json: must be a JSON object mapping source_ref to transcript_status");
@@ -320,19 +288,38 @@ async function readStatusMap(
   return statusByRef;
 }
 
-export async function importReferenceRecords(options: ImportOptions): Promise<ImportResult> {
-  const dryRun = options.dryRun ?? false;
-  const replace = options.replace ?? false;
-  const problems: string[] = [];
-  const resolvedRecordsDir = resolve(options.recordsDir);
+export interface LoadedReferenceRecords {
+  recordsRead: number;
+  records: ReferenceRecord[];
+  statusByRef: Map<string, TranscriptStatus>;
+  // The file name of each source_ref.
+  fileByRef: Map<string, string>;
+  problems: string[];
+}
 
+// Reads a folder of final records and its status.json with every check that an import needs: strict
+// text, valid records, one file for each source_ref, known statuses, and single_read lists that resolve.
+export async function loadReferenceRecords(recordsDir: string): Promise<LoadedReferenceRecords> {
+  const problems: string[] = [];
   const { realRecordsDir, recordsRead, records, seenRefs } = await readRecords(
-    resolvedRecordsDir,
+    resolve(recordsDir),
     problems,
   );
+  const problemsBeforeStatus = problems.length;
   const statusByRef = realRecordsDir
     ? await readStatusMap(realRecordsDir, seenRefs, problems)
     : new Map<string, TranscriptStatus>();
+  if (problems.length === problemsBeforeStatus) {
+    checkStatusSingleRead(records, statusByRef, problems);
+  }
+  return { recordsRead, records, statusByRef, fileByRef: seenRefs, problems };
+}
+
+export async function importReferenceRecords(options: ImportOptions): Promise<ImportResult> {
+  const dryRun = options.dryRun ?? false;
+  const replace = options.replace ?? false;
+  const loaded = await loadReferenceRecords(options.recordsDir);
+  const { recordsRead, records, statusByRef, problems } = loaded;
   const plannedPhotos = options.photosDir
     ? await readPlannedPhotos(options.photosDir, records, problems)
     : new Map<string, PlannedPhoto>();

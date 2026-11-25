@@ -18,6 +18,17 @@ function escapeTableCell(text: string): string {
   return text.replace(/\|/g, "\\|").replace(/\r?\n/g, "<br>");
 }
 
+function matchesSingleRead(paths: readonly string[] | undefined, prefix: string): boolean {
+  if (!paths || paths.length === 0) return false;
+  return paths.some(
+    (p) => p === prefix || p.startsWith(`${prefix}.`) || p.startsWith(`${prefix}[`),
+  );
+}
+
+function notCheckedSuffix(paths: readonly string[] | undefined, prefix: string): string {
+  return matchesSingleRead(paths, prefix) ? " [not checked]" : "";
+}
+
 function formatScoreBand(band: ScoreBand): string {
   if (band === null) return "-";
   if (typeof band === "string") return band;
@@ -97,7 +108,7 @@ function formatScaffold(s: Scaffold): string {
   }
 }
 
-function formatExample(ex: Example, idx: number): string[] {
+export function formatExample(ex: Example, idx: number): string[] {
   const out: string[] = [];
   const header = `### Example ${idx + 1}${ex.label ? ` - ${ex.label}` : ""} (${ex.position}, ${ex.relation})`;
   out.push(header);
@@ -151,18 +162,22 @@ function formatExample(ex: Example, idx: number): string[] {
 function renderPageMarkdown(page: PageRecord): string {
   const lines: string[] = [];
   const ordering = computePageOrderingPattern(page);
+  const sr = page.single_read;
 
   lines.push(`# ${page.source_ref}`);
   lines.push("");
+  if (sr && sr.length > 0) {
+    lines.push(`- **Single-read (not checked):** ${sr.map((p) => `\`${p}\``).join(", ")}`);
+  }
   lines.push(
-    `- **Topic:** ${page.topic.title ?? "-"}${page.topic.number !== undefined ? ` (number: ${page.topic.number})` : ""}`,
+    `- **Topic:** ${page.topic.title ?? "-"}${page.topic.number !== undefined ? ` (number: ${page.topic.number})` : ""}${notCheckedSuffix(sr, "topic")}`,
   );
   if (Array.isArray(page.score_bands)) {
     const labels = ["100%", "~90%", "~80%", "~70%", "69%~"];
     const formatted = page.score_bands.map((b, i) => `${labels[i]}: ${formatScoreBand(b)}`).join(" | ");
-    lines.push(`- **Score bands:** ${formatted}`);
+    lines.push(`- **Score bands:** ${formatted}${notCheckedSuffix(sr, "score_bands")}`);
   } else {
-    lines.push(`- **Score bands:** ${page.score_bands}`);
+    lines.push(`- **Score bands:** ${page.score_bands}${notCheckedSuffix(sr, "score_bands")}`);
   }
   lines.push(`- **Ordering pattern:** ${ordering.summary}`);
   lines.push("");
@@ -170,44 +185,60 @@ function renderPageMarkdown(page: PageRecord): string {
   if (Array.isArray(page.examples) && page.examples.length > 0) {
     lines.push("## Examples");
     page.examples.forEach((ex, i) => {
-      lines.push(...formatExample(ex, i));
+      const exLines = formatExample(ex, i);
+      if (exLines.length > 0) {
+        exLines[0] = `${exLines[0]}${notCheckedSuffix(sr, `examples[${i}]`)}`;
+      }
+      lines.push(...exLines);
       lines.push("");
     });
   } else if (!Array.isArray(page.examples)) {
     lines.push(`## Examples`);
-    lines.push(`- ${page.examples}`);
+    lines.push(`- ${page.examples}${notCheckedSuffix(sr, "examples")}`);
     lines.push("");
   }
 
   page.sections.forEach((sec, si) => {
     lines.push(`## Section ${si + 1}`);
-    lines.push(`- **Instruction:** ${sec.instruction ?? "-"}`);
+    lines.push(`- **Instruction:** ${sec.instruction ?? "-"}${notCheckedSuffix(sr, `sections[${si}].instruction`)}`);
     lines.push(`- **Section ordering:** ${ordering.sections[si]?.description ?? "-"}`);
     if (Array.isArray(sec.scaffolds)) {
       if (sec.scaffolds.length === 0) {
-        lines.push("- **Scaffolds:** none");
+        lines.push(`- **Scaffolds:** none${notCheckedSuffix(sr, `sections[${si}].scaffolds`)}`);
       } else {
         lines.push("- **Scaffolds:**");
-        for (const sc of sec.scaffolds) {
-          lines.push(`  - ${formatScaffold(sc)}`);
-        }
+        sec.scaffolds.forEach((sc, sci) => {
+          lines.push(`  - ${formatScaffold(sc)}${notCheckedSuffix(sr, `sections[${si}].scaffolds[${sci}]`)}`);
+        });
       }
     } else {
-      lines.push(`- **Scaffolds:** ${sec.scaffolds}`);
+      lines.push(`- **Scaffolds:** ${sec.scaffolds}${notCheckedSuffix(sr, `sections[${si}].scaffolds`)}`);
     }
     lines.push("");
     lines.push("| # | Printed | Form | Responses | Computed features |");
     lines.push("|---:|---|---|---|---|");
-    for (const item of sec.items) {
-      const printed = escapeTableCell(String(item.printed));
-      const form = escapeTableCell(item.form === null ? "-" : String(item.form));
+    sec.items.forEach((item, ii) => {
+      const itemPrefix = `sections[${si}].items[${ii}]`;
+      const wholeItemTag = sr?.includes(itemPrefix) ? " [not checked]" : "";
+      const printed = escapeTableCell(
+        `${String(item.printed)}${wholeItemTag || notCheckedSuffix(sr, `${itemPrefix}.printed`)}`,
+      );
+      const form = escapeTableCell(
+        `${item.form === null ? "-" : String(item.form)}${notCheckedSuffix(sr, `${itemPrefix}.form`)}`,
+      );
       const resp =
         item.responses.length === 0
           ? "-"
-          : item.responses.map((r) => escapeTableCell(formatResponse(r))).join("<br>");
-      const feats = escapeTableCell(formatFeatures(computeItemFeatures(item), item.expr));
+          : item.responses
+              .map((r, ri) =>
+                escapeTableCell(`${formatResponse(r)}${notCheckedSuffix(sr, `${itemPrefix}.responses[${ri}]`)}`),
+              )
+              .join("<br>");
+      const feats = escapeTableCell(
+        `${formatFeatures(computeItemFeatures(item), item.expr)}${notCheckedSuffix(sr, `${itemPrefix}.expr`)}`,
+      );
       lines.push(`| ${item.n} | ${printed} | ${form} | ${resp} | ${feats} |`);
-    }
+    });
     lines.push("");
   });
 
@@ -216,11 +247,18 @@ function renderPageMarkdown(page: PageRecord): string {
 
 function renderContentsMarkdown(contents: ContentsRecord): string {
   const lines: string[] = [];
+  const sr = contents.single_read;
   lines.push(`# ${contents.source_ref}`);
   lines.push("");
+  if (sr && sr.length > 0) {
+    lines.push(`- **Single-read (not checked):** ${sr.map((p) => `\`${p}\``).join(", ")}`);
+    lines.push("");
+  }
   lines.push("| # | Topic | Sheets | Std time |");
   lines.push("|---:|---|---|---|");
-  for (const t of contents.topics) {
+  contents.topics.forEach((t, ti) => {
+    const topicPrefix = `topics[${ti}]`;
+    const wholeTag = sr?.includes(topicPrefix) ? " [not checked]" : "";
     const sheets = Array.isArray(t.sheets)
       ? `${t.sheets[0]}–${t.sheets[1]}`
       : t.sheets === null
@@ -233,9 +271,9 @@ function renderContentsMarkdown(contents: ContentsRecord): string {
           ? `${t.std_time_min[0]}–${t.std_time_min[1]} min`
           : String(t.std_time_min);
     lines.push(
-      `| ${t.n} | ${escapeTableCell(String(t.title))} | ${escapeTableCell(sheets)} | ${escapeTableCell(time)} |`,
+      `| ${t.n} | ${escapeTableCell(`${String(t.title)}${wholeTag || notCheckedSuffix(sr, `${topicPrefix}.title`)}`)} | ${escapeTableCell(`${sheets}${notCheckedSuffix(sr, `${topicPrefix}.sheets`)}`)} | ${escapeTableCell(`${time}${notCheckedSuffix(sr, `${topicPrefix}.std_time_min`)}`)} |`,
     );
-  }
+  });
   lines.push("");
   return lines.join("\n");
 }

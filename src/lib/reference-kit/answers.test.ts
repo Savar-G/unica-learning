@@ -1,7 +1,16 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { validateReferenceRecord, type ItemResponse, type PageItem, type PageRecord } from "@/lib/reference-record";
-import { applyComputedAnswers, decimalPlacePower, findEmptyAnswers, isKnownPlaceName } from "./answers";
+import { validateReferenceRecord, type ExamplePart, type ItemResponse, type PageItem, type PageRecord } from "@/lib/reference-record";
+import {
+  applyComputedAnswers,
+  collectExampleAnswerConflicts,
+  collectReadTimeAnswerConflicts,
+  collectReadTimeUnclearAnswers,
+  decimalPlacePower,
+  findEmptyAnswers,
+  findExampleAnswerConflicts,
+  isKnownPlaceName,
+} from "./answers";
 
 function makePageWithItem(item: PageRecord["sections"][0]["items"][0]): PageRecord {
   return {
@@ -614,5 +623,419 @@ describe("applyComputedAnswers", () => {
     });
     const wrongSumOut = applyComputedAnswers(wrongSum);
     expect(wrongSumOut.details.map((d) => d.kind)).toEqual(["answer_differs"]);
+  });
+
+  it("extracts read-time answer_differs entries labelled by reader with values from structured details or legacy note text", () => {
+    expect(
+      collectReadTimeAnswerConflicts("a", [], [
+        { kind: "places_do_not_fit", path: "sections[0].items[n=1]" },
+        { kind: "place_not_reached", path: "sections[0].items[n=2].responses[0]" },
+        { kind: "answer_differs", path: "sections[0].items[n=3].responses[0]" },
+        { kind: "answer_differs", path: "sections[0].items[n=3].responses[0]" },
+      ]),
+    ).toEqual(["reader a: sections[0].items[n=3].responses[0]"]);
+
+    expect(
+      collectReadTimeAnswerConflicts(
+        "b",
+        ['sections[0].items[n=3].responses[0]: reader gave "7", computed "5"'],
+        [{ kind: "answer_differs", path: "sections[0].items[n=3].responses[0]" }],
+      ),
+    ).toEqual(['reader b: sections[0].items[n=3].responses[0]: reader gave "7", computed "5"']);
+
+    // When structured details are present and empty, legacy notes are not re-parsed.
+    expect(
+      collectReadTimeAnswerConflicts(
+        "a",
+        ['sections[0].items[n=1].responses[0]: reader gave "3", computed "2"'],
+        [],
+      ),
+    ).toEqual([]);
+
+    // Legacy fallback (details omitted) parses exact answers.ts answer_differs formats only.
+    expect(
+      collectReadTimeAnswerConflicts("b", [
+        'sections[0].items[n=1].responses[0]: reader gave "3", computed "2"',
+        'sections[0].items[n=2].responses[1]: page prints "9", computed "8"',
+        'sections[0].items[n=3].responses[0]: record holds "7", computed "6"',
+        'sections[0].items[n=4].responses[0]: place "hundreds" holds "1", but the computed value does not reach this place',
+        'sections[0].items[n=5].responses[0]: the computed value does not reach place "hundreds"; kept as it is',
+        'sections[0].items[n=6]: computed single answer "5" but it does not fit the 2 answer-bearing response(s); kept reader answers',
+        "unrelated freeform text",
+      ]),
+    ).toEqual([
+      'reader b: sections[0].items[n=1].responses[0]: reader gave "3", computed "2"',
+      'reader b: sections[0].items[n=2].responses[1]: page prints "9", computed "8"',
+      'reader b: sections[0].items[n=3].responses[0]: record holds "7", computed "6"',
+      'reader b: sections[0].items[n=4].responses[0]: place "hundreds" holds "1", but the computed value does not reach this place',
+    ]);
+  });
+
+  it("records unclear_filled when computation replaces an unclear answer, not when it fills an empty place", () => {
+    const pageWith = (answer: string | null) =>
+      makePageWithItem({
+        n: 1,
+        printed: "1 + 1 =",
+        form: "horizontal",
+        expr: { kind: "arith", op: "add", operands: [1, 1] },
+        responses: [
+          {
+            position: "after_equals",
+            cue: null,
+            answer,
+            answer_source: answer === null ? "unchecked" : "reader",
+          },
+        ],
+      });
+
+    const unclearOut = applyComputedAnswers(pageWith("unclear"));
+    if (unclearOut.record.kind !== "page") throw new Error("page expected");
+    expect(unclearOut.record.sections[0].items[0].responses[0]).toEqual({
+      position: "after_equals",
+      cue: null,
+      answer: "2",
+      answer_source: "computed",
+    });
+    expect(unclearOut.details).toEqual([
+      {
+        kind: "unclear_filled",
+        path: "sections[0].items[n=1].responses[0]",
+        message: 'sections[0].items[n=1].responses[0]: reader marked "unclear", computed "2"',
+      },
+    ]);
+
+    for (const empty of [null, "", "   "]) {
+      const emptyOut = applyComputedAnswers(pageWith(empty));
+      if (emptyOut.record.kind !== "page") throw new Error("page expected");
+      expect(emptyOut.record.sections[0].items[0].responses[0].answer).toBe("2");
+      expect(emptyOut.details).toEqual([]);
+    }
+
+    expect(
+      collectReadTimeUnclearAnswers("a", [
+        { kind: "answer_differs", path: "sections[0].items[n=1].responses[0]" },
+        { kind: "unclear_filled", path: "sections[0].items[n=2].responses[0]" },
+        { kind: "unclear_filled", path: "sections[0].items[n=2].responses[0]" },
+        { kind: "places_do_not_fit", path: "sections[0].items[n=3]" },
+      ]),
+    ).toEqual(["reader a: sections[0].items[n=2].responses[0].answer"]);
+
+    expect(
+      collectReadTimeUnclearAnswers("b", [
+        { kind: "unclear_filled", path: "sections[0].items[n=2].responses[0]" },
+      ]),
+    ).toEqual(["reader b: sections[0].items[n=2].responses[0].answer"]);
+
+    // Legacy runs without note_details have no text fallback for unclear_filled.
+    expect(collectReadTimeUnclearAnswers("b", undefined)).toEqual([]);
+  });
+
+  it("checks worked-example part shown_answer against computable single-answer expr without mutating it", () => {
+    const pageWithPart = (part: ExamplePart): PageRecord => ({
+      ...makePageWithItem({
+        n: 1,
+        printed: "1 + 1 =",
+        form: "horizontal",
+        expr: { kind: "arith", op: "add", operands: [1, 1] },
+        responses: [{ position: "after_equals", cue: null, answer: "2", answer_source: "computed" }],
+      }),
+      examples: [{ position: "top", relation: "compare", parts: [part] }],
+    });
+
+    const cases: Array<{ label: string; part: ExamplePart; expectConflict: boolean }> = [
+      {
+        label: "matching arith",
+        part: { form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 3] }, shown_answer: "5" },
+        expectConflict: false,
+      },
+      {
+        label: "thousands separator equal",
+        part: { form: "horizontal", expr: { kind: "arith", op: "add", operands: [500, 500] }, shown_answer: "1,000" },
+        expectConflict: false,
+      },
+      {
+        label: "remainder form 4r1 equal",
+        part: { form: "horizontal", expr: { kind: "arith", op: "div", operands: [13, 3] }, shown_answer: "4r1" },
+        expectConflict: false,
+      },
+      {
+        label: "remainder form 4 r 1 equal",
+        part: { form: "horizontal", expr: { kind: "arith", op: "div", operands: [13, 3] }, shown_answer: "4 r 1" },
+        expectConflict: false,
+      },
+      {
+        label: "missing expr matching",
+        part: { form: "horizontal", expr: { kind: "missing", op: "add", operands: [3, null], result: 7 }, shown_answer: "4" },
+        expectConflict: false,
+      },
+      {
+        label: "notation expr skipped",
+        part: { form: "horizontal", expr: { kind: "notation", latex: "x + 2 = 5" }, shown_answer: "99" },
+        expectConflict: false,
+      },
+      {
+        label: "null expr skipped",
+        part: { form: "horizontal", expr: null, shown_answer: "5" },
+        expectConflict: false,
+      },
+      {
+        label: "shown_answer absent",
+        part: { form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 3] } },
+        expectConflict: false,
+      },
+      {
+        label: "shown_answer null",
+        part: { form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 3] }, shown_answer: null },
+        expectConflict: false,
+      },
+      {
+        label: "shown_answer blank",
+        part: { form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 3] }, shown_answer: "   " },
+        expectConflict: false,
+      },
+      {
+        label: "shown_answer not_stated",
+        part: { form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 3] }, shown_answer: "not_stated" },
+        expectConflict: false,
+      },
+      {
+        label: "shown_answer unclear",
+        part: { form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 3] }, shown_answer: "unclear" },
+        expectConflict: false,
+      },
+      {
+        label: "linked multi-answer expr skipped",
+        part: {
+          form: "horizontal",
+          expr: {
+            kind: "linked",
+            pair: [
+              { kind: "arith", op: "add", operands: [1, 2] },
+              { kind: "arith", op: "add", operands: [2, 3] },
+            ],
+          },
+          shown_answer: "99",
+        },
+        expectConflict: false,
+      },
+      {
+        label: "chain multi-answer expr skipped",
+        part: {
+          form: "horizontal",
+          expr: { kind: "chain", terms: [2, 4, null, 8] },
+          shown_answer: "99",
+        },
+        expectConflict: false,
+      },
+      {
+        label: "word inexact division skipped",
+        part: {
+          form: "horizontal",
+          expr: { kind: "word", text: "Share 7", expr: { kind: "arith", op: "div", operands: [7, 2] } },
+          shown_answer: "3.5",
+        },
+        expectConflict: false,
+      },
+      {
+        label: "conflicting arith",
+        part: { form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 3] }, shown_answer: "6" },
+        expectConflict: true,
+      },
+      {
+        label: "conflicting remainder",
+        part: { form: "horizontal", expr: { kind: "arith", op: "div", operands: [13, 3] }, shown_answer: "4 R2" },
+        expectConflict: true,
+      },
+      {
+        label: "conflicting missing expr",
+        part: { form: "horizontal", expr: { kind: "missing", op: "add", operands: [3, null], result: 7 }, shown_answer: "5" },
+        expectConflict: true,
+      },
+      {
+        label: "conflicting word expr with exact inner arith",
+        part: {
+          form: "horizontal",
+          expr: { kind: "word", text: "Sum 2 and 3", expr: { kind: "arith", op: "add", operands: [2, 3] } },
+          shown_answer: "6",
+        },
+        expectConflict: true,
+      },
+    ];
+
+    for (const c of cases) {
+      const page = pageWithPart(c.part);
+      const snapshot = structuredClone(page);
+      const conflicts = findExampleAnswerConflicts(page);
+      expect(page, c.label).toEqual(snapshot);
+      if (c.expectConflict) {
+        expect(conflicts, c.label).toHaveLength(1);
+        expect(conflicts[0].kind, c.label).toBe("answer_differs");
+        expect(conflicts[0].path, c.label).toBe("examples[0].parts[0].shown_answer");
+      } else {
+        expect(conflicts, c.label).toEqual([]);
+      }
+    }
+
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 0, max: 5000 }),
+        fc.integer({ min: 0, max: 5000 }),
+        fc.integer({ min: 1, max: 99 }),
+        (x, y, delta) => {
+          const sum = x + y;
+          const formatted = sum.toLocaleString("en-US");
+          const okPage = pageWithPart({
+            form: "horizontal",
+            expr: { kind: "arith", op: "add", operands: [x, y] },
+            shown_answer: formatted,
+          });
+          expect(findExampleAnswerConflicts(okPage)).toEqual([]);
+
+          const badPage = pageWithPart({
+            form: "horizontal",
+            expr: { kind: "arith", op: "add", operands: [x, y] },
+            shown_answer: String(sum + delta),
+          });
+          expect(findExampleAnswerConflicts(badPage)).toHaveLength(1);
+        },
+      ),
+    );
+  });
+
+  it("lists final record, reader b, and (only when final is not fresh reader A) reader a worked-example conflicts without computed-identity deduplication", () => {
+    const makeExPage = (examples: PageRecord["examples"]): PageRecord => ({
+      ...makePageWithItem({
+        n: 1,
+        printed: "1 + 1 =",
+        form: "horizontal",
+        expr: { kind: "arith", op: "add", operands: [1, 1] },
+        responses: [{ position: "after_equals", cue: null, answer: "2", answer_source: "computed" }],
+      }),
+      examples,
+    });
+    const ex = (a: number, b: number, shown: string, label?: string) => ({
+      position: "top" as const,
+      relation: "compare" as const,
+      ...(label ? { label } : {}),
+      parts: [
+        {
+          form: "horizontal" as const,
+          expr: { kind: "arith" as const, op: "add" as const, operands: [a, b] },
+          shown_answer: shown,
+        },
+      ],
+    });
+
+    const cases: Array<{
+      label: string;
+      finalIsFreshA: boolean;
+      finalRec: PageRecord | null;
+      recA: PageRecord;
+      recB: PageRecord;
+      expectedFinal: string[];
+      expectedReader: string[];
+    }> = [
+      {
+        label: "A only (fresh final = A)",
+        finalIsFreshA: true,
+        finalRec: makeExPage([ex(2, 3, "6")]),
+        recA: makeExPage([ex(2, 3, "6")]),
+        recB: makeExPage([ex(2, 4, "6")]),
+        expectedFinal: ['final record: examples[0].parts[0].shown_answer: shown "6", computed "5"'],
+        expectedReader: [],
+      },
+      {
+        label: "B only (fresh final = A)",
+        finalIsFreshA: true,
+        finalRec: makeExPage([ex(2, 4, "6")]),
+        recA: makeExPage([ex(2, 4, "6")]),
+        recB: makeExPage([ex(2, 3, "6")]),
+        expectedFinal: [],
+        expectedReader: ['reader b: examples[0].parts[0].shown_answer: shown "6", computed "5"'],
+      },
+      {
+        label: "both the same (fresh final = A): final and reader b both listed",
+        finalIsFreshA: true,
+        finalRec: makeExPage([ex(2, 3, "6")]),
+        recA: makeExPage([ex(2, 3, "6")]),
+        recB: makeExPage([ex(2, 3, "6")]),
+        expectedFinal: ['final record: examples[0].parts[0].shown_answer: shown "6", computed "5"'],
+        expectedReader: ['reader b: examples[0].parts[0].shown_answer: shown "6", computed "5"'],
+      },
+      {
+        label: "A Alpha first, B Beta first, same expr and same wrong answer at index 0: both listed",
+        finalIsFreshA: true,
+        finalRec: makeExPage([ex(2, 3, "6", "Alpha"), ex(2, 3, "5", "Beta")]),
+        recA: makeExPage([ex(2, 3, "6", "Alpha"), ex(2, 3, "5", "Beta")]),
+        recB: makeExPage([ex(2, 3, "6", "Beta"), ex(2, 3, "5", "Alpha")]),
+        expectedFinal: ['final record: examples[0].parts[0].shown_answer: shown "6", computed "5"'],
+        expectedReader: ['reader b: examples[0].parts[0].shown_answer: shown "6", computed "5"'],
+      },
+      {
+        label: "A and B different at the same index (different values)",
+        finalIsFreshA: true,
+        finalRec: makeExPage([ex(2, 3, "6")]),
+        recA: makeExPage([ex(2, 3, "6")]),
+        recB: makeExPage([ex(4, 5, "10")]),
+        expectedFinal: ['final record: examples[0].parts[0].shown_answer: shown "6", computed "5"'],
+        expectedReader: ['reader b: examples[0].parts[0].shown_answer: shown "10", computed "9"'],
+      },
+      {
+        label: "A and B different at the same index (different expr, same shown and computed)",
+        finalIsFreshA: true,
+        finalRec: makeExPage([ex(2, 3, "6")]),
+        recA: makeExPage([ex(2, 3, "6")]),
+        recB: makeExPage([ex(1, 4, "6")]),
+        expectedFinal: ['final record: examples[0].parts[0].shown_answer: shown "6", computed "5"'],
+        expectedReader: ['reader b: examples[0].parts[0].shown_answer: shown "6", computed "5"'],
+      },
+      {
+        label: "reordered examples with unrelated conflicts at index 0",
+        finalIsFreshA: true,
+        finalRec: makeExPage([ex(2, 3, "6"), ex(4, 5, "9")]),
+        recA: makeExPage([ex(2, 3, "6"), ex(4, 5, "9")]),
+        recB: makeExPage([ex(4, 5, "10"), ex(2, 3, "5")]),
+        expectedFinal: ['final record: examples[0].parts[0].shown_answer: shown "6", computed "5"'],
+        expectedReader: ['reader b: examples[0].parts[0].shown_answer: shown "10", computed "9"'],
+      },
+      {
+        label: "reordered examples with same conflict at different indices",
+        finalIsFreshA: true,
+        finalRec: makeExPage([ex(4, 5, "9"), ex(2, 3, "6")]),
+        recA: makeExPage([ex(4, 5, "9"), ex(2, 3, "6")]),
+        recB: makeExPage([ex(2, 3, "6"), ex(4, 5, "9")]),
+        expectedFinal: ['final record: examples[1].parts[0].shown_answer: shown "6", computed "5"'],
+        expectedReader: ['reader b: examples[0].parts[0].shown_answer: shown "6", computed "5"'],
+      },
+      {
+        label: "person-edited record fixed A's conflict",
+        finalIsFreshA: false,
+        finalRec: makeExPage([ex(2, 3, "5")]),
+        recA: makeExPage([ex(2, 3, "6")]),
+        recB: makeExPage([ex(2, 3, "5")]),
+        expectedFinal: [],
+        expectedReader: ['reader a: examples[0].parts[0].shown_answer: shown "6", computed "5"'],
+      },
+      {
+        label: "person-edited record has its own conflict at same index as A and B: lists final, a and b",
+        finalIsFreshA: false,
+        finalRec: makeExPage([ex(2, 3, "7")]),
+        recA: makeExPage([ex(2, 3, "6")]),
+        recB: makeExPage([ex(4, 5, "10")]),
+        expectedFinal: ['final record: examples[0].parts[0].shown_answer: shown "7", computed "5"'],
+        expectedReader: [
+          'reader a: examples[0].parts[0].shown_answer: shown "6", computed "5"',
+          'reader b: examples[0].parts[0].shown_answer: shown "10", computed "9"',
+        ],
+      },
+    ];
+
+    for (const c of cases) {
+      const res = collectExampleAnswerConflicts(c.finalRec, c.recA, c.recB, {
+        finalIsFreshA: c.finalIsFreshA,
+      });
+      expect(res.finalMessages, c.label).toEqual(c.expectedFinal);
+      expect(res.readerMessages, c.label).toEqual(c.expectedReader);
+    }
   });
 });

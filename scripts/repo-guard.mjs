@@ -11,6 +11,7 @@
  *   6. no-new-suppressions: freezes eslint-disable / oxlint-disable / @ts-ignore / @ts-expect-error counts.
  *   7. feature-map-coverage: requires every (site)/(product) page.tsx route in docs/feature-map.md.
  *   8. agents-md-budget: keeps AGENTS.md <= 150 lines and <= 10,240 bytes.
+ *   9. engine-imports, engine-purity, engine-level-branch, engine-asset-use: keep the workbook engine pure (scripts/engine-guard.mjs).
  *
  * Usage:
  *   node scripts/repo-guard.mjs            # verify against scripts/repo-guard-baseline.json
@@ -20,6 +21,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
+import { checkEngine } from "./engine-guard.mjs";
 
 export const DEFAULT_MAX_LINES = 600;
 export const AGENTS_MD_MAX_LINES = 150;
@@ -290,6 +292,8 @@ export function checkRepo(rootDir, baseline, { maxLines = DEFAULT_MAX_LINES } = 
       });
     }
   }
+
+  violations.push(...checkEngine(rootDir));
 
   return { ok: violations.length === 0, violations, tightenable, scan };
 }

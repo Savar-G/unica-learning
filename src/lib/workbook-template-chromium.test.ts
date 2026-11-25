@@ -8,7 +8,7 @@ import { WARM_UP_INSTRUCTION } from "@/lib/workbook-page-instructions";
 import { sampleBook } from "@/lib/workbook-sample-book";
 import { titleProblem, UNIT_TITLES } from "@/lib/workbook-titles";
 import { SKILL_TITLES } from "@/lib/workbook-skill-titles";
-import { workbookTemplate } from "@/lib/workbook-template";
+import { fullnessProblem, workbookTemplate } from "@/lib/workbook-template";
 import { ANSWER_LAYOUT_BOOK, answerLayoutPages } from "@/lib/workbook-answer-layout-fixture";
 import { fixedTemplateFonts } from "@/lib/workbook-template-fonts";
 
@@ -441,6 +441,46 @@ describe.skipIf(!chromium)("answer box positions in Chromium (#1212)", () => {
   const bottom = (m: MeasuredElement) => m.y + m.height;
   /** The gap between a box's edge and its card's: inside the card (a pixel of rounding allowed), and close to the edge. */
   const edge = (gap: number, label?: string) => { expect(gap, label).toBeGreaterThanOrEqual(-1); expect(gap, label).toBeLessThan(30); };
+
+  it("fits longer numeric answers in two columns and wraps the box below a wide equation", async () => {
+    const page = pages(16, true)["long-numbers"];
+    let measured: MeasuredElement[] = [];
+    const result = await renderWorkbook({ draft: draftOf(page, 16), parentId: PARENT, template,
+      engine: { print: async job => { const output = await engine.print(job); measured = output.measured; return output; } },
+    });
+    if (result.status !== "rendered") throw new Error(JSON.stringify(result.problems));
+    expect(fullnessProblem(page, new Map(measured.map(m => [m.name, m])))).toBeNull();
+    const questions = result.workbook.pages[0].questions;
+    const widths = questions.map(q => q.regions?.find(r => r.kind === "box")?.box?.width ?? 0);
+    expect(widths.map(Math.round)).toEqual([120, 150, 181, 211]);
+    expect(questions[0].box.x).toBeLessThan(questions[1].box.x);
+    const equation = measured.find(m => m.name === "question-4-content")!;
+    const fourthBox = measured.find(m => m.name === "question-4-answer")!;
+    expect(fourthBox.y).toBeGreaterThanOrEqual(bottom(equation));
+    if (process.env.RENDER_OUT) {
+      await mkdir(process.env.RENDER_OUT, { recursive: true });
+      await writeFile(`${process.env.RENDER_OUT}/long-numbers.png`, result.files[1].bytes);
+    }
+  }, 60_000);
+
+  it("moves a stacked sum to a wider row when its answer box will not fit the legacy column", async () => {
+    const page = pages(16, false)["long-numbers"];
+    if (page.content?.kind !== "day") throw new Error("not a day page");
+    const [first, long] = [page.questions[1], page.questions[3]];
+    page.content.blocks = [{ slot: "on-your-own", items: [first.number, long.number] }];
+    page.questions = [
+      { ...first, package: { ...first.package, text: "4000 + 258 = ?", operation: { kind: "add", operands: [4000, 258] } } },
+      { ...long, package: { ...long.package, text: "100000 + 23456 = ?", operation: { kind: "add", operands: [100000, 23456] } } },
+    ];
+    const m = await measure(page, 16);
+    expect(m.fit).toEqual([]);
+    const firstColumn = m.get(`question-${first.number}`);
+    const nextRow = m.get(`question-${long.number}`);
+    const box = m.get(`question-${long.number}-answer`);
+    expect(nextRow.y).toBeGreaterThanOrEqual(bottom(firstColumn));
+    expect(box.width).toBe(135);
+    expect(right(box)).toBeLessThanOrEqual(right(nextRow));
+  }, 60_000);
 
   it.each([[6, true], [12, true]])("puts a Challenge card's answer box at its bottom right (U%i, measured layout %s)", async (level, consistent) => {
     const page = pages(level, consistent).challenge;

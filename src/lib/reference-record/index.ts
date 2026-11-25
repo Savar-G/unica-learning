@@ -1,5 +1,6 @@
 export * from "./types";
 export * from "./validate";
+export * from "./record-path";
 export * from "./compute";
 export * from "./parse-legacy";
 export * from "./render-markdown";

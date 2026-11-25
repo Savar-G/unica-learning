@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 export const MAX_AFFECTED_FILES = 40;
+const ENGINE_PREFIX = "src/lib/workbook-v2/";
 
 /**
  * Non-code files dynamically read by tests via `fs.readFileSync` / `spawnSync` (not visible to Vitest's static import
@@ -64,6 +65,7 @@ function fullScope(reason) {
     runPrUnit: false,
     runChangedUnit: false,
     extraTests: [],
+    runEngine: true,
     runLintAndTypes: true,
     runMayaBehaviour: true,
     runFamilyZones: true,
@@ -79,8 +81,8 @@ function fullScope(reason) {
  * - PRs touching high-blast-radius configs, CI, DB migrations, data, scripts, or core shared modules ALWAYS run `full`.
  * - PRs touching only non-tested docs/design/skill files run `skip` (even when >40 files).
  * - PRs touching >40 non-skippable files or with an empty/unreadable diff ALWAYS fall back to `full`.
- * - Scoped PRs run `affected`: `vitest --changed` (plus any explicit dynamically-read consumer tests), full
- *   `lint-and-types` when code changed, and path-scoped `maya-behaviour` / `family-zones` / `voice-worker`.
+ * - Scoped PRs run `affected`: `engine` when `src/lib/workbook-v2/**` changed, `pr-unit` (`vitest --changed`, excluding
+ *   engine tests) when `src/` changed, explicit dynamically-read consumer tests, `lint-and-types` when code changed, and path-scoped `maya-behaviour` / `family-zones` / `voice-worker`.
  */
 export function classifyScope({ eventName, changedFiles }) {
   if (eventName !== "pull_request") {
@@ -111,18 +113,20 @@ export function classifyScope({ eventName, changedFiles }) {
   const runFamilyZones = files.some((f) => FAMILY_ZONES_PATTERN.test(f));
   const runVoiceWorker = files.some((f) => VOICE_WORKER_PATTERN.test(f));
   const runLintAndTypes = files.some((f) => CODE_LINT_PATTERN.test(f));
+  const runEngine = files.some((f) => f.startsWith(ENGINE_PREFIX));
   const hasSrcChanges = files.some((f) => f.startsWith("src/"));
   const hasWorkerOnly = files.some((f) => f.startsWith("worker/"));
 
   // Every file must be in a known skippable doc/design folder AND not trigger any dynamic-read or targeted job.
   const allSkippable = files.every((f) => SKIPPABLE_DOC_PATTERNS.some((re) => re.test(f)));
-  if (allSkippable && extraTests.length === 0 && !runMayaBehaviour && !runFamilyZones && !runVoiceWorker && !runLintAndTypes) {
+  if (allSkippable && extraTests.length === 0 && !runEngine && !runMayaBehaviour && !runFamilyZones && !runVoiceWorker && !runLintAndTypes) {
     return {
       mode: "skip",
       reason: "docs-or-design-only",
       runPrUnit: false,
       runChangedUnit: false,
       extraTests: [],
+      runEngine: false,
       runLintAndTypes: false,
       runMayaBehaviour: false,
       runFamilyZones: false,
@@ -143,6 +147,8 @@ export function classifyScope({ eventName, changedFiles }) {
     return fullScope(`unknown-path:${unknown}`);
   }
 
+  // An engine change also runs `pr-unit`: Vitest finds the app tests that import the engine. Today there are none, so it
+  // runs no test. The engine's own tests are excluded there and run in `engine`.
   const runChangedUnit = hasSrcChanges;
   const runPrUnit = runChangedUnit || extraTests.length > 0;
   const needsFullHistory = files.some((f) => FULL_HISTORY_PATTERN.test(f));
@@ -153,6 +159,7 @@ export function classifyScope({ eventName, changedFiles }) {
     runPrUnit,
     runChangedUnit,
     extraTests,
+    runEngine,
     runLintAndTypes,
     runMayaBehaviour,
     runFamilyZones,
@@ -185,6 +192,7 @@ function main() {
     `run_pr_unit=${result.runPrUnit}`,
     `run_changed_unit=${result.runChangedUnit}`,
     `extra_tests=${result.extraTests.join(" ")}`,
+    `run_engine=${result.runEngine}`,
     `run_lint_and_types=${result.runLintAndTypes}`,
     `run_maya_behaviour=${result.runMayaBehaviour}`,
     `run_family_zones=${result.runFamilyZones}`,

@@ -6,6 +6,7 @@ import {
   type ValidationError,
 } from "@/lib/reference-record";
 import { KIT_REF_SEGMENT_RE } from "./answers";
+import { normalizeProseText } from "./normalize";
 import { REFERENCE_READ_PROMPT } from "./read-prompt";
 
 function extractTopLevelBalancedObjects(text: string): string[] {
@@ -94,6 +95,28 @@ export function extractJsonFromModelOutput(
   return { ok: false, error: "Could not extract a valid JSON object from model output" };
 }
 
+// The number at the end of a title: the last token (also as "#2" or "No.2"), or in round brackets (with
+// or without a space before the brackets).
+const TITLE_NUMBER_RE = /(?:(?:^|\s)(?:(?:#|no\.)\s*)?(\d+)|\((\d+)\))$/i;
+
+export function splitTopicNumber(title: string): { name: string; number: string | null } {
+  const match = TITLE_NUMBER_RE.exec(title.trim());
+  if (!match) return { name: title.trim(), number: null };
+  return { name: title.trim().slice(0, match.index).trim(), number: match[1] ?? match[2] };
+}
+
+// The full printed title of a record that holds the number apart.
+export function joinTopicNumber(title: string, number: number): string {
+  return splitTopicNumber(title).number === String(number) ? title : `${title.trim()} ${number}`;
+}
+
+// True when two titles have one name and one number: "Sample No.1" and "Sample 1" are one title.
+export function sameTopicTitle(a: string, b: string): boolean {
+  const left = splitTopicNumber(normalizeProseText(a));
+  const right = splitTopicNumber(normalizeProseText(b));
+  return left.number === right.number && normalizeProseText(left.name) === normalizeProseText(right.name);
+}
+
 // topic.title is the full printed title with any number at its end. A reader that still splits
 // off a positive integer number gets it put back at the end of the title, and topic.number is
 // dropped. A null or sentinel number is left as it is, and so is the number of an unclear title.
@@ -108,12 +131,7 @@ function foldTopicNumber(obj: Record<string, unknown>): void {
   if (title === null || title === undefined || (typeof title === "string" && !title.trim())) {
     rest.title = String(number);
   } else if (typeof title === "string") {
-    const tokens = title.trim().split(/\s+/);
-    // The number is already there as the last token (also as "#2" or "No.2"), or in round brackets
-    // at the end (with or without a space before the brackets).
-    const last = tokens[tokens.length - 1].replace(/^(?:#|no\.)/i, "");
-    const present = last === String(number) || title.trim().endsWith(`(${number})`);
-    if (!present) rest.title = `${title.trim()} ${number}`;
+    rest.title = joinTopicNumber(title, number);
   }
   obj.topic = rest;
 }
@@ -181,6 +199,9 @@ export function assembleCandidateRecord(
     }
   }
 
+  if ("single_read" in obj && obj.single_read !== undefined) {
+    extraErrors.push({ path: "single_read", message: "readers must not write single_read" });
+  }
   if (obj.kind === "page") foldTopicNumber(obj);
   obj.readers = [readerLabel];
   return { candidate: obj, extraErrors };
