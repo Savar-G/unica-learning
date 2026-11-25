@@ -69,10 +69,10 @@ async function readMethodsFolder(methodsDir: string): Promise<{ records: TopicMe
   return { records, problems };
 }
 
-// Every input of the import, checked.
+// Every input of the import, checked. The pages are read last, so that the records are checked against the newest ones.
 async function readInputs(opts: ImportMethodsOptions): Promise<{ records: TopicMethodRecord[]; problems: string[] }> {
-  const loaded = await loadLevelRecords(opts.recordsDir);
   const { records, problems } = await readMethodsFolder(opts.methodsDir);
+  const loaded = await loadLevelRecords(opts.recordsDir);
   if (!loaded.ok) return { records, problems: [...loaded.problems, ...problems] };
   for (const record of records) {
     const checked = checkAgainstRecords(record, loaded.level);

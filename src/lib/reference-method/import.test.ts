@@ -130,7 +130,10 @@ beforeEach(() => {
   put(makeRecord(2));
 });
 
-afterEach(() => rmSync(root, { recursive: true, force: true }));
+afterEach(() => {
+  listed.after = () => undefined;
+  rmSync(root, { recursive: true, force: true });
+});
 
 describe("import (M8)", () => {
   it("writes one row for each topic, and nothing when it runs again", async () => {
@@ -306,6 +309,15 @@ describe("import (M8)", () => {
     const result = await run({ replace: true });
     expect([result.ok, result.problems[0]]).toEqual([false, expect.stringContaining("demo:Z:topic-2: the stored row changed while the import ran")]);
     expect(result.lines[0]).toContain("inserted=0 replaced=0 skipped=1 skipped_different=0");
+  });
+
+  it("checks the records against the pages as they are after the records were read", async () => {
+    listed.after = () => {
+      if (store.calls.length > 0) writeFileSync(join(recordsDir, "demo-Z-13a.json"), JSON.stringify({ ...pages[1], readers: ["x"] }));
+    };
+    const result = await run();
+    expect(result.problems.join()).toContain("demo:Z:13a changed");
+    expect(store.writes).toEqual([]);
   });
 
   it("stops when a method file disappears after the folder was read", async () => {

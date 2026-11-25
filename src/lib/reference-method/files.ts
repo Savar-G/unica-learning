@@ -50,9 +50,14 @@ export function checkFolders({ repoRoot, recordsDir, methodsDir }: Folders): str
   const problems: string[] = [];
   for (const [option, dir] of [["--records", recordsDir], ["--methods", methodsDir]]) {
     if (dir === undefined) continue;
-    const link = option === "--methods" ? symlinkIn(dir) : null;
-    if (link) {
-      problems.push(`Refusing ${option} ${dir}: ${link} is a symlink. Give the real path`);
+    try {
+      const link = option === "--methods" ? symlinkIn(dir) : null;
+      if (link) {
+        problems.push(`Refusing ${option} ${dir}: ${link} is a symlink. Give the real path`);
+        continue;
+      }
+    } catch (err) {
+      problems.push(`Refusing ${option} ${dir}: ${messageOf(err)}`);
       continue;
     }
     try {
@@ -114,8 +119,9 @@ export async function writeMethodFile(
   record: TopicMethodRecord,
   repoRoot: string,
 ): Promise<string | null> {
-  const { bytes } = await readMethodFile(path, name);
-  const same = bytes && before.bytes ? Buffer.compare(bytes, before.bytes) === 0 : bytes === before.bytes;
+  const { bytes, problems } = await readMethodFile(path, name);
+  const isMissing = bytes === null && problems.length === 0;
+  const same = bytes && before.bytes ? Buffer.compare(bytes, before.bytes) === 0 : isMissing && before.bytes === null;
   if (!same) {
     return `${name} changed while the command ran. Nothing was written. Run it again`;
   }

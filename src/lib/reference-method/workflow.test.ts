@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -144,6 +145,10 @@ describe("draft", () => {
       symlinkSync(join(root, "real"), methodsDir);
       return {};
     }],
+    ["the methods folder is below a file", (): Partial<DraftOptions> => {
+      writeFileSync(join(root, "file"), "x");
+      return { methodsDir: join(root, "file", "methods") };
+    }],
     ["the methods folder passes through a symlink", (): Partial<DraftOptions> => {
       mkdirSync(join(root, "real", "methods"), { recursive: true });
       symlinkSync(join(root, "real"), join(root, "link"));
@@ -181,7 +186,8 @@ describe("draft", () => {
   });
 
   it("does not change the rights of the target of a symlink", async () => {
-    mkdirSync(join(root, "real"), { mode: 0o755 });
+    mkdirSync(join(root, "real"));
+    chmodSync(join(root, "real"), 0o755);
     symlinkSync(join(root, "real"), methodsDir);
     await draft();
     expect(statSync(join(root, "real")).mode & 0o777).toBe(0o755);
@@ -432,8 +438,9 @@ describe("approve (M6)", () => {
     ["the contents record changed", () => writeRecords([...standardPages(), makeContents(undefined, { readers: ["x"] })]), "demo:Z:contents changed"],
     ["a fact was changed by hand", () => { const r = stored(); r.evidence.sheets[0].questions = 9; store(r); }, "facts are not what code computes"],
   ])("refuses to approve after %s", async (_name, change, text) => {
+    const digest = contentSha256(stored());
     change();
-    const result = await approve("Ann", "Bo");
+    const result = await approveTopicMethod({ key: KEY, recordsDir, methodsDir, repoRoot, now, by: "Ann", digest });
     expect(result.ok).toBe(false);
     expect(result.problems.join()).toContain(text);
     expect(stored().approvals).toEqual([]);
@@ -443,7 +450,8 @@ describe("approve (M6)", () => {
     const record = stored();
     record.summary[0].cites = [];
     store(record);
-    expect((await approve("Ann", "Bo")).problems.join()).toContain("needs a citation");
+    const result = await approveTopicMethod({ key: KEY, recordsDir, methodsDir, repoRoot, now, by: "Ann", digest: contentSha256(record) });
+    expect(result.problems.join()).toContain("needs a citation");
   });
 
   it("says when an approval does not change anything, and can run again", async () => {
@@ -598,12 +606,12 @@ describe("the lock of a topic (Y4)", () => {
     const digest = contentSha256(stored());
     const one = (by: string): ReturnType<typeof approveTopicMethod> =>
       approveTopicMethod({ key: KEY, recordsDir, methodsDir, repoRoot, now, by, digest });
-    const results = await Promise.all([one("Ann"), one("Bo")]);
-    expect(results.map((r) => r.ok).sort()).toEqual([false, true]);
-    const told = results.find((r) => !r.ok)?.problems.join() ?? "";
-    expect(told).toContain("2026-01-02T03:04:05.000Z approve");
-    expect(told).toContain(`rm "${lockPath()}"`);
-    expect(stored().approvals).toHaveLength(1);
+    // The second command asks for the lock while the first one holds it.
+    const held = await withTopicLock({ key: KEY, methodsDir, repoRoot, now }, "approve", () => one("Bo"));
+    expect(held.ok).toBe(false);
+    expect(held.problems.join()).toContain("2026-01-02T03:04:05.000Z approve");
+    expect(held.problems.join()).toContain(`rm "${lockPath()}"`);
+    expect(stored().approvals).toEqual([]);
     expect((await one("Ann")).ok && (await one("Bo")).ok).toBe(true);
     expect(stored().approvals.map((a) => a.by).sort()).toEqual(["Ann", "Bo"]);
   });
@@ -625,6 +633,17 @@ describe("the lock of a topic (Y4)", () => {
       withTopicLock({ key: KEY, methodsDir, repoRoot, now }, "test", () => Promise.reject(new Error("broken"))),
     ).rejects.toThrow("broken");
     expect(readdirSync(methodsDir)).toEqual(["demo-Z-topic-1.json"]);
+  });
+
+  it("does not write over a file that appears and cannot be read", async () => {
+    const result = await draft({
+      runCli: (...args) => {
+        writeFileSync(filePath(), Buffer.alloc(21 * 1024 * 1024, 0x20));
+        return runCli(...args);
+      },
+    });
+    expect(result.problems.join()).toContain("changed while the command ran");
+    expect(statSync(filePath()).size).toBe(21 * 1024 * 1024);
   });
 
   it("leaves no lock when it cannot write one", async () => {
