@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,10 +8,9 @@ import {
   formatImportResult,
   importReferenceRecords,
   MAX_REFERENCE_PHOTO_BYTES,
-  type ExistingReferenceRow,
-  type ReferenceRow,
-  type ReferenceStore,
 } from "./import";
+import { contentPath, MemoryReferenceStore } from "./import-store.fixtures";
+import { sha256Hex } from "./read-file";
 import type { PageRecord } from "./types";
 
 function makePage(sourceRef: string, topicTitle = "Adding small numbers"): PageRecord {
@@ -47,127 +45,63 @@ function makePage(sourceRef: string, topicTitle = "Adding small numbers"): PageR
   };
 }
 
-function sha256Hex(bytes: Uint8Array): string {
-  return createHash("sha256").update(bytes).digest("hex");
-}
-
-class PhotoMemoryStore implements ReferenceStore {
-  rows = new Map<string, ReferenceRow>();
-  objects = new Map<string, { bytes: Uint8Array; contentType: string }>();
-  calls: string[] = [];
+class PhotoMemoryStore extends MemoryReferenceStore {
   onBeforeUpload?: () => void;
 
-  async findExisting(sourceRefs: string[]): Promise<Map<string, ExistingReferenceRow>> {
-    this.calls.push(`findExisting:${sourceRefs.join(",")}`);
-    const out = new Map<string, ExistingReferenceRow>();
-    for (const ref of sourceRefs) {
-      const row = this.rows.get(ref);
-      if (row) {
-        out.set(ref, {
-          transcript: structuredClone(row.transcript),
-          path: row.path,
-          transcript_status: row.transcript_status,
-        });
-      }
-    }
-    return out;
-  }
-
-  async insertRow(row: ReferenceRow): Promise<boolean> {
-    this.calls.push(`insertRow:${row.source_ref}`);
-    if (this.rows.has(row.source_ref)) {
-      return false;
-    }
-    this.rows.set(row.source_ref, structuredClone(row));
-    return true;
-  }
-
-  async objectSha256(path: string): Promise<string | null> {
-    this.calls.push(`objectSha256:${path}`);
-    const existing = this.objects.get(path);
-    return existing ? sha256Hex(existing.bytes) : null;
-  }
-
-  async uploadObject(path: string, bytes: Uint8Array, contentType: string): Promise<void> {
+  override async uploadObject(path: string, bytes: Uint8Array, contentType: string): Promise<void> {
     this.onBeforeUpload?.();
-    this.calls.push(`uploadObject:${path}`);
-    if (this.objects.has(path)) {
-      throw new Error(`Unexpected overwrite of existing object ${path}`);
-    }
-    this.objects.set(path, { bytes: new Uint8Array(bytes), contentType });
-  }
-
-  async replaceObject(path: string, bytes: Uint8Array, contentType: string): Promise<void> {
-    this.calls.push(`replaceObject:${path}`);
-    this.objects.set(path, { bytes: new Uint8Array(bytes), contentType });
-  }
-
-  async refsByPath(paths: string[]): Promise<Map<string, string[]>> {
-    this.calls.push(`refsByPath:${paths.join(",")}`);
-    const out = new Map<string, string[]>();
-    for (const row of this.rows.values()) {
-      if (row.path !== null && paths.includes(row.path)) {
-        out.set(row.path, [...(out.get(row.path) ?? []), row.source_ref]);
-      }
-    }
-    return out;
-  }
-
-  async updateRow(row: ReferenceRow): Promise<boolean> {
-    this.calls.push(`updateRow:${row.source_ref}`);
-    const prev = this.rows.get(row.source_ref);
-    if (!prev) return false;
-    this.rows.set(row.source_ref, { ...structuredClone(row), note: prev.note });
-    return true;
+    await super.uploadObject(path, bytes, contentType);
   }
 }
 
 describe("buildReferencePhotoPath", () => {
-  it("builds <source>/<level>/<page>.<ext> for jpg, jpeg, png and webp", () => {
-    expect(buildReferencePhotoPath("sample:M:3a", "IMG_0001.JPG")).toEqual({
-      ok: true,
-      path: "sample/M/3a.jpg",
-      contentType: "image/jpeg",
-    });
-    expect(buildReferencePhotoPath("sample:M:3b", "photo.jpeg")).toEqual({
-      ok: true,
-      path: "sample/M/3b.jpeg",
-      contentType: "image/jpeg",
-    });
-    expect(buildReferencePhotoPath("sample:M:contents", "chart.png")).toEqual({
-      ok: true,
-      path: "sample/M/contents.png",
-      contentType: "image/png",
-    });
-    expect(buildReferencePhotoPath("sample:M:4a", "scan.webp")).toEqual({
-      ok: true,
-      path: "sample/M/4a.webp",
-      contentType: "image/webp",
-    });
+  const SHA = `${"0123456789abcdef"}${"f".repeat(48)}`;
+
+  it("builds <source>/<level>/<page>.<16 of the sha256>.<ext> for jpg, jpeg, png and webp, and keeps the older form", () => {
+    const rows: Array<[ref: string, file: string, page: string, ext: string, contentType: string]> = [
+      ["sample:M:3a", "IMG_0001.JPG", "sample/M/3a", "jpg", "image/jpeg"],
+      ["sample:M:3b", "photo.jpeg", "sample/M/3b", "jpeg", "image/jpeg"],
+      ["sample:M:contents", "chart.png", "sample/M/contents", "png", "image/png"],
+      ["sample:M:4a", "scan.webp", "sample/M/4a", "webp", "image/webp"],
+    ];
+    for (const [ref, file, page, ext, contentType] of rows) {
+      expect(buildReferencePhotoPath(ref, file, SHA)).toEqual({
+        ok: true,
+        path: `${page}.0123456789abcdef.${ext}`,
+        olderPath: `${page}.${ext}`,
+        contentType,
+      });
+    }
   });
 
   it("rejects invalid path segments, unsupported extensions, and inherited object property extensions", () => {
-    expect(buildReferencePhotoPath("sample:../M:3a", "IMG_0001.jpg").ok).toBe(false);
-    expect(buildReferencePhotoPath("sample:M:3a/x", "IMG_0001.jpg").ok).toBe(false);
-    expect(buildReferencePhotoPath("sample:M:3a", "IMG_0001.gif").ok).toBe(false);
-    expect(buildReferencePhotoPath("sample:M:3a", "IMG_0001").ok).toBe(false);
-    expect(buildReferencePhotoPath("sample:M:3a", "mask.constructor").ok).toBe(false);
-    expect(buildReferencePhotoPath("sample:M:3a", "mask.toString").ok).toBe(false);
-    expect(buildReferencePhotoPath("sample:M:3a", "mask.__proto__").ok).toBe(false);
-    expect(buildReferencePhotoPath("sample:M:3a", "mask.valueOf").ok).toBe(false);
+    expect(buildReferencePhotoPath("sample:../M:3a", "IMG_0001.jpg", SHA).ok).toBe(false);
+    expect(buildReferencePhotoPath("sample:M:3a/x", "IMG_0001.jpg", SHA).ok).toBe(false);
+    expect(buildReferencePhotoPath("sample:M:3a", "IMG_0001.gif", SHA).ok).toBe(false);
+    expect(buildReferencePhotoPath("sample:M:3a", "IMG_0001", SHA).ok).toBe(false);
+    expect(buildReferencePhotoPath("sample:M:3a", "mask.constructor", SHA).ok).toBe(false);
+    expect(buildReferencePhotoPath("sample:M:3a", "mask.toString", SHA).ok).toBe(false);
+    expect(buildReferencePhotoPath("sample:M:3a", "mask.__proto__", SHA).ok).toBe(false);
+    expect(buildReferencePhotoPath("sample:M:3a", "mask.valueOf", SHA).ok).toBe(false);
   });
 
-  it("gives two different source_refs two different paths, so two records never plan one path", () => {
+  it("gives each page and each photo its own path, the same photo the same path, and never an older path of a page", () => {
     const segment = fc.stringMatching(/^[A-Za-z0-9_-]{1,6}$/);
-    const ref = fc.array(segment, { minLength: 1, maxLength: 4 }).map((s) => s.join(":"));
+    const hash = fc.stringMatching(/^[0-9a-f]{64}$/);
+    // Also a page id that looks like the path of another page.
+    const ref = fc
+      .tuple(fc.array(segment, { minLength: 1, maxLength: 3 }), fc.option(hash))
+      .map(([s, sha]) => [...s.slice(0, -1), sha ? `${s.at(-1)}-${sha.slice(0, 16)}` : s.at(-1)].join(":"));
     const file = fc.constantFrom("a.jpg", "a.JPEG", "a.png", "a.webp");
     fc.assert(
-      fc.property(ref, ref, file, file, (refA, refB, fileA, fileB) => {
-        fc.pre(refA !== refB);
-        const a = buildReferencePhotoPath(refA, fileA);
-        const b = buildReferencePhotoPath(refB, fileB);
+      fc.property(ref, ref, file, file, hash, hash, (refA, refB, fileA, fileB, shaA, shaB) => {
+        const a = buildReferencePhotoPath(refA, fileA, shaA);
+        const b = buildReferencePhotoPath(refB, fileB, shaB);
         if (!a.ok || !b.ok) throw new Error(`no path for ${refA} or ${refB}`);
-        expect(a.path).not.toBe(b.path);
+        expect(a.path === b.path).toBe(refA === refB && a.contentType === b.contentType && fileA === fileB && shaA.slice(0, 16) === shaB.slice(0, 16));
+        expect(buildReferencePhotoPath(refA, fileA, shaA)).toEqual(a);
+        expect(a.path).not.toBe(b.olderPath);
+        expect(a.path.split("/").slice(0, -1)).toEqual(refA.split(":").slice(0, -1));
       }),
     );
   });
@@ -315,17 +249,17 @@ describe("importReferenceRecords photo and file safety", () => {
     expect(first.ok).toBe(false);
     expect(first.stopped).toBe(true);
     expect(first.counts.inserted).toBe(1);
-    expect(first.problems.some((p) => p.includes("sample/M/3b.png") && p.includes("reuses"))).toBe(
+    expect(first.problems.some((p) => p.includes(contentPath("sample:M:3b", "png", img2)) && p.includes("reuses"))).toBe(
       true,
     );
-    expect(store.objects.has("sample/M/3b.png")).toBe(true);
+    expect(store.objects.has(contentPath("sample:M:3b", "png", img2))).toBe(true);
     expect(store.rows.has("sample:M:3b")).toBe(false);
 
     store.insertRow = realInsert;
     const second = await importReferenceRecords({ recordsDir, photosDir, store });
     expect(second.ok).toBe(true);
     expect(second.counts).toMatchObject({ inserted: 1, skipped: 1, photosUploaded: 0 });
-    expect(store.rows.get("sample:M:3b")?.path).toBe("sample/M/3b.png");
+    expect(store.rows.get("sample:M:3b")?.path).toBe(contentPath("sample:M:3b", "png", img2));
   });
 
   it("names an uploaded photo that no row points to when another run writes the row first", async () => {
@@ -354,8 +288,9 @@ describe("importReferenceRecords photo and file safety", () => {
     const res = await importReferenceRecords({ recordsDir, photosDir, store });
     expect(res.ok).toBe(true);
     expect(res.counts).toMatchObject({ inserted: 0, skipped: 1, photosUploaded: 1 });
-    expect(res.unreferencedPhotos).toEqual(["sample/M/3a.jpg"]);
-    expect(formatImportResult(res)).toContain('unreferenced_photo: "sample/M/3a.jpg"');
+    const path = contentPath("sample:M:3a", "jpg", img);
+    expect(res.unreferencedPhotos).toEqual([path]);
+    expect(formatImportResult(res)).toContain(`unreferenced_photo: "${path}"`);
   });
 
   it("refuses before any write when a stored object at the planned path has a different sha256", async () => {
@@ -389,7 +324,9 @@ describe("importReferenceRecords photo and file safety", () => {
       ],
     });
 
-    store.objects.set("sample/M/3b.png", {
+    // Not the photo, at the path that names the photo.
+    const planned = contentPath("sample:M:3b", "png", img2New);
+    store.objects.set(planned, {
       bytes: img2Old,
       contentType: "image/png",
     });
@@ -397,13 +334,13 @@ describe("importReferenceRecords photo and file safety", () => {
     const res = await importReferenceRecords({ recordsDir, photosDir, store });
     expect(res.ok).toBe(false);
     expect(store.rows.size).toBe(0);
-    expect(store.objects.has("sample/M/3a.jpg")).toBe(false);
+    expect([...store.objects.keys()]).toEqual([planned]);
     expect(store.calls.some((c) => c.startsWith("insertRow:") || c.startsWith("uploadObject:"))).toBe(
       false,
     );
     expect(
       res.problems.some(
-        (p) => p.includes("sample/M/3b.png") && p.toLowerCase().includes("by hand"),
+        (p) => p.includes(planned) && p.toLowerCase().includes("by hand"),
       ),
     ).toBe(true);
   });
@@ -558,7 +495,7 @@ describe("importReferenceRecords photo and file safety", () => {
 
     const res = await importReferenceRecords({ recordsDir, photosDir, store });
     expect(res.ok).toBe(true);
-    expect(store.objects.get("sample/M/3a.jpg")?.bytes).toEqual(original);
+    expect(store.objects.get(contentPath("sample:M:3a", "jpg", original))?.bytes).toEqual(original);
   });
 
   it("handles prototype property names as manifest source_ref entries without inherited-key collisions", async () => {

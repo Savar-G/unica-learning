@@ -530,7 +530,7 @@ describe("a page checked by a person", () => {
     const row = store.rows.get(REF);
     expect(row?.transcript_status, name).toBe(status);
     expect(row?.transcript.kind === "page" && row.transcript.topic.title, name).toBe(title);
-    expect(await store.objectSha256("sample/M/3a.jpg"), name).toBe(fakePhoto(photo).sha256);
+    expect(await store.objectSha256(row?.path ?? ""), name).toBe(fakePhoto(photo).sha256);
   }
 
   it("is imported under a machine status only as compare wrote it, and an edited page only after a check", async () => {
