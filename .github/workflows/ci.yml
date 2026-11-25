@@ -2,11 +2,11 @@ name: CI
 
 # Two-tier CI (docs/ci/README.md):
 # - On every `push` to `main`, `workflow_dispatch`, or high-blast-radius PR (configs, CI, DB, data, scripts, core shared
-#   modules, >40 files), the full suite runs: 8 duration-balanced vitest shards (`unit`) plus `scan-binding-scale`, `maya-behaviour`,
-#   `family-zones`, `lint-and-types`, and `voice-worker`.
-# - On scoped pull requests, `scope` selects `affected` mode (Vitest `--changed` + any dynamically-read consumer tests,
-#   full `lint-and-types` when code changed, and path-scoped `maya-behaviour` / `family-zones` / `voice-worker`), or
-#   `skip` mode when only unreferenced docs/design files changed.
+#   modules, >40 files), the full suite runs: 8 duration-balanced vitest shards (`unit`) plus `engine` (the workbook v2
+#   engine tests and type check), `scan-binding-scale`, `maya-behaviour`, `family-zones`, `lint-and-types`, and `voice-worker`.
+# - On scoped pull requests, `scope` selects `affected` mode: `engine` runs whenever `src/lib/workbook-v2/**` changes
+#   (`unit` does not run), `pr-unit` runs Vitest `--changed` (excluding engine tests) plus dynamically-read consumer tests, `lint-and-types` runs when code changed, and
+#   `maya-behaviour` / `family-zones` / `voice-worker` run when their paths change. Docs-only PRs select `skip` mode.
 # - The final job, named exactly `test`, aggregates every job and verifies nothing required was skipped or failed.
 #   Vercel lists `test` as a Deployment Check (Settings → Build and Deployment), so a main commit whose full suite fails
 #   is built but never promoted to production. Branches get no Vercel build (main-only deploys, #774), so `lint-and-types`
@@ -39,6 +39,7 @@ jobs:
       run_pr_unit: ${{ steps.classify.outputs.run_pr_unit }}
       run_changed_unit: ${{ steps.classify.outputs.run_changed_unit }}
       extra_tests: ${{ steps.classify.outputs.extra_tests }}
+      run_engine: ${{ steps.classify.outputs.run_engine }}
       run_lint_and_types: ${{ steps.classify.outputs.run_lint_and_types }}
       run_maya_behaviour: ${{ steps.classify.outputs.run_maya_behaviour }}
       run_family_zones: ${{ steps.classify.outputs.run_family_zones }}
@@ -88,14 +89,8 @@ jobs:
       - name: Unpack Chromium
         run: node -e 'import("@sparticuz/chromium").then(async (m) => console.log(await m.default.executablePath()))'
         timeout-minutes: 2
-      # The workbook engine's tests draw real pages with it and fail here when it is absent (docs/workbook-v2-engine.md).
-      - name: Install the pinned Typst
-        run: npm run typst:install
-        # A failed download must not stop the tests that do not need it. The engine tests fail by themselves without it.
-        continue-on-error: true
-        timeout-minutes: 2
-      # The timed Maya files and Chromium scale matrix run in dedicated jobs so they have the runner to themselves.
-      - run: npm test -- --config .github/scripts/vitest-ci.config.mjs --exclude='src/lib/maya-gate/{gate,word-count-grade-1,word-count-grade-4}.test.ts' --exclude='src/lib/scan-binding-scale-chromium.test.ts' --testTimeout=60000 --shard=${{ matrix.shard }}/8
+      # The workbook engine tests, timed Maya files, and Chromium scale matrix run in dedicated jobs.
+      - run: npm test -- --config .github/scripts/vitest-ci.config.mjs --exclude='src/lib/maya-gate/{gate,word-count-grade-1,word-count-grade-4}.test.ts' --exclude='src/lib/scan-binding-scale-chromium.test.ts' --exclude='src/lib/workbook-v2/**' --testTimeout=60000 --shard=${{ matrix.shard }}/8
         timeout-minutes: 10
 
   # Fast affected unit tests on scoped pull requests.
@@ -121,16 +116,11 @@ jobs:
       - name: Unpack Chromium
         run: node -e 'import("@sparticuz/chromium").then(async (m) => console.log(await m.default.executablePath()))'
         timeout-minutes: 2
-      - name: Install the pinned Typst
-        run: npm run typst:install
-        # A failed download must not stop the tests that do not need it. The engine tests fail by themselves without it.
-        continue-on-error: true
-        timeout-minutes: 2
       - name: Run affected unit tests
         if: needs.scope.outputs.run_changed_unit == 'true'
         env:
           BASE_SHA: ${{ needs.scope.outputs.base_sha }}
-        run: npm test -- --config .github/scripts/vitest-ci.config.mjs --changed="$BASE_SHA" --exclude='src/lib/maya-gate/{gate,word-count-grade-1,word-count-grade-4}.test.ts' --testTimeout=60000 --passWithNoTests
+        run: npm test -- --config .github/scripts/vitest-ci.config.mjs --changed="$BASE_SHA" --exclude='src/lib/maya-gate/{gate,word-count-grade-1,word-count-grade-4}.test.ts' --exclude='src/lib/workbook-v2/**' --testTimeout=60000 --passWithNoTests
         timeout-minutes: 10
       - name: Run dynamically-referenced consumer tests
         if: needs.scope.outputs.extra_tests != ''
@@ -140,6 +130,56 @@ jobs:
           read -r -a files <<< "$EXTRA_TESTS"
           npm test -- "${files[@]}" --testTimeout=60000
         timeout-minutes: 8
+
+  # Workbook v2 engine tests and type check on one machine, with no browser, database, or network after install.
+  # Runs on every full run and on every PR that changes files under src/lib/workbook-v2/.
+  engine:
+    name: Workbook engine
+    needs: [scope]
+    if: needs.scope.outputs.run_engine == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        timeout-minutes: 4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        timeout-minutes: 4
+        with:
+          node-version: '22.23.1'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+        timeout-minutes: 5
+      - name: Install the pinned Typst
+        run: npm run typst:install
+        timeout-minutes: 2
+      - name: Architectural guardrails
+        run: npm run check:guard
+        timeout-minutes: 1
+      - name: Engine type check
+        run: npm run engine:typecheck
+        timeout-minutes: 2
+      - name: Engine tests
+        id: engine_tests
+        run: |
+          start_ms=$(node -e 'process.stdout.write(String(Date.now()))')
+          set +e
+          npm test -- src/lib/workbook-v2/
+          status=$?
+          set -e
+          end_ms=$(node -e 'process.stdout.write(String(Date.now()))')
+          echo "duration_ms=$((end_ms - start_ms))" >> "$GITHUB_OUTPUT"
+          exit "$status"
+        timeout-minutes: 4
+      - name: Report engine test time
+        if: ${{ always() }}
+        env:
+          DURATION_MS: ${{ steps.engine_tests.outputs.duration_ms }}
+          TEST_OUTCOME: ${{ steps.engine_tests.outcome }}
+        run: node .github/scripts/engine-summary.mjs
+        timeout-minutes: 1
 
   maya-behaviour:
     name: Maya behaviour and word limits
@@ -273,7 +313,7 @@ jobs:
         run: node scripts/build-retention-worker.mjs && node --conditions=react-server .retention/worker.mjs --help
         timeout-minutes: 2
       - name: CI tooling self-tests
-        run: node --test .github/scripts/blog-publish.test.mjs .github/scripts/unit-shards.test.mjs .github/scripts/pr-scope.test.mjs scripts/ci-audit.test.mjs scripts/pre-push-check.test.mjs scripts/repo-guard.test.mjs
+        run: node --test .github/scripts/blog-publish.test.mjs .github/scripts/unit-shards.test.mjs .github/scripts/pr-scope.test.mjs .github/scripts/engine-ci.test.mjs scripts/ci-audit.test.mjs scripts/pre-push-check.test.mjs scripts/repo-guard.test.mjs
         timeout-minutes: 2
 
   # The root tsconfig.json excludes worker/, so the Maya voice worker's own type check and tests run here.
@@ -311,7 +351,7 @@ jobs:
 
   # The required check. Keep this name exactly `test`: Vercel's Deployment Check and branch rules use it.
   test:
-    needs: [scope, unit, pr-unit, scan-binding-scale, maya-behaviour, family-zones, lint-and-types, voice-worker]
+    needs: [scope, unit, pr-unit, engine, scan-binding-scale, maya-behaviour, family-zones, lint-and-types, voice-worker]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 3
@@ -322,6 +362,7 @@ jobs:
           MODE: ${{ needs.scope.outputs.mode }}
           REASON: ${{ needs.scope.outputs.reason }}
           RUN_PR_UNIT: ${{ needs.scope.outputs.run_pr_unit }}
+          RUN_ENGINE: ${{ needs.scope.outputs.run_engine }}
           RUN_LINT: ${{ needs.scope.outputs.run_lint_and_types }}
           RUN_MAYA: ${{ needs.scope.outputs.run_maya_behaviour }}
           RUN_ZONES: ${{ needs.scope.outputs.run_family_zones }}
@@ -329,32 +370,50 @@ jobs:
           UNIT_RESULT: ${{ needs.unit.result }}
           SCAN_BINDING_RESULT: ${{ needs.scan-binding-scale.result }}
           PR_UNIT_RESULT: ${{ needs.pr-unit.result }}
+          ENGINE_RESULT: ${{ needs.engine.result }}
           MAYA_RESULT: ${{ needs.maya-behaviour.result }}
           ZONES_RESULT: ${{ needs.family-zones.result }}
           LINT_RESULT: ${{ needs.lint-and-types.result }}
           VOICE_RESULT: ${{ needs.voice-worker.result }}
         run: |
           echo "scope=$SCOPE_RESULT mode=$MODE ($REASON)"
-          echo "unit=$UNIT_RESULT pr-unit=$PR_UNIT_RESULT scan-binding=$SCAN_BINDING_RESULT maya=$MAYA_RESULT zones=$ZONES_RESULT lint=$LINT_RESULT voice=$VOICE_RESULT"
+          echo "unit=$UNIT_RESULT pr-unit=$PR_UNIT_RESULT engine=$ENGINE_RESULT scan-binding=$SCAN_BINDING_RESULT maya=$MAYA_RESULT zones=$ZONES_RESULT lint=$LINT_RESULT voice=$VOICE_RESULT"
           test "$SCOPE_RESULT" = "success"
+          case "$MODE" in
+            full|affected|skip) ;;
+            *)
+              echo "FAIL: unexpected mode '$MODE'" >&2
+              exit 1
+              ;;
+          esac
           check_job() {
             local name="$1" required="$2" result="$3"
-            if [ "$required" = "true" ]; then
-              if [ "$result" != "success" ]; then
-                echo "FAIL: required job $name ended with $result" >&2
+            case "$required" in
+              true)
+                if [ "$result" != "success" ]; then
+                  echo "FAIL: required job $name ended with $result" >&2
+                  exit 1
+                fi
+                ;;
+              false)
+                if [ "$result" != "skipped" ]; then
+                  echo "FAIL: non-required job $name ended with $result" >&2
+                  exit 1
+                fi
+                ;;
+              *)
+                echo "FAIL: job $name has invalid required flag '$required'" >&2
                 exit 1
-              fi
-            else
-              if [ "$result" != "skipped" ]; then
-                echo "FAIL: non-required job $name ended with $result" >&2
-                exit 1
-              fi
-            fi
+                ;;
+            esac
           }
+          # In full mode every job must succeed and in skip mode none may run, whatever the flags say.
+          flag() { case "$MODE" in full) echo true ;; skip) echo false ;; *) echo "$1" ;; esac; }
           check_job "unit" "$([ "$MODE" = "full" ] && echo true || echo false)" "$UNIT_RESULT"
           check_job "scan-binding-scale" "$([ "$MODE" = "full" ] && echo true || echo false)" "$SCAN_BINDING_RESULT"
-          check_job "pr-unit" "$([ "$MODE" = "affected" ] && [ "$RUN_PR_UNIT" = "true" ] && echo true || echo false)" "$PR_UNIT_RESULT"
-          check_job "maya-behaviour" "$RUN_MAYA" "$MAYA_RESULT"
-          check_job "family-zones" "$RUN_ZONES" "$ZONES_RESULT"
-          check_job "lint-and-types" "$RUN_LINT" "$LINT_RESULT"
-          check_job "voice-worker" "$RUN_VOICE" "$VOICE_RESULT"
+          check_job "pr-unit" "$([ "$MODE" = "affected" ] && echo "$RUN_PR_UNIT" || echo false)" "$PR_UNIT_RESULT"
+          check_job "engine" "$(flag "$RUN_ENGINE")" "$ENGINE_RESULT"
+          check_job "maya-behaviour" "$(flag "$RUN_MAYA")" "$MAYA_RESULT"
+          check_job "family-zones" "$(flag "$RUN_ZONES")" "$ZONES_RESULT"
+          check_job "lint-and-types" "$(flag "$RUN_LINT")" "$LINT_RESULT"
+          check_job "voice-worker" "$(flag "$RUN_VOICE")" "$VOICE_RESULT"

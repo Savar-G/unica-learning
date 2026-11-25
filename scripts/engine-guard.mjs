@@ -7,6 +7,9 @@
  *   engine-purity:       no clock, random source, network, timer, setting or locale in the engine. render/ may use
  *                        files and programs, through its imports, and nothing else of these.
  *   engine-level-branch: no decision on a level or grade. A difference between levels is data.
+ *   engine-asset-use:    app code under src/ names no file of the engine that is not code (a drawing, a font, a fixture).
+ *                        The type check finds a removed module and Vitest finds the tests of a changed one, but neither
+ *                        sees these files, so CI would run no app test for them. A file with no extension is not seen.
  *
  * It reads the text of one file at a time and knows no types. It does not see: a name put together at run time
  * ("toLocale" + "String"), a value that passes through a parameter, a field, a list or a function of the engine before
@@ -215,9 +218,30 @@ function checkCode(file, text) {
   return violations;
 }
 
+const ENGINE_PATH = /\bworkbook-v2\/[^"'`\s)?#]+/g;
+/** A path whose last extension is not one of code. A path with no extension is taken for a module. */
+const isAsset = (path) => /\.\w+$/.test(path) && !/\.[cm]?[jt]sx?$/.test(path);
+
+function appFiles(rootDir, dir = "src", out = []) {
+  if (!existsSync(join(rootDir, dir))) return out;
+  for (const entry of readdirSync(join(rootDir, dir), { withFileTypes: true })) {
+    const path = posix.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (path !== ENGINE) appFiles(rootDir, path, out);
+    } else if (/\.[cm]?[jt]sx?$/.test(entry.name)) out.push(path);
+  }
+  return out;
+}
+
+function checkAssetUse(file, text) {
+  const asset = text.match(ENGINE_PATH)?.find(isAsset);
+  return asset ? [{ rule: "engine-asset-use", file, message: `${file} names "${asset}". App code uses the modules of the workbook engine and not its other files: CI cannot find the app tests of those.` }] : [];
+}
+
 export function checkEngine(rootDir) {
-  return engineFiles(rootDir).sort().flatMap((file) => {
-    const text = readFileSync(join(rootDir, file), "utf8");
-    return file.endsWith(".typ") ? checkTypst(file, text) : checkCode(file, text);
-  });
+  const read = (file) => readFileSync(join(rootDir, file), "utf8");
+  return [
+    ...engineFiles(rootDir).sort().flatMap((file) => (file.endsWith(".typ") ? checkTypst(file, read(file)) : checkCode(file, read(file)))),
+    ...appFiles(rootDir).sort().flatMap((file) => checkAssetUse(file, read(file))),
+  ];
 }
