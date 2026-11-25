@@ -212,7 +212,7 @@ describe("refusals and books with no contract", () => {
       reason: "qr-mismatch", details: {
         qrRead: 1, placement: 1, marks: { found: [0, 1, 2, 3], hidden: [], missing: [] },
         qrCorners: expect.arrayContaining([expect.objectContaining({ x: expect.any(Number), y: expect.any(Number) })]),
-        pageFit: expect.any(Number),
+        pageFit: { score: expect.any(Number), placement: 1 },
       },
     } });
     expect(JSON.stringify(saved)).not.toContain(other);
@@ -556,7 +556,7 @@ describe("readable QR with hidden marks", () => {
     expect(result?.held).toEqual(held);
     expect(result?.details).toMatchObject({
       marks: { found: [0, 3], hidden: [1, 2], missing: [] },
-      qrRead: 2, placement: 2, qrPatches: expect.any(Number), pageFit: expect.any(Number),
+      qrRead: 2, placement: 2, qrPatches: expect.any(Number), pageFit: { score: expect.any(Number), placement: 2 },
       covered: held.map(({ number }) => ({ question: number, region: 1, shown: 0, examined: 6, required: 5 })),
     });
     expect(result?.crops?.map((c) => c.number)).toEqual([1, 2, 4, 5]);

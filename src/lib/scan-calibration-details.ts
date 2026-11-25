@@ -16,6 +16,12 @@ export interface CoveredRegionDetails {
   required: number;
 }
 
+export interface PageFitDetails {
+  score: number;
+  examined: number;
+  visible: number;
+}
+
 export interface ScanCalibrationDetails {
   /** Candidate count is available even when no map can identify individual corners. */
   markCandidates?: number;
@@ -27,7 +33,8 @@ export interface ScanCalibrationDetails {
   placement?: 1 | 2;
   qrCorners?: Point[];
   qrPatches?: number;
-  pageFit?: number;
+  /** The score is an upper bound when the comparison stopped before examining all visible cells. */
+  pageFit?: PageFitDetails & { placement: 1 | 2 };
   covered?: CoveredRegionDetails[];
 }
 

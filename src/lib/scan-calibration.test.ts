@@ -209,14 +209,19 @@ describe("refusals", () => {
     expect(calibratePhoto({ photo, printed, contract: available, pageLink: LINK })).toMatchObject({ status: "review", reason: "page-mismatch" });
   }, 20_000);
 
-  it("holds a photo of another page: its marks line up, but its ink does not follow the printed page", async () => {
-    // Disproved if four good marks are enough, whatever the page.
+  it("keeps partial mark-fit evidence when the QR cannot place the print", async () => {
+    // Four good marks put the absent print inside the photo. The moved QR cannot measure a replacement fit.
     const other = page();
     for (const m of SCAN_MARKS) mark(other, m);
-    for (let i = 0; i < 40; i++) fill(other, 200 + (i * 37) % 800, 500 + (i * 71) % 900, 60, 14);
-    drawQr(other, QR_BOX, LINK);
+    drawQr(other, { ...QR_BOX, x: 300, y: 300 }, LINK);
     const photo = await stored(photographed(other, SIZE, square(SIZE, 60)));
-    expect(calibratePhoto({ photo, printed, contract: available, pageLink: LINK })).toMatchObject({ status: "review", reason: "page-mismatch" });
+    const result = calibratePhoto({ photo, printed, contract: available, pageLink: LINK });
+    expect(result).toMatchObject({ status: "review", reason: "page-mismatch", details: { placement: 2, pageFit: { placement: 1 } } });
+    if (result.status !== "review" || !result.details.pageFit) throw new Error("Expected measured mark fit");
+    expect(result.details.qrPatches).toBeGreaterThan(0);
+    const { examined, visible } = result.details.pageFit;
+    expect(examined).toBeGreaterThan(0);
+    expect(examined).toBeLessThan(visible);
   }, 20_000);
 
   it("holds a photo when two ways up fit alike: the marks alone cannot say which way is up", async () => {

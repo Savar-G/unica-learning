@@ -53,6 +53,8 @@ function PageCheckDetails({ result }: { result: ScanCalibrationResult }) {
   const { details, reason, review } = result;
   if (!details) return null;
   const { marks, markCandidates, qrRead, qrCorners, placement, qrPatches, pageFit, covered } = details;
+  const partialFit = pageFit && pageFit.examined < pageFit.visible;
+  const fitScore = pageFit && (partialFit ? Math.ceil(pageFit.score * 1000) / 1000 : pageFit.score);
   return <>
     <h3>Page alignment check</h3>
     <dl>
@@ -67,7 +69,10 @@ function PageCheckDetails({ result }: { result: ScanCalibrationResult }) {
       {qrCorners && <><dt>QR corners in photo pixels</dt><dd>{qrCorners.map(({ x, y }) => `(${x}, ${y})`).join(", ")}</dd></>}
       {placement !== undefined && <><dt>Placement method</dt><dd>{placement === 2 ? "QR code and print" : "Corner marks"}</dd></>}
       {qrPatches !== undefined && <><dt>Matched print patches for QR placement</dt><dd>{qrPatches}</dd></>}
-      {pageFit !== undefined && <><dt>Page fit</dt><dd>{pageFit}</dd></>}
+      {pageFit && fitScore !== undefined && Number.isFinite(fitScore) && <>
+        <dt>Page fit using {pageFit.placement === 2 ? "QR placement" : "corner marks"}</dt>
+        <dd>{partialFit ? "At most " : ""}{fitScore.toFixed(3)} ({pageFit.examined} of {pageFit.visible} visible cells checked)</dd>
+      </>}
     </dl>
     {covered?.length ? <Table label="Covered answer regions" head={["Question", "Region", "Ring cells visible", "Ring cells checked", "Minimum visible"]} empty="No covered regions.">
       {covered.map(({ question, region, shown, examined, required }) => <tr key={`${question}-${region}`}>

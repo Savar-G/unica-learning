@@ -17,7 +17,7 @@
 // Pure TypeScript: no Next.js, React, network, database or clock. The caller decodes and encodes images.
 import jsQR from "jsqr";
 import { paperEdges } from "@/lib/scan-paper-edges";
-import { noteScanCode, noteScanMarks, type AnswerPlacement, type CalibrationRefusal, type ScanCalibrationDetails } from "@/lib/scan-calibration-details";
+import { noteScanCode, noteScanMarks, type AnswerPlacement, type CalibrationRefusal, type PageFitDetails, type ScanCalibrationDetails } from "@/lib/scan-calibration-details";
 import { snapPrint } from "@/lib/scan-answer-snap";
 import type { QuestionPackage } from "@/lib/question-package";
 import { markingRegions } from "@/lib/scan-marking-regions";
@@ -725,18 +725,14 @@ function visibleCells<C extends { x: number; y: number }>(cells: readonly C[], p
   return cells.filter((c) => inside(c.x, c.y) && inside(c.x + FIT_CELL, c.y) && inside(c.x, c.y + FIT_CELL) && inside(c.x + FIT_CELL, c.y + FIT_CELL));
 }
 
+type FitEvidence = { mesh?: Mesh; fit?: PageFitDetails };
+
 /**
- * The share of the page's printed cells that the photo holds in the same place, through a map; 0 as soon as too few can.
- * Cell by cell, because pages of one template share a heading and a layout. In grey, with both images brought to the same
- * sharpness first, because a threshold on ink changes with how large the page is in the photo: a stroke one pixel wide comes
- * out thin or missing, and the same page would pass from close up and fail from further away. A correlation does not care
- * about shade or contrast. Only the cells inside the photo count, and they must be most of the page's (MIN_VISIBLE).
- *
- * A sheet that is not flat (#912: bowed, curled, held up in the hand) misses cells where the four marks' map alone puts
- * them. Then its parts are aligned one by one (`sheetMesh`), and every cell is compared again at its aligned place with the
- * same small reach and the same MIN_PAGE_FIT. `found.mesh` gets that alignment when it passes.
+ * Compare visible print cells in grey at matching sharpness, so shade or thin strokes do not decide the match.
+ * If the flat map fails, retry with local alignment (#912). Keep the score from the winning comparison, including
+ * how many cells it examined before exceeding the miss limit.
  */
-function pageFit(printed: PrintedInk, photoSums: Uint32Array, photo: { width: number; height: number }, t: Transform, atLeast = MIN_PAGE_FIT, found?: { mesh?: Mesh }, pins: readonly Pin[] = [], bent = true): number {
+function pageFit(printed: PrintedInk, photoSums: Uint32Array, photo: { width: number; height: number }, t: Transform, atLeast = MIN_PAGE_FIT, found?: FitEvidence, pins: readonly Pin[] = [], bent = true): number {
   const { width, height, cells } = printed;
   if (cells.length === 0) return 0;
   const { a, b } = fitGrids(printed, photoSums, photo, t);
@@ -746,21 +742,29 @@ function pageFit(printed: PrintedInk, photoSums: Uint32Array, photo: { width: nu
   const shine = atLeast === MIN_PAGE_FIT ? printed.ink : null;
   const count = (inView: readonly ShapedCell[], grid: Float32Array) => {
     const allowed = Math.floor(inView.length * (1 - atLeast));
-    let missed = 0;
-    for (const c of inView) if (!cellShows(c, a, grid, shine, width, height) && ++missed > allowed) break;
-    return { missed, allowed, fit: 1 - missed / inView.length };
+    let missed = 0, examined = 0;
+    for (const c of inView) {
+      examined++;
+      if (!cellShows(c, a, grid, shine, width, height) && ++missed > allowed) break;
+    }
+    return { missed, allowed, score: 1 - missed / inView.length, examined, visible: inView.length };
+  };
+  const finish = (measured?: PageFitDetails, mesh?: Mesh) => {
+    if (found && measured) {
+      const { score, examined, visible } = measured;
+      found.fit = { score, examined, visible };
+      if (mesh) found.mesh = mesh;
+    }
+    return measured?.score ?? 0;
   };
   const flatView = visibleCells(shaped, photo, t);
-  let flatFit = 0;
+  let best: PageFitDetails | undefined;
   if (flatView.length >= shaped.length * MIN_VISIBLE) {
     const flat = count(flatView, b);
-    // A flat sheet stays flat: its map alone places it, as before #912.
-    if (flat.missed <= flat.allowed) return flat.fit;
-    flatFit = flat.fit;
+    if (flat.missed <= flat.allowed) return finish(flat);
+    best = flat;
   }
-  // (A comparison of two prints, or of a near twin, is flat: no sheet is bent there.)
-  if (atLeast !== MIN_PAGE_FIT || !bent) return flatFit;
-  let best = 0;
+  if (atLeast !== MIN_PAGE_FIT || !bent) return finish(best);
   for (const levels of MESH_READS) {
     const mesh = sheetMesh(printed, a, b, shaped, photoSums, photo, t, pins, levels);
     if (!mesh) continue;
@@ -768,10 +772,10 @@ function pageFit(printed: PrintedInk, photoSums: Uint32Array, photo: { width: nu
     const view = visibleCells(shaped, photo, t, shape);
     if (view.length < shaped.length * MIN_VISIBLE) continue;
     const fitted = count(view, fitGrids(printed, photoSums, photo, t, shape).b);
-    if (fitted.missed <= fitted.allowed) { if (found) found.mesh = mesh; return fitted.fit; }
-    best = Math.max(best, fitted.fit);
+    if (fitted.missed <= fitted.allowed) return finish(fitted, mesh);
+    if (!best || fitted.score > best.score) best = fitted;
   }
-  return Math.max(flatFit, best);
+  return finish(best);
 }
 
 /** A grid averaged down by k in each direction. */
@@ -1561,7 +1565,6 @@ function placedByQr(photo: Raster, printedQr: FoundQr, ink: PrintedInk, greySums
   const code = photoQr(photo, printedQr.link);
   if (!code) return null;
   details.placement = 2;
-  delete details.pageFit;
   noteScanCode(details, code.corners, true);
   // The code is small: its corners say where it is, how large and which way up, and only the print can say more.
   let t = fitLinear(printedQr.corners, code.corners, "similarity");
@@ -1596,7 +1599,7 @@ function placedByQr(photo: Raster, printedQr: FoundQr, ink: PrintedInk, greySums
     t = next;
   }
   // The print first: the page must follow, part by part, before any mark is looked for.
-  const first: { mesh?: Mesh } = {};
+  const first: FitEvidence = {};
   const firstFit = pageFit(ink, greySums, photo, t, MIN_PAGE_FIT, first);
   // Look for optional L shapes with arms that follow the placed page.
   const at = (p: Point) => photoPointOf(t!, first.mesh, p);
@@ -1646,7 +1649,7 @@ function placedByQr(photo: Raster, printedQr: FoundQr, ink: PrintedInk, greySums
         const q = applyTransform(back, to);
         return { ...from, dx: q.x - from.x, dy: q.y - from.y };
       });
-      const refinedSheet: { mesh?: Mesh } = {};
+      const refinedSheet: FitEvidence = {};
       const refinedFit = pageFit(ink, greySums, photo, refined, MIN_PAGE_FIT, refinedSheet, pins);
       if (refinedFit >= MIN_PAGE_FIT && qrBound(photo, refined, printedQr, qrGrid, page, refinedSheet.mesh)) {
         placed = refined;
@@ -1655,7 +1658,7 @@ function placedByQr(photo: Raster, printedQr: FoundQr, ink: PrintedInk, greySums
       }
     }
   }
-  details.pageFit = Math.round(fit * 1000) / 1000;
+  if (sheet.fit) details.pageFit = { ...sheet.fit, placement: 2 };
   noteScanMarks(details, hidden, missing);
   if (fit < MIN_PAGE_FIT) return null;
   // Which way up: the page's own rightward direction in the photo, in clockwise quarter turns.
@@ -1699,20 +1702,17 @@ export function calibratePhoto(o: { photo: Raster; printed: Raster; contract: Ph
       const order = stored.map((_, i) => quad[(i + turns) % 4]);
       const t = perspectiveTransform(stored, order.map((m) => m.corner));
       if (!t || !armsFit(order, t)) return [];
-      const found: { mesh?: Mesh } = {};
+      const found: FitEvidence = {};
       const fit = pageFit(ink, greySums, photo, t, MIN_PAGE_FIT, found, stored.map((p) => ({ ...p, dx: 0, dy: 0 })), bent);
-      return [{ turns, order, t, fit, ...(found.mesh ? { mesh: found.mesh } : {}) }];
+      return [{ turns, order, t, fit, measured: found.fit, ...(found.mesh ? { mesh: found.mesh } : {}) }];
     }).sort((a, b) => b.fit - a.fit);
     if (ways.length === 0) continue;
     const best = ways[0];
-    details.pageFit = Math.max(details.pageFit ?? 0, Math.round(best.fit * 1000) / 1000);
+    if (best.measured && best.fit > (details.pageFit?.score ?? -1)) details.pageFit = { ...best.measured, placement: 1 };
     if (best.fit < MIN_PAGE_FIT) { refusal = "page-mismatch"; continue; }
     followers.push({ ...best, next: ways[1]?.fit ?? null });
   }
-  // Two sheets in one photo: which one was meant cannot be known, whichever shows its code. Rectangles that share two or
-  // more marks are one sheet, not two: a page lying on the rest of the book shows the marks of the sheets under it, and
-  // a mark of the sheet below can stand in for one of the page's own (#912). Which marks are the page's is then decided
-  // by its code and print below, never by the rectangles.
+  // Rectangles sharing two marks can be one sheet over another. The QR and print then identify its own marks.
   const oneSheet = followers.length > 1 && followers.every((a, i) => followers.every((b, j) => j <= i || a.order.filter((m) => b.order.includes(m)).length >= 2));
   const codeAt = (c: { t: Transform; mesh?: Mesh }) => qrBound(photo, c.t, printedQr, prepared.qrGrid, pageSize, c.mesh, details);
   const unplaced = (reason: CalibrationRefusal, bound = false): CalibrationResult => {
@@ -1724,7 +1724,6 @@ export function calibratePhoto(o: { photo: Raster; printed: Raster; contract: Ph
   if (followers.length > 1 && !oneSheet) return unplaced("ambiguous-page", followers.some(codeAt));
   const calibration = (c: { t: Transform; turns: 0 | 1 | 2 | 3; fit: number; mesh?: Mesh; marks: Point[] }, more: Partial<Calibration> = {}): CalibrationResult => {
     details.placement = more.placedBy === "qr" ? 2 : 1;
-    details.pageFit = Math.round(c.fit * 1000) / 1000;
     noteScanMarks(details, more.hiddenMarks ?? [], more.missingMarks ?? []);
     if (!codeAt(c)) return unplaced("qr-mismatch");
     return {
