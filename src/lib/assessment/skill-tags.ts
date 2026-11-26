@@ -3,7 +3,7 @@
 // bank/skill-tags/; this file holds the structural check and the lookup. Pure: no network, database or clock.
 import type { SkillTag } from "./bank/kit";
 import { SKILL_TAGS } from "./bank/skill-tags";
-import { BC_SKILL_MAP } from "./skill-map";
+import { ASSESSMENT_SKILL_MAP } from "./skill-map";
 import type { SkillMap } from "./skill-map/kit";
 
 export type { SkillTag };
@@ -23,7 +23,7 @@ export const tagSkills = (tag: SkillTag): readonly string[] => ("skills" in tag 
  * The skills a template tests, main skill first; empty for a template with no tag (one removed from the bank since a
  * test was stored). Looked up by template id, so a tag corrected after review (#194) shows on tests stored before it.
  */
-export function templateSkills(templateId: string, tags: Readonly<Record<string, SkillTag>> = SKILL_TAGS, map: SkillMap = BC_SKILL_MAP): TemplateSkill[] {
+export function templateSkills(templateId: string, tags: Readonly<Record<string, SkillTag>> = SKILL_TAGS, map: SkillMap = ASSESSMENT_SKILL_MAP): TemplateSkill[] {
   const tag = tags[templateId];
   if (!tag) return [];
   const skills = new Map(map.standards.flatMap((s) => s.skills.map((k) => [k.id, { id: k.id, text: k.text, standard: s.code }] as const)));

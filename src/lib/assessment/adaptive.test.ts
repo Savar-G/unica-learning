@@ -1,10 +1,13 @@
 import { createHash } from "node:crypto";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { ADAPTIVE_QUESTION_LIMIT, assessmentQuestionsOnly, BLOCK_SIZE, blockQuestions, difficultyOf, skillFamily, createAdaptiveSession, finish, givenQuestions, lockAdaptiveBlock, nextQuestion, restoreSession, storedTest, submitAnswer, testAreaAnswers, testStep, UNKNOWN_RESPONSE, paceOf, flagsFor, REPORTED_STRAND, rescoreAdaptivePlacement, SKILL_TAGS, type Template, type AdaptiveBlock, type Grade, type Session, type Province, type Question } from "@/lib/assessment";
+import { ADAPTIVE_QUESTION_LIMIT, assessmentQuestionsOnly, BLOCK_SIZE, blockQuestions, difficultyOf, skillFamily, createAdaptiveSession, finish, givenQuestions, lockAdaptiveBlock, nextQuestion, restoreSession, storedTest, submitAnswer, testAreaAnswers, testStep, UNKNOWN_RESPONSE, paceOf, flagsFor, REPORTED_STRAND, rescoreAdaptivePlacement, type AdaptiveBlock, type Grade, type Session, type Province, type Question } from "@/lib/assessment";
+import { ALL_TEMPLATES } from "./bank";
+
+const LEGACY_BANK = ALL_TEMPLATES.filter(t => t.grades.BC <= 9);
 
 function run(grade: Grade, ability: number, seed: number, province: Province = "BC"): Session {
-  const created = createAdaptiveSession({ grade, province }, seed);
+  const created = createAdaptiveSession({ grade, province }, seed, LEGACY_BANK);
   let s: Session = { ...created, adaptive: { ...created.adaptive!, version: 1 } };
   for (let i = 0; i < 100; i++) {
     const step = testStep(s);
@@ -191,7 +194,8 @@ describe("placement rules v2", () => {
   });
 
   it("keeps the at-grade second look at the Grade 9 ceiling", () => {
-    let s = scriptBlock(scriptBlock(start(9), 4), 4);
+    const capped = createAdaptiveSession({ grade: 9, province: "BC" }, 1, LEGACY_BANK);
+    let s = scriptBlock(scriptBlock(capped, 4), 4);
     expect(nextQuestion(s)).toMatchObject({ level: 9 });
     s = drain(scriptBlock(s, 4), 0);
     expect(finish(s)).toMatchObject({ workingLevel: 9, mastered: true, atCeiling: true, levelCertainty: "early-sign" });
@@ -351,7 +355,7 @@ describe("skill-balanced blocks", () => {
     createAdaptiveSession({ grade: 9, province: "BC" }, seed).adaptive!.pool.filter(q => q.level === level);
 
   it("asks each skill family once before repeating one, from any rotation", () => {
-    fc.assert(fc.property(fc.integer({ min: 1, max: 10_000 }), fc.integer({ min: 0, max: 3 }), fc.constantFrom(7, 8, 9), (seed, offset, level) => {
+    fc.assert(fc.property(fc.integer({ min: 1, max: 10_000 }), fc.integer({ min: 0, max: 3 }), fc.constantFrom(7, 8, 9, 10, 11, 12), (seed, offset, level) => {
       const pool = levelPool(seed, level);
       const block = blockQuestions(pool, strands, offset, true);
       const families = new Set(pool.map(skillFamily)).size;
@@ -361,7 +365,7 @@ describe("skill-balanced blocks", () => {
   });
 
   it("puts every skill family's first question before a repeated family, easy first within each", () => {
-    fc.assert(fc.property(fc.integer({ min: 1, max: 10_000 }), fc.constantFrom(7, 8, 9), fc.integer({ min: 2, max: 4 }), (seed, level, kept) => {
+    fc.assert(fc.property(fc.integer({ min: 1, max: 10_000 }), fc.constantFrom(7, 8, 9, 10, 11, 12), fc.integer({ min: 2, max: 4 }), (seed, level, kept) => {
       const all = levelPool(seed, level);
       const few = new Set([...new Set(all.map(skillFamily))].slice(0, kept));
       const block = blockQuestions(all.filter(q => few.has(skillFamily(q))), strands, 0, true);
@@ -374,7 +378,8 @@ describe("skill-balanced blocks", () => {
   });
 });
 
-// Capture the emitted blocks and complete finish result from 1165f9bf for every generated script.
+// Replay the emitted blocks and complete finish result captured at 1165f9bf for Grades K–8.
+// Grade 9 now probes above Level 9 and is covered by the real-bank matrix below.
 it.each([
   [0, "c55aa28e085ae41c53d96157b22a7c7cc6b77f2d370018f1c80a02bb88a4a817"],
   [1, "2242a75fb26881c54fee7a52f567bf661d8285e6409251069332b46d166026e4"],
@@ -385,7 +390,6 @@ it.each([
   [6, "021abfdfa67c5e244d9996c3d071d08a5ae3a62aa8ab4d1b535d9dbcc194c7c2"],
   [7, "16640b57a3b7a103682cb51ecfe4d04c79b9b00c8f2c8f4b7b6db7b6a6a1376f"],
   [8, "816fb79600ff8f0b7d59f8f1e46aacd05a389cb71611dcedd96f1f09badf7701"],
-  [9, "b1c97a50762e50b531c59534740d51f533fe5ff516768be32a183588913a5139"],
 ] as const)("replays the parent commit's Grade %i adaptive routes", (grade, expected) => {
   const results = createHash("sha256");
   fc.assert(fc.property(
@@ -404,63 +408,41 @@ it.each([
 
 describe("upper-grade adaptive placement", () => {
   const levels = [9, 10, 11, 12] as const;
-  const variantsPerFamily = 4;
-  const strands = ["N", "F", "A", "MG", "N", "A"] as const;
-  const bank: readonly Template[] = ([8, ...levels] as const).flatMap(level => strands.flatMap((strand, family) =>
-    Array.from({ length: variantsPerFamily }, (_, variant): Template => {
-      const id = `fixture-${level}-${family}-${variant}`;
-      return {
-        id, strand, grades: { BC: level }, standard: "", format: "number", whiteboard: false,
-        fill: () => ({ values: {}, prompt: id, readAloud: id, answer: "1", wrong: [] }),
-      };
-    }),
-  ));
-
   it.each(levels.flatMap(grade => levels.map(ability => [grade, ability] as const)))(
     "starts at school Grade %i and places at demonstrated Level %i within the limit",
     (grade, ability) => {
-      try {
-        bank.forEach((template, index) => {
-          const family = Math.floor(index / variantsPerFamily) % strands.length;
-          Object.defineProperty(SKILL_TAGS, template.id, { value: [`fixture-skill-${family}`], configurable: true });
+      const profile = { grade, province: "BC" } as const;
+      for (const seed of [1, 17, 83]) {
+        const initial = createAdaptiveSession(profile, seed, undefined, { workbookPlacement: true });
+        expect(initial.adaptive!.blocks[0].level).toBe(grade);
+        const complete = play(initial, (_, question) => question.level <= ability);
+        expect(complete.answers.length).toBeLessThanOrEqual(Math.min(72, ADAPTIVE_QUESTION_LIMIT));
+        if (grade === 9) expect(complete.adaptive!.blocks.some(block => block.level === 10)).toBe(true);
+        expect(finish(reload(complete))).toMatchObject({
+          workingLevel: ability, mastered: true, workbookStart: { level: ability, topic: 1 },
+          ...(ability === 12 && { levelCertainty: "clear", atCeiling: true }),
+          ...(grade === 9 && ability === 9 && { atCeiling: false }),
         });
-        const profile = { grade, province: "BC" } as const;
-        for (const seed of [1, 17, 83]) {
-          const initial = createAdaptiveSession(profile, seed, bank, { workbookPlacement: true });
-          expect(initial.adaptive!.blocks[0].level).toBe(grade);
-          const complete = play(initial, (_, question) => question.level <= ability);
-          expect(complete.answers.length).toBeLessThanOrEqual(ADAPTIVE_QUESTION_LIMIT);
-          expect(finish(reload(complete))).toMatchObject({
-            workingLevel: ability, mastered: true, workbookStart: { level: ability, topic: 1 },
-            ...(ability === 12 && { levelCertainty: "clear", atCeiling: true }),
-          });
-          for (const block of complete.adaptive!.blocks) {
-            if (block.level >= 10 && block.purpose !== "coverage") {
-              expect(new Set(block.questions.map(skillFamily)).size).toBe(BLOCK_SIZE);
-            }
+        for (const block of complete.adaptive!.blocks) {
+          if (block.level >= 10 && block.purpose !== "coverage") {
+            expect(new Set(block.questions.map(skillFamily)).size).toBe(BLOCK_SIZE);
           }
         }
-      } finally {
-        for (const { id } of bank) Reflect.deleteProperty(SKILL_TAGS, id);
       }
     },
   );
 
   it("respects a bank ending at Level 10 without treating its endpoint as clear", () => {
-    const shortBank = bank.filter(template => template.grades.BC <= 10);
+    const shortBank = ALL_TEMPLATES.filter(template => template.grades.BC <= 10);
     const complete = play(createAdaptiveSession({ grade: 10, province: "BC" }, 17, shortBank), () => true);
     expect(complete.adaptive!.blocks.every(block => block.level <= 10 && block.questions.length > 0)).toBe(true);
     expect(finish(complete)).toMatchObject({ workingLevel: 10, levelCertainty: "early-sign", atCeiling: true });
   });
 
   it("can route past a missing level in the bank", () => {
-    const sparse = bank.filter(template => template.grades.BC !== 10);
+    const sparse = ALL_TEMPLATES.filter(template => template.grades.BC !== 10);
     const complete = play(createAdaptiveSession({ grade: 9, province: "BC" }, 17, sparse), () => true);
     expect(complete.adaptive!.blocks.map(block => block.level)).not.toContain(10);
     expect(finish(complete)).toMatchObject({ workingLevel: 12, levelCertainty: "clear" });
-  });
-
-  it.each([10, 11, 12] as const)("cannot start Grade %i before its bank is available", grade => {
-    expect(() => createAdaptiveSession({ grade, province: "BC" }, 1)).toThrow("The bank cannot start this assessment");
   });
 });

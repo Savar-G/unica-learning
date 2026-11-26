@@ -12,7 +12,7 @@ import { testedGrade } from "./grades";
 import { RUSH_RUN, paceOf } from "./rushing";
 import { fromRemovedRound } from "./session";
 import type { Interest, LearningGoal, LearningStyle, MathFeeling, WeeklyTime } from "@/lib/learning-style";
-import { BC_SKILL_MAP } from "./skill-map";
+import { ASSESSMENT_SKILL_MAP } from "./skill-map";
 import type { SkillTestResult } from "./skill-state";
 import type { Grade, Level, LevelResult, Placement, Province, Question, ReportedStrand, Route, StrandStatus } from "./types";
 
@@ -244,7 +244,7 @@ export interface LearnerProfile {
 /** Every bank template, by id: its BC standard. */
 const TEMPLATES = new Map(Object.values(BANKS).flat().map((t) => [t.id, t]));
 // Every standard of the map, grade 9 too: a Grade 9 test asks level 9 questions (D-158).
-const STANDARDS = new Map(BC_SKILL_MAP.standards.map((s) => [s.code, s]));
+const STANDARDS = new Map(ASSESSMENT_SKILL_MAP.standards.map((s) => [s.code, s]));
 const standardOf = (a: ProfileAnswer) => TEMPLATES.get(a.question.templateId)?.standard;
 
 /** Curriculum order: by grade, then by the standard's number ("4.9" before "4.10"). */
@@ -400,7 +400,7 @@ export function learnerProfile(input: ProfileInput): LearnerProfile | null {
   // The standards of the grade the test measured up to: the school grade (grade 8 for a Grade 9 test before D-158).
   const tested = new Set([...standards.map((s) => s.code), ...factsStandards(placement.facts?.families ?? [])]);
   const start = testedGrade(placement.grade, placement.levels);
-  const untested = BC_SKILL_MAP.standards
+  const untested = ASSESSMENT_SKILL_MAP.standards
     .filter((s) => s.grade === start && !tested.has(s.code))
     .map((s): StandardRef => ({ code: s.code, text: s.text, strand: REPORTED_STRAND[s.strand] }))
     .sort((a, b) => curriculumOrder({ ...a, grade: start }, { ...b, grade: start }));

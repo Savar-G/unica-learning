@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { BANKS, fillTemplate, MISCONCEPTIONS } from "@/lib/assessment";
+import { BANKS, createAdaptiveSession, fillTemplate, MISCONCEPTIONS, submitAnswer } from "@/lib/assessment";
 
-const BANK = BANKS["6-7"];
+const BANK = BANKS["6-7"].filter(t => t.grades.BC <= 9);
 const SEEDS = Array.from({ length: 400 }, (_, i) => i * 7919 + 3);
 // The number pad types digits and one decimal point, at most 12 keys (ANSWER_MAX in src/lib/test-api.ts).
 const TYPEABLE = /^(?=.{1,12}$)\d+(\.\d+)?$/;
@@ -45,5 +45,28 @@ describe.each(BANK.map((t) => [t.id, t] as const))("%s", (_, template) => {
       return `${q.prompt} ${[...(q.choices ?? [])].sort()}`;
     }));
     expect(variants.size).toBeGreaterThanOrEqual(6);
+  });
+});
+
+describe.each(BANKS["6-7"].filter(t => t.grades.BC >= 10).map(t => [t.id, t] as const))("%s", (_, template) => {
+  it("accepts the keyed answer and rejects every other displayed choice", () => {
+    const session = createAdaptiveSession({ grade: template.grades.BC, province: "BC" }, 1);
+    const question = fillTemplate(template, 1);
+    session.adaptive!.blocks[0].questions[0] = question;
+    const answer = (response: string) =>
+      submitAnswer(session, { questionId: question.id, response, timeMs: 20_000 }).answers[0];
+
+    expect(answer(question.answer).correct).toBe(true);
+    if (question.format === "number") {
+      expect(question.answer).toMatch(/^-?\d+(\.\d+)?$/);
+      expect(answer(String(Number(question.answer) + 1)).correct).toBe(false);
+    } else {
+      expect(question.choices).toHaveLength(4);
+      expect(new Set(question.choices).size).toBe(4);
+      expect(question.choices).toContain(question.answer);
+      for (const choice of question.choices ?? []) {
+        expect(answer(choice).correct, choice).toBe(choice === question.answer);
+      }
+    }
   });
 });

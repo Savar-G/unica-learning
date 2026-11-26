@@ -115,6 +115,28 @@ function speakMath(text: string): string {
     .replace(/\s+/g, " ").trim();
 }
 
+const SUBSCRIPT = "₀₁₂₃₄₅₆₇₈₉";
+
+/** Read the notation used by the upper-grade placement items. */
+export function speakUpperMath(text: string): string {
+  const exponentDigits = (digits: string) => [...digits].map(digit => SUPERSCRIPT.indexOf(digit)).join("");
+  return speakMath(text
+    .replace(/([⁰¹²³⁴⁵⁶⁷⁸⁹]+)ᐟ([⁰¹²³⁴⁵⁶⁷⁸⁹]+)/g,
+      (_, top: string, bottom: string) => ` to the power of ${exponentDigits(top)} over ${exponentDigits(bottom)}`)
+    .replace(/\((\d+\/\d+)\)ᵗ/g, "$1 to the power of t")
+    .replace(/ᵗ/g, " to the power of t")
+    .replace(/log([₀₁₂₃₄₅₆₇₈₉]+)\(([^()]+)\)/g,
+      (_, base: string, argument: string) => `log base ${[...base].map(digit => SUBSCRIPT.indexOf(digit)).join("")} of ${argument}`)
+    .replace(/([a-z\d])√/g, "$1 times √")
+    .replace(/√/g, " square root of ")
+    .replace(/([fh])\(([^()]+)\)/g, " $1 of ($2)")
+    .replace(/(\d+) ([fh] of)/g, "$1 times $2")
+    .replace(/\bsin\b/g, "sine of")
+    .replace(/θ/g, "theta")
+    .replace(/\)\(/g, ") times (")
+    .replace(/ \/ /g, " divided by "));
+}
+
 /** The template, with every expression in its prompt and choices kept on one line. */
 export function keepMathTogether<T extends Template>(template: T): T {
   return {

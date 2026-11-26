@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { BANKS, BC_LEVEL_STANDARDS, BC_SKILL_MAP, skillMapProblems, type BcStandard, type SkillMap } from "@/lib/assessment";
+import { ASSESSMENT_SKILL_MAP, BANKS, BC_LEVEL_STANDARDS, BC_SKILL_MAP, skillMapProblems, type BcStandard, type SkillMap } from "@/lib/assessment";
 
 /** A small map for the checker: standards as [code, grade, skills as [id, ...requires]]. */
 const tiny = (...standards: [string, number, [string, ...string[]][]][]): SkillMap => ({
@@ -61,7 +61,7 @@ describe("skillMapProblems", () => {
   });
 });
 
-const mapCodes = () => new Set(BC_SKILL_MAP.standards.map((s) => s.code));
+const mapCodes = () => new Set(ASSESSMENT_SKILL_MAP.standards.map((s) => s.code));
 const research = (path: string) => readFileSync(new URL(`../../../.design/research/${path}`, import.meta.url), "utf8");
 
 /** Rows of a CSV file with quoted fields ("" is a quote inside a field). */
@@ -84,10 +84,10 @@ function csvRows(text: string): Record<string, string>[] {
 
 describe("the BC skill map", () => {
   it("is sound: every skill belongs to one standard, every prerequisite exists, and the edges have no cycles", () => {
-    expect(skillMapProblems(BC_SKILL_MAP)).toEqual([]);
+    expect(skillMapProblems(ASSESSMENT_SKILL_MAP)).toEqual([]);
   });
 
-  it("holds every BC standard that a bank template uses", () => {
+  it("holds every standard and placement objective that a bank template uses", () => {
     const used = new Set(Object.values(BANKS).flat().map((t) => t.standard));
     const missing = [...used].filter((code) => !mapCodes().has(code));
     expect(missing).toEqual([]);

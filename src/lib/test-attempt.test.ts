@@ -184,12 +184,13 @@ describe("the new test a start request stores", () => {
     expect(rows).toEqual([]);
   });
 
-  it("is not made for a grade the question bank cannot cover", async () => {
-    const log = logs();
-    const { store, tests: rows } = memoryAttemptStore({ children: [{ ...asha, grade: 10 }] });
-    expect(await start(store, T0, { restart: false, newSeed: seeds(42) })).toEqual({ ok: false, error: "not_ready" });
-    expect(rows).toEqual([]);
-    expect(log.mock.calls).toEqual([["[test] cannot build a test", 10, "The bank cannot start this assessment"]]);
+  it.each([10, 11, 12] as const)("starts with a real Level %i item for an upper-grade child", async grade => {
+    const { store, tests: rows } = memoryAttemptStore({ children: [{ ...asha, grade }] });
+    expect(await start(store, T0, { restart: false, newSeed: seeds(42) })).toMatchObject({ ok: true });
+    expect(rows[0].test.adaptive?.blocks[0]).toMatchObject({ level: grade, purpose: "search" });
+    expect(await nextStep(store, P1, rows[0].id, T0)).toMatchObject({
+      ok: true, step: { status: "question", number: 1, question: { level: grade } },
+    });
   });
 });
 

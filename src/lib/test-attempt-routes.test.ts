@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { checked, beforeThirdStage } from "@/lib/assessment/scripted-child";
-import { createSession, nextQuestion, recordAnswer, restoreSession, startAttempt, storedTest, submitAnswer, type Attempt, type Grade, type Submission } from "@/lib/assessment";
+import { createSession, nextQuestion, recordAnswer, restoreSession, startAttempt, storedTest, submitAnswer, type Attempt, type Submission } from "@/lib/assessment";
 import { StoreError } from "@/lib/test-attempt";
 import { memoryAttemptStore, type MemoryTest } from "@/lib/test-attempt-memory";
 import { createFacts } from "@/lib/assessment";
@@ -110,10 +110,10 @@ describe("POST /api/account/assessments (start or continue)", () => {
     expect(await sent(await start({ childId: CHILD }))).toEqual({ status: 409, body: { ok: false, error: "retake_closed", opensAt: "2026-11-09T19:00:00.000Z" } });
   });
 
-  it("answers 409 not_ready for a grade the question bank cannot cover", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    memory = memoryAttemptStore({ children: [{ id: CHILD, parentId: P1, grade: 10 as Grade, province: "BC" }] });
-    expect(await sent(await start({ childId: CHILD }))).toEqual({ status: 409, body: { ok: false, error: "not_ready" } });
+  it.each([10, 11, 12] as const)("starts a Grade %i assessment", async grade => {
+    memory = memoryAttemptStore({ children: [{ id: CHILD, parentId: P1, grade, province: "BC" }] });
+    expect(await sent(await start({ childId: CHILD }))).toEqual({ status: 200, body: { ok: true, id: "a1", resumed: false } });
+    expect(memory.tests[0].test.adaptive?.blocks[0].level).toBe(grade);
   });
 
   it("answers 503 store_failed when other requests keep opening a test first", async () => {
