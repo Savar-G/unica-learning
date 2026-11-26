@@ -75,6 +75,7 @@ function lineTop(face: Face, question: Region, areas: ReadonlyMap<string, Area>)
   const area = token && "blank" in token ? areas.get(token.blank) : undefined;
   if (!area) return null;
   if (face.kind === "bracket") return bottom(area.reach) + LINE.height + LINE.gap;
+  if (face.kind === "fields") return area.reach.y - TEXT_HEIGHT;
   const middle = area.answer.y + area.answer.h / 2;
   return middle - TEXT_HEIGHT / 2 - (face.kind === "sequence" ? at * area.reach.h : 0);
 }

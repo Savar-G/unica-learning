@@ -4,7 +4,7 @@ import { answerLine, type Answer, type BracketFace, type Face, type FaceToken, t
 import wideBook from "../fixtures/book-4-digits.json";
 import wideSnapshot from "../fixtures/snapshot-4-digits.json";
 import { canonicalJson, sha256 } from "../hash";
-import { factsBook, goodPages } from "../testing/sample";
+import { factsBook, goodPages, placesBook } from "../testing/sample";
 import { SHAPES, shapeLibrary } from "../shapes";
 import { wholeNumber } from "../shapes/shape";
 import { validateSnapshot } from "../bank/snapshot";
@@ -129,6 +129,7 @@ describe("the templates of tokens", () => {
     expect([...TEMPLATES.values()].map((t) => [t.id, t.sides.front.places.length, t.sides.back.places.length])).toEqual([
       ["columns-2x4", 8, 8], ["columns-2x4-wide", 8, 8], ["facts-2x10", 20, 20], ["sums-1x10", 10, 10], ["blanks-1x10", 10, 10], ["sequences-2x2", 4, 4], ["sequences-2x1", 2, 2],
       ["remainders-1x10", 10, 10], ["brackets-2x6", 12, 12], ["brackets-2x4", 8, 8], ["brackets-2x3", 6, 6], ["brackets-1x4", 4, 4], ["brackets-1x3", 3, 3],
+      ["places-2x2", 4, 4], ["places-2x3", 6, 6],
     ]);
     // One row more would reach the QR code: a row is an answer area with its reach.
     const [qr] = regions(facts, "qr");
@@ -250,5 +251,71 @@ describe("the templates of tokens", () => {
     if (!mul) throw new Error("no shape");
     const odd = shapeLibrary([{ ...mul, worstCase: (l) => ({ ...mul.worstCase(l), question: { a: 1000, b: 2 } }), face: (q) => ((q as { a: number }).a === 1000 ? mul.face(q) : equation("5", "×", "7", "=", "□")) }]);
     expect(planBook({ snapshot: { ...wideSnapshot, sheets: [sheet] }, book: wideBook }, odd)).toEqual({ ok: false, problems: expect.arrayContaining([expect.stringMatching(/^Page \d+: question 1 is an equation question and the template "columns-2x4-wide" has no place for one\.$/)]) });
+  });
+});
+
+describe("the templates of fields", () => {
+  const book = placesBook();
+  const fields = (rows: number, prompt = "4307".slice(0, rows), label = "tens"): Face => ({ kind: "fields", prompt, rows: Array.from({ length: rows }, (_, i) => ({ label: i === 0 ? label : `row ${i}`, blank: `blank-${i + 1}` })) });
+  const digits = (rows: number, value = "4"): Answer => ({ parts: Array.from({ length: rows }, (_, i) => ({ name: `blank-${i + 1}`, kind: "digit" as const, value })) });
+  const own = (page: PageModel, number: number) => page.regions.filter((g) => g.item === `${page.id}/${number}`);
+
+  it("hold four questions of up to 4 rows, or six of up to 2 rows, on both sides of the example book", () => {
+    expect(book.pages.map((p) => `${p.template} ${regions(p, "slot").length}`)).toEqual(["places-2x3 6", "places-2x3 6", "places-2x2 4", "places-2x2 4"]);
+    expect(["places-2x2", "places-2x3"].map((id) => TEMPLATES.get(id)?.holds.rows)).toEqual([4, 2]);
+  });
+
+  it("stack the rows of each question, with all answer areas of a side in two columns and below the prompt", () => {
+    for (const page of book.pages) {
+      expect(new Set(regions(page, "answer").map(({ rect }) => rect.x)).size).toBe(2);
+      for (const slot of regions(page, "slot")) {
+        const number = Number(slot.id.split("-").at(-1));
+        const [question] = own(page, number).filter((g) => g.role === "question");
+        const areas = own(page, number).filter((g) => g.role === "answer").map(({ rect }) => rect);
+        expect(new Set(areas.map((a) => a.x)).size).toBe(1);
+        areas.slice(1).forEach((area, i) => expect(area.y).toBeGreaterThanOrEqual(areas[i].y + areas[i].h));
+        const [prompt] = question.ink.filter((i) => i.kind === "text");
+        for (const area of areas) expect(area.y).toBeGreaterThan(prompt.rect.y + prompt.rect.h);
+      }
+    }
+  });
+
+  it("give each row a label, an area and a reach with the name of its part, and no work area", () => {
+    const [, , front] = book.pages;
+    const item = book.items.find((i) => i.id === `${front.id}/4`);
+    expect(item?.face).toMatchObject({ kind: "fields", rows: [{ label: "hundreds", blank: "hundreds" }, { label: "tens", blank: "tens" }, { label: "ones", blank: "ones" }] });
+    expect(own(front, 4).map((g) => [g.id.slice(front.id.length + 1), g.role, g.part])).toEqual([["slot-4", "slot", null], ["label-4", "label", null], ["question-4", "question", null],
+      ...["hundreds", "tens", "ones"].flatMap((part) => [[`answer-4-${part}`, "answer", part], [`reach-4-${part}`, "reach", part]])]);
+    const [question] = own(front, 4).filter((g) => g.role === "question");
+    expect(texts(question)).toEqual([item?.face.kind === "fields" ? item.face.prompt : "", "hundreds", "tens", "ones"]);
+    expect(book.pages.flatMap((page) => regions(page, "work"))).toEqual([]);
+  });
+
+  it("put a line above a question that stands below another one", () => {
+    expect(book.pages.map((page) => regions(page, "question").map((g) => g.ink.filter((i) => i.kind === "fill").length))).toEqual([[0, 0, 1, 1, 1, 1], [0, 0, 1, 1, 1, 1], [0, 0, 1, 1], [0, 0, 1, 1]]);
+  });
+
+  it.each<[string, string, Face, Answer, string | null]>([
+    ["4 rows", "places-2x2", fields(4), digits(4), null],
+    ["2 rows", "places-2x3", fields(2), digits(2), null],
+    ["2 rows in the template of 4", "places-2x2", fields(2), digits(2), null],
+    ["3 rows", "places-2x3", fields(3), digits(3), 'needs 3 rows and the template "places-2x3" has 2'],
+    ["5 rows", "places-2x2", fields(5, "4307"), digits(5), 'needs 5 rows and the template "places-2x2" has 4'],
+    ["a prompt of 5 characters", "places-2x2", fields(2, "43070"), digits(2), 'needs 5 characters in the prompt and the template "places-2x2" has 4'],
+    ["a label of 10 characters", "places-2x2", fields(2, "43", "ten thousand"), digits(2), 'needs 12 characters in a label and the template "places-2x2" has 9'],
+    ["an answer of 5 characters", "places-2x2", fields(2), digits(2, "10000"), 'needs 5 characters in an answer and the template "places-2x2" has 4'],
+    ["fields in a template of equations", "facts-2x10", fields(2), digits(2), 'is a fields question and the template "facts-2x10" has no place for one'],
+    ["fields in a template of brackets", "brackets-2x3", fields(2), digits(2), 'is a fields question and the template "brackets-2x3" has no place for one'],
+    ["an equation in a template of fields", "places-2x2", { kind: "equation", tokens: [{ text: "5" }, { blank: "answer" }] }, wholeNumber(5), 'is an equation question and the template "places-2x2" has no place for one'],
+    ["a stack in a template of fields", "places-2x3", { kind: "column", top: "24", sign: "×", bottom: "3" }, wholeNumber(72), 'is a column question and the template "places-2x3" has no place for one'],
+  ])("say whether %s fits", (_name, id, face, answer, problem) => {
+    const template = TEMPLATES.get(id);
+    if (!template) throw new Error("no template");
+    expect(fitProblem(template, face, answer)).toBe(problem);
+  });
+
+  it("take fields in no other template, and show a question of fields with its answer", () => {
+    expect([...TEMPLATES.values()].filter((t) => t.faces.includes("fields")).map((t) => [t.id, t.faces])).toEqual([["places-2x2", ["fields"]], ["places-2x3", ["fields"]]]);
+    expect(questionText(fields(2, "40"), { parts: [{ name: "blank-1", kind: "digit", value: "4" }, { name: "blank-2", kind: "digit", value: "0" }] })).toBe("40 tens [4] row 1 [0]");
   });
 });

@@ -130,8 +130,11 @@ export function step(text: string, marks = ""): Step {
 
 export interface ShapeRegistration {
   id: string;
-  /** How a child works the answer: in columns or as a division, so that the steps draw each digit, or in lines that draw nothing. */
-  working: "columns" | "division" | "lines";
+  /**
+   * How a child works the answer: in columns or as a division, so that the steps draw each digit, in lines that draw
+   * nothing, or by places: the value of each place of a printed number, then their sum.
+   */
+  working: "columns" | "division" | "lines" | "places";
   limits: Readonly<Record<string, LimitRule>>;
   /** Null for rows that print no question of the shape. */
   read(rows: Rows): Printed | null;

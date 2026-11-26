@@ -2,7 +2,7 @@
 import type { SnapshotSheet } from "../bank/snapshot";
 import { BRACKET_SIGN, PAPER, partRegionName, PRINT_RULES, type BookItem, type FaceToken, type Ink, type PageModel, type Rect, type Region, type RegionRole, type Side } from "../contract";
 import { qrSquares } from "./qr";
-import { cellsFor, placeProblem, tokensOf, type AnswerArea, type BracketPlace, type ColumnPlace, type ItemPlace, type PageFrame, type TokenCell, type TokenPlace } from "./templates";
+import { cellsFor, placeProblem, tokensOf, type AnswerArea, type BracketPlace, type ColumnPlace, type FieldsPlace, type ItemPlace, type PageFrame, type TokenCell, type TokenPlace } from "./templates";
 
 export interface PlannedSheet {
   sheet: SnapshotSheet;
@@ -98,8 +98,23 @@ function bracketRegions(make: MakeRegion, place: BracketPlace, { face }: LaidOut
   ];
 }
 
+/** The prompt on the left, and each label on the right of its cell, next to its answer area. The rows take the first fields. */
+function fieldsRegions(make: MakeRegion, place: FieldsPlace, { face }: LaidOut): Region[] {
+  if (face.kind !== "fields" || face.rows.length > place.fields.length) throw new Error("the rows of a question must fit its place");
+  const rows = face.rows.map((row, i) => ({ row, ...place.fields[i] }));
+  return [
+    make("question", place.question, [
+      ...(place.rule ? [fill(place.rule)] : []),
+      text(place.prompt, face.prompt, place.promptSize, REGULAR, "left"),
+      ...rows.map(({ row, label }) => text(label, row.label, place.labelSize, REGULAR, "right")),
+    ]),
+    ...rows.flatMap(({ row, area }) => areaRegions(make, area, row.blank)),
+  ];
+}
+
 /** The rectangles of a question that the kind of its place decides. */
 function faceRegions(make: MakeRegion, place: ItemPlace, item: LaidOut): Region[] {
+  if ("fields" in place) return fieldsRegions(make, place, item);
   if ("forms" in place) return tokenRegions(make, place, item);
   return "above" in place ? bracketRegions(make, place, item) : columnRegions(make, place, item);
 }

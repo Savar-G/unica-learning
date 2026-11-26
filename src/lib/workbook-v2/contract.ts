@@ -2,14 +2,14 @@
 // it, so it imports nothing. All lengths are points (72 to the inch) from the top left corner of the page.
 
 /** Changes when the same input can give other bytes. A book records it, so a replay can tell which part differs. */
-export const ENGINE_VERSION = "2.0.0-s7";
+export const ENGINE_VERSION = "2.0.0-s8";
 
 export interface Rect { x: number; y: number; w: number; h: number }
 
 export type Side = "front" | "back";
 
-/** The answer kinds that marking can read. A shape may use only one of these. */
-export const ANSWER_KINDS = ["whole-number"] as const;
+/** The answer kinds that marking can read. A shape may use only one of these. A "digit" is one digit, 0 to 9: the digit of one place of a number. */
+export const ANSWER_KINDS = ["whole-number", "digit"] as const;
 export type AnswerKind = (typeof ANSWER_KINDS)[number];
 
 /** What one answer area must hold. The name is unique in its question: "answer", "blank-1", "quotient", "remainder". */
@@ -21,7 +21,7 @@ export interface Answer { parts: AnswerPart[] }
 export const answerLine = ({ parts }: Answer): string => parts.map((p, i) => (i === 0 ? p.value : p.name === "remainder" ? ` R${p.value}` : `, ${p.value}`)).join("");
 
 /** What a question looks like, with no knowledge of its math: the layout draws it, and nothing else reads it. */
-export const FACE_KINDS = ["column", "equation", "sequence", "bracket"] as const;
+export const FACE_KINDS = ["column", "equation", "sequence", "bracket", "fields"] as const;
 export interface ColumnFace { kind: "column"; top: string; sign: string; bottom: string }
 /** A printed text, or a blank: the answer area of the part with that name. */
 export type FaceToken = { text: string } | { blank: string };
@@ -36,7 +36,9 @@ export interface SequenceFace { kind: "sequence"; tokens: FaceToken[] }
 export interface BracketFace { kind: "bracket"; above: FaceToken[]; outside: string; inside: string; workLines: number }
 /** How the bracket prints between its two numbers. */
 export const BRACKET_SIGN = ")";
-export type Face = ColumnFace | EquationFace | SequenceFace | BracketFace;
+/** A prompt, and below it one row for each blank: a label and the answer area of the part with the name `blank`. */
+export interface FieldsFace { kind: "fields"; prompt: string; rows: { label: string; blank: string }[] }
+export type Face = ColumnFace | EquationFace | SequenceFace | BracketFace | FieldsFace;
 
 /**
  * What a step puts on the paper. "write" is a digit of the answer; "carry" is the small digit above the next column.

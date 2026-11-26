@@ -6,8 +6,10 @@ import type { BookItem, ColumnFace, Face, PageModel, Region } from "../contract"
 import rawBook from "../fixtures/book.json";
 import divisionRequest from "../fixtures/book-division.json";
 import factsRequest from "../fixtures/book-facts.json";
+import placesRequest from "../fixtures/book-place-value.json";
 import divisionSnapshot from "../fixtures/snapshot-division.json";
 import factsSnapshot from "../fixtures/snapshot-facts.json";
+import placesSnapshot from "../fixtures/snapshot-place-value.json";
 import rawSnapshot from "../fixtures/snapshot.json";
 import { buildPages } from "../layout/build-pages";
 import { SHAPES, type ShapeLibrary } from "../shapes";
@@ -37,6 +39,8 @@ function plannedBook(input: BuildInput): GoodBook {
 export const factsBook = (): GoodBook => plannedBook({ snapshot: factsSnapshot, book: factsRequest });
 /** The example book of divisions, in lines and in brackets. */
 export const divisionBook = (): GoodBook => plannedBook({ snapshot: divisionSnapshot, book: divisionRequest });
+/** The example book of place value, with both templates of fields. */
+export const placesBook = (): GoodBook => plannedBook({ snapshot: placesSnapshot, book: placesRequest });
 
 export const goodBook = (): GoodBook => bookOf();
 export const goodPages = (): PageModel[] => goodBook().pages;

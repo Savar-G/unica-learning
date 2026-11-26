@@ -5,7 +5,7 @@ import { answerLine, isPrintable, type Answer, type AnswerKind, type Face, type 
 import { canonicalJson } from "../hash";
 import { divisionProblem } from "./division-steps";
 import type { Printed, Rows, ShapeRegistration } from "./shape-registration";
-import { linesProblem, marksProblem } from "./step-marks";
+import { linesProblem, marksProblem, placesProblem } from "./step-marks";
 import { parseStep, type ParsedStep } from "./steps-evaluator";
 
 /** One question as its steps see it: what it prints, what the reader says, and how its answer is worked. */
@@ -30,6 +30,7 @@ function workingProblem({ steps, answer, rows, kind, working }: WorkedQuestion, 
   if (kind === "bracket" && working === "columns") return "a bracket is not worked in columns";
   if (working === "division") return divisionProblem(steps, answer, rows, read);
   if (working === "lines") return linesProblem(steps, answer, read);
+  if (working === "places") return placesProblem(steps, answer, rows, read);
   if (answer.parts.length !== 1) return "an answer with more than one part is not worked in columns";
   return marksProblem(steps, answer.parts[0].value, kind === "column" ? rows : null, read);
 }

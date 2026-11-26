@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mathToken, wordToken, type BookItem, type FlowToken, type Ink, type PageModel, type Region, type RegionRole } from "../contract";
-import { divisionBook, factsBook, goodBook, type GoodBook } from "../testing/sample";
+import { divisionBook, factsBook, goodBook, placesBook, type GoodBook } from "../testing/sample";
 import { checkPage } from "./page-rules";
 
 const find = (page: PageModel, role: RegionRole, index = 0): Region => {
@@ -285,20 +285,79 @@ describe("a question in a bracket", () => {
   });
 });
 
+describe("a question of fields", () => {
+  // Page 1 has questions of 2 rows, page 3 of 3 rows and page 4 of 4 rows, two of them below another one.
+  const good = placesBook();
+  const named = (page: PageModel, name: string): Region => {
+    const found = page.regions.find((r) => r.id.endsWith(`/${name}`));
+    if (!found) throw new Error(`no ${name}`);
+    return found;
+  };
+  const problemsAfter = (number: number, change: (page: PageModel, items: GoodBook["items"]) => unknown): string => {
+    const page = structuredClone(good.pages[number - 1]);
+    const items = structuredClone(good.items.filter((i) => i.id.startsWith(`${page.id}/`)));
+    change(page, items);
+    return checkPage(page, items).join("\n");
+  };
+  /** The prompt is the first text of a question, then the label of each row. */
+  const textAt = (page: PageModel, name: string, index: number) => {
+    const ink = named(page, name).ink.filter((i) => i.kind === "text")[index];
+    if (ink?.kind !== "text") throw new Error("no text");
+    return ink;
+  };
+  const both = (page: PageModel, part: string, dx: number, dy: number) => ["answer", "reach"].forEach((role) => move(named(page, `${role}-1-${part}`), dx, dy));
+  const face = (items: GoodBook["items"], number = 1) => {
+    const found = items.find((i) => i.number === number)?.face;
+    if (found?.kind !== "fields") throw new Error("no fields");
+    return found;
+  };
+
+  it("breaks no rule on any page of the example book of place value, with full sides", () => {
+    expect(good.pages.flatMap((p) => checkPage(p, good.items))).toEqual([]);
+    expect(good.pages.map((p) => `${p.template} ${p.regions.filter((r) => r.role === "slot").length}`)).toEqual(["places-2x3 6", "places-2x3 6", "places-2x2 4", "places-2x2 4"]);
+  });
+
+  it.each<[string, number, (page: PageModel, items: GoodBook["items"]) => unknown, RegExp]>([
+    ["an empty label", 1, (p, items) => { face(items).rows[0].label = ""; textAt(p, "question-1", 1).text = ""; }, /question 1 has an empty label in the row of "tens"/],
+    ["a label of spaces", 1, (p, items) => { face(items).rows[1].label = "  "; textAt(p, "question-1", 2).text = "  "; }, /question 1 has an empty label in the row of "ones"/],
+    ["an empty prompt", 1, (p, items) => { face(items).prompt = ""; textAt(p, "question-1", 0).text = ""; }, /question 1 has an empty prompt/],
+    ["a label of another row", 3, (p) => { const [a, b] = [textAt(p, "question-1", 1), textAt(p, "question-1", 2)]; [a.text, b.text] = [b.text, a.text]; }, /question 1 prints "\d+tenshundredsones" and must print "\d+hundredstensones"/],
+    ["a label that the face does not have", 1, (p) => { textAt(p, "question-1", 1).text = "ten"; }, /question 1 prints "\d+tenones" and must print "\d+tensones"/],
+    ["a label in the reach", 1, (p) => { const t = textAt(p, "question-1", 1); t.rect = { ...t.rect, w: t.rect.w + 6 }; }, /"question-1" enters the reach "reach-1-tens"/],
+    ["a label in another line than its area", 1, (p) => { const t = textAt(p, "question-1", 2); t.rect = { ...t.rect, y: t.rect.y + 4 }; }, /question 1 must print "ones" at/],
+    ["a prompt far above the rows", 1, (p) => { const t = textAt(p, "question-1", 0); t.rect = { ...t.rect, y: t.rect.y - 4 }; }, /question 1 must print "\d+" at/],
+    ["no line above a question below another one", 4, (p) => { const q = named(p, "question-3"); q.ink = q.ink.filter((i) => i.kind !== "fill"); }, /question 3 must print a line at/],
+    ["a line above the first question", 4, (p) => { const q = named(p, "question-1"); q.ink.unshift({ kind: "fill", rect: { ...q.rect, h: 1.2 }, color: "black" }); }, /question 1 prints a line that its face does not have there/],
+    ["the areas in the other order", 3, (p) => { const [a, b] = ["answer-1-hundreds", "answer-1-tens"].map((n) => named(p, n)); [a.rect, b.rect] = [b.rect, a.rect]; }, /"answer-1-tens" must come after "answer-1-hundreds"/],
+    ["blanks that are not the parts", 3, (_p, [item]) => { item.answer.parts.reverse(); }, /question 1 has the blanks hundreds, tens, ones and the answer parts ones, tens, hundreds/],
+    ["no area of a row", 4, (p) => { p.regions = p.regions.filter((r) => !r.id.endsWith("/answer-1-ones")); }, /question 1 has no "answer" rectangle for the part "ones"/],
+    ["an area below its question", 1, (p) => both(p, "ones", 0, 60), /"answer-1-ones" is not in the line of its question/],
+    ["a third column of areas", 1, (p) => both(p, "ones", -6, 0), /3 answer columns/],
+    ["an area that is too narrow", 4, (p) => { const a = named(p, "answer-1-thousands"); a.rect = { ...a.rect, w: 71 }; }, /"answer-1-thousands" is 71 by 42 points and needs 72 by 42/],
+    ["an area that is too low", 2, (p) => { const a = named(p, "answer-2-ones"); a.rect = { ...a.rect, h: 41 }; }, /"answer-2-ones" is 72 by 41 points and needs 72 by 42/],
+    ["a reach that is too small on the left", 3, (p) => { const g = named(p, "reach-1-tens"); g.rect = { ...g.rect, x: g.rect.x + 1, w: g.rect.w - 1 }; }, /"reach-1-tens" does not leave enough space on the left of "answer-1-tens"/],
+    ["a label that the fonts cannot print", 1, (p, items) => { face(items).rows[0].label = "tens✓"; textAt(p, "question-1", 1).text = "tens✓"; }, /"question-1" has the text "tens✓", which the fonts cannot print/],
+    ["a label of a size that is too small", 1, (p) => { textAt(p, "question-1", 1).size = 15; }, /question 1 must print "tens" at/],
+    ["a label that is aligned to the left", 1, (p) => { textAt(p, "question-1", 1).align = "left"; }, /question 1 must print "tens" at/],
+    ["a prompt that is aligned to the right", 1, (p) => { textAt(p, "question-1", 0).align = "right"; }, /question 1 must print "\d+" at/],
+  ])("%s stops the page", (_name, number, change, problem) => expect(problemsAfter(number, change)).toMatch(problem));
+});
+
 describe("what a question prints", () => {
   // One question of each form of a face: the first one on each template, the forms with a blank in another place, and a
   // sequence that stands below another one.
-  const books = [goodBook(), factsBook(), divisionBook()];
-  const formOf = ({ face }: BookItem) => (face.kind === "column" ? "column" : `${face.kind} ${(face.kind === "bracket" ? face.above : face.tokens).map((t) => ("text" in t ? "t" : "_")).join("")}`);
+  const books = [goodBook(), factsBook(), divisionBook(), placesBook()];
+  const formOf = ({ face }: BookItem) => (face.kind === "column" ? "column" : face.kind === "fields" ? "fields" : `${face.kind} ${(face.kind === "bracket" ? face.above : face.tokens).map((t) => ("text" in t ? "t" : "_")).join("")}`);
   const linesOf = (page: PageModel, item: BookItem) => page.regions.find((r) => r.item === item.id && r.role === "question")!.ink.filter((i) => i.kind === "fill").length;
   const cases = new Map(books.flatMap(({ pages, items }) => pages.flatMap((page) => items.filter((i) => i.id.startsWith(`${page.id}/`)).map((item) => [`${page.template}, ${formOf(item)}, ${linesOf(page, item)} lines`, { page, item }] as const))).reverse());
 
   it("is looked at for each face, with and without its line", () => {
     const names = [...cases.keys()];
-    expect(new Set([...cases.values()].map(({ item }) => item.face.kind))).toEqual(new Set(["column", "equation", "sequence", "bracket"]));
+    expect(new Set([...cases.values()].map(({ item }) => item.face.kind))).toEqual(new Set(["column", "equation", "sequence", "bracket", "fields"]));
     expect(names.filter((n) => n.startsWith("column") || n.startsWith("bracket")).every((n) => n.endsWith("1 lines"))).toBe(true);
     expect(["0 lines", "1 lines"].map((end) => names.some((n) => n.startsWith("sequences-2x2") && n.endsWith(end)))).toEqual([true, true]);
-    expect(names).toEqual(expect.arrayContaining(["blanks-1x10, equation _tttt, 0 lines", "blanks-1x10, equation tt_tt, 0 lines", "remainders-1x10, equation tttt_t_, 0 lines", "brackets-1x3, bracket _t_, 1 lines", "brackets-2x6, bracket _, 1 lines"]));
+    expect(names).toEqual(expect.arrayContaining(["blanks-1x10, equation _tttt, 0 lines", "blanks-1x10, equation tt_tt, 0 lines", "remainders-1x10, equation tttt_t_, 0 lines", "brackets-1x3, bracket _t_, 1 lines", "brackets-2x6, bracket _, 1 lines",
+      "places-2x3, fields, 0 lines", "places-2x3, fields, 1 lines", "places-2x2, fields, 0 lines", "places-2x2, fields, 1 lines"]));
   });
 
   /** Each change of one printed part. A change that leaves the part as it is gives null. */

@@ -8,6 +8,7 @@ import { skipCount } from "./skip-count";
 import { divFact } from "./div-fact";
 import { divRemainder } from "./div-remainder";
 import { divLong } from "./div-long";
+import { placeValue } from "./place-value";
 import type { Shape } from "./shape";
 
 export type { Item, Shape } from "./shape";
@@ -39,4 +40,5 @@ export const SHAPES: ShapeLibrary = shapeLibrary([
   divFact,
   divRemainder,
   divLong,
+  placeValue,
 ]);
