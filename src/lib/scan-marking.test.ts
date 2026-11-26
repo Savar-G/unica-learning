@@ -1,8 +1,10 @@
+import sharp from "sharp";
+import { zoomScanAnswerReach } from "@/lib/scan-photo-image";
 import { setProductObserver, type ProductEvent } from "@/lib/product-monitoring";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 import { expectedItems, firstObservation, itemKey, markingEvent, observationProblem, PHOTO_ISSUES, type Observation } from "@/lib/scan-observation";
-import { initialMarkingObservation, markingAiTimeout, MARKING_AI_TIMEOUT_MS, MARKING_MAX_DEFERRALS, MARKING_MAX_DISPATCHES, MARKING_MAX_TRANSPORT_DISPATCHES, MARKING_RETRY_WAIT_CAP_MS, MARKING_RETRY_WAIT_MS, type MarkingFailure, MARKING_MIN_AI_MS, TWO_WAYS_METHOD_MARKS, waitsForTeam, effectiveMarkingEvents, effectiveSkillMarks, markingOriginalKey, markingPageView, markingRequest, MARKING_CAP_MICROS, MARKING_ESCALATION_CAP_MICROS, MARKING_MODEL, MARKING_PROMPT_VERSION, MARKING_ESCALATION_MODEL, MARKING_ESCALATION_PROMPT_VERSION, type MarkingEscalation, readMarkingOutput, runScanMarking, validMarkingOutput, unfinishedPage, type EffectiveMark, type MarkingClientFactory, type MarkingFrame, type MarkingJob, type MarkingRunOptions, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
+import { initialMarkingObservation, markingAiTimeout, MARKING_AI_TIMEOUT_MS, MARKING_MAX_DEFERRALS, MARKING_MAX_DISPATCHES, MARKING_MAX_TRANSPORT_DISPATCHES, MARKING_RETRY_WAIT_CAP_MS, MARKING_RETRY_WAIT_MS, type MarkingFailure, MARKING_MIN_AI_MS, TWO_WAYS_METHOD_MARKS, waitsForTeam, effectiveMarkingEvents, effectiveSkillMarks, markingOriginalKey, markingPageView, markingRequest, MARKING_CAP_MICROS, MARKING_ESCALATION_CAP_MICROS, MARKING_MODEL, MARKING_PROMPT_VERSION, MARKING_ESCALATION_MODEL, MARKING_ESCALATION_PROMPT_VERSION, type MarkingEscalation, readMarkingOutput, runScanMarking, validMarkingOutput, unfinishedPage, type EffectiveMark, type MarkingClientFactory, type MarkingFrame, type MarkingJob, type MarkingRunOptions, type MarkingRef, type MarkingStore, markingSecondLookRequest } from "@/lib/scan-marking";
 import type { AiJsonRequest } from "@/lib/ai-client";
 import { markingEscalationClient } from "@/lib/scan-marking-ai";
 import { checkQuestionPackage, workedSteps, type NumberValue, type Operation, type QuestionPackage } from "@/lib/question-package";
@@ -272,7 +274,7 @@ function client(answer: unknown | (() => Promise<unknown>), requests: AiJsonRequ
 }
 const run = (s: Store, photo: string, ai: MarkingClientFactory, token = photo) => runScanMarking(s, { parent: P, photo }, token, ai, () => new Date(s.clock).toISOString());
 
-const FROZEN_PROMPT_SHA256 = "06123fdccc95bf75145aa4631a9970a2712cd02676dfb47c52aa39d8549b6aab";
+const FROZEN_PROMPT_SHA256 = "593b19037ef8c452df90ab7e9e9a09876dd7ff2f715ca17122e95c9153310a3e";
 const FROZEN_CONTENT_SHA256 = "803ea308db4014ebdb55c9c685cb27ca84b4ce050edd81be7ccb0ef13553fb52";
 const GOOD_ONE = "27 + 30 = 57\n57 + 9 = 66", GOOD_TWO = "39 + 30 = 69\n69 - 3 = 66";
 type Verdict = "solves" | "does-not-solve" | "unsure" | null;
@@ -321,6 +323,18 @@ describe("#726: the model call fits the caller's deadline", () => {
     expect(requests).toHaveLength(1);
     expect(s.spend.size).toBe(1);
   });
+
+  it("pauses without reserving spend when first-read crops consume the remaining time", async () => {
+    const f = { ...frame(), contentBounds: { x: 0, y: 0, width: 400, height: 300 } };
+    let left = MARKING_MIN_AI_MS + 1;
+    const s = Object.assign(new Store(f), { cropReach: async () => { left -= 2; return null; } });
+    const requests: AiJsonRequest[] = [];
+    const result = await runScanMarking(s, { parent: P, photo: f.photo }, "short", client(output(["0", "12", "9"]), requests), () => new Date(s.clock).toISOString(), { aiTimeLeftMs: () => left });
+    expect(result).toBe("pending");
+    expect(requests).toHaveLength(0);
+    expect(s.spend.size).toBe(0);
+  });
+
 });
 
 /** One scripted transport attempt: a clean 429 the transport classified, any other failure (unknown), or an answer. */
@@ -543,15 +557,15 @@ describe("two-ways AI marking", () => {
     expect(JSON.stringify(items)).not.toContain("66");
     expect(request.system).toContain("method region");
     expect(request.system).toMatch(/does-not-solve/);
-    expect(MARKING_PROMPT_VERSION).toBe("whole-page-scalar-readings-v9");
+    expect(MARKING_PROMPT_VERSION).toBe("whole-page-scalar-readings-v11");
     const props = (request.schema as { properties: { readings: { items: { required: string[]; properties: { verdict: unknown; reason: unknown } } } } }).properties.readings.items;
     expect(props.required).toEqual(expect.arrayContaining(["verdict", "reason"]));
   });
-  it("keeps the prompt and the output schema frozen for the paid run", () => {
+  it("pins the current prompt and output schema for comparison runs", () => {
     const request = markingRequest(twoWaysFrame(), new Uint8Array([1]));
     // Changing either needs the controller's approval: the paid run is valid only for what ships.
     expect(createHash("sha256").update(JSON.stringify({ system: request.system, schema: request.schema, effort: request.effort, maxTokens: request.maxTokens })).digest("hex")).toBe(FROZEN_PROMPT_SHA256);
-    expect(MARKING_PROMPT_VERSION).toBe("whole-page-scalar-readings-v9");
+    expect(MARKING_PROMPT_VERSION).toBe("whole-page-scalar-readings-v11");
   });
   it("tells the AI to report a step it cannot read and never to leave out or tidy a step", () => {
     const system = markingRequest(twoWaysFrame(), new Uint8Array([1])).system!;
@@ -1051,6 +1065,67 @@ it.each(["correction", "same-result save"])("keeps mastery when a later %s repla
 });
 
 describe("S4 whole-page readings", () => {
+  it("sends the printed box and bounded reach while excluding the tick and work areas", () => {
+    const f = { ...tickFrame(), contentBounds: { x: 0, y: 0, width: 400, height: 300 } };
+    const read = markingRequest(f, new Uint8Array());
+    const [part] = read.content;
+    if (part.type !== "text") throw new Error("expected alias payload");
+    const { items } = JSON.parse(part.text);
+    expect(items[0]).not.toHaveProperty("reach");
+    expect(items[1]).toMatchObject({ box: { x: 220, y: 30, width: 80, height: 30 },
+      reach: { x: 210, y: 15, width: 130, height: 50 } });
+    expect(items).toHaveLength(2);
+  });
+
+  it("keeps another answer's ink ambiguous and parses a complete comma-formatted reading", () => {
+    const f = { ...frame("photo-a", [20000, 9]), contentBounds: { x: 0, y: 0, width: 400, height: 300 } };
+    const [first, second] = readMarkingOutput(f, { readings: [
+      { item: "i1", region: "r1", text: "20,000", state: "written", issue: null, verdict: null, reason: null },
+      { item: "i2", region: "r2", text: null, state: "uncertain", issue: "multiple-marks", verdict: null, reason: null },
+    ] });
+    expect(first).toMatchObject({ result: "right", readAnswerText: "20,000" });
+    expect(second).toMatchObject({ state: "pending", result: null, issue: "multiple-marks" });
+  });
+
+  it("includes a labeled numeric close-up alongside the whole page on the first read", async () => {
+    const pageSize = { width: 400, height: 300 };
+    const f = { ...tickFrame("photo-a"), contentBounds: { x: 0, y: 0, ...pageSize } };
+    const image = await sharp({ create: { ...pageSize, channels: 3, background: "white" } }).jpeg().toBuffer();
+    const store = Object.assign(new Store(f), { image: async () => image, cropReach: zoomScanAnswerReach });
+    const requests: AiJsonRequest[] = [];
+    expect(await run(store, "photo-a", client(tickOutput("+", "66"), requests))).toBe("finished");
+    const [read] = requests;
+    expect(read.system).toContain("Check the close-up");
+    expect(read.content.slice(0, 3)).toEqual([markingRequest(f, image).content[0],
+      { type: "image", mediaType: "image/jpeg", data: image },
+      { type: "text", text: "Close-up of item i1, region r1-2" }]);
+    expect(read.content).toHaveLength(4);
+    const crop = read.content[3];
+    if (crop.type !== "image") throw new Error("expected numeric close-up");
+    expect(await sharp(crop.data).metadata()).toMatchObject({ width: 325, height: 125 });
+  });
+
+  it("adds a labeled, 2.5× reach crop only for the requested written region on a second look", async () => {
+    const pageSize = { width: 400, height: 300 };
+    const f = { ...tickFrame(), contentBounds: { x: 0, y: 0, ...pageSize } };
+    const image = await sharp({ create: { ...pageSize, channels: 3, background: "white" } }).jpeg().toBuffer();
+    const read = await markingSecondLookRequest(f, image, [f.questions[0].package!.id], zoomScanAnswerReach);
+    expect(read.content.slice(0, 3)).toEqual([markingRequest(f, image).content[0],
+      { type: "image", mediaType: "image/jpeg", data: image },
+      { type: "text", text: "Zoomed reach for item i1, region r1-2:" }]);
+    expect(read.content).toHaveLength(4);
+    const crop = read.content[3];
+    if (crop.type !== "image") throw new Error("expected zoomed crop");
+    expect(await sharp(crop.data).metadata()).toMatchObject({ width: 325, height: 125 });
+  });
+
+  it("still sends the whole page and other close-ups if one region cannot be cropped", async () => {
+    const f = { ...frame(), contentBounds: { x: 0, y: 0, width: 400, height: 300 } };
+    const pageImage = new Uint8Array([1]), closeup = new Uint8Array([2]);
+    const zoom = vi.fn().mockRejectedValueOnce(new Error("failed crop")).mockResolvedValue(closeup);
+    const result = await markingSecondLookRequest(f, pageImage, f.questions.map(q => q.package!.id), zoom);
+    expect(result.content.filter(p => p.type === "image").map(p => p.data)).toEqual([pageImage, closeup, closeup]);
+  });
   it.each([
     { name: "whole number", make: () => frame("photo-a", [7]) },
     { name: "fraction", make: () => numericFrame({ type: "fraction", numerator: 1, denominator: 9 }, "'1/9'") },
@@ -1113,10 +1188,10 @@ describe("S4 whole-page readings", () => {
     { evidence: "visible readable empty box", state: "blank", text: "", issue: null, result: "blank", reason: "Blank", rule: /entire answer box, method area or choice area is plainly visible, readable and empty/ },
     { evidence: "unreadable symbol", state: "uncertain", text: null, issue: "unreadable", result: null, reason: "We cannot read this answer.", rule: /Not being able to read a symbol does not make an area blank/ },
     { evidence: "blurred marks", state: "uncertain", text: null, issue: "blurry", result: null, reason: "The photo is blurry here.", rule: /If blur could hide writing or marks, report uncertain with issue blurry/ },
-    { evidence: "dark answer", state: "uncertain", text: null, issue: "unreadable", result: null, reason: "We cannot read this answer.", rule: /If darkness, shadow or covering prevents reading the evidence, report uncertain with issue unreadable/ },
-    { evidence: "shadowed answer", state: "uncertain", text: null, issue: "unreadable", result: null, reason: "We cannot read this answer.", rule: /If darkness, shadow or covering prevents reading the evidence, report uncertain with issue unreadable/ },
-    { evidence: "cut-off answer", state: "uncertain", text: null, issue: "cut-off", result: null, reason: "Part of this answer is cut off.", rule: /Cut-off evidence is uncertain with issue cut-off/ },
-    { evidence: "covered answer", state: "uncertain", text: null, issue: "unreadable", result: null, reason: "We cannot read this answer.", rule: /If darkness, shadow or covering prevents reading the evidence, report uncertain with issue unreadable/ },
+    { evidence: "dark answer", state: "uncertain", text: null, issue: "unreadable", result: null, reason: "We cannot read this answer.", rule: /If darkness, shadow or another obstruction prevents reading visible ink, report uncertain with issue unreadable/ },
+    { evidence: "shadowed answer", state: "uncertain", text: null, issue: "unreadable", result: null, reason: "We cannot read this answer.", rule: /If darkness, shadow or another obstruction prevents reading visible ink, report uncertain with issue unreadable/ },
+    { evidence: "cut-off answer", state: "uncertain", text: null, issue: "cut-off", result: null, reason: "Part of this answer is cut off.", rule: /Use cut-off only when the photo edge, a fold or something covering the page hides part of the answer/ },
+    { evidence: "covered answer", state: "uncertain", text: null, issue: "unreadable", result: null, reason: "We cannot read this answer.", rule: /If darkness, shadow or another obstruction prevents reading visible ink, report uncertain with issue unreadable/ },
     { evidence: "missing answer evidence", state: "uncertain", text: null, issue: "missing", result: null, reason: "Part of this answer was not read.", rule: /missing evidence is uncertain with issue missing/ },
     { evidence: "readable written right answer", state: "written", text: "7", issue: null, result: "right", reason: "Right", rule: /transcribe the handwritten number with every digit, sign and decimal point/ },
     { evidence: "readable written wrong answer", state: "written", text: "8", issue: null, result: "wrong", reason: "Wrong", rule: /Never solve a question/ },
@@ -1141,7 +1216,7 @@ describe("S4 whole-page readings", () => {
   });
   it.each([frame, tickFrame, circleFrame])("uses one versioned empty-area rule for number, tick and circle requests", makeFrame => {
     const request = markingRequest(makeFrame(), new Uint8Array([1, 2, 3]));
-    expect(MARKING_PROMPT_VERSION).toBe("whole-page-scalar-readings-v9");
+    expect(MARKING_PROMPT_VERSION).toBe("whole-page-scalar-readings-v11");
     expect(request.system).toMatch(/Blank requires positive visual evidence/);
     expect(request.system).toMatch(/Check for faint writing or marks before reporting blank with empty text/);
     expect(request.system).toMatch(/Never report blank for these conditions/);
@@ -1337,7 +1412,7 @@ describe("S7m spot-the-error answers", () => {
     const request = markingRequest(spotFrame(), new Uint8Array([1]));
     const items = JSON.parse((request.content[0] as { text: string }).text).items;
     expect(items.map((i: { region: string; kind: string; mark?: string }) => [i.region, i.kind, i.mark])).toEqual([["r1", "choice", "tick"], ["r1-2", "number", undefined]]);
-    expect(MARKING_PROMPT_VERSION).toBe("whole-page-scalar-readings-v9");
+    expect(MARKING_PROMPT_VERSION).toBe("whole-page-scalar-readings-v11");
     expect(request.system).toMatch(/A tick drawn in or on an option's box marks that option, even when its long stroke runs out of the box over the option's label; that is one mark, not two\./);
     expect(request.system).toMatch(/Handwriting in another requested region, such as a number written in an answer box beside the choices, belongs to that region and is never a mark on the choice\./);
     expect(request.system).toMatch(/Printed boxes, printed labels and printed symbols are never marks\./);
@@ -1654,6 +1729,22 @@ describe("the second look: unsure answers are read once more by the escalation m
     expect(s.roles.filter((r) => r.role === "escalation")).toHaveLength(0);
     expect([1, 3].map((n) => item(s, n).result)).toEqual(["right", "right"]);
     expect(item(s, 2)).toMatchObject({ state: "pending" });
+  });
+
+  it("keeps the first marks when second-look crops consume the remaining time", async () => {
+    const fixture = { ...f(), contentBounds: { x: 0, y: 0, width: 400, height: 300 } };
+    const s = withOpus(new Store(fixture)), asked: AiJsonRequest[] = [];
+    let zooms = 0;
+    const store = Object.assign(s, { cropReach: async () => {
+      if (++zooms === 4) s.clock += 140_000;
+      return null;
+    } });
+    expect(await runScanMarking(store, { parent: P, photo: fixture.photo }, "photo-esc", client(output(["0", null, "9"])),
+      () => new Date(s.clock).toISOString(), { escalate: client(second("12"), asked, 3_000, MARKING_ESCALATION_MODEL), clockMs: () => s.clock })).toBe("finished");
+    expect(zooms).toBe(4);
+    expect(asked).toHaveLength(0);
+    expect(s.roles.filter(r => r.role === "escalation")).toHaveLength(0);
+    expect([item(s, 1).result, item(s, 2).state, item(s, 3).result]).toEqual(["right", "pending", "right"]);
   });
 
   it("is refused while the month is past half the cap, so first reads always keep their room (#958 review)", async () => {

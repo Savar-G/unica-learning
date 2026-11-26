@@ -17,6 +17,7 @@
 // Pure TypeScript: no Next.js, React, network, database or clock. The caller decodes and encodes images.
 import jsQR from "jsqr";
 import { paperEdges } from "@/lib/scan-paper-edges";
+import { noteScanCode, noteScanMarks, type AnswerPlacement, type CalibrationRefusal, type PageFitDetails, type ScanCalibrationDetails } from "@/lib/scan-calibration-details";
 import { snapPrint } from "@/lib/scan-answer-snap";
 import type { QuestionPackage } from "@/lib/question-package";
 import { markingRegions } from "@/lib/scan-marking-regions";
@@ -118,23 +119,11 @@ export function photoPoint(c: Pick<Calibration, "transform" | "bend" | "mesh">, 
   return applyTransform(c.transform, shape ? shape(p.x, p.y) : p);
 }
 
-/**
- * Why a photo has no calibration:
- * - marks-missing: the photo does not hold four shapes that line up as the page's scan marks;
- * - marks-inconsistent: they line up, but their arms do not fit the contract's rectangle once mapped;
- * - page-mismatch: the photo's ink does not follow the printed page's ink in any way up;
- * - ambiguous-page: more than one rectangle in the photo follows it, as with two copies of a page;
- * - orientation-unclear: two ways up fit about equally well;
- * - qr-mismatch: where the page printed its QR code, the photo's code is missing, moved, or another page's;
- * - corner-covered: a corner mark is hidden, and an answer near that corner is not shown as this page's own (something
- *   lies over it, or the corner is curled), so its crop could hold another sheet's writing (#966 review).
- */
-export type CalibrationRefusal = "marks-missing" | "marks-inconsistent" | "page-mismatch" | "ambiguous-page" | "orientation-unclear" | "qr-mismatch" | "corner-covered";
-
+export type { CalibrationRefusal } from "@/lib/scan-calibration-details";
 export type CalibrationResult =
-  | { status: "calibrated"; calibration: Calibration }
-  | { status: "review"; reason: CalibrationRefusal }
-  | { status: "refused"; reason: CalibrationRefusal }
+  | { status: "calibrated"; calibration: Calibration; details: ScanCalibrationDetails }
+  | { status: "review"; reason: CalibrationRefusal; details: ScanCalibrationDetails }
+  | { status: "refused"; reason: CalibrationRefusal; details: ScanCalibrationDetails }
   | { status: "unavailable"; reason: "no-contract" | "other-revision" };
 
 // ---------- Geometry ----------
@@ -736,18 +725,14 @@ function visibleCells<C extends { x: number; y: number }>(cells: readonly C[], p
   return cells.filter((c) => inside(c.x, c.y) && inside(c.x + FIT_CELL, c.y) && inside(c.x, c.y + FIT_CELL) && inside(c.x + FIT_CELL, c.y + FIT_CELL));
 }
 
+type FitEvidence = { mesh?: Mesh; fit?: PageFitDetails };
+
 /**
- * The share of the page's printed cells that the photo holds in the same place, through a map; 0 as soon as too few can.
- * Cell by cell, because pages of one template share a heading and a layout. In grey, with both images brought to the same
- * sharpness first, because a threshold on ink changes with how large the page is in the photo: a stroke one pixel wide comes
- * out thin or missing, and the same page would pass from close up and fail from further away. A correlation does not care
- * about shade or contrast. Only the cells inside the photo count, and they must be most of the page's (MIN_VISIBLE).
- *
- * A sheet that is not flat (#912: bowed, curled, held up in the hand) misses cells where the four marks' map alone puts
- * them. Then its parts are aligned one by one (`sheetMesh`), and every cell is compared again at its aligned place with the
- * same small reach and the same MIN_PAGE_FIT. `found.mesh` gets that alignment when it passes.
+ * Compare visible print cells in grey at matching sharpness, so shade or thin strokes do not decide the match.
+ * If the flat map fails, retry with local alignment (#912). Keep the score from the winning comparison, including
+ * how many cells it examined before exceeding the miss limit.
  */
-function pageFit(printed: PrintedInk, photoSums: Uint32Array, photo: { width: number; height: number }, t: Transform, atLeast = MIN_PAGE_FIT, found?: { mesh?: Mesh }, pins: readonly Pin[] = [], bent = true): number {
+function pageFit(printed: PrintedInk, photoSums: Uint32Array, photo: { width: number; height: number }, t: Transform, atLeast = MIN_PAGE_FIT, found?: FitEvidence, pins: readonly Pin[] = [], bent = true): number {
   const { width, height, cells } = printed;
   if (cells.length === 0) return 0;
   const { a, b } = fitGrids(printed, photoSums, photo, t);
@@ -757,21 +742,29 @@ function pageFit(printed: PrintedInk, photoSums: Uint32Array, photo: { width: nu
   const shine = atLeast === MIN_PAGE_FIT ? printed.ink : null;
   const count = (inView: readonly ShapedCell[], grid: Float32Array) => {
     const allowed = Math.floor(inView.length * (1 - atLeast));
-    let missed = 0;
-    for (const c of inView) if (!cellShows(c, a, grid, shine, width, height) && ++missed > allowed) break;
-    return { missed, allowed, fit: 1 - missed / inView.length };
+    let missed = 0, examined = 0;
+    for (const c of inView) {
+      examined++;
+      if (!cellShows(c, a, grid, shine, width, height) && ++missed > allowed) break;
+    }
+    return { missed, allowed, score: 1 - missed / inView.length, examined, visible: inView.length };
+  };
+  const finish = (measured?: PageFitDetails, mesh?: Mesh) => {
+    if (found && measured) {
+      const { score, examined, visible } = measured;
+      found.fit = { score, examined, visible };
+      if (mesh) found.mesh = mesh;
+    }
+    return measured?.score ?? 0;
   };
   const flatView = visibleCells(shaped, photo, t);
-  let flatFit = 0;
+  let best: PageFitDetails | undefined;
   if (flatView.length >= shaped.length * MIN_VISIBLE) {
     const flat = count(flatView, b);
-    // A flat sheet stays flat: its map alone places it, as before #912.
-    if (flat.missed <= flat.allowed) return flat.fit;
-    flatFit = flat.fit;
+    if (flat.missed <= flat.allowed) return finish(flat);
+    best = flat;
   }
-  // (A comparison of two prints, or of a near twin, is flat: no sheet is bent there.)
-  if (atLeast !== MIN_PAGE_FIT || !bent) return flatFit;
-  let best = 0;
+  if (atLeast !== MIN_PAGE_FIT || !bent) return finish(best);
   for (const levels of MESH_READS) {
     const mesh = sheetMesh(printed, a, b, shaped, photoSums, photo, t, pins, levels);
     if (!mesh) continue;
@@ -779,10 +772,10 @@ function pageFit(printed: PrintedInk, photoSums: Uint32Array, photo: { width: nu
     const view = visibleCells(shaped, photo, t, shape);
     if (view.length < shaped.length * MIN_VISIBLE) continue;
     const fitted = count(view, fitGrids(printed, photoSums, photo, t, shape).b);
-    if (fitted.missed <= fitted.allowed) { if (found) found.mesh = mesh; return fitted.fit; }
-    best = Math.max(best, fitted.fit);
+    if (fitted.missed <= fitted.allowed) return finish(fitted, mesh);
+    if (!best || fitted.score > best.score) best = fitted;
   }
-  return Math.max(flatFit, best);
+  return finish(best);
 }
 
 /** A grid averaged down by k in each direction. */
@@ -1444,7 +1437,7 @@ function gridQr(photo: Raster, t: Transform, printed: FoundQr, grid: QrGrid | nu
  * Whether the photo holds this page's QR code, through a map, where the page printed it. The first read that finds a
  * code decides: its link must be this page's, and its corners where the page printed them.
  */
-function qrBound(photo: Raster, sheetMap: Transform, printed: FoundQr, grid: QrGrid | null, page: { width: number; height: number }, mesh?: Mesh): boolean {
+function qrBound(photo: Raster, sheetMap: Transform, printed: FoundQr, grid: QrGrid | null, page: { width: number; height: number }, mesh?: Mesh, details?: ScanCalibrationDetails): boolean {
   const b = boundsOf(printed.corners), size = Math.max(b.width, b.height);
   const x = Math.max(0, b.x - QR_WINDOW * size), y = Math.max(0, b.y - QR_WINDOW * size);
   const window = { x, y, width: Math.min(page.width, b.x + b.width + QR_WINDOW * size) - x, height: Math.min(page.height, b.y + b.height + QR_WINDOW * size) - y };
@@ -1454,8 +1447,10 @@ function qrBound(photo: Raster, sheetMap: Transform, printed: FoundQr, grid: QrG
   const t = mesh ? perspectiveTransform(corners, corners.map((p) => applyTransform(sheetMap, meshAt(mesh, p.x, p.y)))) ?? sheetMap : sheetMap;
   const inverse = invert(t);
   if (!inverse) return false;
-  const decides = (found: FoundQr | null, toPage: (c: Point) => Point) => found
-    && found.link === printed.link && found.corners.every((c, i) => distance(toPage(c), printed.corners[i]) <= QR_TOLERANCE * size);
+  const decides = (found: FoundQr | null, toPage: (c: Point) => Point) => {
+    if (found && details) noteScanCode(details, found.corners.map(c => applyTransform(t, toPage(c))), found.link === printed.link);
+    return found && found.link === printed.link && found.corners.every((c, i) => distance(toPage(c), printed.corners[i]) <= QR_TOLERANCE * size);
+  };
   // First the photo's own pixels around the place, with the code's corners taken back through the map.
   const seenAt = boundsOf([{ x: window.x, y: window.y }, { x: window.x + window.width, y: window.y }, { x: window.x + window.width, y: window.y + window.height }, { x: window.x, y: window.y + window.height }].map((p) => applyTransform(t, p)));
   const x0 = Math.max(0, Math.floor(seenAt.x)), y0 = Math.max(0, Math.floor(seenAt.y));
@@ -1566,9 +1561,11 @@ const MARK_WEIGHT = 10;
 interface QrPlacement { t: Transform; turns: 0 | 1 | 2 | 3; fit: number; mesh?: Mesh; marks: Point[]; missing: ScanMark[]; hidden: ScanMark[] }
 
 /** Place the page using its code, expanding print matches, and any reliable marks and paper edges. */
-function placedByQr(photo: Raster, printedQr: FoundQr, ink: PrintedInk, greySums: Uint32Array, shapes: readonly MarkShape[], stored: readonly Point[], page: { width: number; height: number }, qrGrid: PreparedPrinted["qrGrid"]): QrPlacement | null {
+function placedByQr(photo: Raster, printedQr: FoundQr, ink: PrintedInk, greySums: Uint32Array, shapes: readonly MarkShape[], stored: readonly Point[], page: { width: number; height: number }, qrGrid: PreparedPrinted["qrGrid"], details: ScanCalibrationDetails): QrPlacement | null {
   const code = photoQr(photo, printedQr.link);
   if (!code) return null;
+  details.placement = 2;
+  noteScanCode(details, code.corners, true);
   // The code is small: its corners say where it is, how large and which way up, and only the print can say more.
   let t = fitLinear(printedQr.corners, code.corners, "similarity");
   if (!t) return null;
@@ -1586,6 +1583,7 @@ function placedByQr(photo: Raster, printedQr: FoundQr, ink: PrintedInk, greySums
       if (Math.hypot(i * MESH_STEP * 2 - middle.x, j * MESH_STEP * 2 - middle.y) <= reach) nodes.push({ i, j, x: (i * MESH_STEP) / MESH_COARSE, y: (j * MESH_STEP) / MESH_COARSE });
     }
     const kept = agreeing(matchPatches(sa.g, sb.g, sa.w, sa.h, nodes, MESH_COARSE_PATCH, MESH_REACH, MESH_COARSE).anchors, MESH_AGREE_COARSE / MESH_COARSE);
+    details.qrPatches = kept.length;
     if (kept.length < QR_PLACE_MIN_PATCHES) return null;
     const by = MESH_COARSE * 2;
     pairs = kept.map((k) => {
@@ -1601,7 +1599,7 @@ function placedByQr(photo: Raster, printedQr: FoundQr, ink: PrintedInk, greySums
     t = next;
   }
   // The print first: the page must follow, part by part, before any mark is looked for.
-  const first: { mesh?: Mesh } = {};
+  const first: FitEvidence = {};
   const firstFit = pageFit(ink, greySums, photo, t, MIN_PAGE_FIT, first);
   // Look for optional L shapes with arms that follow the placed page.
   const at = (p: Point) => photoPointOf(t!, first.mesh, p);
@@ -1651,7 +1649,7 @@ function placedByQr(photo: Raster, printedQr: FoundQr, ink: PrintedInk, greySums
         const q = applyTransform(back, to);
         return { ...from, dx: q.x - from.x, dy: q.y - from.y };
       });
-      const refinedSheet: { mesh?: Mesh } = {};
+      const refinedSheet: FitEvidence = {};
       const refinedFit = pageFit(ink, greySums, photo, refined, MIN_PAGE_FIT, refinedSheet, pins);
       if (refinedFit >= MIN_PAGE_FIT && qrBound(photo, refined, printedQr, qrGrid, page, refinedSheet.mesh)) {
         placed = refined;
@@ -1660,6 +1658,8 @@ function placedByQr(photo: Raster, printedQr: FoundQr, ink: PrintedInk, greySums
       }
     }
   }
+  if (sheet.fit) details.pageFit = { ...sheet.fit, placement: 2 };
+  noteScanMarks(details, hidden, missing);
   if (fit < MIN_PAGE_FIT) return null;
   // Which way up: the page's own rightward direction in the photo, in clockwise quarter turns.
   const right = { x: applyTransform(placed, { x: page.width, y: page.height / 2 }).x - applyTransform(placed, { x: 0, y: page.height / 2 }).x, y: applyTransform(placed, { x: page.width, y: page.height / 2 }).y - applyTransform(placed, { x: 0, y: page.height / 2 }).y };
@@ -1670,17 +1670,7 @@ function placedByQr(photo: Raster, printedQr: FoundQr, ink: PrintedInk, greySums
 
 const photoPointOf = (t: Transform, mesh: Mesh | undefined, p: Point) => applyTransform(t, mesh ? meshAt(mesh, p.x, p.y) : p);
 
-/**
- * Finds the scan marks in a photo and maps it to the contract: the photo's own marks and the stored mark points only. A
- * photo with no contract, or of another revision (printContractForPhoto), gets none. `pageLink`: the page's own QR link.
- * `writing`: where a child writes on this page, which says nothing about which page it is. This says the sheet is this
- * page's by its marks, ink and code. Pages that differ by a few digits pass all three for each other, so the crop job then
- * asks sheetChecker about the child's other pages, a few at a time.
- *
- * A sheet that is not flat is aligned part by part (pageFit, #912). A photo whose four marks do not place the page, as when
- * the photo's edge cuts one off or a hand's shadow hides one, is placed by its QR code and print instead (placedByQr):
- * a hidden mark is never used and never replaced by another sheet's, and the print must still follow (#912).
- */
+/** Match this photo to its immutable print, using marks, code and print agreement. */
 export function calibratePhoto(o: { photo: Raster; printed: Raster; contract: PhotoContract; pageLink: string; writing?: readonly Box[] }): CalibrationResult {
   if (o.contract.status !== "available") return { status: "unavailable", reason: o.contract.reason };
   const { contract, revision } = o.contract;
@@ -1688,8 +1678,10 @@ export function calibratePhoto(o: { photo: Raster; printed: Raster; contract: Ph
   // The code the page image printed: where it sits comes from the image the contract fingerprints, never from a template.
   const prepared = preparedPrinted(printed);
   const printedQr = prepared.qr;
-  if (!printedQr || printedQr.link !== o.pageLink) return { status: "refused", reason: "qr-mismatch" };
+  const details: ScanCalibrationDetails = { qrRead: 0 };
+  if (!printedQr || printedQr.link !== o.pageLink) return { status: "refused", reason: "qr-mismatch", details };
   const { greySums, quads, shapes } = preparedPhoto(photo);
+  details.markCandidates = shapes.length;
   const ink = printedInk(prepared, [...(o.writing ?? []), boundsOf(printedQr.corners), ...markPrint(prepared.source)]);
   const stored = SCAN_MARKS.map((m) => contract.marks.points[m]);
   const pageSize = contract.coordinates.image;
@@ -1710,28 +1702,32 @@ export function calibratePhoto(o: { photo: Raster; printed: Raster; contract: Ph
       const order = stored.map((_, i) => quad[(i + turns) % 4]);
       const t = perspectiveTransform(stored, order.map((m) => m.corner));
       if (!t || !armsFit(order, t)) return [];
-      const found: { mesh?: Mesh } = {};
+      const found: FitEvidence = {};
       const fit = pageFit(ink, greySums, photo, t, MIN_PAGE_FIT, found, stored.map((p) => ({ ...p, dx: 0, dy: 0 })), bent);
-      return [{ turns, order, t, fit, ...(found.mesh ? { mesh: found.mesh } : {}) }];
+      return [{ turns, order, t, fit, measured: found.fit, ...(found.mesh ? { mesh: found.mesh } : {}) }];
     }).sort((a, b) => b.fit - a.fit);
     if (ways.length === 0) continue;
     const best = ways[0];
+    if (best.measured && best.fit > (details.pageFit?.score ?? -1)) details.pageFit = { ...best.measured, placement: 1 };
     if (best.fit < MIN_PAGE_FIT) { refusal = "page-mismatch"; continue; }
     followers.push({ ...best, next: ways[1]?.fit ?? null });
   }
-  // Two sheets in one photo: which one was meant cannot be known, whichever shows its code. Rectangles that share two or
-  // more marks are one sheet, not two: a page lying on the rest of the book shows the marks of the sheets under it, and
-  // a mark of the sheet below can stand in for one of the page's own (#912). Which marks are the page's is then decided
-  // by its code and print below, never by the rectangles.
+  // Rectangles sharing two marks can be one sheet over another. The QR and print then identify its own marks.
   const oneSheet = followers.length > 1 && followers.every((a, i) => followers.every((b, j) => j <= i || a.order.filter((m) => b.order.includes(m)).length >= 2));
-  const codeAt = (c: { t: Transform; mesh?: Mesh }) => qrBound(photo, c.t, printedQr, prepared.qrGrid, pageSize, c.mesh);
-  const unplaced = (reason: CalibrationRefusal, bound = false): CalibrationResult =>
-    bound || photoQr(photo, o.pageLink) ? { status: "review", reason } : { status: "refused", reason };
+  const codeAt = (c: { t: Transform; mesh?: Mesh }) => qrBound(photo, c.t, printedQr, prepared.qrGrid, pageSize, c.mesh, details);
+  const unplaced = (reason: CalibrationRefusal, bound = false): CalibrationResult => {
+    const match = !bound && photoQr(photo, o.pageLink);
+    const seen = match || wholeQrCache.get(photo) || photoQrCache.get(photo)?.found.values().next().value;
+    if (seen) noteScanCode(details, seen.corners, seen.link === o.pageLink);
+    return { status: bound || match ? "review" : "refused", reason, details };
+  };
   if (followers.length > 1 && !oneSheet) return unplaced("ambiguous-page", followers.some(codeAt));
   const calibration = (c: { t: Transform; turns: 0 | 1 | 2 | 3; fit: number; mesh?: Mesh; marks: Point[] }, more: Partial<Calibration> = {}): CalibrationResult => {
+    details.placement = more.placedBy === "qr" ? 2 : 1;
+    noteScanMarks(details, more.hiddenMarks ?? [], more.missingMarks ?? []);
     if (!codeAt(c)) return unplaced("qr-mismatch");
     return {
-      status: "calibrated",
+      status: "calibrated", details,
       calibration: {
         version: CALIBRATION_VERSION, revision, photo: { width: photo.width, height: photo.height },
         marks: Object.fromEntries(SCAN_MARKS.map((m, i) => [m, c.marks[i]])) as Record<ScanMark, Point>,
@@ -1741,7 +1737,7 @@ export function calibratePhoto(o: { photo: Raster; printed: Raster; contract: Ph
     };
   };
   if (oneSheet || followers.length === 0) {
-    const placed = placedByQr(photo, printedQr, ink, greySums, shapes, stored, pageSize, prepared.qrGrid);
+    const placed = placedByQr(photo, printedQr, ink, greySums, shapes, stored, pageSize, prepared.qrGrid, details);
     if (!placed) return unplaced(oneSheet ? "ambiguous-page" : refusal);
     return calibration(placed, { placedBy: "qr", missingMarks: placed.missing, ...(placed.hidden.length ? { hiddenMarks: placed.hidden } : {}) });
   }
@@ -1776,7 +1772,7 @@ export function answerPlacement(o: { photo: Raster; printed: Raster; calibration
   let grids: { a: Float32Array; b: Float32Array } | undefined;
   const cellBox = (c: { x: number; y: number }): Box => ({ x: c.x * 2, y: c.y * 2, width: FIT_CELL * 2, height: FIT_CELL * 2 });
   const cells = visibleCells(ink.cells, photo, t, shape);
-  return (box: Box, checkPrint: boolean): { box: Box; offset: Point; issue?: "covered" | "alignment" } => {
+  return (box: Box, checkPrint: boolean): AnswerPlacement => {
     const near = cells.map((c) => ({ c, gap: boxDistance(box, cellBox(c)) })).filter(({ gap }) => gap <= ANSWER_TEXT_DISTANCE)
       .sort((a, b) => a.gap - b.gap);
     const nearest = near.filter(({ gap }) => gap <= (near[0]?.gap ?? 0) + 24).slice(0, 6).map(({ c }) => c);
@@ -1786,7 +1782,8 @@ export function answerPlacement(o: { photo: Raster; printed: Raster; calibration
       const { a, b } = grids;
       const local = shapedCells(a, width, nearest);
       const shown = local.filter((c) => cellShows(c, a, b, ink.ink, width, height)).length;
-      if ((checkPrint && local.length === 0) || shown < Math.ceil(local.length * 0.75)) return { ...original, issue: "covered" };
+      const required = Math.max(checkPrint ? 1 : 0, Math.ceil(local.length * 0.75));
+      if (shown < required) return { ...original, issue: "covered", ring: { shown, examined: local.length, required } };
     }
 
     const samples: { x: number; y: number; grey: number }[] = [];
@@ -1882,12 +1879,13 @@ export function straightenedPage(photo: Raster, c: Calibration, contract: PagePr
 /** How much space a crop keeps around its box, as a part of the box's shorter side, with a limit in image pixels. */
 const CROP_MARGIN = 0.1;
 const CROP_MARGIN_LIMIT = 10;
+export const cropMargin = (box: Box) => Math.min(CROP_MARGIN_LIMIT, CROP_MARGIN * Math.min(box.width, box.height));
 const CROP_MAX_SCALE = 2.5;
 const CROP_MAX_SIDE = 1600;
 
 /** One answer region cut from the photo. */
-export function cropBox(photo: Raster, c: Calibration, contract: PagePrintContract, box: Box): Raster {
-  const margin = Math.min(CROP_MARGIN_LIMIT, CROP_MARGIN * Math.min(box.width, box.height));
+export function cropBox(photo: Raster, c: Calibration, contract: PagePrintContract, printedBox: Box, reach?: Box): Raster {
+  const box = reach ?? printedBox, margin = reach ? 0 : cropMargin(box);
   const { width: iw, height: ih } = contract.coordinates.image;
   const x0 = Math.max(0, box.x - margin), y0 = Math.max(0, box.y - margin);
   const x1 = Math.min(iw, box.x + box.width + margin), y1 = Math.min(ih, box.y + box.height + margin);
@@ -1905,8 +1903,8 @@ export function cropBox(photo: Raster, c: Calibration, contract: PagePrintContra
  * a pixel to spare. A crop of a box the photo's edge cuts would show white paper where the answer was cut off (#912): such
  * a question is not cropped and not marked from the photo.
  */
-export function cropInPhoto(c: Pick<Calibration, "transform" | "bend" | "mesh" | "photo">, contract: PagePrintContract, box: Box): boolean {
-  const margin = Math.min(CROP_MARGIN_LIMIT, CROP_MARGIN * Math.min(box.width, box.height));
+export function cropInPhoto(c: Pick<Calibration, "transform" | "bend" | "mesh" | "photo">, contract: PagePrintContract, box: Box, exact = false): boolean {
+  const margin = exact ? 0 : cropMargin(box);
   const page = contract.coordinates.image;
   const x0 = Math.max(0, box.x - margin), y0 = Math.max(0, box.y - margin);
   const x1 = Math.min(page.width, box.x + box.width + margin), y1 = Math.min(page.height, box.y + box.height + margin);

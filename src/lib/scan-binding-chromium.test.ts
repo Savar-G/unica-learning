@@ -75,19 +75,19 @@ describe.skipIf(!chromium)("binding a photo to its printed page", () => {
 
   it("holds two copies with the same QR code for team review", async () => {
     const photo = await greyRaster(await twoCopies(written(page, THREE), written(page, EIGHT)));
-    expect(calibrate(photo, page)).toEqual({ status: "review", reason: "ambiguous-page" });
+    expect(calibrate(photo, page)).toMatchObject({ status: "review", reason: "ambiguous-page", details: { qrRead: 2 } });
   }, 60_000);
 
   it("refuses a page whose QR code is covered: its identity cannot be read inside the rectangle", async () => {
     const photo = await photoOf(coverQr(written(page, THREE), page));
-    expect(calibrate(photo, page)).toEqual({ status: "refused", reason: "qr-mismatch" });
+    expect(calibrate(photo, page)).toMatchObject({ status: "refused", reason: "qr-mismatch", details: { qrRead: 0 } });
   }, 30_000);
 
   it("refuses the right page with another page's QR code printed in its place", async () => {
     // Disproved if any readable QR code passes. The link is the page's own, not whichever code a photo holds.
     const photo = await photoOf(written(page, THREE));
     const result = calibratePhoto({ photo, printed: page.grey, contract: available(page), pageLink: pageUrl("another-page-token-000"), writing: page.writing });
-    expect(result).toEqual({ status: "refused", reason: "qr-mismatch" });
+    expect(result).toMatchObject({ status: "refused", reason: "qr-mismatch", details: { qrRead: 0 } });
   }, 30_000);
 
   it("a mirror has no automatic marks, and a poor-light or upside-down page can only be placed right way up", async () => {

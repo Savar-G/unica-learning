@@ -2,6 +2,7 @@
 // The store's `put` and `finish` carry the terminal-state rules: each needs an active, unexpired photo revision and this
 // job's current lease (fence_scan_object and finish_scan_calibration on the database). A job that lost either stops, and it
 // cannot bring a photo back. No AI runs here, and no mark or learning event is written.
+import type { CoveredRegionDetails, ScanCalibrationDetails } from "@/lib/scan-calibration-details";
 import { monitorProduct } from "@/lib/product-monitoring";
 import sharp from "sharp";
 import {
@@ -9,8 +10,8 @@ import {
   boxDistance,
   calibratePhoto,
   calibrationForPhoto,
-  cropBox,
   cropInPhoto,
+  cropMargin,
   cropPlan,
   sheetChecker,
   straightenedPage,
@@ -21,6 +22,8 @@ import {
   type SheetRefusal,
 } from "@/lib/scan-calibration";
 import { printContractForPhoto, sha256Hex, type Box, type PagePrintContract, type Point } from "@/lib/workbook-print-contract";
+import { enclosingBox, limitReachToPhoto, renderAnswerCrop } from "@/lib/scan-answer-crops";
+import { answerReach, boundedAnswerArea, placedRegions, scanContentBounds } from "@/lib/scan-answer-reach";
 import { markingRegions } from "@/lib/scan-marking-regions";
 import { pageUrl } from "@/lib/workbook-render";
 
@@ -52,6 +55,7 @@ export interface ScanCrop {
   regionId: string;
   regionIds?: string[];
   box: Box;
+  displayBox?: Box;
   width: number;
   height: number;
 }
@@ -84,6 +88,7 @@ export interface ScanCalibrationResult {
    */
   cutOff?: number[];
   reason?: ScanRefusal;
+  details?: ScanCalibrationDetails;
   /**
    * The sheet check a ready result passed (SHEET_CHECK_VERSION). A ready result with an older or no version was made before
    * that check: it is not taken as ready anywhere, and is checked again (#456).
@@ -312,20 +317,21 @@ export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: s
   if (input === CHECK_TIMEOUT) return timedOut();
   if (!input) return finished("refused", { reason: "printed-page-changed" }, 0);
   const [photo, printed] = input;
-  if (!frame.page.qrToken) return finished("refused", { reason: "qr-mismatch" }, 0);
+  if (!frame.page.qrToken) return finished("refused", { reason: "qr-mismatch", details: { qrRead: 0 } }, 0);
   const writing = frame.page.questions.flatMap((q) => (q.regions ?? []).flatMap((r) => (r.box ? [r.box] : [])));
   const firstOthers = frame.page.others.length ? fetchOthers(store, frame.page.others, 0) : undefined;
   const result = calibratePhoto({ photo, printed, contract, pageLink: pageUrl(frame.page.qrToken), writing });
   if (Date.now() >= deadline) return timedOut();
   if (result.status === "unavailable") return { status: "unavailable", reason: result.reason };
-  if (result.status === "refused") return finished("refused", { reason: result.reason }, 0);
+  if (result.status === "refused") return finished("refused", { reason: result.reason, details: result.details }, 0);
   const calibration = result.status === "calibrated" ? result.calibration : null;
   let review: ScanCalibrationResult["review"] = result.status === "review" ? result.reason : undefined;
   const planned = cropPlan(frame.page.questions);
   const cutOff: number[] = [];
   const held = new Map<number, QuestionHold>();
+  const covered: CoveredRegionDetails[] = [];
   const snaps: AnswerSnap[] = [];
-  const crops: typeof planned.crops = [];
+  const crops: (typeof planned.crops[number] & { display?: { box: Box; areas: Box[] } })[] = [];
   if (calibration) {
     // Compare distinctive print wherever another page of this book differs (#456, #975).
     const ask = sheetChecker({ photo, printed, transform: calibration.transform, writing, sheet: calibration });
@@ -357,23 +363,49 @@ export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: s
           const check = hidden.some((m) => (m.x < page.width / 2) === (x < page.width / 2) && (m.y < page.height / 2) === (y < page.height / 2));
           return { regionId: region.id, ...place(region.box, check) };
         });
+        for (const region of regions) {
+          if (region.issue === "covered") {
+            const index = question.regions?.findIndex(r => r.id === region.regionId) ?? -1;
+            if (index >= 0) covered.push({ question: crop.number, region: index + 1, ...region.ring });
+          }
+        }
         snaps.push(...regions.map(({ regionId, box, offset }) => ({ number: crop.number, regionId, box, offset })));
         const issue = regions.find((r) => r.issue === "covered")?.issue ?? regions.find((r) => r.issue)?.issue;
         if (issue) { held.set(crop.number, issue); continue; }
-        const x = Math.min(...regions.map((r) => r.box.x)), y = Math.min(...regions.map((r) => r.box.y));
-        const box = { x, y, width: Math.max(...regions.map((r) => r.box.x + r.box.width)) - x, height: Math.max(...regions.map((r) => r.box.y + r.box.height)) - y };
+        const box = enclosingBox(regions.map(r => r.box));
         if (cropInPhoto(calibration, contract.contract, box)) crops.push({ ...crop, box });
         else cutOff.push(crop.number);
       }
     }
   }
 
+  const content = scanContentBounds(contract.contract);
+  const questions = frame.page.questions.map(q => ({ ...q, regions: placedRegions(q, snaps) }));
+  if (calibration) for (const crop of crops) {
+    const question = questions.find(q => q.number === crop.number)!;
+    const regions = markingRegions(question);
+    const reaches = regions.map(region => {
+      const reach = answerReach(region, question.number, questions, content);
+      return reach && limitReachToPhoto(calibration, contract.contract, region.box, reach);
+    });
+    if (!reaches.some(Boolean)) continue;
+    const margin = cropMargin(crop.box);
+    const page = { x: 0, y: 0, ...contract.contract.coordinates.image };
+    const areas = regions.map((region, index) => {
+      const reach = reaches[index];
+      if (reach) return reach;
+      if (region.kind !== "choice") return region.box;
+      const padded = boundedAnswerArea(region, question.number, questions, page, margin, margin);
+      return limitReachToPhoto(calibration, contract.contract, region.box, padded);
+    });
+    crop.display = { box: enclosingBox(areas), areas };
+  }
   if (Date.now() >= deadline) return timedOut();
   if (previous) await store.clearLease({ ...ref, token: previous });
   const straight = calibration && !review ? straightenedPage(photo, calibration, contract.contract) : photo;
   const uploads = [
     { part: STRAIGHT_PART, raster: straight, quality: 78 },
-    ...(calibration ? crops.map((c) => ({ part: cropPart(c.number), raster: cropBox(photo, calibration, contract.contract, c.box), quality: 85 })) : []),
+    ...(calibration ? crops.map((c) => ({ part: cropPart(c.number), raster: renderAnswerCrop(photo, calibration, contract.contract, c.box, c.display), quality: 85 })) : []),
   ];
   let bytes = 0;
   for (let i = 0; i < uploads.length; i += UPLOADS_AT_ONCE) {
@@ -389,12 +421,13 @@ export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: s
   return finished("ready", {
     sheetCheck: SHEET_CHECK_VERSION, ...(calibration && !review ? { calibration } : {}), ...(review ? { review } : {}),
     parts: uploads.map((u) => u.part), straight: { width: straight.width, height: straight.height }, notSupported: planned.notSupported,
+    ...(review || held.size ? { details: { ...result.details, ...(covered.length ? { covered } : {}) } } : {}),
     ...(held.size ? { held: Array.from(held, ([number, issue]) => ({ number, issue })).sort((a, b) => a.number - b.number) } : {}),
     ...(snaps.length ? { snaps } : {}),
     ...(cutOff.length || held.size ? { cutOff: [...cutOff, ...held.keys()] } : {}),
     crops: crops.map((c) => {
       const part = cropPart(c.number), r = rasters.get(part)!;
-      return { part, number: c.number, itemId: c.itemId, regionId: c.regionId, ...(c.regionIds ? { regionIds: c.regionIds } : {}), box: c.box, width: r.width, height: r.height };
+      return { part, number: c.number, itemId: c.itemId, regionId: c.regionId, ...(c.regionIds ? { regionIds: c.regionIds } : {}), box: c.box, ...(c.display ? { displayBox: c.display.box } : {}), width: r.width, height: r.height };
     }),
   }, bytes);
 }

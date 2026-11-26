@@ -176,7 +176,7 @@ describe("refusals", () => {
 
   it("refuses a blank photo", () => {
     const photo = { width: 800, height: 1000, channels: 1 as const, data: new Uint8Array(800000).fill(240) };
-    expect(calibratePhoto({ photo, printed, contract: available, pageLink: LINK })).toEqual({ status: "refused", reason: "marks-missing" });
+    expect(calibratePhoto({ photo, printed, contract: available, pageLink: LINK })).toMatchObject({ status: "refused", reason: "marks-missing", details: { markCandidates: 0, qrRead: 0 } });
   });
 
   /** A sheet that bows (#912): its corners stay where the marks are, its middle sits `amount` photo pixels lower. */
@@ -206,17 +206,22 @@ describe("refusals", () => {
     for (let i = 0; i < 40; i++) fill(other, 200 + (i * 37) % 800, 500 + (i * 71) % 900, 60, 14);
     drawQr(other, QR_BOX, LINK);
     const photo = await stored(bowed(photographed(other, SIZE, square(SIZE, 60)), 14));
-    expect(calibratePhoto({ photo, printed, contract: available, pageLink: LINK })).toEqual({ status: "review", reason: "page-mismatch" });
+    expect(calibratePhoto({ photo, printed, contract: available, pageLink: LINK })).toMatchObject({ status: "review", reason: "page-mismatch" });
   }, 20_000);
 
-  it("holds a photo of another page: its marks line up, but its ink does not follow the printed page", async () => {
-    // Disproved if four good marks are enough, whatever the page.
+  it("keeps partial mark-fit evidence when the QR cannot place the print", async () => {
+    // Four good marks put the absent print inside the photo. The moved QR cannot measure a replacement fit.
     const other = page();
     for (const m of SCAN_MARKS) mark(other, m);
-    for (let i = 0; i < 40; i++) fill(other, 200 + (i * 37) % 800, 500 + (i * 71) % 900, 60, 14);
-    drawQr(other, QR_BOX, LINK);
+    drawQr(other, { ...QR_BOX, x: 300, y: 300 }, LINK);
     const photo = await stored(photographed(other, SIZE, square(SIZE, 60)));
-    expect(calibratePhoto({ photo, printed, contract: available, pageLink: LINK })).toEqual({ status: "review", reason: "page-mismatch" });
+    const result = calibratePhoto({ photo, printed, contract: available, pageLink: LINK });
+    expect(result).toMatchObject({ status: "review", reason: "page-mismatch", details: { placement: 2, pageFit: { placement: 1 } } });
+    if (result.status !== "review" || !result.details.pageFit) throw new Error("Expected measured mark fit");
+    expect(result.details.qrPatches).toBeGreaterThan(0);
+    const { examined, visible } = result.details.pageFit;
+    expect(examined).toBeGreaterThan(0);
+    expect(examined).toBeLessThan(visible);
   }, 20_000);
 
   it("holds a photo when two ways up fit alike: the marks alone cannot say which way is up", async () => {
@@ -226,7 +231,7 @@ describe("refusals", () => {
     for (let line = 0; line < 8; line++) { fill(even, 200, 200 + line * 60, 300, 20); fill(even, W - 500, H - 220 - line * 60, 300, 20); }
     drawQr(even, QR_BOX, LINK);
     const photo = await stored(photographed(even, SIZE, square(SIZE, 60)));
-    expect(calibratePhoto({ photo, printed: even, contract: available, pageLink: LINK })).toEqual({ status: "review", reason: "orientation-unclear" });
+    expect(calibratePhoto({ photo, printed: even, contract: available, pageLink: LINK })).toMatchObject({ status: "review", reason: "orientation-unclear" });
   }, 20_000);
 });
 
@@ -265,13 +270,13 @@ describe("a small QR code that the upload reads zoomed (#912)", () => {
     // Disproved if the enlarged read decides by finding any code, not this page's.
     const other = "https://unicalearning.com/tutor/p/test-page-token-0002";
     const { photo } = await softPhoto(smallQrPage(SMALL_QR, other), 1, 60);
-    expect(calibratePhoto({ photo, printed: smallPrinted(), contract: available, pageLink: LINK })).toEqual({ status: "refused", reason: "qr-mismatch" });
+    expect(calibratePhoto({ photo, printed: smallPrinted(), contract: available, pageLink: LINK })).toMatchObject({ status: "refused", reason: "qr-mismatch", details: { qrRead: 1, placement: 1, qrCorners: expect.any(Array) } });
   }, 40_000);
 
   it("holds this page for review when its code moved", async () => {
     // Disproved if the enlarged read takes a code from anywhere near the place: moved by its own size, it is elsewhere.
     const { photo } = await softPhoto(smallQrPage({ ...SMALL_QR, x: SMALL_QR.x + SMALL_QR.width }, LINK), 1, 60);
-    expect(calibratePhoto({ photo, printed: smallPrinted(), contract: available, pageLink: LINK })).toEqual({ status: "review", reason: "qr-mismatch" });
+    expect(calibratePhoto({ photo, printed: smallPrinted(), contract: available, pageLink: LINK })).toMatchObject({ status: "review", reason: "qr-mismatch", details: { qrRead: 2, placement: 1, qrCorners: expect.any(Array) } });
   }, 40_000);
 });
 
@@ -417,7 +422,7 @@ describe("a sheet held up, cut by the photo's edge, or in shadow (#912)", () => 
   it.each([45, 70])("holds other print for review held the same way, curled by %i pixels", async (amount) => {
     // Disproved if aligning a page part by part lets another page's print follow this one.
     const photo = await stored(curled(photographed(otherPage(), SIZE, square(SIZE, 60)), amount));
-    expect(calibrate(photo)).toEqual({ status: "review", reason: "page-mismatch" });
+    expect(calibrate(photo)).toMatchObject({ status: "review", reason: "page-mismatch" });
   }, 60_000);
 
   it("this page upside down and curled is read upside down or refused: the way up stays unambiguous", async () => {
@@ -583,7 +588,7 @@ describe("a sheet held up, cut by the photo's edge, or in shadow (#912)", () => 
 
   it.each(SHADOWS)("holds other print for review with a shadow $name", async ({ from, to }) => {
     const photo = await stored(shadowed(photographed(otherPage(), SIZE, square(SIZE, 60)), from, to, 0.5, 8));
-    expect(calibrate(photo)).toEqual({ status: "review", reason: "page-mismatch" });
+    expect(calibrate(photo)).toMatchObject({ status: "review", reason: "page-mismatch" });
   }, 60_000);
 
   /**

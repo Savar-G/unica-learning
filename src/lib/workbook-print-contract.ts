@@ -56,6 +56,8 @@ export interface PagePrintContract {
     y: "down";
     orientation: "portrait";
     image: { width: number; height: number };
+    /** The measured worksheet content area in image pixels, when the print recorded it. */
+    content?: Box;
     /** The CSS page the template laid out, and image pixels per CSS pixel. */
     cssPage: { width: number; height: number };
     scale: { x: number; y: number };
@@ -205,7 +207,7 @@ export function scanMarkProblem(marks: readonly MarkRect[], css: { width: number
  */
 export function buildPrintContract(o: {
   workbookId: string; page: PrintedContent & { content?: PageContent }; marks: readonly MarkRect[];
-  image: { width: number; height: number; sha256: string }; css: { width: number; height: number };
+  image: { width: number; height: number; sha256: string }; css: { width: number; height: number }; content?: Box;
 }): { contract: PagePrintContract; problem: null } | { contract: null; problem: string } {
   const problem = scanMarkProblem(o.marks, o.css);
   if (problem) return { contract: null, problem };
@@ -215,6 +217,7 @@ export function buildPrintContract(o: {
   if (Math.abs(scale.x / scale.y - 1) > 0.01) return { contract: null, problem: "the page image is not the page at one scale" };
   const rect = (m: ScanMark) => o.marks.find((x) => x.name === scanMarkName(m))!;
   const at = (m: ScanMark, x: number, y: number): [ScanMark, Point] => [m, { x: milli(x * scale.x), y: milli(y * scale.y) }];
+  const measured = o.content && imageBox(o.content, scale);
   const c = o.page.content;
   const day = c?.kind === "day" && !c.extraPractice ? c : null;
   return {
@@ -224,7 +227,7 @@ export function buildPrintContract(o: {
       day: day?.day ?? null, pageOfDay: day?.page ?? null,
       coordinates: {
         units: "image-px", origin: "top-left", x: "right", y: "down", orientation: "portrait",
-        image: { width, height }, cssPage: { width: o.css.width, height: o.css.height }, scale,
+        image: { width, height }, ...(measured && boxInside(measured, { width, height }) ? { content: measured } : {}), cssPage: { width: o.css.width, height: o.css.height }, scale,
       },
       marks: {
         anchor: "outer-corner", order: [...SCAN_MARKS],
@@ -259,6 +262,11 @@ export const isPrintedRevision = (v: unknown): v is string => typeof v === "stri
 const pointInside = (p: unknown, image: { width: number; height: number }) =>
   isObject(p) && isNumber(p.x) && isNumber(p.y) && p.x >= 0 && p.y >= 0 && p.x <= image.width && p.y <= image.height;
 
+const boxInside = (b: unknown, image: { width: number; height: number }) =>
+  isObject(b) && isNumber(b.x) && isNumber(b.y) && isNumber(b.width) && isNumber(b.height) &&
+  b.x >= 0 && b.y >= 0 && b.width > 0 && b.height > 0 &&
+  b.x + b.width <= image.width + 0.01 && b.y + b.height <= image.height + 0.01;
+
 /** What is wrong with a stored or written contract, or null. `at`: the workbook, page and image it must name. */
 export function printContractProblem(c: unknown, at: { workbookId: string; page: number; image: { width: number; height: number } | null }): string | null {
   if (!isObject(c)) return "the print contract is not an object";
@@ -271,6 +279,8 @@ export function printContractProblem(c: unknown, at: { workbookId: string; page:
   }
   const image = coordinates.image as { width?: unknown; height?: unknown } | undefined;
   if (!at.image || image?.width !== at.image.width || image?.height !== at.image.height) return "the print contract's image size is not the page image's";
+  const content = coordinates.content;
+  if (content !== undefined && !boxInside(content, at.image)) return "the content area is not inside the page image";
   const scale = coordinates.scale as { x?: unknown; y?: unknown } | undefined;
   if (!isNumber(scale?.x) || !isNumber(scale?.y) || scale.x <= 0 || scale.y <= 0) return "the print contract has no image scale";
   if (marks.anchor !== "outer-corner" || JSON.stringify(marks.order) !== JSON.stringify(SCAN_MARKS)) return "the print contract's marks are not in the declared order";
