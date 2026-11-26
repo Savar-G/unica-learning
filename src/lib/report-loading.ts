@@ -167,7 +167,10 @@ export async function loadReportInputs(reader: ReportReader, assessmentId: strin
   const answers = await reader.answers(a.id);
   // The question map: every question the test could ask, from every stage and path.
   const questions = new Map(everyQuestion(a.test).map((q) => [q.id, q]));
-  const withWork = answers.filter((x) => x.workPath !== null || x.workText !== null);
+  const workbookQuestionIds = new Set(a.test.adaptive?.blocks.flatMap((block) =>
+    block.purpose === "workbook-placement" ? block.questions.map((question) => question.id) : [],
+  ));
+  const withWork = answers.filter((x) => !workbookQuestionIds.has(x.questionId) && (x.workPath !== null || x.workText !== null));
   return {
     assessment: {
       id: a.id,
