@@ -1,16 +1,15 @@
 // Reads the QR codes of a page image with jsqr, the reader that the scan side also uses. jsqr reads one code of a picture
 // and takes about a tenth of a second for a whole page, so it gets only the small parts that can hold a code.
 import jsQR from "jsqr";
+import type { Box } from "./blank";
 import type { PageImage } from "./page-image";
 
-/** A part of an image in whole pixels: the right and bottom ends are outside it. */
-export interface Box { left: number; top: number; right: number; bottom: number }
 export interface FoundQr { text: string; box: Box }
 
 const DARK = 128;
 
-export const isDark = ({ width, height, grey }: PageImage, x: number, y: number): boolean =>
-  x >= 0 && y >= 0 && x < width && y < height && grey[y * width + x] < DARK;
+const isDark = ({ width, height, low }: PageImage, x: number, y: number): boolean =>
+  x >= 0 && y >= 0 && x < width && y < height && low[y * width + x] < DARK;
 
 /** The QR code in a part of the image. Pixels outside the image or in `hidden` count as white. */
 export function readQr(image: PageImage, box: Box, hidden: Box | null = null): FoundQr | null {
@@ -19,7 +18,7 @@ export function readQr(image: PageImage, box: Box, hidden: Box | null = null): F
   for (let y = box.top; y < box.bottom; y++) {
     for (let x = box.left; x < box.right; x++) {
       if (x < 0 || y < 0 || x >= image.width || y >= image.height || (hidden && holds(hidden, x, y))) continue;
-      pixels.fill(image.grey[y * image.width + x], ((y - box.top) * width + x - box.left) * 4, ((y - box.top) * width + x - box.left) * 4 + 3);
+      pixels.fill(image.low[y * image.width + x], ((y - box.top) * width + x - box.left) * 4, ((y - box.top) * width + x - box.left) * 4 + 3);
     }
   }
   const found = jsQR(pixels, width, height, { inversionAttempts: "dontInvert" });
@@ -65,20 +64,20 @@ const MAX_RUN = 400;
 const WHITE = 0xffffffff;
 
 /** Whether each line can hold dark pixels. It looks at four pixels at a time, because most of a page is white. */
-function linesWithInk({ width, height, grey }: PageImage): boolean[] {
+function linesWithInk({ width, height, low }: PageImage): boolean[] {
   const lines = new Array<boolean>(height).fill(false);
-  const start = Math.min((4 - (grey.byteOffset & 3)) & 3, grey.length);
-  for (let i = 0; i < start; i++) if (grey[i] < DARK) lines[Math.floor(i / width)] = true;
-  if (start === grey.length) return lines;
-  const count = (grey.length - start) >> 2;
-  const fours = new Uint32Array(grey.buffer, grey.byteOffset + start, count);
+  const start = Math.min((4 - (low.byteOffset & 3)) & 3, low.length);
+  for (let i = 0; i < start; i++) if (low[i] < DARK) lines[Math.floor(i / width)] = true;
+  if (start === low.length) return lines;
+  const count = (low.length - start) >> 2;
+  const fours = new Uint32Array(low.buffer, low.byteOffset + start, count);
   for (let i = 0; i < count; i++) {
     if (fours[i] === WHITE) continue;
     const at = start + 4 * i;
     const last = Math.floor((at + 3) / width);
     for (let y = Math.floor(at / width); y <= last; y++) lines[y] = true;
   }
-  for (let i = start + 4 * count; i < grey.length; i++) if (grey[i] < DARK) lines[Math.floor(i / width)] = true;
+  for (let i = start + 4 * count; i < low.length; i++) if (low[i] < DARK) lines[Math.floor(i / width)] = true;
   return lines;
 }
 
@@ -96,7 +95,7 @@ function cornerMarks(image: PageImage, hidden: Box): CornerMark[] {
   const inked = linesWithInk(image);
   for (let y = 0; y < height; y++) {
     if (!inked[y]) continue;
-    const line = image.grey.subarray(y * width, (y + 1) * width);
+    const line = image.low.subarray(y * width, (y + 1) * width);
     const [from, to] = y >= hidden.top && y < hidden.bottom ? [hidden.left, hidden.right] : [width, width];
     let runs = [0, 0, 0, 0, 0];
     let length = 0;

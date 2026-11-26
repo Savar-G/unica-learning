@@ -7,7 +7,9 @@ import { openRenderer } from "../render/typst";
 import { RenderError, type Renderer, type Rendering } from "../renderer";
 import { SHAPES, shapeLibrary, type Shape } from "../shapes";
 import { wholeNumber } from "../shapes/shape";
-import { pagePng } from "../testing/raster";
+import { pagesPdf } from "../testing/fake-pdf";
+import { fakeRenderer } from "../testing/fake-renderer";
+import { drawPage, paint, pagePng, toPng } from "../testing/raster";
 import { stackOf } from "../testing/sample";
 import { skipTypstTests, testAssets } from "../testing/typst";
 import { buildBook, type BuiltBook } from "./build-book";
@@ -28,32 +30,11 @@ const input = (change: (i: Input) => unknown = () => {}): Input => {
 };
 const put = (target: object, key: string, value: unknown) => { Reflect.set(target, key, value); };
 
-const IDENTITY: Renderer["identity"] = { typst: "0.0.0", program: "p", template: "t", fonts: { "A.ttf": "a", "B.ttf": "b" } };
-/** The image of a page, made one time for all the tests that print the same page. */
-const images = new Map<string, Uint8Array>();
-function imageOf(page: PageModel): Uint8Array {
-  const key = JSON.stringify(page);
-  const image = images.get(key) ?? pagePng(page);
-  images.set(key, image);
-  return Uint8Array.from(image);
-}
-/** A renderer that draws exactly the model. */
+const IDENTITY = fakeRenderer().identity;
+/** A renderer that draws exactly the model. `drawn` are the books that it drew. */
 function fake(change: Partial<Renderer> = {}): Renderer & { drawn: PageModel[][] } {
-  const drawn: PageModel[][] = [];
-  return {
-    drawn,
-    identity: IDENTITY,
-    render: async (pages) => {
-      drawn.push([...pages]);
-      return {
-        pdf: new TextEncoder().encode(`%PDF-${JSON.stringify(pages)}`),
-        images: pages.map(imageOf),
-        positions: pages.flatMap((p, i) => p.regions.map((r) => ({ id: r.id, sheet: i + 1, rect: r.rect }))),
-        texts: pages.flatMap((p, i) => p.regions.flatMap((r) => r.ink.flatMap((ink) => (ink.kind === "text" ? [{ sheet: i + 1, x: ink.rect.x, y: ink.rect.y, text: ink.text }] : [])))),
-      };
-    },
-    ...change,
-  };
+  const fake = fakeRenderer();
+  return { ...fake, ...change, drawn: fake.drawn.render };
 }
 
 async function built(i: Input, renderer: Renderer = fake()): Promise<BuiltBook> {
@@ -80,7 +61,7 @@ describe("a good input", () => {
       expect(steps.at(-1)).toEqual({ text: value, marks: [] });
       expect(shapeVersion).toBe(SHAPES.get(shape)?.version);
     }
-    expect(book.record).toMatchObject({ bookId: "example-book", engine: "2.0.0-s7", ...IDENTITY, snapshot: { id: "invented-level-3-v1" } });
+    expect(book.record).toMatchObject({ bookId: "example-book", engine: "2.0.0-s8", ...IDENTITY, snapshot: { id: "invented-level-3-v1" } });
     expect(book.record.snapshot.hash).toMatch(/^[0-9a-f]{64}$/);
     expect(book.record.inputHash).toMatch(/^[0-9a-f]{64}$/);
   });
@@ -218,7 +199,7 @@ describe("a build stops, draws nothing and says why", () => {
     const good = fake();
     const renderer = fake({ render: async (pages) => { const out = await good.render(pages); out.texts[3] = { ...out.texts[3], text: "77" }; return out; } });
     const result = await buildBook(input(), renderer);
-    expect(result).toEqual({ status: "failed", problems: [expect.stringMatching(/the typesetter drew "77"/)] });
+    expect(result).toEqual({ status: "failed", problems: expect.arrayContaining([expect.stringMatching(/the typesetter drew "77"/)]) });
   });
 
   type Change = (out: Rendering, pages: readonly PageModel[]) => unknown;
@@ -242,6 +223,9 @@ describe("a build stops, draws nothing and says why", () => {
     ["an image that is text", (o) => put(o.images, "0", "page"), "The typesetter gave no image of page 381."],
     ["no positions", (o) => put(o, "positions", undefined), "The typesetter gave no positions of page 381."],
     ["no positions of one page", (o) => put(o, "positions", o.positions.filter((p) => p.sheet === 1)), "The typesetter gave no positions of page 382."],
+    ["texts with no size", (o) => put(o.texts[0], "natural", undefined), "The typesetter gave a text with no size or place."],
+    ["texts with no line", (o) => put(o.texts[0], "start", { x: 1 }), "The typesetter gave a text with no size or place."],
+    ["a text that is nothing", (o) => put(o.texts, "0", null), "The typesetter gave a text with no size or place."],
     ["no texts", (o) => put(o, "texts", undefined), "The typesetter gave no texts of page 381."],
   ])("a typesetter that gives %s", async (_name, change, problem) => {
     expect(await stops(change)).toContain(problem);
@@ -252,8 +236,18 @@ describe("a build stops, draws nothing and says why", () => {
     ["a page with no QR ink", (o, pages) => put(o.images, "1", pagePng({ ...pages[1], regions: pages[1].regions.filter((r) => r.role !== "qr") })), /^Page 382: the image has no QR code that can be read in its box\.$/m],
     ["the images of two pages in each other's place", (o) => o.images.reverse(), /^Page 381: .*QR code[^]*^Page 382: .*QR code/m],
     ["a page with no printed text", (o, pages) => put(o.images, "0", pagePng({ ...pages[0], regions: pages[0].regions.map((r) => ({ ...r, ink: r.ink.filter((i) => i.kind !== "text") })) })), /^Page 381: "heading" must print "3-20 · Multiplying 2 digits by 1 digit" and the image has no ink there\.$/m],
+    ["a page with a black square in an answer area", (o, pages) => { const canvas = drawPage(pages[0]); paint(canvas, { x: 150, y: 190, w: 3, h: 3 }); put(o.images, "0", toPng(canvas)); }, /^Page 381: the image has ink that the model does not have, at \(150, 190\) in "answer-1"\.$/m],
     ["bytes that are not an image", (o) => put(o.images, "0", new TextEncoder().encode("page")), /^Page 381: the page image cannot be read\.$/m],
   ])("a typesetter whose image is %s, with a good report", async (_name, change, problem) => {
+    expect((await stops(change)).join("\n")).toMatch(problem);
+  });
+
+  it.each<[string, Change, RegExp]>([
+    ["a text that does not fit its place", (o) => { Object.assign(o.texts[0].natural, { w: 500 }); }, /^Page 381: the text "3-20 · Multiplying 2 digits by 1 digit" of "heading" is 500 points wide and its place is 443\.$/m],
+    ["a digit in another place", (o) => { for (const at of [o.texts[6].start, o.texts[6].end]) at.x -= 24; }, /^Page 381: question 1 must have "\d" of its line 2 in the ones, and it stands in the tens\.$/m],
+    ["a PDF of other pages", (o, pages) => put(o, "pdf", pagesPdf([...pages].reverse())), /^Page 381: the PDF draws/m],
+    ["a PDF that cannot be read", (o) => put(o, "pdf", new TextEncoder().encode("%PDF-1.7")), /^The PDF cannot be read\.$/m],
+  ])("a typesetter that gives %s", async (_name, change, problem) => {
     expect((await stops(change)).join("\n")).toMatch(problem);
   });
 

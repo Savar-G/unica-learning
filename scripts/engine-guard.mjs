@@ -6,6 +6,7 @@
  *                        imports render/, the one place that may read files and start Typst. No code imports tests.
  *   engine-purity:       no clock, random source, network, timer, setting or locale in the engine. render/ may use
  *                        files and programs, through its imports, and nothing else of these.
+ *                        A drawing file (.typ) takes its pages, its version and the report input from outside, and no more.
  *   engine-level-branch: no decision on a level or grade. A difference between levels is data.
  *   engine-asset-use:    app code under src/ names no file of the engine that is not code (a drawing, a font, a fixture).
  *                        The type check finds a removed module and Vitest finds the tests of a changed one, but neither
@@ -197,10 +198,20 @@ function levelBranch(source) {
   return found && found.getText(source).slice(0, 80);
 }
 
+/** What a drawing file may take from outside: its pages, the version that it is pinned to, and whether it reports. */
+const TYPST_GIVEN = ['json("pages.json")', "str(sys.version)", '"report" in sys.inputs'];
+/** What depends on the time or the computer, or reads another file, or can make any of these from a text. */
+const TYPST_BANNED = /(?<![\w-])(datetime|sys|random|eval|read|json|csv|yaml|toml|xml|cbor|image|plugin|bibliography|import|include)(?![\w-])/;
+
+/** Only a line that is a note is left out, so a word after code on a line counts, and a word in a text too. */
 function checkTypst(file, text) {
-  const code = text.replace(/\/\/.*$/gm, "");
-  if (!LEVEL_NAME.test(code)) return [];
-  return [{ rule: "engine-level-branch", file, message: `${file} names a level or grade. A drawing file draws the page model and decides nothing.` }];
+  const code = text.replace(/^\s*\/\/.*$/gm, "");
+  const violations = [];
+  if (LEVEL_NAME.test(code)) violations.push({ rule: "engine-level-branch", file, message: `${file} names a level or grade. A drawing file draws the page model and decides nothing.` });
+  const own = TYPST_GIVEN.reduce((left, given) => left.replaceAll(given, ""), code);
+  const banned = own.match(TYPST_BANNED);
+  if (banned) violations.push({ rule: "engine-purity", file, message: `${file} uses ${banned[1]}. A drawing depends on its pages and its pinned program and fonts: no clock, computer, random source or other file. It may use ${TYPST_GIVEN.join(", ")}.` });
+  return violations;
 }
 
 function checkCode(file, text) {

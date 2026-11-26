@@ -29,6 +29,17 @@ const sheetPlace = (id: string) => `Sheet "${id}"`;
 /** How a problem names an entry of a list: by its id when that is readable, else by its place in the list. */
 const nameOf = (what: string, raw: unknown, index: number) => (isRecord(raw) && isId(raw.id) ? `${what} "${raw.id}"` : `${what} ${index + 1}`);
 
+/** A shape that throws is a fault in its code, and no problem of the file. The message says which row met it. */
+export class ShapeFault extends Error {}
+
+function ofShape<T>(at: string, step: () => T): T {
+  try {
+    return step();
+  } catch (cause) {
+    throw new ShapeFault(`${at}: the shape fails (${cause instanceof Error ? cause.message : String(cause)})`, { cause });
+  }
+}
+
 function readRow(r: FieldReader, place: string, raw: unknown, index: number, shapes: ShapeLibrary): SnapshotRow | null {
   const at = `${place}, ${nameOf("row", raw, index)}`;
   const fields = r.object(at, raw, ["id", "shape", "items", "limits"]);
@@ -40,13 +51,13 @@ function readRow(r: FieldReader, place: string, raw: unknown, index: number, sha
     r.problem(at, `there is no shape ${JSON.stringify(fields.shape)}`);
     return null;
   }
-  const limits = shape.readLimits(fields.limits);
+  const limits = ofShape(at, () => shape.readLimits(fields.limits));
   if (!limits.ok) {
     r.problem(at, limits.problem);
     return null;
   }
   if (id === null || items === null) return null;
-  const possible = shape.count(limits.limits);
+  const possible = ofShape(at, () => shape.count(limits.limits));
   if (possible < items) r.problem(at, `the row asks for ${items} different questions and its limits allow ${possible}`);
   return { id, shape, limits: limits.limits, items };
 }
@@ -56,9 +67,9 @@ function checkRowsRise(r: FieldReader, place: string, rows: readonly SnapshotRow
   rows.forEach((row, i) => {
     const above = rows[i - 1];
     if (!above || above.shape !== row.shape) return;
-    const now = row.shape.difficultyRange(row.limits);
-    const before = above.shape.difficultyRange(above.limits);
-    if (now.easiest < before.easiest || now.hardest < before.hardest) r.problem(`${place}, row "${row.id}"`, "this row is easier than the row above it");
+    const at = `${place}, row "${row.id}"`;
+    const [now, before] = [row, above].map(({ shape, limits }) => ofShape(at, () => shape.difficultyRange(limits)));
+    if (now.easiest < before.easiest || now.hardest < before.hardest) r.problem(at, "this row is easier than the row above it");
   });
 }
 
@@ -68,8 +79,10 @@ function checkFit(r: FieldReader, place: string, side: Side, template: PageTempl
   if (asked > places) r.problem(place, `${asked} questions do not fit the template "${template.id}", which has ${places} places`);
   for (const row of rows) {
     const at = `${place}, row "${row.id}"`;
-    for (const { question, answer } of formsOf(row.shape, row.limits)) {
-      const face = row.shape.face(question);
+    const forms = ofShape(at, () => formsOf(row.shape, row.limits));
+    if (forms.length === 0) r.problem(at, "the shape gives no form of its questions, so their size is not known");
+    for (const { question, answer } of forms) {
+      const face = ofShape(at, () => row.shape.face(question));
       const problem = fitProblem(template, face, answer);
       if (problem) r.problem(at, template.faces.includes(face.kind) ? `the widest question, ${questionText(face, answer)}, ${problem}` : `the template "${template.id}" has no place for ${face.kind === "equation" ? "an" : "a"} ${face.kind} question`);
       // One form says what is wrong: a template that is too small is too small for many of them.

@@ -5,9 +5,9 @@ import { execFile } from "node:child_process";
 import { access, chmod, constants, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { IMAGE_PIXELS_PER_INCH, type DrawnText, type PageModel, type Position } from "../contract";
+import { IMAGE_PIXELS_PER_INCH, type PageModel } from "../contract";
 import { sha256 } from "../hash";
-import { RenderError, type Renderer, type Rendering } from "../renderer";
+import { RenderError, type Renderer, type Rendering, type Report } from "../renderer";
 import { isRecord } from "../shapes/shape";
 import { PINS, type Pins } from "./pins";
 import { readRegularFile } from "./regular-file";
@@ -129,10 +129,12 @@ function typst(program: string, folder: string, args: readonly string[], timeout
   });
 }
 
-const REPORT = "(positions: query(<position>).map(it => it.value), texts: query(<drawn>).map(it => it.value))";
+const REPORT = "(positions: query(<position>), texts: query(<drawn>), starts: query(<start>), ends: query(<end>)).pairs().map(((name, all)) => (name, all.map(it => it.value))).to-dict()";
+/** How Typst names the weights of the fonts. */
+const WEIGHTS: Readonly<Record<string, number>> = { regular: 400, semibold: 600 };
 
 /** What Typst says that it drew. A number that cannot be read becomes NaN, which matches no place in the model. */
-function readReport(json: string): { positions: Position[]; texts: DrawnText[] } {
+function readReport(json: string): Report {
   const report: unknown = JSON.parse(json);
   const list = (name: string): Record<string, unknown>[] => {
     const values = isRecord(report) ? report[name] : null;
@@ -140,19 +142,51 @@ function readReport(json: string): { positions: Position[]; texts: DrawnText[] }
     return values;
   };
   const number = (value: unknown) => (typeof value === "number" ? value : Number.NaN);
+  const point = (value: unknown) => (isRecord(value) ? { x: number(value.x), y: number(value.y) } : { x: Number.NaN, y: Number.NaN });
+  // Each text has one start and one end, in the order of the pages.
+  const [starts, ends] = [list("starts"), list("ends")];
   return {
     positions: list("positions").map((p) => ({ id: String(p.id), sheet: number(p.sheet), rect: { x: number(p.x), y: number(p.y), w: number(p.w), h: number(p.h) } })),
-    texts: list("texts").map((t) => ({ sheet: number(t.sheet), x: number(t.x), y: number(t.y), text: String(t.text) })),
+    texts: list("texts").map((t, i) => ({
+      sheet: number(t.sheet), x: number(t.x), y: number(t.y), text: String(t.text),
+      size: number(t.size), weight: number(WEIGHTS[String(t.weight)]), start: point(starts[i]), end: point(ends[i]),
+      natural: { w: number(t.width), capitals: number(t.capitals), above: number(t.above), below: number(t.below) },
+      flow: isRecord(t.flow) ? { space: number(t.flow.space), rise: number(t.flow.rise), fall: number(t.flow.fall) } : null,
+    })),
   };
 }
 
-async function draw(
-  { pins, program, template, fonts: fontFiles }: DrawingKit,
-  folder: string,
-  pages: readonly PageModel[],
-  stageBytes: Uint8Array | null,
-  timeoutMs: number,
-): Promise<Rendering> {
+/** The folder of one drawing, with the checked files in it. */
+interface Drawing { folder: string; run(args: readonly string[]): Promise<string>; pages: readonly PageModel[] }
+
+const FONT_ARGS = ["--ignore-system-fonts", "--ignore-embedded-fonts", "--font-path", "fonts"];
+const COMPILE = ["compile", ...FONT_ARGS, "--creation-timestamp", "0"];
+
+async function drawPdf({ folder, run }: Drawing): Promise<Uint8Array> {
+  await run([...COMPILE, "page.typ", "book.pdf"]);
+  return readFile(join(folder, "book.pdf"));
+}
+
+async function drawImages({ folder, run, pages }: Drawing): Promise<Uint8Array[]> {
+  await run([...COMPILE, "--ppi", String(IMAGE_PIXELS_PER_INCH), "page.typ", "page-{p}.png"]);
+  const drawn = (await readdir(folder)).filter((f) => f.endsWith(".png")).length;
+  if (drawn !== pages.length) throw new RenderError(`Typst drew ${drawn} pages and the book has ${pages.length}.`);
+  return Promise.all(pages.map((_, i) => readFile(join(folder, `page-${i + 1}.png`))));
+}
+
+const drawReport = async ({ run }: Drawing): Promise<Report> => readReport(await run(["eval", ...FONT_ARGS, "--input", "report=yes", REPORT, "--in", "page.typ"]));
+
+async function drawAll(drawing: Drawing): Promise<Rendering> {
+  const runs = await Promise.allSettled([drawPdf(drawing), drawImages(drawing), drawReport(drawing)] as const);
+  // All three have ended here, so a failed one leaves nothing that still writes to the folder.
+  const failed = runs.find((r) => r.status === "rejected");
+  const [pdf, images, report] = runs;
+  if (failed || pdf.status === "rejected" || images.status === "rejected" || report.status === "rejected") throw failed?.reason;
+  return { pdf: pdf.value, images: images.value, ...report.value };
+}
+
+/** Puts the checked files in the folder, with the program when it may not run in its own place. */
+async function fillFolder({ pins, program, template, fonts }: DrawingKit, folder: string, pages: readonly PageModel[], stageBytes: Uint8Array | null): Promise<string> {
   let executable = program;
   if (stageBytes) {
     executable = join(folder, "typst");
@@ -162,22 +196,8 @@ async function draw(
   await writeFile(join(folder, "page.typ"), template);
   await writeFile(join(folder, "pages.json"), JSON.stringify({ typst: pins.version, pages }));
   await mkdir(join(folder, "fonts"));
-  for (const { file, bytes } of fontFiles) await writeFile(join(folder, "fonts", file), bytes);
-  const fonts = ["--ignore-system-fonts", "--ignore-embedded-fonts", "--font-path", "fonts"];
-  const still = [...fonts, "--creation-timestamp", "0"];
-  const runs = await Promise.allSettled([
-    typst(executable, folder, ["compile", ...still, "page.typ", "book.pdf"], timeoutMs),
-    typst(executable, folder, ["compile", ...still, "--ppi", String(IMAGE_PIXELS_PER_INCH), "page.typ", "page-{p}.png"], timeoutMs),
-    typst(executable, folder, ["eval", ...fonts, REPORT, "--in", "page.typ"], timeoutMs),
-  ]);
-  // All three have ended here, so a failed one leaves nothing that still writes to the folder.
-  const failed = runs.find((r) => r.status === "rejected");
-  if (failed) throw failed.reason;
-  const [, , report] = runs.map((r) => (r.status === "fulfilled" ? r.value : ""));
-  const drawn = (await readdir(folder)).filter((f) => f.endsWith(".png")).length;
-  if (drawn !== pages.length) throw new RenderError(`Typst drew ${drawn} pages and the book has ${pages.length}.`);
-  const images = await Promise.all(pages.map((_, i) => readFile(join(folder, `page-${i + 1}.png`))));
-  return { pdf: await readFile(join(folder, "book.pdf")), images, ...readReport(report) };
+  for (const { file, bytes } of fonts) await writeFile(join(folder, "fonts", file), bytes);
+  return executable;
 }
 
 /** Checks the program and the fonts against their pins, reads the drawing file, and gives the renderer that uses them. */
@@ -185,18 +205,22 @@ export async function openRenderer(assets: RenderAssets, pins: Pins = PINS, opti
   const timeoutMs = options.timeoutMs ?? TIME_LIMIT_MS;
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > TIME_LIMIT_MS) throw new RenderError(`The time limit must be a whole number of milliseconds from 1 to ${TIME_LIMIT_MS}.`);
   const kit = await readKit(assets, pins);
+  const inFolder = async <T>(pages: readonly PageModel[], work: (drawing: Drawing) => Promise<T>): Promise<T> => {
+    if (pages.length === 0) throw new RenderError("There is no page to draw.");
+    // Another program in its place since the check would draw a book that its record does not name.
+    const checked = await checkProgram(kit.program, kit.programSha256, pins.version, assets.target, kit.copyIfNotExecutable);
+    const folder = await mkdtemp(join(tmpdir(), "workbook-v2-"));
+    try {
+      const executable = await fillFolder(kit, folder, pages, checked.stageBytes);
+      return await work({ folder, pages, run: (args) => typst(executable, folder, args, timeoutMs) });
+    } finally {
+      await rm(folder, { recursive: true, force: true });
+    }
+  };
   return {
     identity: { typst: pins.version, program: kit.programSha256, template: sha256(kit.template), fonts: { ...pins.fonts } },
-    async render(pages) {
-      if (pages.length === 0) throw new RenderError("There is no page to draw.");
-      // Another program in its place since the check would draw a book that its record does not name.
-      const checked = await checkProgram(kit.program, kit.programSha256, pins.version, assets.target, kit.copyIfNotExecutable);
-      const folder = await mkdtemp(join(tmpdir(), "workbook-v2-"));
-      try {
-        return await draw(kit, folder, pages, checked.stageBytes, timeoutMs);
-      } finally {
-        await rm(folder, { recursive: true, force: true });
-      }
-    },
+    render: (pages) => inFolder(pages, drawAll),
+    images: (pages) => inFolder(pages, drawImages),
+    report: (pages) => inFolder(pages, drawReport),
   };
 }

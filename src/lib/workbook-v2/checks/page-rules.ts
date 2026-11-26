@@ -1,6 +1,7 @@
 // The layout rules of a page. They read the page model and the items, never the templates, so a wrong template fails.
-import { isPrintable, PAPER, partRegionName, PRINT_RULES, type AnswerPart, type BookItem, type Ink, type PageModel, type Rect, type Region, type RegionRole } from "../contract";
+import { isPrintable, PAPER, partRegionName, PRINT_RULES, tokenText, wordToken, type AnswerPart, type BookItem, type FlowToken, type Ink, type PageModel, type Rect, type Region, type RegionRole } from "../contract";
 import { faceBlanks, faceText, printProblems, type Area } from "./face-print";
+import { framePrintProblems, labelProblems } from "./frame-print";
 import { bottom, EPSILON, inside, near, overlaps, right } from "./rects";
 
 const { spineZone, outerMargin, qrMin, reach: CLEAR, answer: ANSWER } = PRINT_RULES;
@@ -15,7 +16,8 @@ const ONE_LINE_HEIGHT = 24;
 
 /** The last part of the id of a region, as problems show it. */
 export const regionName = (region: Region) => `"${region.id.slice(region.id.lastIndexOf("/") + 1)}"`;
-const texts = (ink: readonly Ink[]) => ink.flatMap((i) => (i.kind === "text" ? [i.text] : []));
+const textOf = (ink: Ink): string | null => (ink.kind === "text" ? ink.text : ink.kind === "flow" ? ink.tokens.map(tokenText).join(" ") : null);
+const texts = (ink: readonly Ink[]) => ink.flatMap((i) => textOf(i) ?? []);
 const size = (n: number) => Math.round(n * 100) / 100;
 
 type Tell = (problem: string) => void;
@@ -38,15 +40,32 @@ function checkEdges(page: PageModel, live: Rect, tell: Tell): void {
   }
 }
 
+/** A word is split after each of its hyphens and nowhere else, and math is not split. */
+function isGoodToken(token: FlowToken): boolean {
+  const text = tokenText(token);
+  if (text === "" || text.trim() !== text) return false;
+  return token.kind === "math" ? token.pieces.length === 1 : !text.includes(" ") && wordToken(text).pieces.join("\n") === token.pieces.join("\n");
+}
+
+function checkFlows(region: Region, tell: Tell): void {
+  for (const ink of region.ink) {
+    if (ink.kind !== "flow") continue;
+    if (ink.tokens.length === 0) tell(`${regionName(region)} has flow text with no token`);
+    for (const token of ink.tokens) if (!isGoodToken(token)) tell(`${regionName(region)} has the token "${tokenText(token)}", which may not be split like that`);
+  }
+}
+
 function checkInk(page: PageModel, tell: Tell): void {
   for (const region of page.regions) {
     if (region.ink.some((i) => !inside(i.rect, region.rect))) tell(`the ink of ${regionName(region)} is outside it`);
     if (region.ink.some((i) => i.color !== "black")) tell(`${regionName(region)} has ink that is not black`);
     region.ink.forEach((ink, i) => {
-      if (ink.kind !== "text") return;
-      if (!isPrintable(ink.text)) tell(`${regionName(region)} has the text "${ink.text}", which the fonts cannot print`);
-      if (region.ink.some((other, j) => j !== i && overlaps(ink.rect, other.rect))) tell(`the text "${ink.text}" of ${regionName(region)} is over other ink`);
+      const printed = textOf(ink);
+      if (printed === null) return;
+      if (!isPrintable(printed)) tell(`${regionName(region)} has the text "${printed}", which the fonts cannot print`);
+      if (region.ink.some((other, j) => j !== i && overlaps(ink.rect, other.rect))) tell(`the text "${printed}" of ${regionName(region)} is over other ink`);
     });
+    checkFlows(region, tell);
     const mustBeEmpty = region.role === "answer" ? region.ink.some((i) => i.kind !== "outline") : (region.role === "reach" || region.role === "work" || region.role === "slot") && region.ink.length > 0;
     if (mustBeEmpty) tell(`${regionName(region)} must be empty`);
   }
@@ -239,6 +258,7 @@ function checkItem(page: PageModel, item: BookItem, tell: Tell): void {
   }
   const areas = checkParts(page, item, question, tell);
   if (!question) return;
+  if (label && slot) for (const problem of labelProblems(item.face, label, slot, question, areas)) tell(`question ${item.number}: ${problem}`);
   for (const problem of printProblems(item.face, question, areas, isBelowAnother(page, item))) tell(`question ${item.number} ${problem}`);
   const work = parts.get("work");
   if (work) checkWork(work, item, question, areas, tell);
@@ -286,6 +306,7 @@ export function checkPage(page: PageModel, items: readonly BookItem[]): string[]
   checkFrame(page, tell);
   checkQr(page, live, tell);
   checkMarks(page, live, tell);
+  for (const problem of framePrintProblems(page, live)) tell(problem);
   checkColumns(page, tell);
   const onPage = items.filter((i) => i.sheetId === page.sheetId && i.side === page.side && i.id.startsWith(`${page.id}/`));
   checkOverlaps(page, new Set(onPage.filter((i) => i.face.kind !== "column").map((i) => i.id)), tell);

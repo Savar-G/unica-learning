@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { BookItem, Ink, PageModel, Region, RegionRole } from "../contract";
+import { mathToken, wordToken, type BookItem, type FlowToken, type Ink, type PageModel, type Region, type RegionRole } from "../contract";
 import { divisionBook, factsBook, goodBook, placesBook, type GoodBook } from "../testing/sample";
 import { checkPage } from "./page-rules";
 
@@ -187,6 +187,35 @@ describe("a question with blanks", () => {
   });
 });
 
+describe("flow text on a page", () => {
+  const problemsWith = (tokens: FlowToken[], overOther = false): string => {
+    const book = goodBook();
+    const question = find(book.pages[0], "question");
+    const { rect } = question;
+    const ink: Ink = { kind: "flow", rect: { ...rect, h: 20 }, color: "black", tokens, size: 12, weight: 400, leading: 4 };
+    question.ink = overOther ? [...question.ink, ink] : [ink];
+    return problemsOf(book).join("\n");
+  };
+
+  it("with good tokens breaks only the rules that this question prints something else", () => {
+    expect(problemsWith([wordToken("Mia"), wordToken("hand-woven"), mathToken("12 - 5")])).toMatch(/^Page 381: question 1 prints "Mia hand-woven 12 - 5" and must print "[^"]*"\.\n(Page 381: question 1 must print [^\n]*\n)+Page 381: question 1 prints flow text that its face does not have there\.$/);
+  });
+
+  it.each<[string, FlowToken[], RegExp]>([
+    ["a character that the fonts do not hold", [wordToken("二")], /"question-1" has the text "二", which the fonts cannot print/],
+    ["a word that is split in another place", [{ kind: "word", pieces: ["wo", "ven"] }], /"question-1" has the token "woven", which may not be split like that/],
+    ["a word that is not split after its hyphen", [{ kind: "word", pieces: ["hand-woven"] }], /the token "hand-woven", which may not be split like that/],
+    ["a word with a space", [wordToken("two words")], /the token "two words", which may not be split like that/],
+    ["math in two pieces", [{ kind: "math", pieces: ["5 +", " 5"] }], /the token "5 \+ 5", which may not be split like that/],
+    ["math with a space at its end", [mathToken("5 + ")], /the token "5 \+ ", which may not be split like that/],
+    ["an empty word", [wordToken("")], /the token "", which may not be split like that/],
+    ["a token with no piece", [{ kind: "math", pieces: [] }], /the token "", which may not be split like that/],
+    ["no token", [], /"question-1" has flow text with no token/],
+  ])("%s is a problem", (_name, tokens, problem) => expect(problemsWith(tokens)).toMatch(problem));
+
+  it("over other ink is a problem", () => expect(problemsWith([wordToken("Mia")], true)).toMatch(/the text "Mia" of "question-1" is over other ink/));
+});
+
 describe("a question in a bracket", () => {
   // Page 7 has brackets with a remainder and two lines of work, page 5 facts, page 14 six lines of work.
   const good = divisionBook();
@@ -340,6 +369,67 @@ describe("what a question prints", () => {
     ["with a character less", (ink) => (ink.kind === "text" ? { ...ink, text: ink.text.slice(0, -1) } : null)],
     ["of another kind", (ink) => (ink.kind === "fill" ? { kind: "outline", rect: ink.rect, color: ink.color, width: 0.75 } : null)],
   ];
+
+  /** The frame of both sides: the rectangle, and the page. */
+  const FRAME = [0, 1].flatMap((index) => ["mark-tl", "mark-tr", "mark-br", "mark-bl", "heading", "instruction", "footer"].map((name): [string, string, PageModel] => [goodBook().pages[index].side, name, goodBook().pages[index]]));
+  const MORE: typeof CHANGES = [
+    ["in another size", (ink) => (ink.kind === "text" ? { ...ink, size: ink.size + 1 } : null)],
+    ["in another weight", (ink) => (ink.kind === "text" ? { ...ink, weight: ink.weight === 600 ? 400 : 600 } : null)],
+    ["at another end", (ink) => (ink.kind === "text" ? { ...ink, align: ink.align === "left" ? "right" : "left" } : null)],
+  ];
+  /** The changes of the ink of one rectangle that pass. */
+  const passing = (page: PageModel, id: string, items: BookItem[]): string[] => {
+    const after = (change: (ink: Ink[]) => Ink[]) => checkPage({ ...page, regions: page.regions.map((r) => (r.id === id ? { ...r, ink: change([...r.ink]) } : r)) }, items);
+    const own = page.regions.find((r) => r.id === id)!;
+    expect(after((ink) => ink)).toEqual([]);
+    return own.ink.flatMap((ink, at) => [
+      ...[...CHANGES, ...MORE].flatMap(([name, change]) => { const changed = change(ink); return changed && after((all) => all.with(at, changed)).length === 0 ? [`${name}: ${JSON.stringify(ink)}`] : []; }),
+      ...(after((all) => all.toSpliced(at, 1)).length === 0 ? [`removed: ${JSON.stringify(ink)}`] : []),
+      ...(after((all) => [...all, ink]).length === 0 ? [`twice: ${JSON.stringify(ink)}`] : []),
+    ]);
+  };
+
+  it.each(FRAME)("is looked at in the frame too: %s, %s", (_side, name, page) => {
+    const { items } = goodBook();
+    expect(passing(page, `${page.id}/${name}`, items)).toEqual([]);
+    // The whole rectangle in another place, or in another size, with its ink.
+    for (const change of [(r: Region) => move(r, 1, 0), (r: Region) => move(r, 0, -1), (r: Region) => { r.rect = { ...r.rect, w: r.rect.w + 1 }; }]) {
+      const changed = structuredClone(page);
+      change(changed.regions.find((r) => r.id === `${page.id}/${name}`)!);
+      expect(checkPage(changed, items)).not.toEqual([]);
+    }
+  });
+
+  it("has all texts of an equation at most a little before its area", () => {
+    const { pages, items } = factsBook();
+    const after = (dx: number) => checkPage({ ...pages[0], regions: pages[0].regions.map((r) => (r.id.endsWith("/question-1") ? { ...r, rect: { ...r.rect, x: r.rect.x + dx }, ink: r.ink.map((i) => ({ ...i, rect: { ...i.rect, x: i.rect.x + dx } })) } : r)) }, items).filter((p) => p.includes("question 1 must print"));
+    expect(after(0)).toEqual([]);
+    for (const dx of [-1, -3, 2.5]) expect(after(dx).length).toBe(4);
+  });
+
+  it.each([...cases])("has its number beside its first line: %s", (_name, { page, item }) => {
+    const items = books.flatMap((b) => b.items).filter((i) => i.id.startsWith(`${page.id}/`));
+    const label = page.regions.find((r) => r.item === item.id && r.role === "label")!;
+    expect(passing(page, label.id, items)).toEqual([]);
+    for (const [dx, dy] of [[0, 4], [0, -4], [1, 0]]) {
+      const changed = structuredClone(page);
+      move(changed.regions.find((r) => r.id === label.id)!, dx, dy);
+      expect(checkPage(changed, items).join()).toMatch(/its label is at/);
+    }
+  });
+
+  it.each<[string, (p: PageModel) => unknown, RegExp]>([
+    ["a scan mark with no ink", (p) => { find(p, "scan-mark", 1).ink = []; }, /^Page 381: the scan mark "mark-tr" must print a line in \(562\.5, 36, 13\.5 by 2\)\.$/m],
+    ["a scan mark with one line", (p) => { find(p, "scan-mark").ink.pop(); }, /the scan mark "mark-tl" must print a line in \(90, 36, 2 by 13\.5\)/],
+    ["a scan mark that is turned", (p) => { const r = find(p, "scan-mark"); r.ink[0].rect = { ...r.ink[0].rect, y: r.rect.y + r.rect.h - 2 }; }, /the scan mark "mark-tl" prints a line that it does not have there/],
+    ["a heading of size 0", (p) => { const [ink] = find(p, "heading").ink; if (ink.kind === "text") ink.size = 0; }, /^Page 381: the heading must print a text of 15 points and weight 600 at the left in \(111\.5, 36, 443 by 20\)\.$/m],
+    ["an instruction that is drawn as a flow", (p) => { const r = find(p, "instruction"); r.ink = [{ kind: "flow", rect: r.rect, color: "black", tokens: p.instruction.split(" ").map(wordToken), size: 12, weight: 400, leading: 4 }]; }, /the instruction prints flow text that it does not have there/],
+    ["a label in another place of its slot", (p) => move(find(p, "label"), 0, 100), /^Page 381: question 1: its label is at \(90, 206, 24 by 28\) and must be at \(90, 106, 24 by 28\)\.$/m],
+  ])("%s is a problem", (_name, change, problem) => {
+    const book = goodBook();
+    change(book.pages[0]);
+    expect(problemsOf(book).join("\n")).toMatch(problem);
+  });
 
   it.each([...cases])("must be there, at its place, in its size: %s", (_name, { page: good, item }) => {
     const items = books.flatMap((b) => b.items).filter((i) => i.id.startsWith(`${good.id}/`));

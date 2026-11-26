@@ -66,7 +66,7 @@ export function smallPages(): PageModel[] {
     const heading = named("heading");
     const rect = { ...heading.rect, w: 300 };
     return {
-      ...page, size: { w: 420, h: 370 },
+      ...page, size: { w: 434, h: 394 },
       regions: [named("mark-tl"), { ...heading, rect, ink: heading.ink.map((ink) => ({ ...ink, rect })) }, ...["label-1", "question-1", "answer-1"].map(named), moved(qr, 340 - qr.rect.x, 300 - qr.rect.y)],
     };
   });

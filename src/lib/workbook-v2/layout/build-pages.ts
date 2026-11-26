@@ -17,8 +17,8 @@ export type PagesResult = { ok: true; pages: PageModel[] } | { ok: false; proble
 const SIDES: readonly Side[] = ["front", "back"];
 const BLACK = "black";
 const REGULAR = 400;
-const BOLD = 600;
-const MARK_LINE = 2;
+const { mark: { line: MARK_LINE }, heading: HEADING, instruction: INSTRUCTION, footer: FOOTER } = PRINT_RULES.frame;
+const LABEL = PRINT_RULES.label;
 
 const text = (rect: Rect, value: string, size: number, weight: number, align: "left" | "center" | "right"): Ink =>
   ({ kind: "text", rect, color: BLACK, text: value, size, weight, align });
@@ -38,6 +38,9 @@ function markInk(rect: Rect, corner: keyof PageFrame["marks"]): Ink[] {
 const digitsInk = (cells: readonly Rect[], digits: string): Ink[] =>
   [...digits].map((digit, i) => text(cells[cells.length - digits.length + i], digit, 22, REGULAR, "center"));
 
+/** The parts of a question that decide its rectangles. */
+export type LaidOut = Pick<BookItem, "id" | "number" | "face" | "answer">;
+
 type MakeRegion = (role: RegionRole, rect: Rect, ink?: Ink[], part?: string | null) => Region;
 
 const areaRegions = (make: MakeRegion, { answer, reach }: AnswerArea, part: string): Region[] => [
@@ -45,7 +48,7 @@ const areaRegions = (make: MakeRegion, { answer, reach }: AnswerArea, part: stri
   make("reach", reach, [], part),
 ];
 
-function columnRegions(make: MakeRegion, place: ColumnPlace, { face, answer }: BookItem): Region[] {
+function columnRegions(make: MakeRegion, place: ColumnPlace, { face, answer }: LaidOut): Region[] {
   if (face.kind !== "column" || answer.parts.length !== 1) throw new Error("a stack has one answer area");
   const signCell = place.bottomCells[place.bottomCells.length - face.bottom.length - 1];
   return [
@@ -72,14 +75,14 @@ function tokenInk(make: MakeRegion, cells: readonly TokenCell[], tokens: readonl
   return { ink, areas };
 }
 
-function tokenRegions(make: MakeRegion, place: TokenPlace, { face }: BookItem): Region[] {
+function tokenRegions(make: MakeRegion, place: TokenPlace, { face }: LaidOut): Region[] {
   const tokens = tokensOf(face);
   const { ink, areas } = tokenInk(make, cellsFor(place, tokens) ?? [], tokens, place.textSize);
   return [make("question", place.question, [...(place.rule ? [fill(place.rule)] : []), ...ink]), ...areas];
 }
 
 /** The texts above, then the bracket, so that the ink is in the order of the face. */
-function bracketRegions(make: MakeRegion, place: BracketPlace, { face }: BookItem): Region[] {
+function bracketRegions(make: MakeRegion, place: BracketPlace, { face }: LaidOut): Region[] {
   if (face.kind !== "bracket") throw new Error("a bracket has two numbers");
   const { ink, areas } = tokenInk(make, place.above, face.above, 18);
   return [
@@ -96,7 +99,7 @@ function bracketRegions(make: MakeRegion, place: BracketPlace, { face }: BookIte
 }
 
 /** The prompt on the left, and each label on the right of its cell, next to its answer area. The rows take the first fields. */
-function fieldsRegions(make: MakeRegion, place: FieldsPlace, { face }: BookItem): Region[] {
+function fieldsRegions(make: MakeRegion, place: FieldsPlace, { face }: LaidOut): Region[] {
   if (face.kind !== "fields" || face.rows.length > place.fields.length) throw new Error("the rows of a question must fit its place");
   const rows = face.rows.map((row, i) => ({ row, ...place.fields[i] }));
   return [
@@ -110,19 +113,19 @@ function fieldsRegions(make: MakeRegion, place: FieldsPlace, { face }: BookItem)
 }
 
 /** The rectangles of a question that the kind of its place decides. */
-function faceRegions(make: MakeRegion, place: ItemPlace, item: BookItem): Region[] {
+function faceRegions(make: MakeRegion, place: ItemPlace, item: LaidOut): Region[] {
   if ("fields" in place) return fieldsRegions(make, place, item);
   if ("forms" in place) return tokenRegions(make, place, item);
   return "above" in place ? bracketRegions(make, place, item) : columnRegions(make, place, item);
 }
 
 /** The rectangles of one question that fits its place (`placeProblem`). */
-export function itemRegions(place: ItemPlace, item: BookItem, at: (name: string) => string): Region[] {
+export function itemRegions(place: ItemPlace, item: LaidOut, at: (name: string) => string): Region[] {
   const { number } = item;
   const make: MakeRegion = (role, rect, ink = [], part = null) => ({ id: at(partRegionName(role, number, part)), role, rect, item: item.id, part, ink });
   return [
     make("slot", place.slot),
-    make("label", place.label, [text(place.label, String(number), 11, BOLD, "left")]),
+    make("label", place.label, [text(place.label, String(number), LABEL.size, LABEL.weight, "left")]),
     ...faceRegions(make, place, item),
   ];
 }
@@ -148,10 +151,10 @@ function buildPage({ sheet, levelName, attempt, qr, items }: PlannedSheet, side:
     topicCode: sheet.topic.code, topicTitle: sheet.topic.title, size: { ...PAPER },
     regions: [
       ...(["tl", "tr", "br", "bl"] as const).map((corner) => region(`mark-${corner}`, "scan-mark", marks[corner], markInk(marks[corner], corner))),
-      region("heading", "heading", heading, [text(heading, `${sheet.topic.code} · ${sheet.topic.title}`, 15, BOLD, "left")]),
-      region("instruction", "instruction", frame.instruction, [text(frame.instruction, instruction, 12, REGULAR, "left")]),
+      region("heading", "heading", heading, [text(heading, `${sheet.topic.code} · ${sheet.topic.title}`, HEADING.size, HEADING.weight, "left")]),
+      region("instruction", "instruction", frame.instruction, [text(frame.instruction, instruction, INSTRUCTION.size, INSTRUCTION.weight, "left")]),
       ...onSide.flatMap((item, i) => itemRegions(places[i], item, at)),
-      region("footer", "footer", footer, [text(footer, `Level ${levelName} · Page ${page}`, 11, REGULAR, side === "front" ? "left" : "right")]),
+      region("footer", "footer", footer, [text(footer, `Level ${levelName} · Page ${page}`, FOOTER.size, FOOTER.weight, side === "front" ? "left" : "right")]),
       region("qr", "qr", frame.qr, squares),
     ],
   };

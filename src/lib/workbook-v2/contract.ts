@@ -2,7 +2,7 @@
 // it, so it imports nothing. All lengths are points (72 to the inch) from the top left corner of the page.
 
 /** Changes when the same input can give other bytes. A book records it, so a replay can tell which part differs. */
-export const ENGINE_VERSION = "2.0.0-s7";
+export const ENGINE_VERSION = "2.0.0-s8";
 
 export interface Rect { x: number; y: number; w: number; h: number }
 
@@ -78,11 +78,19 @@ export interface BookItem {
 export const REGION_ROLES = ["heading", "instruction", "footer", "qr", "scan-mark", "slot", "label", "question", "answer", "reach", "work"] as const;
 export type RegionRole = (typeof REGION_ROLES)[number];
 
-/** What the typesetter draws. Each rectangle is on the page, not inside its region. */
+/** A token of flow text. A line may end between two pieces of a word and between two tokens, and nowhere else. Math is one piece. */
+export interface FlowToken { kind: "word" | "math"; pieces: string[] }
+/** A word may be split after each hyphen. */
+export const wordToken = (word: string): FlowToken => ({ kind: "word", pieces: word.split(/(?<=-)/) });
+export const mathToken = (math: string): FlowToken => ({ kind: "math", pieces: [math] });
+export const tokenText = ({ pieces }: FlowToken): string => pieces.join("");
+
+/** What the typesetter draws. A text is one line in the middle of the height of its rectangle; a flow is lines from its top. Each rectangle is on the page, not inside its region. */
 export type Ink =
   | { kind: "fill"; rect: Rect; color: string }
   | { kind: "outline"; rect: Rect; color: string; width: number }
-  | { kind: "text"; rect: Rect; color: string; text: string; size: number; weight: number; align: "left" | "center" | "right" };
+  | { kind: "text"; rect: Rect; color: string; text: string; size: number; weight: number; align: "left" | "center" | "right" }
+  | { kind: "flow"; rect: Rect; color: string; tokens: FlowToken[]; size: number; weight: number; leading: number };
 
 export interface Region {
   id: string;
@@ -119,8 +127,23 @@ export interface PageModel {
 /** Where the typesetter says that it put a region. `sheet` counts the pages of the file from 1. */
 export interface Position { id: string; sheet: number; rect: Rect }
 
-/** A text that the typesetter says that it drew, with the top left corner of the rectangle it drew it in. */
-export interface DrawnText { sheet: number; x: number; y: number; text: string }
+/** A text that the typesetter says that it drew. */
+export interface DrawnText {
+  sheet: number;
+  /** The top left corner of the rectangle that it drew a text in. A piece of flow text has no rectangle of its own. */
+  x: number;
+  y: number;
+  text: string;
+  size: number;
+  weight: number;
+  /** Where the text starts and ends, on the line that its letters stand on. */
+  start: { x: number; y: number };
+  end: { x: number; y: number };
+  /** Its size with all the room it wants: its width, the height of a capital, and how far its ink goes above and below its line. */
+  natural: { w: number; capitals: number; above: number; below: number };
+  /** For a piece of a flow: the width of a space, and the parts of a line above and below the line that its letters stand on. */
+  flow: { space: number; rise: number; fall: number } | null;
+}
 
 /** How fine a page image is. A page image is the paper at this size, so a point of the model has one place in it. */
 export const IMAGE_PIXELS_PER_INCH = 150;
@@ -149,8 +172,20 @@ export const PRINT_RULES = {
   questionSize: { min: 16, max: 30 },
   /** A line of a question, and its distance to the digits that it belongs to. */
   line: { height: 1.2, gap: 2 },
+  /** The most space between the texts of an equation and the reach of the area after them. */
+  equationGap: 2,
   /** The widths of the number outside a bracket and of its sign. */
   bracket: { outside: 28, sign: 12 },
+  /** The frame of a page: the space beside its scan marks and its QR code, the marks and their lines, and its texts. */
+  frame: {
+    gap: 8,
+    mark: { size: 13.5, line: 2 },
+    heading: { h: 20, size: 15, weight: 600 },
+    instruction: { top: 26, h: 18, size: 12, weight: 400 },
+    footer: { h: 16, size: 11, weight: 400 },
+  },
+  /** The number of a question, at the left end of its slot. The one of a stack has the width of a digit place. */
+  label: { w: 20, size: 11, weight: 600 },
   maxAnswerColumns: 2,
   maxInstructionCharacters: 60,
   maxTitleCharacters: 44,
