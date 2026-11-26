@@ -40,7 +40,7 @@ function server() {
     }
     if (url.endsWith("/answers")) {
       posts += 1;
-      return json({ ok: true, step: { ...step, question: question(16), number: 16, answered: [] } });
+      return json({ ok: true, step: { ...step, question: { ...question(16), level: 12 }, number: 16, answered: [] } });
     }
     if (url.endsWith("/context")) return json({ ok: true });
     if (init?.method === "POST") return json({ ok: true, id: "test-1", resumed: true });
@@ -191,4 +191,20 @@ it("tells the grown-up how to restart a test with insufficient evidence (#769)",
   await pressNext();
   expect(host.textContent).toContain("Please ask your grown-up to start a new test.");
   expect(host.querySelector('a[href="/account"]')?.textContent).toBe("Back to your account");
+});
+
+it("enters and submits a negative answer on an upper-grade question", async () => {
+  expect(host.querySelector('[aria-label="Minus"]')).toBeNull();
+  await pad("9");
+  await pressNext();
+
+  expect(onScreen()).toBe("Question text 16");
+  await pad("−");
+  expect(next().disabled).toBe(true);
+  await pad("1");
+  await pad("7");
+  expect(answerShown()).toBe("-17");
+  await pressNext();
+  const requests = vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === "POST");
+  expect(JSON.parse(String(requests.at(-1)?.[1]?.body))).toMatchObject({ response: "-17" });
 });
