@@ -7,7 +7,7 @@ import type { Rect } from "../contract";
 export type PdfInk =
   | { kind: "fill"; rect: Rect; grey: number }
   | { kind: "outline"; rect: Rect; grey: number; width: number }
-  | { kind: "text"; x: number; y: number; w: number; text: string; size: number; font: string; grey: number };
+  | { kind: "text"; x: number; y: number; w: number; glyphs: number; text: string; size: number; font: string; grey: number };
 
 export interface PdfPage { size: { w: number; h: number }; ink: PdfInk[] }
 
@@ -204,7 +204,8 @@ function readFont(file: PdfFile, given: Value | undefined): Font {
   return { name: isName(base) ? base.name.replace(/^[A-Z]{6}\+/, "") : refuse(CANNOT_READ), textOf, widthOf: readWidths(file.list(widths.get("W")), isNumber(fallback) ? fallback : refuse(CANNOT_READ)) };
 }
 
-interface Graphics { x: number; y: number; flipped: boolean; fill: number; stroke: number; width: number }
+/** What q saves and Q gives back: the place, the colours, the line, and the font and its size. A text matrix is not in it. */
+interface Graphics { x: number; y: number; flipped: boolean; fill: number; stroke: number; width: number; font: Font | null; size: number }
 
 const CLOSE = 0.001;
 
@@ -218,7 +219,7 @@ function rectOf(path: readonly (readonly [number, number])[], closed: boolean): 
   return isRect ? { x, y, w: r - x, h: b - y } : refuse("has a shape that is not a rectangle");
 }
 
-const IGNORED = new Set(["BMC", "BDC", "EMC", "M"]);
+const IGNORED = new Set(["BMC", "BDC", "EMC"]);
 /** Commands that a page has, and that may not come between a path and its paint. */
 const BETWEEN = new Set(["q", "Q", "cm", "cs", "CS", "scn", "SCN", "w", "M", "BT", "ET", "Tr", "Tf", "Tm", "Tj", "TJ", "BMC", "BDC", "EMC"]);
 
@@ -232,11 +233,11 @@ const KERNING = { least: -31, most: 161 };
 /** What the drawing commands of a page draw, in their order. */
 function readDrawing(content: string, height: number, fonts: ReadonlyMap<string, Font>, greys: ReadonlySet<string>): PdfInk[] {
   const ink: PdfInk[] = [];
-  let now: Graphics = { x: 0, y: 0, flipped: false, fill: 0, stroke: 0, width: 1 };
+  let now: Graphics = { x: 0, y: 0, flipped: false, fill: 0, stroke: 0, width: 1, font: null, size: 0 };
   const saved: Graphics[] = [];
   let path: [number, number][] = [];
   let closed = false;
-  let text: { font: Font | null; size: number; placed: boolean } | null = null;
+  let text: { placed: boolean } | null = null;
   /** A point of the page, from its top left corner. */
   const point = (x: number, y: number): [number, number] => [now.x + x, height - (now.y + (now.flipped ? -y : y))];
   const shape = (): Rect => {
@@ -246,31 +247,35 @@ function readDrawing(content: string, height: number, fonts: ReadonlyMap<string,
     return rect;
   };
   const write = (parts: readonly Value[]) => {
-    const font = text?.font ?? refuse("has a font that it does not name");
+    const font = text ? now.font ?? refuse("has a font that it does not name") : refuse(CANNOT_READ);
     if (!text?.placed || !now.flipped) return refuse(TURNED);
     let written = "";
     let width = 0;
     let move = 0;
-    if (isNumber(parts[0])) return refuse("moves the start of a text");
-    if (isNumber(parts.at(-1))) return refuse("moves the end of a text");
+    let glyphs = 0;
     for (const part of parts) {
       if (isNumber(part)) {
         move -= part;
         continue;
       }
       if (!isText(part) || part.text.length % 2 !== 0) return refuse(CANNOT_READ);
+      // An empty text shows no letter, so a move before it and one after it are one move.
+      if (part.text === "") continue;
+      if (glyphs === 0 && move !== 0) return refuse("moves the start of a text");
       if (!(-move >= KERNING.least && -move <= KERNING.most)) return refuse(`moves a letter ${-move} thousandths of its size, which no font of a book does`);
       width += move;
       move = 0;
+      glyphs += part.text.length / 2;
       for (let i = 0; i < part.text.length; i += 2) {
         const code = part.text.charCodeAt(i) * 256 + part.text.charCodeAt(i + 1);
         written += font.textOf.get(code) ?? refuse("has a character that it does not name");
         width += font.widthOf(code);
       }
     }
+    if (move !== 0) return refuse("moves the end of a text");
     const [x, y] = point(0, 0);
     // The space between two tokens of a flow is a text of its own, and draws nothing.
-    if (written.trim() !== "") ink.push({ kind: "text", x, y, w: (width * text.size) / 1000, text: written, size: text.size, font: font.name, grey: now.fill });
+    if (written.trim() !== "") ink.push({ kind: "text", x, y, w: (width * now.size) / 1000, glyphs, text: written, size: now.size, font: font.name, grey: now.fill });
     text.placed = false;
   };
   const TURNED = "turns, tilts or scales what it draws";
@@ -292,19 +297,29 @@ function readDrawing(content: string, height: number, fonts: ReadonlyMap<string,
         now = { ...now, x: now.x + numbers[4], y: now.y + numbers[5], flipped: true };
         break;
       }
-      case "cs": case "CS": if (!isName(first) || !greys.has(first.name)) refuse("has a colour that is not a grey"); break;
+      // A colour space starts with its first colour, which is black for a grey: a space for the paint, and one for the lines.
+      case "cs": case "CS":
+        if (!isName(first) || !greys.has(first.name)) refuse("has a colour that is not a grey");
+        if (name === "cs") now.fill = 0;
+        else now.stroke = 0;
+        break;
       case "scn": now.fill = colour(); break;
       case "SCN": now.stroke = colour(); break;
       case "w": count(1); [now.width] = numbers; break;
+      // Outlines join in a point. At a right angle the point is √2 times the line wide, and a smaller limit cuts it off.
+      case "M": count(1); if (!(numbers[0] > Math.SQRT2)) refuse("cuts the corners of its outlines"); break;
       case "m": count(2); if (path.length > 0) refuse("has a shape that is not a rectangle"); path = [[numbers[0], numbers[1]]]; break;
       case "l": count(2); path.push([numbers[0], numbers[1]]); break;
       case "h": closed = true; break;
       case "f": ink.push({ kind: "fill", rect: shape(), grey: now.fill }); break;
       case "S": ink.push({ kind: "outline", rect: shape(), grey: now.stroke, width: now.width }); break;
-      case "BT": text = { font: null, size: 0, placed: false }; break;
+      case "BT": text = { placed: false }; break;
       case "ET": text = null; break;
       case "Tr": if (numbers[0] !== 0) unknown(); break;
-      case "Tf": text = { font: (isName(first) ? fonts.get(first.name) : undefined) ?? refuse("has a font that it does not name"), size: must(numbers[0]), placed: false }; break;
+      case "Tf":
+        now.font = (isName(first) ? fonts.get(first.name) : undefined) ?? refuse("has a font that it does not name");
+        now.size = must(numbers[0]);
+        break;
       case "Tm": {
         if (!text || !upright(numbers) || numbers[4] !== 0 || numbers[5] !== 0) refuse(TURNED);
         else text.placed = true;
@@ -337,14 +352,20 @@ function readPage(file: PdfFile, page: Dict): PdfPage {
 
 const MAX_DEPTH = 20;
 
-function readPages(file: PdfFile, given: Value | undefined, depth = 0): PdfPage[] {
+/** The pages of a list of pages, which names each one with its object, one time: a page has one place in the book. */
+function pageNodes(file: PdfFile, given: Value | undefined, seen: Set<number>, depth = 0): Dict[] {
+  if (!isRef(given)) return refuse(CANNOT_READ);
+  if (seen.has(given.ref)) return refuse("names a page more than one time");
+  seen.add(given.ref);
   const node = file.dict(given);
   const type = node.get("Type");
   if (!isName(type) || depth > MAX_DEPTH) return refuse(CANNOT_READ);
-  if (type.name === "Page") return [readPage(file, node)];
+  if (type.name === "Page") return [node];
   checkKeys("list of pages", node, ["Type", "Count", "Kids", "Parent"]);
-  return file.list(node.get("Kids")).flatMap((kid) => readPages(file, kid, depth + 1));
+  return file.list(node.get("Kids")).flatMap((kid) => pageNodes(file, kid, seen, depth + 1));
 }
+
+const readPages = (file: PdfFile, given: Value | undefined): PdfPage[] => pageNodes(file, given, new Set()).map((page) => readPage(file, page));
 
 /** What each page of the file draws, or what is wrong with the file. */
 export function readPdf(pdf: Uint8Array): PdfPage[] | string {

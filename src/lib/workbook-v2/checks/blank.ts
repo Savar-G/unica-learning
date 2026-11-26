@@ -132,13 +132,16 @@ export function strayInk(page: PageModel, image: PageImage): Stray[] {
     ...page.regions.filter((r) => r.role !== "slot"), ...page.regions.filter((r) => r.role === "slot"),
   ].map((p) => ("name" in p ? p : { name: regionName(p), rect: p.rect, region: p }));
   const found: Stray[] = [];
+  // The first ink that is left. It changes only when a place takes ink.
+  let rest = left.nextInk(0);
   // A pixel belongs to the first place that holds its middle, so a place never takes the ink of one that lies in it.
   for (const { name, rect } of places) {
-    if (left.nextInk(0) < 0) break;
+    if (rest < 0) break;
     const at = left.takeInk(middles(rect));
-    if (at >= 0 && !found.some((s) => s.place === name)) found.push({ place: name, ...left.pointOf(at) });
+    if (at < 0) continue;
+    if (!found.some((s) => s.place === name)) found.push({ place: name, ...left.pointOf(at) });
+    rest = left.nextInk(rest);
   }
-  const rest = left.nextInk(0);
   if (rest >= 0) found.push({ place: "no rectangle of the page", ...left.pointOf(rest) });
   return found.sort((a, b) => a.y - b.y || a.x - b.x);
 }

@@ -9,8 +9,13 @@ import type { PlacedTexts } from "./texts";
 const WEIGHTS: Readonly<Record<string, number>> = { "Geist-Regular": 400, "Geist-SemiBold": 600 };
 const BLACK = 0;
 const PAPER_WHITE = 1;
-/** The PDF rounds the width of each letter to a thousandth of the size of the text. */
-const WIDTH_ROOM = 0.1;
+/**
+ * How far the width of a text in the PDF may be from the width that Typst measures. Typst writes the width of each letter
+ * (in thousandths of the size) and each move as a float of 32 bits, to the nearest. Below 1024 such a float is at most
+ * 0.000061 thousandths off, so each letter is off by at most twice that, in thousandths of the size. The sums of floats of
+ * 64 bits add a little more, for each text.
+ */
+const WIDTH_ROOM = { perLetter: 2 * 2 ** -14 / 1000, fixed: 1e-6 };
 
 const show = (n: number) => Math.round(n * 100) / 100;
 const at = ({ x, y, w, h }: Rect) => `at (${show(x)}, ${show(y)}, ${show(w)} by ${show(h)})`;
@@ -46,7 +51,7 @@ function pageProblem(page: PageModel, wanted: readonly Wanted[], pdf: PdfPage): 
     const [drawn, asked] = [ink && shownInk(ink), model && shownWanted(model)];
     if (!drawn || !asked || !matches(drawn, asked)) return `the PDF draws ${name(drawn)} and the model has ${name(asked)}`;
     if (ink.grey !== BLACK) return `the PDF draws ${ink.kind === "text" ? `the text "${ink.text}"` : name(drawn)} in the grey ${ink.grey}, which the model does not use`;
-    if (ink.kind === "text" && model.kind === "text" && !(Math.abs(ink.w - model.drawn.natural.w) <= WIDTH_ROOM)) return `the PDF draws the text "${ink.text}" ${show(ink.w)} points wide and it wants ${show(model.drawn.natural.w)}`;
+    if (ink.kind === "text" && model.kind === "text" && !(Math.abs(ink.w - model.drawn.natural.w) <= ink.glyphs * ink.size * WIDTH_ROOM.perLetter + WIDTH_ROOM.fixed)) return `the PDF draws the text "${ink.text}" ${show(ink.w)} points wide and it wants ${show(model.drawn.natural.w)}`;
   }
   return null;
 }

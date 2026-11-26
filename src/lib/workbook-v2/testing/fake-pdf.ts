@@ -32,7 +32,7 @@ export const pdfPageOf = (page: PageModel): FakePage =>
 
 const CMAP = `1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n${Array.from({ length: 4 }, (_, part) => `${64} beginbfchar\n${Array.from({ length: 64 }, (_v, i) => `<${hex(part * 64 + i)}> <${hex(part * 64 + i)}>`).join("\n")}\nendbfchar`).join("\n")}\n5 beginbfchar\n${["2013", "2018", "2019", "201c", "201d"].map((c) => `<${c}> <${c}>`).join("\n")}\nendbfchar`;
 
-export function pdfFile(pages: readonly FakePage[], { colours = 1, catalog = "", packed = false } = {}): Uint8Array {
+export function pdfFile(pages: readonly FakePage[], { colours = 1, catalog = "", packed = false, widthError = 0 } = {}): Uint8Array {
   const stream = (body: string, filter = "") => `<</Length ${body.length}${filter}>>\nstream\n${body}\nendstream`;
   const drawing = (body: string) => (packed ? stream(deflateSync(body).toString("latin1"), "/Filter/FlateDecode") : stream(body));
   const fonts = new Map(pages.flatMap(({ commands }) => [...commands.join("\n").matchAll(FONT_NAME)]).map(([, name, font, length, size]) => [name, { base: FONTS[Number(font)].name, width: (1000 * BAR) / (Number(length) * Number(size)) }]));
@@ -44,7 +44,7 @@ export function pdfFile(pages: readonly FakePage[], { colours = 1, catalog = "",
     "[/ICCBased 5 0 R]",
     stream("").replace("<<", `<</N ${colours}`),
     ...[...fonts.values()].flatMap(({ base, width }, i) => [
-      `<</Type/Font/Subtype/Type0/BaseFont/ABCDEF+${base}/Encoding/Identity-H/DescendantFonts[<</Type/Font/DW 0/W[0 65535 ${width}]>>]/ToUnicode ${7 + 2 * i} 0 R>>`,
+      `<</Type/Font/Subtype/Type0/BaseFont/ABCDEF+${base}/Encoding/Identity-H/DescendantFonts[<</Type/Font/DW 0/W[0 65535 ${width + widthError}]>>]/ToUnicode ${7 + 2 * i} 0 R>>`,
       stream(CMAP),
     ]),
     ...pages.flatMap(({ w, h, commands, more = "" }, i) => [`<</Type/Page/Resources 3 0 R/MediaBox[0 0 ${w} ${h}]/Parent 2 0 R/Contents ${first + 2 * i + 1} 0 R${more}>>`, drawing(commands.join("\n"))]),

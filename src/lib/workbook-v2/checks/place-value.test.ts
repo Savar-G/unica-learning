@@ -1,3 +1,4 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { planBook } from "../build/build-book";
 import type { DrawnText } from "../contract";
@@ -33,6 +34,20 @@ it("each digit of the example pages stands in its place, in stacks of two to fiv
   expect(checkPlaces(plan.pages, plan.items, reportedTexts(plan.pages))).toEqual([]);
   const facts = factsBook();
   expect(checkPlaces(facts.pages, facts.items, reportedTexts(facts.pages))).toEqual([]);
+});
+
+it("a digit stands in its place up to 2% of a place from its middle, in any line and on any page that is moved", () => {
+  // Each digit of the stack, and the sign; the page is moved by any amount, and the model with it.
+  fc.assert(fc.property(fc.integer({ min: 0, max: 3 }), fc.double({ min: -0.0195, max: 0.0195, noNaN: true }), fc.double({ min: 0.0205, max: 0.49, noNaN: true }), fc.boolean(), fc.double({ min: -50, max: 50, noNaN: true }), (at, inside, outside, left, dx) => {
+    const movedBook = structuredClone(book);
+    for (const page of movedBook.pages) for (const region of page.regions) {
+      region.rect.x += dx;
+      for (const ink of region.ink) ink.rect.x += dx;
+    }
+    const tried = (offset: number) => problems((own) => shift(own[at], offset), movedBook);
+    expect(tried(inside)).toEqual([]);
+    expect(tried(left ? -outside : outside).join()).toMatch(/between two places/);
+  }), { numRuns: 100, seed: 137 });
 });
 
 it("a digit may be 1.5% of a place away from its middle", () => expect(problems((own) => shift(own[3], 0.015))).toEqual([]));

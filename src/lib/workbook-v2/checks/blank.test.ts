@@ -172,6 +172,31 @@ describe("ink in more than one place", () => {
   });
 });
 
+describe("an edge of a zone in the middle of a pixel, beside print of the model", () => {
+  // On a page of blanks the reach of question 1 ends at 227 points, where its sign starts: in the middle of pixel 472.
+  const page = facts[5];
+  const reach = named(page, "reach-1").rect;
+  const end = reach.x + reach.w;
+  const sign = named(page, "question-1").ink.find((i) => i.kind === "text" && i.rect.x === end);
+  // A line beside the sign, as high as it.
+  const line = (x: number, w: number) => placesWith(page, { x, y: (sign?.rect.y ?? 0) + 2, w, h: 20 });
+
+  it("is in the middle of a pixel, at the start of the sign", () => {
+    expect(page.template).toBe("blanks-1x10");
+    expect(((end * 150) / 72) % 1).toBeCloseTo(0.917, 3);
+    expect(sign).toBeDefined();
+  });
+
+  it("hides a line less than a pixel wide in that pixel, and nothing as wide as a stroke of a digit", () => {
+    // The pixel is in part print of the sign, so it is not in the zone: a line of 0.4 points in it is not found. Above and
+    // below the sign the same line is found.
+    expect(placesWith(page, { x: end - 0.42, y: reach.y + 1, w: 0.4, h: 4 })).toEqual(['"reach-1"']);
+    expect(line(end - 0.42, 0.4)).toEqual([]);
+    // A stroke of 1 point covers a whole pixel of the zone, wherever its edge is.
+    for (const x of [end - 1, end - 1.2, end - 1.6]) expect(line(x, 1)).toEqual(['"reach-1"']);
+  });
+});
+
 describe("ink outside one rectangle", () => {
   it("is found, and ink inside it is not", () => {
     const canvas = drawPage({ ...front, regions: [] });

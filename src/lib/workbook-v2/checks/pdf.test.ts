@@ -61,6 +61,12 @@ describe("the PDF of a book", () => {
     ["moves a letter and moves it back", edit("Tm", /\[<(\w{4})(\w{4})/, "[<$1>200<$2>-200<"), /^The PDF moves a letter 200 thousandths of its size, which no font of a book does\.$/],
     ["moves a letter the other way and back", edit("Tm", /\[<(\w{4})(\w{4})/, "[<$1>-40<$2>40<"), /^The PDF moves a letter -40 thousandths/],
     ["moves a letter in small steps", edit("Tm", /\[<(\w{4})(\w{4})/, "[<$1>100 100<$2>-30<"), /^The PDF moves a letter 200 thousandths/],
+    ["moves a letter, has an empty text and moves it again", edit("Tm", /\[<(\w{4})(\w{4})/, "[<$1>100<>100<$2>-200<"), /^The PDF moves a letter 200 thousandths/],
+    ["moves after an empty first text", edit("Tm", "Tm[<", "Tm[<>100<"), /^The PDF moves the start of a text\.$/],
+    ["moves before an empty last text", edit("Tm", /\]TJ/, " 5<>]TJ"), /^The PDF moves the end of a text\.$/],
+    ["chooses its colour space again before it paints", (p) => { p.commands[0] = p.commands[0].replace("/c0 cs 1 scn", "/c0 cs 1 scn /c0 cs"); }, /^Page 381: the paper of the PDF is not white\.$/],
+    ["cuts the corners of its outlines", edit(" w 4 M", " w 4 M", " w 1 M"), /^The PDF cuts the corners of its outlines\.$/],
+    ["cuts the corners at the limit", edit(" w 4 M", " w 4 M", " w 1.41421 M"), /^The PDF cuts the corners of its outlines\.$/],
     ["moves its first letter", edit("Tm", "Tm[<", "Tm[100<"), /^The PDF moves the start of a text\.$/],
     ["moves after its last letter", edit("Tm", /\]TJ/, " 0.5]TJ"), /^The PDF moves the end of a text\.$/],
     ["moves a shape after its path", (p) => { const i = p.commands.length - 1; p.commands[i] = p.commands[i].replace(/\nf\n/, "\nq 1 0 0 -1 5 5 cm f Q\n"); }, /^The PDF has a shape that is not painted at once\.$/],
@@ -105,6 +111,39 @@ describe("the PDF of a book", () => {
     expect(checkPdf(pages, texts, pagesPdf([front]))).toEqual(["The PDF has 1 pages and the book has 2."]);
     expect(checkPdf(pages, texts, pagesPdf([...pages, front]))).toEqual(["The PDF has 3 pages and the book has 2."]);
     expect(checkPdf(pages, texts, pagesPdf([...pages].reverse()))).toHaveLength(2);
+  });
+
+  it("keeps the size of a text from before a state that it saves", () => {
+    // A size inside q and Q is not the size after Q: drawn in 18 points, the heading must say 15 and fails.
+    const after = problems(edit("Tm", /(\/f\w+) 15 Tf 1 0 0 -1 0 0 Tm/, "$1 15 Tf q $1 18 Tf Q 1 0 0 -1 0 0 Tm"));
+    expect(after).toEqual([]);
+    const inside = problems(edit("Tm", /(\/f\w+) 15 Tf 1 0 0 -1 0 0 Tm/, " q $1 15 Tf Q $1 18 Tf 1 0 0 -1 0 0 Tm"));
+    expect(inside.join()).toMatch(/with 18 points/);
+  });
+
+  it("starts each colour space with black, for the lines and for the paint apart", () => {
+    // A grey line, then its colour space again: the line is black. A grey paint stays grey when the lines get a space.
+    expect(problems(edit(" w 4 M", "/c0 CS 0 SCN", "/c0 CS 0.9 SCN /c0 CS"))).toEqual([]);
+    expect(problems(edit("Tm", "/c0 cs 0 scn", "/c0 cs 0.5 scn /c0 CS")).join()).toMatch(/in the grey 0\.5/);
+  });
+
+  it("may have corners that the miter limit keeps", () => {
+    expect(problems(edit(" w 4 M", " w 4 M", " w 1.42 M"))).toEqual([]);
+  });
+
+  it("names each page in its list one time", () => {
+    const file = Buffer.from(pagesPdf(pages)).toString("latin1");
+    // The second page is the first one again: the file keeps its length, so its table stays right.
+    const twice = file.replace(/\/Kids\[(\d+) 0 R (\d+) 0 R\]/, (all, one: string, two: string) => (one.length === two.length ? `/Kids[${one} 0 R ${one} 0 R]` : all));
+    expect(twice).not.toBe(file);
+    expect(checkPdf(pages, texts, Buffer.from(twice, "latin1"))).toEqual(["The PDF names a page more than one time."]);
+  });
+
+  it("has letters as wide as the fonts of Typst make them, and no wider", () => {
+    // Typst writes each width of a letter as a float of 32 bits: off by at most 0.000061 thousandths of the size, also each move.
+    expect(problems(() => {}, { widthError: 0.000122 })).toEqual([]);
+    expect(problems(() => {}, { widthError: -0.000122 })).toEqual([]);
+    expect(problems(() => {}, { widthError: 0.00014 })).toEqual([expect.stringMatching(/^Page 381: the PDF draws the text "3-20 · [^"]*" 8 points wide and it wants 8\.$/)]);
   });
 
   it.each<[string, Uint8Array]>([

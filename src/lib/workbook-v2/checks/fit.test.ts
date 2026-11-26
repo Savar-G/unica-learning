@@ -1,6 +1,9 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { mathToken, wordToken, type DrawnText, type FlowToken, type Ink, type PageModel } from "../contract";
 import { checkFit } from "../testing/drawn-checks";
+import { textProblem } from "./fit";
+import type { PlacedText } from "./texts";
 import { reportedTexts } from "../testing/fake-typesetter";
 import { factsBook, goodPages } from "../testing/sample";
 
@@ -113,5 +116,30 @@ describe("flow text", () => {
 
   it("with no number in its report does not pass", () => {
     for (const change of [(d: DrawnText) => { d.natural.w = Number.NaN; }, (d: DrawnText) => { d.start.x = Number.NaN; }, (d: DrawnText) => { d.start.y = Number.NaN; }, (d: DrawnText) => { d.natural.below = Number.NaN; }, (d: DrawnText) => { d.natural.above = Number.NaN; }, (d: DrawnText) => { if (d.flow) d.flow.space = Number.NaN; }]) expect(problems(page(words("one", "two")), (all) => change(all[1]))).not.toEqual([]);
+  });
+});
+
+describe("the fit of any text", () => {
+  const [page] = goodPages();
+  /** A text of these sizes, drawn where its place and its alignment say. */
+  const placed = (rect: { x: number; y: number; w: number; h: number }, align: "left" | "center" | "right", n: { w: number; capitals: number; above: number; below: number }): PlacedText => {
+    const ink = { kind: "text" as const, rect, color: "black", text: "8", size: 12, weight: 400, align };
+    const x = rect.x + { left: 0, center: (rect.w - n.w) / 2, right: rect.w - n.w }[align];
+    const y = rect.y + (rect.h + n.capitals) / 2;
+    const drawn: DrawnText = { sheet: 1, x: rect.x, y: rect.y, text: "8", size: 12, weight: 400, start: { x, y }, end: { x: x + n.w, y }, natural: n, flow: null };
+    return { page, region: page.regions[4], ink, drawn };
+  };
+  const sizes = fc.record({ x: fc.double({ min: 0, max: 500, noNaN: true }), y: fc.double({ min: 0, max: 700, noNaN: true }), w: fc.double({ min: 1, max: 400, noNaN: true }), capitals: fc.double({ min: 1, max: 30, noNaN: true }), up: fc.double({ min: 0, max: 5, noNaN: true }), down: fc.double({ min: 0, max: 10, noNaN: true }), align: fc.constantFrom("left" as const, "center" as const, "right" as const) });
+  /** The height that a text needs: its capitals in the middle, and the part that goes further from the middle. */
+  const high = ({ capitals, up, down }: { capitals: number; up: number; down: number }) => 2 * Math.max(up + capitals / 2, capitals / 2 + down);
+
+  it("fits a place of its size exactly, and not one that is smaller by more than a hundredth of a point", () => {
+    fc.assert(fc.property(sizes, fc.double({ min: 0.011, max: 5, noNaN: true }), fc.boolean(), (s, less, wide) => {
+      const n = { w: s.w, capitals: s.capitals, above: s.capitals + s.up, below: s.down };
+      const exact = { x: s.x, y: s.y, w: s.w, h: high(s) };
+      expect(textProblem(placed(exact, s.align, n))).toBeNull();
+      const small = wide ? { ...exact, w: exact.w - less } : { ...exact, h: exact.h - less };
+      expect(textProblem(placed(small, s.align, n))).toMatch(wide ? / points wide and its place is / : / points high and its place is /);
+    }), { numRuns: 100, seed: 137 });
   });
 });
