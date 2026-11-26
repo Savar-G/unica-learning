@@ -685,7 +685,7 @@ export function finish(session: Session, facts: FactsSession | null = null, help
     // Only a child routed up who clears the highest level asked may work above what the test could show. For Grade 8 the
     // up form is at level 8 (D-153 rule 2) and for Grade 9 at level 9, the top of the bank, so clearing it is the ceiling.
     // D-282: with a third stage up, the highest level asked is the third stage's.
-    atCeiling: session.adaptive ? workingLevel === adaptiveTop(session.profile) : session.route === "up" && workingLevel === (session.stage3Route === "up" ? stage3Level(session.profile.grade, "up") : upLevel(session.profile.grade)),
+    atCeiling: session.adaptive ? workingLevel === adaptiveTop(session.adaptive) : session.route === "up" && workingLevel === (session.stage3Route === "up" ? stage3Level(session.profile.grade, "up") : upLevel(session.profile.grade)),
     route,
     ...(session.stage3Route && { stage3Route: session.stage3Route }),
     stage1: tally(marked.slice(0, session.adaptive?.blocks[0].questions.length ?? session.stage1.length)),
