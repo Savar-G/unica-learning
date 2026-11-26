@@ -28,8 +28,8 @@ describe("the two pages of a sheet", () => {
     const [front, back] = pages();
     expect(texts(one(front, "heading"))).toEqual(["3-20 · Multiplying 2 digits by 1 digit"]);
     expect(texts(one(front, "instruction"))).toEqual(["Multiply. Start with the ones."]);
-    expect(texts(one(front, "footer"))).toEqual(["Level 3 · Page 381"]);
-    expect(texts(one(back, "footer"))).toEqual(["Level 3 · Page 382"]);
+    expect(texts(one(front, "footer"))).toEqual(["Level 3 (Grade 3 work) · Page 381"]);
+    expect(texts(one(back, "footer"))).toEqual(["Level 3 (Grade 3 work) · Page 382"]);
     expect([front.qr, back.qr]).toEqual(["https://unicalearning.com/tutor/p/example-front-381", "https://unicalearning.com/tutor/p/example-back-382"]);
   });
 
@@ -114,7 +114,22 @@ describe("a sheet of 4 digits by 1 digit", () => {
 describe("a question with one answer area", () => {
   // Made with engine 2.0.0-s3, before answers had parts.
   it.each([["the example sheet", goodPages, "e5178d1410a99bedfd236e5646995d0098220db7a76ac3ae041c66ae9634ea40"], ["the sheet of 4 digits by 1 digit", () => { const plan = planBook({ snapshot: wideSnapshot, book: wideBook }); return plan.ok ? plan.pages : []; }, "64247e899f4c41149ba0972ab661f5b12af658adeaee253c88187151c931ace5"]])("is laid out as before answers had parts: %s", (_name, made, hash) => {
-    const before = made().map((page) => ({ ...page, regions: page.regions.map(({ part, ...region }) => { expect(part).toBe(region.role === "answer" || region.role === "reach" ? "answer" : null); return region; }) }));
+    const before = made().map((page) => ({
+      ...page,
+      regions: page.regions.map(({ part, ...region }) => {
+        expect(part).toBe(region.role === "answer" || region.role === "reach" ? "answer" : null);
+        if (region.role !== "footer") return region;
+        return {
+          ...region,
+          ink: region.ink.map((ink) => {
+            if (ink.kind !== "text") return ink;
+            expect(ink.text).toBe(`Level ${page.levelName} (Grade ${page.levelName} work) · Page ${page.page}`);
+            // Keep comparing to the original page model after accounting for the new grade wording.
+            return { ...ink, text: `Level ${page.levelName} · Page ${page.page}` };
+          }),
+        };
+      }),
+    }));
     expect(sha256(canonicalJson(before))).toBe(hash);
   });
 });

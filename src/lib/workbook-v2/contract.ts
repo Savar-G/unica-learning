@@ -2,11 +2,14 @@
 // it, so it imports nothing. All lengths are points (72 to the inch) from the top left corner of the page.
 
 /** Changes when the same input can give other bytes. A book records it, so a replay can tell which part differs. */
-export const ENGINE_VERSION = "2.0.0-s6";
+export const ENGINE_VERSION = "2.0.1-s6";
 
 export interface Rect { x: number; y: number; w: number; h: number }
 
 export type Side = "front" | "back";
+
+/** The grade-based name printed on a v2 workbook. */
+export const workbookLevelLabel = (levelName: string): string => `Level ${levelName} (Grade ${levelName} work)`;
 
 /** The answer kinds that marking can read. A shape may use only one of these. */
 export const ANSWER_KINDS = ["whole-number"] as const;

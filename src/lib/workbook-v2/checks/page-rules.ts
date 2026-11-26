@@ -1,5 +1,5 @@
 // The layout rules of a page. They read the page model and the items, never the templates, so a wrong template fails.
-import { isPrintable, PAPER, partRegionName, PRINT_RULES, type AnswerPart, type BookItem, type Ink, type PageModel, type Rect, type Region, type RegionRole } from "../contract";
+import { isPrintable, PAPER, partRegionName, PRINT_RULES, workbookLevelLabel, type AnswerPart, type BookItem, type Ink, type PageModel, type Rect, type Region, type RegionRole } from "../contract";
 import { faceBlanks, faceText, printProblems, type Area } from "./face-print";
 import { bottom, EPSILON, inside, near, overlaps, right } from "./rects";
 
@@ -88,7 +88,7 @@ function checkFrame(page: PageModel, tell: Tell): void {
   const lastSlot = Math.max(...slots.map((s) => bottom(s.rect)));
   const heading = checkPart(page, "heading", `${page.topicCode} · ${page.topicTitle}`, tell);
   const instruction = checkPart(page, "instruction", page.instruction, tell);
-  const footer = checkPart(page, "footer", `Level ${page.levelName} · Page ${page.page}`, tell);
+  const footer = checkPart(page, "footer", `${workbookLevelLabel(page.levelName)} · Page ${page.page}`, tell);
   if (heading && bottom(heading.rect) > Math.min(instruction?.rect.y ?? firstSlot, firstSlot) + EPSILON) tell("the heading must be above the instruction and the questions");
   if (instruction) {
     if (bottom(instruction.rect) > firstSlot + EPSILON) tell("the instruction must be above the questions");

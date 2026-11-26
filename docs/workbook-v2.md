@@ -8,6 +8,12 @@ Workbook generator v2 is under development. It will make workbooks from an appro
 - The switch to v2 is not done. After the switch, v2 will make every new workbook, and the v1 generator and its tests will be removed (architecture spec 10.6). Existing v1 books must still scan. v2 imports no v1 generator code.
 - For v1 books, read [rendering](workbook-rendering.md), [rounds](workbook-rounds.md) and [the fast loop](workbook-fast-loop.md).
 
+## Level names families see
+
+For v2 workbooks, the level number names the grade of the work. Level 5 is Grade 5 work. Show the level as `Level 5 (Grade 5 work)` on the dashboard, in emails, on workbook covers, and anywhere else a parent sees that v2 level.
+
+Previously printed v1 workbooks keep their original U-level labels in history. Use the workbook version when choosing the label. The same number can refer to different work in v1 and v2.
+
 ## Where the documents are
 
 - The product spec and the architecture spec are in Linear (parent issue UNI-130). They are the source of truth.
