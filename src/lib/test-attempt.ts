@@ -318,9 +318,7 @@ async function startFor(
   for (let round = 0; round < ROUNDS; round++) {
     const attempts = await withAnswers(store, parent, child.id);
     const decision = decideStart(attempts, now, { restart });
-    if (decision.action === "refuse") {
-      return decision.error === "expired" ? { ok: false, error: "expired" } : { ok: false, error: "retake_closed", opensAt: decision.opensAt };
-    }
+    if (decision.action === "refuse") return decision.error === "expired" ? { ok: false, error: "expired" } : { ok: false, error: "retake_closed", opensAt: decision.opensAt };
     // If the test runs out of time before the next answer, the answer route says so and the screen offers Start again.
     if (decision.action === "resume") return { ok: true, id: decision.attemptId, resumed: true };
 

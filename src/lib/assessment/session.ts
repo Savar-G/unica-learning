@@ -628,19 +628,20 @@ export function testStep(session: Session): TestStep {
 /** True on the first question after halfway: the browser shows the skippable break screen before it (D-083). */
 export const breakDue = (step: TestStep): boolean => step.status === "question" && step.number === step.breakAfter + 1;
 
-/**
- * A completed test's answers for the area rule (D-243): one per question, with what `finish` leaves out of the score
- * (the workbook placement check and very fast wrong answers in a run, #189) left out here too.
- */
-export function testAreaAnswers(session: Session): AreaAnswer[] {
+/** A completed test's scored questions and answers: the workbook placement check stays out (UNI-221). */
+function scoredPart(session: Session) {
   const questions = questionsOnRoute(session);
-  if (!session.route || session.answers.length < questions.length || (session.adaptive && (!session.adaptive.complete || !session.adaptive.sufficientEvidence))) {
-    throw new Error(`The test is not complete: ${session.answers.length} of ${questions.length} answered`);
-  }
+  const done = session.answers.length >= questions.length && (!session.adaptive || (session.adaptive.complete && session.adaptive.sufficientEvidence));
+  if (!session.route || !done) throw new Error(`The test is not complete: ${session.answers.length} of ${questions.length} answered`);
   const count = session.adaptive ? assessmentQuestionsOnly(session.adaptive) : questions.length;
-  const answers = session.answers.slice(0, count);
+  return { questions: questions.slice(0, count), answers: session.answers.slice(0, count), route: session.route };
+}
+
+/** A completed test's answers for the area rule (D-243), leaving out what `finish` leaves out of the score (#189). */
+export function testAreaAnswers(session: Session): AreaAnswer[] {
+  const { questions, answers } = scoredPart(session);
   const out = leftOutOfScore(answers);
-  return questions.slice(0, count).flatMap((q, i) => (out[i] ? [] : [{ area: REPORTED_STRAND[q.strand], level: q.level, correct: answers[i].correct }]));
+  return questions.flatMap((q, i) => (out[i] ? [] : [{ area: REPORTED_STRAND[q.strand], level: q.level, correct: answers[i].correct }]));
 }
 
 /**
@@ -648,17 +649,11 @@ export function testAreaAnswers(session: Session): AreaAnswer[] {
  * `help` is the child's answer to "Did anyone help?" (#71), or null when it was not asked. It only adds flags.
  */
 export function finish(session: Session, facts: FactsSession | null = null, help: HelpAnswer | null = null): Placement {
-  const questions = questionsOnRoute(session);
-  if (!session.route || session.answers.length < questions.length || (session.adaptive && (!session.adaptive.complete || !session.adaptive.sufficientEvidence))) {
-    throw new Error(`The test is not complete: ${session.answers.length} of ${questions.length} answered`);
-  }
-  const mainCount = session.adaptive ? assessmentQuestionsOnly(session.adaptive) : questions.length;
-  const mainAnswers = session.answers.slice(0, mainCount);
-  const marked = questions.slice(0, mainCount).map((q, i) => ({ q, correct: mainAnswers[i].correct }));
+  const { questions, answers: mainAnswers, route } = scoredPart(session);
+  const marked = questions.map((q, i) => ({ q, correct: mainAnswers[i].correct }));
   const tally = (items: typeof marked) => ({ correct: items.filter((m) => m.correct).length, total: items.length });
-  // #189: a very fast wrong answer inside a run of very fast answers is a guess: it leaves the score, it is not wrong.
-  // Every level the test showed keeps its place, even with all its answers left out. Routing is unchanged: it was decided
-  // during the test.
+  // #189: a very fast wrong answer in a run of very fast answers is a guess: it leaves the score, it is not wrong. Every
+  // level the test showed keeps its place, even with all its answers left out. Routing was decided during the test.
   const out = leftOutOfScore(mainAnswers);
   const scored = marked.filter((_, i) => !out[i]);
 
@@ -691,7 +686,7 @@ export function finish(session: Session, facts: FactsSession | null = null, help
     // up form is at level 8 (D-153 rule 2) and for Grade 9 at level 9, the top of the bank, so clearing it is the ceiling.
     // D-282: with a third stage up, the highest level asked is the third stage's.
     atCeiling: session.adaptive ? workingLevel === adaptiveTop(session.profile) : session.route === "up" && workingLevel === (session.stage3Route === "up" ? stage3Level(session.profile.grade, "up") : upLevel(session.profile.grade)),
-    route: session.route,
+    route,
     ...(session.stage3Route && { stage3Route: session.stage3Route }),
     stage1: tally(marked.slice(0, session.adaptive?.blocks[0].questions.length ?? session.stage1.length)),
     levels,

@@ -1,5 +1,6 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { ADAPTIVE_QUESTION_LIMIT, BLOCK_SIZE, createAdaptiveSession, finish, givenQuestions, lockAdaptiveBlock, nextQuestion, restoreSession, storedTest, submitAnswer, testAreaAnswers, testStep, UNKNOWN_RESPONSE, paceOf, flagsFor, REPORTED_STRAND, rescoreAdaptivePlacement, type AdaptiveBlock, type Grade, type Session, type Province } from "@/lib/assessment";
+import { ADAPTIVE_QUESTION_LIMIT, BLOCK_SIZE, bandFor, blockQuestions, skillFamily, createAdaptiveSession, finish, givenQuestions, lockAdaptiveBlock, nextQuestion, restoreSession, storedTest, submitAnswer, testAreaAnswers, testStep, UNKNOWN_RESPONSE, paceOf, flagsFor, REPORTED_STRAND, rescoreAdaptivePlacement, type AdaptiveBlock, type Grade, type Session, type Province } from "@/lib/assessment";
 
 function run(grade: Grade, ability: number, seed: number, province: Province = "BC"): Session {
   const created = createAdaptiveSession({ grade, province }, seed);
@@ -302,5 +303,30 @@ describe("test-account v2 workbook placement", () => {
     expect(testStep(completed).status).toBe("complete");
     expect(finish(completed)).toEqual({ ...finish(ordinary), workbookStart: { level, topic: 1 } });
     expect(testAreaAnswers(completed)).toEqual(testAreaAnswers(ordinary));
+  });
+});
+
+describe("skill-balanced blocks", () => {
+  const strands = ["number", "fractions", "algebra", "shapes"] as const;
+  const levelPool = (seed: number, level: number) =>
+    createAdaptiveSession({ grade: 9, province: "BC" }, seed).adaptive!.pool.filter(q => q.level === level);
+
+  it("asks each skill family once before repeating one, from any rotation", () => {
+    fc.assert(fc.property(fc.integer({ min: 1, max: 10_000 }), fc.integer({ min: 0, max: 3 }), fc.constantFrom(7, 8, 9), (seed, offset, level) => {
+      const pool = levelPool(seed, level);
+      const block = blockQuestions(pool, strands, offset, true);
+      const families = new Set(pool.map(skillFamily)).size;
+      expect(block).toHaveLength(Math.min(BLOCK_SIZE, pool.length));
+      expect(new Set(block.map(skillFamily)).size).toBe(Math.min(block.length, families));
+    }), { numRuns: 60 });
+  });
+
+  it("leaves the live Level 0-9 first block unchanged", () => {
+    fc.assert(fc.property(fc.integer({ min: 1, max: 10_000 }), seed => {
+      const session = createAdaptiveSession({ grade: 9, province: "BC" }, seed);
+      const pool = levelPool(seed, 9);
+      const present = bandFor(9).strands.filter(s => pool.some(q => REPORTED_STRAND[q.strand] === s));
+      expect(session.adaptive!.blocks[0].questions).toEqual(blockQuestions(pool, present, 0, false));
+    }), { numRuns: 30 });
   });
 });

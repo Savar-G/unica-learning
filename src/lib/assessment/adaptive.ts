@@ -4,8 +4,9 @@ import { ALL_TEMPLATES, difficultyOf } from "./bank";
 import { atLeast, bandFor, REPORTED_STRAND, STRAND_MINIMUM_QUESTIONS, WORKING_LEVEL_PERCENT } from "./constants";
 import { leftOutOfScore, paceOf } from "./rushing";
 import { rngFor } from "./rng";
+import { SKILL_TAGS, tagSkills } from "./skill-tags";
 import { fillTemplate, levelFor, sameQuestion } from "./session";
-import type { AdaptiveBlock, AdaptiveTest, Answer, ChildProfile, Level, Question, Session, StoredTest, Template } from "./types";
+import type { AdaptiveBlock, AdaptiveTest, Answer, ChildProfile, Level, Question, ReportedStrand, Session, StoredTest, Template } from "./types";
 
 export const BLOCK_SIZE = 6;
 export const ADAPTIVE_BREAK_AFTER = 12;
@@ -53,19 +54,41 @@ function available(a: AdaptiveTest): Question[] {
   return a.pool.filter(q => !ids.has(q.templateId) && !seen.has(sameQuestion(q)));
 }
 
+/** From this level up, a block asks every skill family once before it repeats one (UNI-221). Lower levels keep their routes. */
+export const SKILL_BALANCED_FROM = 10;
+
+/** A question's skill family: the main skill of its template's skill tag, or the template itself when it has no tag. */
+export function skillFamily(q: Pick<Question, "templateId">): string {
+  const tag = SKILL_TAGS[q.templateId];
+  return tag ? tagSkills(tag)[0] : q.templateId;
+}
+
+/**
+ * Up to one block of questions from a level's pool, rotating the reported strands from `offset`. With `balanceSkills`,
+ * a question whose skill family is already in the block is taken only when no other family is left.
+ */
+export function blockQuestions(pool: readonly Question[], strands: readonly ReportedStrand[], offset: number, balanceSkills: boolean): Question[] {
+  const chosen: Question[] = [];
+  const families = new Set<string>();
+  const open = (q: Question) => !chosen.includes(q);
+  const fresh = (q: Question) => open(q) && !(balanceSkills && families.has(skillFamily(q)));
+  const inStrand = (strand: ReportedStrand | undefined) => (q: Question) => REPORTED_STRAND[q.strand] === strand;
+  for (let i = 0; i < BLOCK_SIZE; i++) {
+    const strand = strands[(i + offset) % strands.length];
+    const q = pool.find(q => inStrand(strand)(q) && fresh(q)) ?? pool.find(fresh)
+      ?? pool.find(q => inStrand(strand)(q) && open(q)) ?? pool.find(open);
+    if (!q) break;
+    chosen.push(q);
+    families.add(skillFamily(q));
+  }
+  const rank = { easy: 0, medium: 1, hard: 2 };
+  return chosen.sort((a, b) => rank[difficultyOf(a.templateId)] - rank[difficultyOf(b.templateId)]);
+}
+
 function selectBlock(a: AdaptiveTest, profile: ChildProfile, level: Level, purpose: AdaptiveBlock["purpose"]): AdaptiveBlock {
   const pool = available(a).filter(q => q.level === level);
   const strands = bandFor(profile.grade).strands.filter(s => pool.some(q => REPORTED_STRAND[q.strand] === s));
-  const chosen: Question[] = [];
-  const rank = { easy: 0, medium: 1, hard: 2 };
-  for (let i = 0; i < BLOCK_SIZE; i++) {
-    const strand = strands[(i + a.blocks.length * BLOCK_SIZE) % strands.length];
-    const q = pool.find(q => REPORTED_STRAND[q.strand] === strand && !chosen.includes(q))
-      ?? pool.find(q => !chosen.includes(q));
-    if (!q) break;
-    chosen.push(q);
-  }
-  return { level, purpose, questions: chosen.sort((a,b) => rank[difficultyOf(a.templateId)] - rank[difficultyOf(b.templateId)]) };
+  return { level, purpose, questions: blockQuestions(pool, strands, a.blocks.length * BLOCK_SIZE, level >= SKILL_BALANCED_FROM) };
 }
 
 /** Legacy v1 placement, including its coverage answers and 70% bar. */
