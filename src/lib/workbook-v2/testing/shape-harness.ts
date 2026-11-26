@@ -92,7 +92,7 @@ function layoutRows(template: PageTemplate, face: Face, answer: Answer, cache: W
   const before = known.get(key);
   if (before) return before;
   const item: BookItem = { id: "i", sheetId: "s", side: "front", rowId: "r", number: 1, shape: "shape", shapeVersion: 1, question: null, face, answer, steps: [], difficulty: 0 };
-  const rows = questionRows(itemRegions(template.sides.front.places[0], item, (name) => name));
+  const rows = questionRows(itemRegions(template.sides.front.places[0], item, (name) => name), face);
   known.set(key, rows);
   return rows;
 }
@@ -502,9 +502,9 @@ class Harness {
     if (unfilled.length > 0) this.tell("evidence", `no page of the book fills ${unfilled.join(" and ")}`);
     const regions = regionsByItem(plan.pages);
     const printedRowsOf = new Map<string, Rows[]>();
-    for (const { id, sheetId, rowId, question, steps, difficulty } of plan.items) {
+    for (const { id, sheetId, rowId, question, steps, difficulty, face } of plan.items) {
       const known = this.inspect(question);
-      const rows = questionRows(regions.get(id) ?? []);
+      const rows = questionRows(regions.get(id) ?? [], face);
       const row = `${sheetId}/${rowId}`;
       printedRowsOf.set(row, [...(printedRowsOf.get(row) ?? []), rows]);
       const limits = limitsOf.get(row);

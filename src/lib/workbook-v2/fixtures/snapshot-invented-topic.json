@@ -1,0 +1,293 @@
+{
+  "format": 1,
+  "id": "invented-level-3-topic-20-v1",
+  "level": {
+    "id": "level-3",
+    "name": "3"
+  },
+  "topics": [
+    {
+      "id": "topic-20",
+      "code": "3-20",
+      "title": "Multiplying 2 digits by 1 digit",
+      "sheets": [
+        "column-multiplication-1",
+        "equal-groups-1"
+      ]
+    }
+  ],
+  "sheets": [
+    {
+      "id": "column-multiplication-1",
+      "firstPage": 381,
+      "front": {
+        "instruction": "Multiply. Start with the ones.",
+        "template": "columns-2x4",
+        "rows": [
+          {
+            "id": "no-carry",
+            "shape": "mul.column",
+            "items": 4,
+            "limits": {
+              "digits": {
+                "min": 2,
+                "max": 2
+              },
+              "a": {
+                "min": 11,
+                "max": 43
+              },
+              "b": {
+                "min": 2,
+                "max": 4
+              },
+              "carries": {
+                "min": 0,
+                "max": 0
+              },
+              "carryIntoTens": {
+                "min": 0,
+                "max": 0
+              },
+              "carryIntoHundreds": {
+                "min": 0,
+                "max": 0
+              },
+              "carryIntoThousands": {
+                "min": 0,
+                "max": 0
+              },
+              "product": {
+                "min": 10,
+                "max": 99
+              },
+              "zeroInProduct": "never",
+              "wholeTens": "allowed"
+            }
+          },
+          {
+            "id": "one-carry",
+            "shape": "mul.column",
+            "items": 4,
+            "limits": {
+              "digits": {
+                "min": 2,
+                "max": 2
+              },
+              "a": {
+                "min": 12,
+                "max": 49
+              },
+              "b": {
+                "min": 2,
+                "max": 4
+              },
+              "carries": {
+                "min": 1,
+                "max": 1
+              },
+              "carryIntoTens": {
+                "min": 0,
+                "max": 8
+              },
+              "carryIntoHundreds": {
+                "min": 0,
+                "max": 0
+              },
+              "carryIntoThousands": {
+                "min": 0,
+                "max": 0
+              },
+              "product": {
+                "min": 10,
+                "max": 99
+              },
+              "zeroInProduct": "never",
+              "wholeTens": "allowed"
+            }
+          }
+        ]
+      },
+      "back": {
+        "instruction": "Multiply. If you carry, write the number above the tens.",
+        "template": "columns-2x4",
+        "rows": [
+          {
+            "id": "one-carry-larger",
+            "shape": "mul.column",
+            "items": 4,
+            "limits": {
+              "digits": {
+                "min": 2,
+                "max": 2
+              },
+              "a": {
+                "min": 12,
+                "max": 49
+              },
+              "b": {
+                "min": 2,
+                "max": 8
+              },
+              "carries": {
+                "min": 1,
+                "max": 1
+              },
+              "carryIntoTens": {
+                "min": 0,
+                "max": 8
+              },
+              "carryIntoHundreds": {
+                "min": 0,
+                "max": 0
+              },
+              "carryIntoThousands": {
+                "min": 0,
+                "max": 0
+              },
+              "product": {
+                "min": 10,
+                "max": 99
+              },
+              "zeroInProduct": "never",
+              "wholeTens": "allowed"
+            }
+          },
+          {
+            "id": "past-one-hundred",
+            "shape": "mul.column",
+            "items": 4,
+            "limits": {
+              "digits": {
+                "min": 2,
+                "max": 2
+              },
+              "a": {
+                "min": 21,
+                "max": 98
+              },
+              "b": {
+                "min": 3,
+                "max": 9
+              },
+              "carries": {
+                "min": 0,
+                "max": 1
+              },
+              "carryIntoTens": {
+                "min": 0,
+                "max": 8
+              },
+              "carryIntoHundreds": {
+                "min": 0,
+                "max": 0
+              },
+              "carryIntoThousands": {
+                "min": 0,
+                "max": 0
+              },
+              "product": {
+                "min": 100,
+                "max": 999
+              },
+              "zeroInProduct": "allowed",
+              "wholeTens": "allowed"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "equal-groups-1",
+      "firstPage": 383,
+      "front": {
+        "instruction": "Each bar is one group. Find the total.",
+        "template": "figures-1x4",
+        "rows": [
+          {
+            "id": "two-or-three-bars",
+            "shape": "figure.bar",
+            "items": 2,
+            "limits": {
+              "groups": {
+                "min": 2,
+                "max": 3
+              },
+              "size": {
+                "min": 2,
+                "max": 20
+              },
+              "product": {
+                "min": 4,
+                "max": 60
+              }
+            }
+          },
+          {
+            "id": "four-to-six-bars",
+            "shape": "figure.bar",
+            "items": 2,
+            "limits": {
+              "groups": {
+                "min": 4,
+                "max": 6
+              },
+              "size": {
+                "min": 2,
+                "max": 25
+              },
+              "product": {
+                "min": 8,
+                "max": 150
+              }
+            }
+          }
+        ]
+      },
+      "back": {
+        "instruction": "Add the bars to find the total.",
+        "template": "figures-1x4",
+        "rows": [
+          {
+            "id": "larger-bars",
+            "shape": "figure.bar",
+            "items": 2,
+            "limits": {
+              "groups": {
+                "min": 2,
+                "max": 4
+              },
+              "size": {
+                "min": 10,
+                "max": 50
+              },
+              "product": {
+                "min": 20,
+                "max": 200
+              }
+            }
+          },
+          {
+            "id": "five-or-six-bars",
+            "shape": "figure.bar",
+            "items": 2,
+            "limits": {
+              "groups": {
+                "min": 5,
+                "max": 6
+              },
+              "size": {
+                "min": 10,
+                "max": 99
+              },
+              "product": {
+                "min": 50,
+                "max": 594
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

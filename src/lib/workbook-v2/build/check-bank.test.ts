@@ -15,7 +15,7 @@ import { fakeRenderer } from "../testing/fake-renderer";
 import { drawPage, paint, toColourPng, toPng } from "../testing/raster";
 import { stackOf } from "../testing/sample";
 import { quickRenderer, skipTypstTests, testAssets } from "../testing/typst";
-import { BANK_SEEDS, checkBank } from "./check-bank";
+import { BANK_SEEDS, checkBank, FIGURE_SAMPLE_SEEDS } from "./check-bank";
 import { rowTexts } from "./row-texts";
 
 const isWhole = (page: PageModel) => page.regions.some((r) => r.role === "qr");
@@ -60,7 +60,7 @@ describe("a good bank", () => {
     expect(whole.every(isWhole)).toBe(true);
     expect(whole.map((p) => [p.side, p.regions.filter((r) => r.role === "slot").length])).toEqual([["front", 8], ["back", 8], ["front", 8], ["back", 8]]);
     expect(pagesOf(renderer.drawn.images).map((p) => p.regions.filter((r) => r.role === "slot").length)).toEqual(Array(32).fill(1));
-    expect(report.checked).toEqual({ sheets: 1, rows: 2, seeds: 5, questions: 20, pages: whole.length, alone: 32, texts: expect.any(Number) });
+    expect(report.checked).toEqual({ sheets: 1, rows: 2, seeds: 5, questions: 20, pages: whole.length, alone: 32, texts: expect.any(Number), samples: 0 });
     expect(pagesOf(renderer.drawn.report).flatMap((p) => p.regions)).toHaveLength(report.checked.texts);
   });
 
@@ -152,6 +152,77 @@ describe("the texts of a row", () => {
     expect((await checkBank(snapshot, left, { ...FEW, seeds: 1 })).problems).toContain('Sheet "column-multiplication-1", front side, row "row-0": the text "=" of "question-1" of the front side was not drawn as the model says it.');
     const none = fakeRenderer({ report: (out) => { Reflect.set(out, "texts", undefined); } });
     expect((await checkBank(snapshot, none, { ...FEW, seeds: 1 })).problems[0]).toMatch(/^Sheet "column-multiplication-1", front side, row "row-0": the text .*gave no texts of page 1\.$/);
+  });
+});
+
+describe("a bank of bar models, and the time log", () => {
+  const SMALL_BARS = { groups: { min: 2, max: 3 }, size: { min: 2, max: 20 }, product: { min: 4, max: 60 } };
+  const barsOf = (limits: object) => snapshotWith((s) => {
+    for (const [i, side] of [s.sheets[0].front, s.sheets[0].back].entries()) Object.assign(side, { template: "figures-1x4", rows: [{ id: `bars-${i}`, shape: "figure.bar", limits, items: 2 }] });
+  });
+  /** The numbers in the bars of a page. */
+  const barTexts = (page: PageModel) => page.regions.filter((r) => r.role === "question").flatMap((r) => {
+    const bars = r.ink.filter((i) => i.kind === "outline").length;
+    return r.ink.filter((i) => i.kind === "text").slice(0, bars).map((i) => (i.kind === "text" ? i.text : ""));
+  });
+
+  it("draws the widest question of each count of bars and the questions of some seeds, each at every place, together and alone", async () => {
+    const renderer = fakeRenderer();
+    const report = await checkBank(barsOf(SMALL_BARS), renderer, { seeds: 2, templates: SMALL });
+    expect(report.problems).toEqual([]);
+    expect(FIGURE_SAMPLE_SEEDS).toBe(5);
+    const { samples } = report.checked;
+    // Each side: 5 seeds, less those that give a question twice or a widest one.
+    expect(samples).toBeGreaterThanOrEqual(6);
+    expect(samples).toBeLessThanOrEqual(2 * FIGURE_SAMPLE_SEEDS);
+    const whole = pagesOf(renderer.drawn.render);
+    // Each question is drawn on a front and a back page: 2 widest questions a side, and the samples.
+    expect(whole).toHaveLength(2 * (2 * 2 + samples));
+    const numbers = new Set(whole.flatMap(barTexts));
+    expect(numbers.has("20")).toBe(true);
+    expect([...numbers].filter((n) => n !== "20").length).toBeGreaterThan(2);
+    // A question of a seed is drawn alone too, at each place of its side.
+    expect(pagesOf(renderer.drawn.images).filter((p) => barTexts(p).some((n) => n !== "20")).length).toBeGreaterThan(4);
+  });
+
+  it("stops a question of a sampled seed that does not draw as its model says, and names its row", async () => {
+    const renderer = fakeRenderer({ render: (out, pages) => { pages.forEach((page, i) => { if (barTexts(page).some((n) => n !== "20")) out.images[i] = new Uint8Array([1, 2, 3]); }); } });
+    const { problems } = await checkBank(barsOf(SMALL_BARS), renderer, { seeds: 2, templates: SMALL });
+    expect(problems.join("\n")).toMatch(/^Sheet "column-multiplication-1", front side, row "bars-0": Page 381: /m);
+    expect(problems.join("\n")).toMatch(/^Sheet "column-multiplication-1", back side, row "bars-1": Page 381: /m);
+  });
+
+  it("has every digit in each bar, as many as the largest number of each count of bars, on both sides", () => {
+    const shape = SHAPES.get("figure.bar");
+    const template = TEMPLATES.get("figures-1x4");
+    if (!shape || !template) throw new Error("no shape or template");
+    const { texts, problems } = rowTexts({ id: "bars", shape, limits: { groups: { min: 2, max: 6 }, size: { min: 2, max: 99 }, product: { min: 4, max: 594 } }, items: 1 }, template);
+    expect(problems).toEqual([]);
+    for (const side of ["front", "back"] as const) {
+      const shown = texts.filter((t) => t.side === side && t.ink.kind === "text");
+      for (const d of "0123456789") {
+        // One width of a bar for each count of bars, at each of the four places.
+        const widths = new Set(shown.filter((t) => t.ink.kind === "text" && t.ink.text === d.repeat(2)).map((t) => t.ink.rect.w));
+        expect(widths.size).toBe(5);
+      }
+      expect(new Set(shown.map((t) => (t.ink.kind === "text" ? t.ink.text : "")))).toEqual(new Set([..."0123456789"].map((d) => d.repeat(2)).concat(["?", "Total ="])));
+    }
+  });
+
+  it("checks the front page of each sheet with the time log, and finds ink in its boxes", async () => {
+    const plain = fakeRenderer();
+    expect((await checkBank(snapshotWith(), plain, FEW)).problems).toEqual([]);
+    expect(pagesOf(plain.drawn.render).map((p) => [p.side, p.captures.map((c) => c.kind)])).toEqual([["front", ["time-log"]], ["back", []], ["front", ["time-log"]], ["back", []]]);
+    const marked = fakeRenderer({ render: (out, pages) => { pages.forEach((page, i) => {
+      const [capture] = page.captures;
+      if (!capture) return;
+      const canvas = drawPage(page);
+      const { x, y } = capture.fields[0].rect;
+      paint(canvas, { x: x + 20, y: y + 10, w: 3, h: 3 });
+      out.images[i] = toPng(canvas);
+    }); } });
+    const { problems } = await checkBank(snapshotWith(), marked, FEW);
+    expect(problems.join("\n")).toMatch(/^Sheet "column-multiplication-1", front side, row "no-carry": Page 381: the image has ink that the model does not have, at \(\d+, \d+\) in the box "start" of the time-log\.$/m);
   });
 });
 

@@ -1,15 +1,15 @@
 // What the frame of a page must print: the lines of each scan mark, the heading, the instruction, the footer and the number
 // of each question, at its place, in its size and weight. The places follow from the paper, the print rules, the QR code
 // and the print of the question (face-print.ts), never from a template. The words are for the rules of the page.
-import { PRINT_RULES, type Face, type Ink, type PageModel, type Rect, type Region } from "../contract";
+import { CAPTURE_KINDS, PRINT_RULES, type Face, type Ink, type PageModel, type Rect, type Region } from "../contract";
 import { faceTokens, type Area } from "./face-print";
-import { bottom, near, right } from "./rects";
+import { bottom, inside, near, overlaps, right } from "./rects";
 
-const { frame: { gap: GAP, mark: MARK, heading: HEADING, instruction: INSTRUCTION, footer: FOOTER }, label: LABEL, cell: CELL, line: LINE, textHeight: TEXT_HEIGHT } = PRINT_RULES;
+const { frame: { gap: GAP, mark: MARK, heading: HEADING, instruction: INSTRUCTION, footer: FOOTER }, label: LABEL, cell: CELL, line: LINE, textHeight: TEXT_HEIGHT, figure: FIGURE } = PRINT_RULES;
 
 type Style = Pick<Extract<Ink, { kind: "text" }>, "size" | "weight" | "align">;
-/** One part of the frame. A line has no style. */
-interface Print { rect: Rect; style: Style | null }
+/** One part of the frame. A line has no style, and an outline is a line round its rectangle with this width. */
+interface Print { rect: Rect; style: Style | null; outline?: number }
 /** A rectangle of the frame with all that it prints. */
 interface Wanted { name: string; rect: Rect; prints: Print[] }
 
@@ -17,8 +17,9 @@ const same = (a: Rect, b: Rect): boolean => near(a.x, b.x) && near(a.y, b.y) && 
 const round = (n: number) => Math.round(n * 100) / 100;
 const at = ({ x, y, w, h }: Rect) => `(${round(x)}, ${round(y)}, ${round(w)} by ${round(h)})`;
 
-function isPrint({ rect, style }: Print, ink: Ink): boolean {
-  const isKind = style === null ? ink.kind === "fill" : ink.kind === "text" && ink.size === style.size && ink.weight === style.weight && ink.align === style.align;
+function isPrint({ rect, style, outline }: Print, ink: Ink): boolean {
+  const isLine = outline === undefined ? ink.kind === "fill" : ink.kind === "outline" && near(ink.width, outline);
+  const isKind = style === null ? isLine : ink.kind === "text" && ink.size === style.size && ink.weight === style.weight && ink.align === style.align;
   return isKind && same(ink.rect, rect);
 }
 
@@ -32,8 +33,8 @@ function regionProblems(region: Region, { name, rect, prints }: Wanted): string[
   });
   return [
     ...(same(region.rect, rect) ? [] : [`${name} is at ${at(region.rect)} and must be at ${at(rect)}`]),
-    ...missing.map((p) => `${name} must print ${p.style === null ? "a line" : `a text of ${p.style.size} points and weight ${p.style.weight} at the ${p.style.align}`} in ${at(p.rect)}`),
-    ...left.map((ink) => `${name} prints ${ink.kind === "text" ? `"${ink.text}"` : ink.kind === "flow" ? "flow text" : "a line"} that it does not have there`),
+    ...missing.map((p) => `${name} must print ${p.style !== null ? `a text of ${p.style.size} points and weight ${p.style.weight} at the ${p.style.align}` : p.outline === undefined ? "a line" : "an outline"} in ${at(p.rect)}`),
+    ...left.map((ink) => `${name} prints ${ink.kind === "text" ? `"${ink.text}"` : ink.kind === "flow" ? "flow text" : ink.kind === "outline" ? "an outline" : "a line"} that it does not have there`),
   ];
 }
 
@@ -76,6 +77,8 @@ function lineTop(face: Face, question: Region, areas: ReadonlyMap<string, Area>)
   if (!area) return null;
   if (face.kind === "bracket") return bottom(area.reach) + LINE.height + LINE.gap;
   if (face.kind === "fields") return area.reach.y - TEXT_HEIGHT;
+  // A figure starts with its bars, which stand above the bracket and the line of its area.
+  if (face.kind === "figure") return area.answer.y - 2 * FIGURE.gap - FIGURE.tick - FIGURE.bar + (FIGURE.bar - TEXT_HEIGHT) / 2;
   const middle = area.answer.y + area.answer.h / 2;
   return middle - TEXT_HEIGHT / 2 - (face.kind === "sequence" ? at * area.reach.h : 0);
 }
@@ -86,4 +89,60 @@ export function labelProblems(face: Face, label: Region, slot: Region, question:
   if (y === null) return [];
   const rect = { x: slot.rect.x, y, w: face.kind === "column" ? CELL.w : LABEL.w, h: face.kind === "column" || face.kind === "bracket" ? CELL.h : TEXT_HEIGHT };
   return regionProblems(label, textIn("its label", rect, LABEL.size, LABEL.weight, "left"));
+}
+
+const TIME_LOG = PRINT_RULES.timeLog;
+const show = (rect: Rect) => at(rect);
+
+/**
+ * The time log of the first page of a day: a band above the footer, from its left end, with a label and an outlined box for
+ * each field in reading order, and clear space round each box. The places follow from the live part of the page and the
+ * print rules. A back page has none, and a page has one at most. `live` is the part of the page that may hold print.
+ */
+export function timeLogProblems(page: PageModel, live: Rect): string[] {
+  const problems: string[] = [];
+  const regions = page.regions.filter((r) => r.role === "capture");
+  if (page.side === "back" && (page.captures.length > 0 || regions.length > 0)) return ["a back page has no time log"];
+  if (page.captures.length > 1) problems.push(`the page has ${page.captures.length} captures and may have one time log`);
+  for (const region of regions) if (!page.captures.some((c) => c.id === region.id)) problems.push(`${region.id.slice(page.id.length + 1)} prints a capture that the page does not have`);
+  const left = live.x + MARK.size + GAP;
+  const reach = { w: TIME_LOG.box.w + 2 * TIME_LOG.reach, h: TIME_LOG.box.h + 2 * TIME_LOG.reach };
+  const pitch = TIME_LOG.label.w + TIME_LOG.labelGap + reach.w + TIME_LOG.gap;
+  const band = { x: left, y: TIME_LOG.top, w: TIME_LOG.fields.length * pitch - TIME_LOG.gap, h: TIME_LOG.h };
+  for (const capture of page.captures) {
+    const tell = (problem: string) => problems.push(`the time log ${problem}`);
+    if (!(CAPTURE_KINDS as readonly string[]).includes(capture.kind) || capture.kind !== "time-log") tell(`has the kind "${capture.kind}"`);
+    if (capture.id !== `${page.id}/time-log`) tell(`is named "${capture.id}" and must be named "${page.id}/time-log"`);
+    if (!same(capture.rect, band)) tell(`is at ${show(capture.rect)} and must be at ${show(band)}`);
+    const names = capture.fields.map((f) => f.name);
+    if (names.join() !== TIME_LOG.fields.join()) tell(`has the fields ${names.join(", ") || "none"} and must have ${TIME_LOG.fields.join(", ")}, in this order`);
+    const prints: Wanted["prints"] = [];
+    TIME_LOG.fields.forEach((name, i) => {
+      const x = left + i * pitch;
+      const around = { x: x + TIME_LOG.label.w + TIME_LOG.labelGap, y: TIME_LOG.top + (TIME_LOG.h - reach.h) / 2, ...reach };
+      const box = { x: around.x + TIME_LOG.reach, y: around.y + TIME_LOG.reach, w: TIME_LOG.box.w, h: TIME_LOG.box.h };
+      const field = capture.fields.find((f) => f.name === name);
+      if (field && !same(field.rect, box)) tell(`has the box "${name}" at ${show(field.rect)} and it must be at ${show(box)}`);
+      if (field && !same(field.reach, around)) tell(`has the clear space of "${name}" at ${show(field.reach)} and it must be at ${show(around)}`);
+      prints.push({ rect: { x, y: box.y, w: TIME_LOG.label.w, h: TIME_LOG.box.h }, style: { size: TIME_LOG.label.size, weight: TIME_LOG.label.weight, align: "right" } });
+      prints.push({ rect: box, style: null, outline: TIME_LOG.box.outline });
+    });
+    const region = regions.find((r) => r.id === capture.id);
+    if (!region) {
+      tell("has no rectangle that prints it");
+      continue;
+    }
+    problems.push(...regionProblems(region, { name: "the time log", rect: band, prints }));
+    const words = region.ink.flatMap((i) => (i.kind === "text" ? [i.text] : []));
+    if (words.join() !== TIME_LOG.labels.join()) tell(`prints ${words.map((w) => `"${w}"`).join(", ") || "no text"} and must print ${TIME_LOG.labels.map((w) => `"${w}"`).join(", ")}`);
+    // A child writes in a box: no other ink of the page may stand in its clear space, not even a part of the time log.
+    for (const field of capture.fields) {
+      if (!inside(field.reach, live)) tell(`has the box "${field.name}" outside the part of the page that may hold print`);
+      for (const other of page.regions) for (const ink of other.ink) {
+        const isOwnBox = other === region && ink.kind === "outline" && same(ink.rect, field.rect);
+        if (!isOwnBox && overlaps(ink.rect, field.reach)) tell(`has ink of ${other.id.slice(page.id.length + 1)} in the clear space of the box "${field.name}"`);
+      }
+    }
+  }
+  return problems;
 }

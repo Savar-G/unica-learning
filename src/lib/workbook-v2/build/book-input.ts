@@ -4,7 +4,8 @@ import { FieldReader } from "../bank/fields";
 import type { Snapshot, SnapshotSheet } from "../bank/snapshot";
 import type { Side } from "../contract";
 
-export interface BookSheet { sheet: SnapshotSheet; attempt: number; qr: Record<Side, string> }
+/** `startsDay` says that the sheet is the first of a day of the book, so that its front page has the time log. */
+export interface BookSheet { sheet: SnapshotSheet; attempt: number; qr: Record<Side, string>; startsDay: boolean }
 export interface BookRequest { bookId: string; childId: string; sheets: BookSheet[] }
 
 const isName = (value: unknown): value is string => typeof value === "string" && /^[A-Za-z0-9-]{1,64}$/.test(value);
@@ -12,8 +13,10 @@ const isQrText = (value: unknown): value is string => typeof value === "string" 
 
 function readSheet(r: FieldReader, raw: unknown, index: number, snapshot: Snapshot): BookSheet | null {
   const place = `The book, sheet ${index + 1}`;
-  const fields = r.object(place, raw, ["sheetId", "attempt", "qr"]);
+  const fields = r.object(place, raw, ["sheetId", "attempt", "qr"], ["startsDay"]);
   if (!fields) return null;
+  const { startsDay = false } = fields;
+  if (typeof startsDay !== "boolean") r.problem(place, "startsDay must be true or false");
   const sheet = typeof fields.sheetId === "string" ? snapshot.sheets.get(fields.sheetId) : undefined;
   if (!sheet) r.problem(place, `the snapshot has no sheet ${JSON.stringify(fields.sheetId)}`);
   const attempt = r.count(place, fields, "attempt");
@@ -21,7 +24,7 @@ function readSheet(r: FieldReader, raw: unknown, index: number, snapshot: Snapsh
   if (!qr) return null;
   for (const side of ["front", "back"]) if (!isQrText(qr[side])) r.problem(place, `the QR text of the ${side} must be printable text with no space`);
   const { front, back } = qr;
-  return sheet && attempt !== null && isQrText(front) && isQrText(back) ? { sheet, attempt, qr: { front, back } } : null;
+  return sheet && attempt !== null && isQrText(front) && isQrText(back) && typeof startsDay === "boolean" ? { sheet, attempt, qr: { front, back }, startsDay } : null;
 }
 
 export function readBookRequest(raw: unknown, snapshot: Snapshot): BookRequest | string[] {

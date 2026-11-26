@@ -9,6 +9,7 @@ import { divFact } from "./div-fact";
 import { divRemainder } from "./div-remainder";
 import { divLong } from "./div-long";
 import { placeValue } from "./place-value";
+import { figureBar } from "./figure-bar";
 import type { Shape } from "./shape";
 
 export type { Item, Shape } from "./shape";
@@ -41,4 +42,5 @@ export const SHAPES: ShapeLibrary = shapeLibrary([
   divRemainder,
   divLong,
   placeValue,
+  figureBar,
 ]);

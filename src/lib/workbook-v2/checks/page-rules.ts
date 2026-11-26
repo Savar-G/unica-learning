@@ -1,8 +1,8 @@
 // The layout rules of a page. They read the page model and the items, never the templates, so a wrong template fails.
 import { isPrintable, PAPER, partRegionName, PRINT_RULES, tokenText, wordToken, type AnswerPart, type BookItem, type FlowToken, type Ink, type PageModel, type Rect, type Region, type RegionRole } from "../contract";
 import { faceBlanks, faceText, printProblems, type Area } from "./face-print";
-import { framePrintProblems, labelProblems } from "./frame-print";
-import { bottom, EPSILON, inside, near, overlaps, right } from "./rects";
+import { framePrintProblems, labelProblems, timeLogProblems } from "./frame-print";
+import { bottom, EPSILON, inside, near, outlineLines, overlaps, right } from "./rects";
 
 const { spineZone, outerMargin, qrMin, reach: CLEAR, answer: ANSWER } = PRINT_RULES;
 
@@ -63,7 +63,9 @@ function checkInk(page: PageModel, tell: Tell): void {
       const printed = textOf(ink);
       if (printed === null) return;
       if (!isPrintable(printed)) tell(`${regionName(region)} has the text "${printed}", which the fonts cannot print`);
-      if (region.ink.some((other, j) => j !== i && overlaps(ink.rect, other.rect))) tell(`the text "${printed}" of ${regionName(region)} is over other ink`);
+      // An outline inks only its border, so a text may stand inside it, as the part of a bar does.
+      const isOver = (other: Ink) => (other.kind === "outline" ? outlineLines(other.rect, other.width) : [other.rect]).some((rect) => overlaps(ink.rect, rect));
+      if (region.ink.some((other, j) => j !== i && isOver(other))) tell(`the text "${printed}" of ${regionName(region)} is over other ink`);
     });
     checkFlows(region, tell);
     const mustBeEmpty = region.role === "answer" ? region.ink.some((i) => i.kind !== "outline") : (region.role === "reach" || region.role === "work" || region.role === "slot") && region.ink.length > 0;
@@ -247,6 +249,13 @@ function checkItem(page: PageModel, item: BookItem, tell: Tell): void {
   const [slot, label, question] = ITEM_ROLES.map((role) => parts.get(role));
   if (slot) for (const part of page.regions.filter((r) => r.item === item.id)) if (!inside(part.rect, slot.rect)) tell(`${regionName(part)} is not inside ${regionName(slot)}`);
   if (label && texts(label.ink).join("") !== String(item.number)) tell(`question ${item.number} has the label "${texts(label.ink).join("")}"`);
+  if (item.face.kind === "figure") {
+    const { figure: { parts, totalLabel }, prompt } = item.face;
+    if (parts.length === 0) tell(`question ${item.number} has a figure with no bar`);
+    parts.forEach((part, i) => { if (part.trim() === "") tell(`question ${item.number} has an empty part in bar ${i + 1}`); });
+    if (totalLabel.trim() === "") tell(`question ${item.number} has an empty label of the total`);
+    if (prompt.trim() === "") tell(`question ${item.number} has an empty prompt`);
+  }
   if (item.face.kind === "fields") {
     if (item.face.prompt.trim() === "") tell(`question ${item.number} has an empty prompt`);
     for (const { label, blank } of item.face.rows) if (label.trim() === "") tell(`question ${item.number} has an empty label in the row of "${blank}"`);
@@ -276,6 +285,8 @@ function checkIds(page: PageModel, items: ReadonlyMap<string | null, BookItem>, 
       return item ? partRegionName(region.role, item.number, region.part) : regionName(region).slice(1, -1);
     }
     if (region.item !== null || region.part !== null) tell(`${regionName(region)} must belong to no question`);
+    // A capture is named by its kind, as its id in the captures of the page.
+    if (region.role === "capture") return page.captures.find((c) => c.id === region.id)?.kind ?? region.role;
     return region.role === "scan-mark" ? regionName(region).slice(1, -1) : region.role;
   };
   for (const region of page.regions) {
@@ -307,6 +318,7 @@ export function checkPage(page: PageModel, items: readonly BookItem[]): string[]
   checkQr(page, live, tell);
   checkMarks(page, live, tell);
   for (const problem of framePrintProblems(page, live)) tell(problem);
+  for (const problem of timeLogProblems(page, live)) tell(problem);
   checkColumns(page, tell);
   const onPage = items.filter((i) => i.sheetId === page.sheetId && i.side === page.side && i.id.startsWith(`${page.id}/`));
   checkOverlaps(page, new Set(onPage.filter((i) => i.face.kind !== "column").map((i) => i.id)), tell);

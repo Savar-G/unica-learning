@@ -4,14 +4,14 @@ import { answerLine, type Answer, type BracketFace, type Face, type FaceToken, t
 import wideBook from "../fixtures/book-4-digits.json";
 import wideSnapshot from "../fixtures/snapshot-4-digits.json";
 import { canonicalJson, sha256 } from "../hash";
-import { factsBook, goodPages, placesBook } from "../testing/sample";
+import { factsBook, goodPages, inventedBook, placesBook } from "../testing/sample";
 import { SHAPES, shapeLibrary } from "../shapes";
 import { wholeNumber } from "../shapes/shape";
 import { validateSnapshot } from "../bank/snapshot";
 import { sheetItems } from "../build/items";
 import factsSnapshot from "../fixtures/snapshot-facts.json";
 import { buildPages } from "./build-pages";
-import { fitProblem, needsOf, questionText, TEMPLATES } from "./templates";
+import { fitProblem, needsOf, questionText, TEMPLATES, type ItemPlace } from "./templates";
 
 const pages = () => goodPages();
 const regions = (page: PageModel, role: RegionRole) => page.regions.filter((r) => r.role === role);
@@ -114,7 +114,8 @@ describe("a sheet of 4 digits by 1 digit", () => {
 describe("a question with one answer area", () => {
   // Made with engine 2.0.0-s3, before answers had parts.
   it.each([["the example sheet", goodPages, "e5178d1410a99bedfd236e5646995d0098220db7a76ac3ae041c66ae9634ea40"], ["the sheet of 4 digits by 1 digit", () => { const plan = planBook({ snapshot: wideSnapshot, book: wideBook }); return plan.ok ? plan.pages : []; }, "64247e899f4c41149ba0972ab661f5b12af658adeaee253c88187151c931ace5"]])("is laid out as before answers had parts: %s", (_name, made, hash) => {
-    const before = made().map((page) => ({ ...page, regions: page.regions.map(({ part, ...region }) => { expect(part).toBe(region.role === "answer" || region.role === "reach" ? "answer" : null); return region; }) }));
+    // A page that does not start a day has no capture, and nothing else of it changed when captures came.
+    const before = made().map(({ captures, ...page }) => { expect(captures).toEqual([]); return { ...page, regions: page.regions.map(({ part, ...region }) => { expect(part).toBe(region.role === "answer" || region.role === "reach" ? "answer" : null); return region; }) }; });
     expect(sha256(canonicalJson(before))).toBe(hash);
   });
 });
@@ -129,7 +130,7 @@ describe("the templates of tokens", () => {
     expect([...TEMPLATES.values()].map((t) => [t.id, t.sides.front.places.length, t.sides.back.places.length])).toEqual([
       ["columns-2x4", 8, 8], ["columns-2x4-wide", 8, 8], ["facts-2x10", 20, 20], ["sums-1x10", 10, 10], ["blanks-1x10", 10, 10], ["sequences-2x2", 4, 4], ["sequences-2x1", 2, 2],
       ["remainders-1x10", 10, 10], ["brackets-2x6", 12, 12], ["brackets-2x4", 8, 8], ["brackets-2x3", 6, 6], ["brackets-1x4", 4, 4], ["brackets-1x3", 3, 3],
-      ["places-2x2", 4, 4], ["places-2x3", 6, 6],
+      ["places-2x2", 4, 4], ["places-2x3", 6, 6], ["figures-1x4", 4, 4],
     ]);
     // One row more would reach the QR code: a row is an answer area with its reach.
     const [qr] = regions(facts, "qr");
@@ -317,5 +318,101 @@ describe("the templates of fields", () => {
   it("take fields in no other template, and show a question of fields with its answer", () => {
     expect([...TEMPLATES.values()].filter((t) => t.faces.includes("fields")).map((t) => [t.id, t.faces])).toEqual([["places-2x2", ["fields"]], ["places-2x3", ["fields"]]]);
     expect(questionText(fields(2, "40"), { parts: [{ name: "blank-1", kind: "digit", value: "4" }, { name: "blank-2", kind: "digit", value: "0" }] })).toBe("40 tens [4] row 1 [0]");
+  });
+});
+
+describe("the template of bar models", () => {
+  const book = inventedBook();
+  const figures = book.pages.filter((p) => p.template === "figures-1x4");
+  const bar = (parts: number, size = "15"): Face => ({ kind: "figure", figure: { kind: "bar-model", parts: Array.from({ length: parts }, () => size), totalLabel: "?" }, prompt: "Total =", blank: "answer" });
+  const template = TEMPLATES.get("figures-1x4");
+  if (!template) throw new Error("no template");
+
+  it("holds four questions on each side, one under the other, with one column of answer areas at the right end", () => {
+    expect(figures.map((p) => [p.side, regions(p, "slot").length, new Set(regions(p, "answer").map((a) => a.rect.x)).size])).toEqual([["front", 4, 1], ["back", 4, 1]]);
+    for (const side of ["front", "back"] as const) {
+      const places = template.sides[side].places;
+      const live = side === "front" ? 90 : 36;
+      places.forEach((place, i) => {
+        expect("frame" in place && place.frame.w).toBe(288);
+        expect("reach" in place && place.reach.x + place.reach.w).toBe(live + 486);
+        if (i > 0) expect(place.slot.y).toBe(places[i - 1].slot.y + places[i - 1].slot.h);
+      });
+    }
+  });
+
+  it("draws a bar for each part, side by side and of one width, with its part in the middle, then the bracket, the label of the total and the prompt", () => {
+    for (const page of figures) {
+      for (const item of book.items.filter((i) => i.id.startsWith(`${page.id}/`))) {
+        if (item.face.kind !== "figure") throw new Error("no figure");
+        const { parts } = item.face.figure;
+        const [question] = page.regions.filter((g) => g.item === item.id && g.role === "question");
+        const outlines = question.ink.filter((i) => i.kind === "outline").map((i) => i.rect);
+        expect(outlines).toHaveLength(parts.length);
+        outlines.forEach((o, i) => { expect(o.w).toBeCloseTo(288 / parts.length, 9); expect(o.x).toBeCloseTo(outlines[0].x + i * o.w, 9); expect(o.y).toBe(outlines[0].y); });
+        expect(texts(question)).toEqual([...parts, "?", "Total ="]);
+        const words = question.ink.filter((i) => i.kind === "text");
+        // The parts stand in their line, the label of the total and the prompt in the line of the area, apart from it.
+        const [area] = page.regions.filter((g) => g.item === item.id && g.role === "answer");
+        for (const word of words.slice(0, parts.length)) expect(word.rect.y + word.rect.h).toBeLessThan(area.rect.y);
+        for (const word of words.slice(parts.length)) expect(word.rect.y + word.rect.h / 2).toBeCloseTo(area.rect.y + area.rect.h / 2, 9);
+        expect(question.ink.filter((i) => i.kind === "fill")).toHaveLength(3);
+      }
+    }
+  });
+
+  it("gives each question a label, a question, an answer area and its reach, and no work area", () => {
+    const [front] = figures;
+    expect(front.regions.filter((g) => g.item === `${front.id}/2`).map((g) => [g.id.slice(front.id.length + 1), g.role, g.part])).toEqual([["slot-2", "slot", null], ["label-2", "label", null], ["question-2", "question", null], ["answer-2", "answer", "answer"], ["reach-2", "reach", "answer"]]);
+    expect(figures.flatMap((p) => regions(p, "work"))).toEqual([]);
+  });
+
+  it.each<[string, string, Face, Answer, string | null]>([
+    ["2 bars", "figures-1x4", bar(2), wholeNumber(30), null],
+    ["6 bars", "figures-1x4", bar(6, "99"), wholeNumber(594), null],
+    ["7 bars", "figures-1x4", bar(7), wholeNumber(105), 'needs 7 bars and the template "figures-1x4" has 6'],
+    ["a figure in a template of fields", "places-2x2", bar(2), wholeNumber(30), 'is a figure question and the template "places-2x2" has no place for one'],
+    ["a figure in a template of stacks", "columns-2x4", bar(2), wholeNumber(30), 'is a figure question and the template "columns-2x4" has no place for one'],
+    ["a figure in a template of equations", "facts-2x10", bar(2), wholeNumber(30), 'is a figure question and the template "facts-2x10" has no place for one'],
+    ["an equation in the template of figures", "figures-1x4", { kind: "equation", tokens: [{ text: "5" }, { blank: "answer" }] }, wholeNumber(5), 'is an equation question and the template "figures-1x4" has no place for one'],
+    ["a stack in the template of figures", "figures-1x4", { kind: "column", top: "24", sign: "×", bottom: "3" }, wholeNumber(72), 'is a column question and the template "figures-1x4" has no place for one'],
+    ["fields in the template of figures", "figures-1x4", { kind: "fields", prompt: "40", rows: [{ label: "tens", blank: "tens" }] }, { parts: [{ name: "tens", kind: "digit", value: "4" }] }, 'is a fields question and the template "figures-1x4" has no place for one'],
+  ])("says whether %s fits", (_name, id, face, answer, problem) => {
+    const found = TEMPLATES.get(id);
+    if (!found) throw new Error("no template");
+    expect(fitProblem(found, face, answer)).toBe(problem);
+  });
+
+  it("takes figures in no other template, and shows a figure with its answer", () => {
+    expect([...TEMPLATES.values()].filter((t) => t.faces.includes("figure")).map((t) => [t.id, t.faces])).toEqual([["figures-1x4", ["figure"]]]);
+    expect(questionText(bar(3), wholeNumber(45))).toBe("15 15 15 ? Total = [45]");
+    expect(needsOf(bar(4, "99"), wholeNumber(396))).toEqual({ bars: 4 });
+  });
+});
+
+describe("the place of the time log", () => {
+  const rectsOf = (place: ItemPlace) => Object.values(place).flatMap((value) => {
+    const all = Array.isArray(value) ? value.flatMap((v: unknown) => (v && typeof v === "object" && "x" in v ? [v] : v && typeof v === "object" ? Object.values(v as object) : [])) : [value];
+    return all.flatMap((v) => (v && typeof v === "object" && "x" in v && "w" in v ? [v as Rect] : v && typeof v === "object" ? Object.values(v as object).filter((o): o is Rect => !!o && typeof o === "object" && "w" in o) : []));
+  });
+  const overlap = (a: Rect, b: Rect) => Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) > 0.01 && Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) > 0.01;
+
+  it("is on the front of every template, in the band between the questions and the footer, apart from every other rectangle", () => {
+    expect(TEMPLATES.size).toBe(16);
+    for (const template of TEMPLATES.values()) {
+      expect(template.sides.back.frame.timeLog).toBeNull();
+      const { frame, places } = template.sides.front;
+      const log = frame.timeLog;
+      if (!log) throw new Error(`${template.id} has no time log`);
+      const own = [log.rect, ...log.fields.flatMap((f) => [f.labelRect, f.box, f.reach])];
+      for (const rect of own) {
+        expect(rect.y, template.id).toBeGreaterThanOrEqual(698.4);
+        expect(rect.y + rect.h, template.id).toBeLessThanOrEqual(738);
+        expect(rect.x, template.id).toBeGreaterThanOrEqual(90);
+      }
+      const others = [frame.heading, frame.instruction, frame.footer, frame.qr, ...Object.values(frame.marks), ...places.flatMap(rectsOf)];
+      expect(others.length, template.id).toBeGreaterThan(10);
+      for (const other of others) expect(overlap(log.rect, other), `${template.id} ${JSON.stringify(other)}`).toBe(false);
+    }
   });
 });

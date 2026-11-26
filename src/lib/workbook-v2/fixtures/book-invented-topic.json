@@ -1,0 +1,23 @@
+{
+  "bookId": "invented-topic-book",
+  "childId": "example-child",
+  "sheets": [
+    {
+      "sheetId": "column-multiplication-1",
+      "attempt": 1,
+      "startsDay": true,
+      "qr": {
+        "front": "https://unicalearning.com/tutor/p/invented-front-381",
+        "back": "https://unicalearning.com/tutor/p/invented-back-382"
+      }
+    },
+    {
+      "sheetId": "equal-groups-1",
+      "attempt": 1,
+      "qr": {
+        "front": "https://unicalearning.com/tutor/p/invented-front-383",
+        "back": "https://unicalearning.com/tutor/p/invented-back-384"
+      }
+    }
+  ]
+}

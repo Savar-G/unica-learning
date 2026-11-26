@@ -14,6 +14,7 @@ import { divFactRegistration } from "./registrations/div-fact";
 import { divRemainderRegistration } from "./registrations/div-remainder";
 import { divLongRegistration } from "./registrations/div-long";
 import { placeValueRegistration } from "./registrations/place-value";
+import { figureBarRegistration } from "./registrations/figure-bar";
 
 // Keep at least three lines between the shape imports and the list below so git merge=union merges each block on its own.
 // Adding a shape on two branches inserts one line in each block without conflict or hand edits.
@@ -33,4 +34,5 @@ export const SHAPE_REGISTRATIONS: readonly ShapeRegistration[] = [
   divRemainderRegistration,
   divLongRegistration,
   placeValueRegistration,
+  figureBarRegistration,
 ];

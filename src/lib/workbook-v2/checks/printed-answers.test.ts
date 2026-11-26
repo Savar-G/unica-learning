@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Answer, BookItem, ColumnFace, Ink, PageModel, Region } from "../contract";
 import { SHAPES, shapeLibrary, type Shape, type ShapeLibrary } from "../shapes";
 import { wholeNumber } from "../shapes/shape";
-import { bookOf, divisionBook, factsBook, goodBook, stackOf, type GoodBook } from "../testing/sample";
+import { bookOf, divisionBook, factsBook, goodBook, inventedBook, stackOf, type GoodBook } from "../testing/sample";
 import { answerProblem } from "./answer-form";
 import { BLANK, checkPrintedAnswers, printedRows, questionRows } from "./printed-answers";
 
@@ -216,10 +216,10 @@ describe("a question with blanks", () => {
 
   it("is read with its answer areas as blanks, also inside a line, and a stack with none", () => {
     expect(problemsOf(good)).toEqual([]);
-    const rows = (index: number) => questionRows(regionsOf(good, `${good.pages[index].id}/1`));
+    const rows = (index: number) => questionRows(regionsOf(good, `${good.pages[index].id}/1`), good.items.find((i) => i.id === `${good.pages[index].id}/1`)!.face);
     expect([rows(0), rows(4), rows(5), rows(7)]).toEqual([[`5×1=${BLANK}`], [`2+2+2=${BLANK}`], [`2×${BLANK}=2`], ["5", "10", BLANK, BLANK, BLANK]]);
     const book = goodBook();
-    expect(questionRows(regionsOf(book, book.items[0].id)).join("")).not.toContain(BLANK);
+    expect(questionRows(regionsOf(book, book.items[0].id), book.items[0].face).join("")).not.toContain(BLANK);
   });
 
   it.each<[string, (item: BookItem, regions: Region[]) => unknown, RegExp]>([
@@ -248,7 +248,7 @@ describe("a division", () => {
 
   it("is read with its areas as blanks, the letter R and the sign of the bracket", () => {
     expect(problemsOf(good)).toEqual([]);
-    const rows = (number: number) => questionRows(good.pages[number - 1].regions.filter((r) => r.item === `${good.pages[number - 1].id}/1`)).join(" ");
+    const rows = (number: number) => questionRows(good.pages[number - 1].regions.filter((r) => r.item === `${good.pages[number - 1].id}/1`), good.items.find((i) => i.id === `${good.pages[number - 1].id}/1`)!.face).join(" ");
     expect([rows(1), rows(3), rows(9), rows(7)]).toEqual([expect.stringMatching(/^\d+÷\d+=□$/), expect.stringMatching(/^\d+÷\d=□R□$/), expect.stringMatching(/^□ \d\)\d\d$/), expect.stringMatching(/^□R□ \d\)\d\d$/)]);
   });
 
@@ -266,5 +266,43 @@ describe("a division", () => {
     ["another form in the book than on the page", 9, ({ question: q }) => { (q as { form: string }).form = "line"; }, /the page prints another question than the book holds/],
     ["other areas in the book than on the page", 9, ({ question: q }) => { (q as { parts: number }).parts = 2; }, /the page prints another question than the book holds/],
     ["worked steps that end with a comma", 7, ({ steps, answer: { parts } }) => { steps[steps.length - 1].text = parts.map((p) => p.value).join(", "); }, /"\d, \d" by the worked steps/],
+  ])("%s stops the book", (_name, number, change, problem) => expect(after(number, change)).toMatch(problem));
+});
+
+describe("a bar model", () => {
+  // Pages 3 and 4 of the invented book are bar models: 2 or 3 bars, then 4 to 6 bars on the front.
+  const good = inventedBook();
+  const page = (number: number) => good.pages[number - 1];
+  const regionsOf = (book: GoodBook, number: number, at: number) => book.pages[number - 1].regions.filter((r) => r.item === `${book.pages[number - 1].id}/${at}`);
+  const after = (number: number, change: (item: BookItem, regions: Region[]) => unknown): string => {
+    const book = structuredClone(good);
+    const at = 1;
+    const item = book.items.find((i) => i.id === `${book.pages[number - 1].id}/${at}`)!;
+    change(item, regionsOf(book, number, at));
+    return checkPrintedAnswers([book.pages[number - 1]], [item], SHAPES).join("\n");
+  };
+  const question = (regions: Region[]) => regions.find((r) => r.role === "question")!;
+  const textsOf = (regions: Region[]) => question(regions).ink.filter((i): i is Extract<Ink, { kind: "text" }> => i.kind === "text");
+
+  it("is read as its bars in one row and the total in the next, each text apart, and the other faces as before", () => {
+    expect(checkPrintedAnswers(good.pages, good.items, SHAPES)).toEqual([]);
+    const rowsOf = (number: number, at: number) => questionRows(regionsOf(good, number, at), good.items.find((i) => i.id === `${page(number).id}/${at}`)!.face);
+    for (const [number, at] of [[3, 1], [3, 4], [4, 4]]) {
+      const item = good.items.find((i) => i.id === `${page(number).id}/${at}`)!;
+      const { groups, size } = item.question as { groups: number; size: number };
+      expect(rowsOf(number, at)).toEqual([Array.from({ length: groups }, () => String(size)).join(" | "), `? | Total = | ${BLANK}`]);
+    }
+    expect(rowsOf(1, 1).every((row) => !row.includes("|"))).toBe(true);
+  });
+
+  it.each<[string, number, (item: BookItem, regions: Region[]) => unknown, RegExp]>([
+    ["a bar with another number", 3, (_item, regions) => { const t = textsOf(regions)[0]; t.text = String(Number(t.text) + 1); }, /cannot be read as figure\.bar/],
+    ["a bar that is not printed", 3, (_item, regions) => { const q = question(regions); q.ink = q.ink.filter((i) => i !== textsOf(regions)[0]); }, /cannot be read as figure\.bar|another question than the book holds/],
+    ["a part in the line of the total", 3, (_item, regions) => { const t = textsOf(regions)[0]; t.rect = { ...t.rect, y: t.rect.y + 60 }; }, /cannot be read as figure\.bar/],
+    ["no question mark", 3, (_item, regions) => { const q = question(regions); q.ink = q.ink.filter((i) => i.kind !== "text" || i.text !== "?"); }, /cannot be read as figure\.bar/],
+    ["another prompt", 3, (_item, regions) => { textsOf(regions).find((t) => t.text === "Total =")!.text = "Sum ="; }, /cannot be read as figure\.bar/],
+    ["an answer area below the question", 3, (_item, regions) => { const a = regions.find((r) => r.role === "answer")!; a.rect = { ...a.rect, y: a.rect.y + 400 }; }, /cannot be read as figure\.bar/],
+    ["another total in the book", 4, ({ answer: { parts } }) => { parts[0].value = String(Number(parts[0].value) + 1); }, /the answer is "\d+" by one computation and "\d+" by another/],
+    ["another question in the book", 4, (item) => { (item.question as { size: number }).size += 1; }, /the page prints another question than the book holds/],
   ])("%s stops the book", (_name, number, change, problem) => expect(after(number, change)).toMatch(problem));
 });

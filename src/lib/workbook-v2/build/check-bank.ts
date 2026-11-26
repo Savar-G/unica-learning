@@ -13,13 +13,19 @@ import type { PlannedSheet } from "../layout/build-pages";
 import { TEMPLATES } from "../layout/templates";
 import { RenderError, type Renderer } from "../renderer";
 import { SHAPES, type Item, type ShapeLibrary } from "../shapes";
-import { formsOf } from "../shapes/shape";
+import { formsOf, questionKey } from "../shapes/shape";
+import { seedFrom } from "../hash";
 import { planPages } from "./build-book";
 import { sheetItems } from "./items";
 import { rowTexts } from "./row-texts";
 
 /** How many children a level is made for before it is frozen. */
 export const BANK_SEEDS = 200;
+/**
+ * A drawn figure is fitted with the widest question of each form, and its other questions are drawn too: this many seeds of
+ * each row with a figure, each question one time, at every place of both sides, together and alone.
+ */
+export const FIGURE_SAMPLE_SEEDS = 5;
 /** The pages of one drawing. */
 const BATCH = 100;
 const SIDES: readonly Side[] = ["front", "back"];
@@ -28,7 +34,8 @@ const QR: Record<Side, string> = { front: "bank-check-front", back: "bank-check-
 export interface BankReport {
   /** Each names the sheet, the side and the row. */
   problems: string[];
-  checked: { sheets: number; rows: number; seeds: number; questions: number; pages: number; alone: number; texts: number };
+  /** `samples` are the questions of sampled seeds that are drawn as the widest ones are. */
+  checked: { sheets: number; rows: number; seeds: number; questions: number; pages: number; alone: number; texts: number; samples: number };
 }
 
 export interface BankOptions { shapes?: ShapeLibrary; templates?: TemplateLibrary; seeds?: number }
@@ -65,7 +72,8 @@ async function drawing<T>(step: () => Promise<T>): Promise<Made<T>> {
   }
 }
 
-const planned = (sheet: SnapshotSheet, levelName: string, items: BookItem[], run = 1): PlannedSheet => ({ sheet, levelName, attempt: run, qr: QR, items });
+/** Any sheet can start a day of a book, so the front page of each one is checked with the time log. */
+const planned = (sheet: SnapshotSheet, levelName: string, items: BookItem[], run = 1): PlannedSheet => ({ sheet, levelName, attempt: run, qr: QR, items, startsDay: true });
 
 class BankCheck {
   readonly problems: string[] = [];
@@ -77,7 +85,7 @@ class BankCheck {
   private runs = 0;
 
   constructor(private readonly levelName: string, private readonly shapes: ShapeLibrary, seeds: number, private readonly renderer: Renderer) {
-    this.checked = { sheets: 0, rows: 0, seeds, questions: 0, pages: 0, alone: 0, texts: 0 };
+    this.checked = { sheets: 0, rows: 0, seeds, questions: 0, pages: 0, alone: 0, texts: 0, samples: 0 };
   }
 
   private tell(owner: string, problems: readonly string[]): void {
@@ -136,8 +144,8 @@ class BankCheck {
     }
   }
 
-  /** The widest question of one form at every place of both sides of its template. */
-  private widest(sheet: SnapshotSheet, side: Side, row: SnapshotRow, { question, answer }: Item<unknown>): void {
+  /** One question at every place of both sides of its template: the widest question of a form, or one of a sampled seed. */
+  private everywhere(sheet: SnapshotSheet, side: Side, row: SnapshotRow, { question, answer }: Item<unknown>): void {
     const owner = rowPlace(sheet, side, [row]);
     const run = ++this.runs;
     const { shape } = row;
@@ -174,8 +182,24 @@ class BankCheck {
     if (texts.ok) for (const { ink, name, side: at } of texts.value.texts) this.measure(owner, ink, name, at);
     this.tell(owner, texts.ok ? texts.value.problems : texts.problems);
     const runs = this.runs;
-    for (const form of forms.value) this.widest(sheet, side, row, form);
+    for (const form of forms.value) this.everywhere(sheet, side, row, form);
     if (this.runs === runs && this.problems.length === before) this.tell(owner, ["nothing was drawn, because the shape gives no form of its questions."]);
+    if (forms.value.some(({ question }) => row.shape.face(question).kind === "figure")) this.samples(sheet, side, row, forms.value);
+  }
+
+  /** The questions of some seeds of a row with a figure, each one time, and none that is a widest question already. */
+  private samples(sheet: SnapshotSheet, side: Side, row: SnapshotRow, forms: readonly Item<unknown>[]): void {
+    const owner = rowPlace(sheet, side, [row]);
+    const drawn = new Set(forms.map(({ question }) => questionKey(row.shape, question)));
+    for (let seed = 1; seed <= FIGURE_SAMPLE_SEEDS; seed++) {
+      const made = attempt("a question of a sampled seed cannot be made", () => row.shape.generate(row.limits, seedFrom("bank-check-figure", sheet.id, side, row.id, seed)));
+      if (!made.ok) return this.tell(owner, made.problems);
+      const key = questionKey(row.shape, made.value.question);
+      if (drawn.has(key)) continue;
+      drawn.add(key);
+      this.checked.samples++;
+      this.everywhere(sheet, side, row, made.value);
+    }
   }
 
   rows(sheet: SnapshotSheet): void {
@@ -317,7 +341,7 @@ function measurePages(texts: readonly Measured[]): { pages: PageModel[]; textOf:
     if (x + w > PAPER.w) [x, y, high] = [0, y + high + MEASURE.gap, 0];
     if (y + h > MEASURE.high) {
       const id = `measure-${pages.length + 1}`;
-      pages.push({ id, sheetId: id, attempt: 1, side: "front", page: pages.length + 1, levelName: "", topicCode: "", topicTitle: "", instruction: "", template: "", qr: "", size: { w: Math.max(PAPER.w, w), h: Math.max(MEASURE.high, h) }, regions: [] });
+      pages.push({ id, sheetId: id, attempt: 1, side: "front", page: pages.length + 1, levelName: "", topicCode: "", topicTitle: "", instruction: "", template: "", qr: "", size: { w: Math.max(PAPER.w, w), h: Math.max(MEASURE.high, h) }, regions: [], captures: [] });
       [x, y, high] = [0, 0, 0];
     }
     const id = `measure/${textOf.size + 1}`;
@@ -341,7 +365,7 @@ function readBank(snapshot: unknown, shapes: ShapeLibrary, templates: TemplateLi
 /** Every problem of a snapshot, with its sheet, side and row. It changes nothing, and the same snapshot gives the same report. */
 export async function checkBank(snapshot: unknown, renderer: Renderer, { shapes = SHAPES, templates = TEMPLATES, seeds = BANK_SEEDS }: BankOptions = {}): Promise<BankReport> {
   const bank = readBank(snapshot, shapes, templates);
-  if (!bank.ok) return { problems: bank.problems, checked: { sheets: 0, rows: 0, seeds: 0, questions: 0, pages: 0, alone: 0, texts: 0 } };
+  if (!bank.ok) return { problems: bank.problems, checked: { sheets: 0, rows: 0, seeds: 0, questions: 0, pages: 0, alone: 0, texts: 0, samples: 0 } };
   const check = new BankCheck(bank.snapshot.level.name, shapes, seeds, renderer);
   for (const sheet of bank.snapshot.sheets.values()) {
     check.checked.sheets++;

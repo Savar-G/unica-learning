@@ -15,13 +15,13 @@ export class FieldReader {
     this.problems.push(`${place}: ${text}.`);
   }
 
-  /** The value as an object with no field outside the list, or null. */
-  object(place: string, value: unknown, names: readonly string[]): Fields | null {
+  /** The value as an object with no field outside the lists, or null. A field of `optional` may be left out. */
+  object(place: string, value: unknown, names: readonly string[], optional: readonly string[] = []): Fields | null {
     if (!isRecord(value)) {
       this.problem(place, "this must be an object");
       return null;
     }
-    for (const name of Object.keys(value)) if (!names.includes(name)) this.problem(place, `unknown field "${name}"`);
+    for (const name of Object.keys(value)) if (!names.includes(name) && !optional.includes(name)) this.problem(place, `unknown field "${name}"`);
     const missing = names.filter((name) => !Object.prototype.hasOwnProperty.call(value, name));
     for (const name of missing) this.problem(place, `${name} is missing`);
     return missing.length > 0 ? null : value;

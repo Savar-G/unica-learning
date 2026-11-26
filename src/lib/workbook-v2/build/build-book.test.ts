@@ -61,7 +61,7 @@ describe("a good input", () => {
       expect(steps.at(-1)).toEqual({ text: value, marks: [] });
       expect(shapeVersion).toBe(SHAPES.get(shape)?.version);
     }
-    expect(book.record).toMatchObject({ bookId: "example-book", engine: "2.0.0-s8", ...IDENTITY, snapshot: { id: "invented-level-3-v1" } });
+    expect(book.record).toMatchObject({ bookId: "example-book", engine: "2.0.0-s9", ...IDENTITY, snapshot: { id: "invented-level-3-v1" } });
     expect(book.record.snapshot.hash).toMatch(/^[0-9a-f]{64}$/);
     expect(book.record.inputHash).toMatch(/^[0-9a-f]{64}$/);
   });
@@ -99,6 +99,16 @@ describe("a good input", () => {
     expect(hashed(during)).toEqual(hashed(await plain()));
   });
 
+  it("is the same book when a sheet says that it does not start a day, and has a time log on its front page when it does", async () => {
+    const [one, two, three] = [await plain(), await built(input((i) => put(i.book.sheets[0], "startsDay", false))), await built(input((i) => put(i.book.sheets[0], "startsDay", true)))];
+    expect(Buffer.from(two.pdf).equals(Buffer.from(one.pdf))).toBe(true);
+    expect(two.pages.map((p) => p.image)).toEqual(one.pages.map((p) => p.image));
+    expect(one.pages.map((p) => p.model.captures)).toEqual([[], []]);
+    expect(three.pages.map((p) => p.model.captures.map((c) => c.kind))).toEqual([["time-log"], []]);
+    expect(Buffer.from(three.pdf).equals(Buffer.from(one.pdf))).toBe(false);
+    expect(three.items).toEqual(one.items);
+  });
+
   it.each<[string, (i: Input) => unknown]>([
     ["child", (i) => put(i.book, "childId", "other-child")],
     ["attempt", (i) => put(i.book.sheets[0], "attempt", 2)],
@@ -125,6 +135,9 @@ describe("a build stops, draws nothing and says why", () => {
     ["no QR text", (i) => put(i.book.sheets[0].qr, "back", ""), "The book, sheet 1: the QR text of the back must be printable text with no space."],
     ["a QR text that is too long to scan", (i) => put(i.book.sheets[0].qr, "back", "x".repeat(100)), "Page 382: the QR code for a text of 100 characters needs squares that are too small to scan."],
     ["an unknown field", (i) => put(i.book, "made", "today"), 'The book: unknown field "made".'],
+    ["a sheet that starts a day with a word", (i) => put(i.book.sheets[0], "startsDay", "yes"), "The book, sheet 1: startsDay must be true or false."],
+    ["a sheet that starts a day with a number", (i) => put(i.book.sheets[0], "startsDay", 1), "The book, sheet 1: startsDay must be true or false."],
+    ["a sheet that starts a day with nothing", (i) => put(i.book.sheets[0], "startsDay", null), "The book, sheet 1: startsDay must be true or false."],
     ["an inherited child", (i) => { Reflect.deleteProperty(i.book, "childId"); Object.setPrototypeOf(i.book, { childId: "other-child" }); }, "The book: this must be a plain object."],
     ["an inherited QR text", (i) => { Reflect.deleteProperty(i.book.sheets[0].qr, "front"); Object.setPrototypeOf(i.book.sheets[0].qr, { front: "x" }); }, "The book, sheets[0].qr: this must be a plain object."],
     ["a computed child", (i) => { Object.defineProperty(i.book, "childId", { get: () => "child", enumerable: true }); }, "The book, childId: this must be a plain value."],

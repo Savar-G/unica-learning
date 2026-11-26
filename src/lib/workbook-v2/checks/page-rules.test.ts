@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mathToken, wordToken, type BookItem, type FlowToken, type Ink, type PageModel, type Region, type RegionRole } from "../contract";
-import { divisionBook, factsBook, goodBook, placesBook, type GoodBook } from "../testing/sample";
+import { divisionBook, factsBook, goodBook, inventedBook, placesBook, type GoodBook } from "../testing/sample";
 import { checkPage } from "./page-rules";
 
 const find = (page: PageModel, role: RegionRole, index = 0): Region => {
@@ -343,17 +343,151 @@ describe("a question of fields", () => {
   ])("%s stops the page", (_name, number, change, problem) => expect(problemsAfter(number, change)).toMatch(problem));
 });
 
+describe("a bar model", () => {
+  // Page 3 has 2 or 3 bars, then 4 to 6; page 4 has 2 to 4 bars, then 5 or 6.
+  const good = inventedBook();
+  const named = (page: PageModel, name: string): Region => {
+    const found = page.regions.find((r) => r.id.endsWith(`/${name}`));
+    if (!found) throw new Error(`no ${name}`);
+    return found;
+  };
+  const problemsAfter = (number: number, change: (page: PageModel, items: GoodBook["items"]) => unknown): string => {
+    const page = structuredClone(good.pages[number - 1]);
+    const items = structuredClone(good.items.filter((i) => i.id.startsWith(`${page.id}/`)));
+    change(page, items);
+    return checkPage(page, items).join("\n");
+  };
+  const face = (items: GoodBook["items"], number = 1) => {
+    const found = items.find((i) => i.number === number)?.face;
+    if (found?.kind !== "figure") throw new Error("no figure");
+    return found;
+  };
+  const inkOf = (page: PageModel, kind: Ink["kind"], index: number, name = "question-1") => {
+    const ink = named(page, name).ink.filter((i) => i.kind === kind)[index];
+    if (!ink) throw new Error(`no ${kind} ${index}`);
+    return ink;
+  };
+  const textAt = (page: PageModel, index: number) => {
+    const ink = inkOf(page, "text", index);
+    if (ink.kind !== "text") throw new Error("no text");
+    return ink;
+  };
+  const bars = (items: GoodBook["items"]) => face(items).figure.parts.length;
+
+  it("breaks no rule on any page of the invented book, with full sides of one answer column", () => {
+    expect(good.pages.flatMap((p) => checkPage(p, good.items))).toEqual([]);
+    expect(good.pages.slice(2).map((p) => `${p.template} ${p.regions.filter((r) => r.role === "slot").length} ${new Set(p.regions.filter((r) => r.role === "answer").map((r) => r.rect.x)).size}`)).toEqual(["figures-1x4 4 1", "figures-1x4 4 1"]);
+  });
+
+  it.each<[string, number, (page: PageModel, items: GoodBook["items"]) => unknown, RegExp]>([
+    ["an empty part", 3, (p, items) => { face(items).figure.parts[0] = ""; textAt(p, 0).text = ""; }, /question 1 has an empty part in bar 1/],
+    ["a part of spaces", 3, (p, items) => { face(items).figure.parts[1] = "  "; textAt(p, 1).text = "  "; }, /question 1 has an empty part in bar 2/],
+    ["an empty label of the total", 3, (p, items) => { const f = face(items); textAt(p, f.figure.parts.length).text = ""; f.figure.totalLabel = ""; }, /question 1 has an empty label of the total/],
+    ["an empty prompt", 3, (p, items) => { const f = face(items); textAt(p, f.figure.parts.length + 1).text = ""; f.prompt = ""; }, /question 1 has an empty prompt/],
+    ["a figure with no bar", 3, (p, items) => { const f = face(items); const q = named(p, "question-1"); q.ink = q.ink.slice(2 * f.figure.parts.length); f.figure.parts = []; }, /question 1 has a figure with no bar/],
+    ["a bar that is wider than the others", 3, (p) => { const [one, two] = [inkOf(p, "outline", 0), inkOf(p, "outline", 1)]; one.rect = { ...one.rect, w: one.rect.w + 4 }; two.rect = { ...two.rect, x: two.rect.x + 4, w: two.rect.w - 4 }; }, /question 1 must print an outline at/],
+    ["a bar with no outline", 3, (p) => { const q = named(p, "question-1"); q.ink = q.ink.filter((i) => i !== inkOf(p, "outline", 0)); }, /question 1 must print an outline at/],
+    ["a bar too many", 4, (p) => { const q = named(p, "question-1"); const bar = inkOf(p, "outline", 0); q.ink.push({ ...bar, rect: { ...bar.rect, y: bar.rect.y + 0 } }); }, /question 1 prints an outline that its face does not have there/],
+    ["a part in another bar", 3, (p, items) => { const t = textAt(p, 0); const w = 288 / bars(items); t.rect = { ...t.rect, x: t.rect.x + w }; }, /question 1 must print "\d+" at|over other ink/],
+    ["a part on the border of its bar", 3, (p) => { const t = textAt(p, 0); t.rect = { ...t.rect, x: t.rect.x - 4, w: t.rect.w + 4 }; }, /the text "\d+" of "question-1" is over other ink/],
+    ["a part at the left of its bar", 3, (p) => { textAt(p, 0).align = "left"; }, /question 1 must print "\d+" at/],
+    ["no tick at the left end of the bracket", 3, (p) => { const q = named(p, "question-1"); q.ink = q.ink.filter((i) => i !== inkOf(p, "fill", 0)); }, /question 1 must print a line at/],
+    ["a bracket line that is too short", 3, (p) => { const l = inkOf(p, "fill", 2); l.rect = { ...l.rect, w: l.rect.w - 10 }; }, /question 1 must print a line at/],
+    ["a bracket that touches the bars", 3, (p) => { for (const i of [0, 1, 2]) { const l = inkOf(p, "fill", i); l.rect = { ...l.rect, y: l.rect.y - 4 }; } }, /question 1 must print a line at/],
+    ["the label of the total at the left", 3, (p, items) => { const t = textAt(p, bars(items)); t.rect = { ...t.rect, x: t.rect.x - 100 }; }, /question 1 must print "\?" at/],
+    ["the prompt at the left", 3, (p, items) => { textAt(p, bars(items) + 1).align = "left"; }, /question 1 must print "Total =" at/],
+    ["the prompt in the reach", 3, (p, items) => { const t = textAt(p, bars(items) + 1); t.rect = { ...t.rect, w: t.rect.w + 6 }; }, /"question-1" enters the reach "reach-1"|must print "Total =" at/],
+    ["the bars in the line of the total", 3, (p, items) => { for (let i = 0; i < bars(items); i++) { const [o, t] = [inkOf(p, "outline", i), textAt(p, i)]; o.rect = { ...o.rect, y: o.rect.y + 50 }; t.rect = { ...t.rect, y: t.rect.y + 50 }; } }, /question 1 must print an outline at/],
+    ["an area that is too narrow", 3, (p) => { const a = named(p, "answer-1"); a.rect = { ...a.rect, w: 71 }; a.ink = [{ ...a.ink[0], rect: a.rect }]; }, /"answer-1" is 71 by 42 points and needs 72 by 42/],
+    ["an area out of the column of the others", 3, (p) => { for (const n of ["answer-2", "reach-2"]) move(named(p, n), -6, 0); }, /2 answer columns|must print "Total =" at/],
+    ["a label of the question beside the total", 3, (p) => move(named(p, "label-1"), 0, 60), /question 1: its label is at/],
+    ["a part that the fonts cannot print", 3, (p, items) => { face(items).figure.parts[0] = "1✓"; textAt(p, 0).text = "1✓"; }, /"question-1" has the text "1✓", which the fonts cannot print/],
+  ])("%s stops the page", (_name, number, change, problem) => expect(problemsAfter(number, change)).toMatch(problem));
+});
+
+describe("the time log", () => {
+  // Sheet 1 of the invented book starts a day; sheet 2 does not.
+  const good = inventedBook();
+  const [first, back, other] = good.pages;
+  const log = (page: PageModel) => page.regions.find((r) => r.role === "capture");
+  const problemsAfter = (page: PageModel, change: (page: PageModel) => unknown): string => {
+    const changed = structuredClone(page);
+    change(changed);
+    return checkPage(changed, good.items).join("\n");
+  };
+  const labelOf = (page: PageModel, index: number) => {
+    const ink = log(page)!.ink.filter((i) => i.kind === "text")[index];
+    if (ink?.kind !== "text") throw new Error("no label");
+    return ink;
+  };
+  const boxOf = (page: PageModel, index: number) => log(page)!.ink.filter((i) => i.kind === "outline")[index];
+  /** The time log of the first page, put on another page with the names of that page. */
+  const copyTo = (page: PageModel) => {
+    const capture = first.captures[0];
+    const id = `${page.id}/time-log`;
+    page.captures = [{ ...structuredClone(capture), id }];
+    page.regions.push({ ...structuredClone(log(first)!), id });
+  };
+
+  it("is on the front page of the first sheet of a day only, with a start and a finish box", () => {
+    expect(good.pages.map((p) => p.captures.length)).toEqual([1, 0, 0, 0]);
+    expect(first.captures).toEqual([{ id: `${first.id}/time-log`, kind: "time-log", rect: { x: 111.5, y: 700, w: 256, h: 36 }, fields: [
+      { name: "start", rect: { x: 158.5, y: 705, w: 72, h: 26 }, reach: { x: 153.5, y: 700, w: 82, h: 36 } },
+      { name: "finish", rect: { x: 290.5, y: 705, w: 72, h: 26 }, reach: { x: 285.5, y: 700, w: 82, h: 36 } },
+    ] }]);
+    expect(log(first)?.ink.map((i) => (i.kind === "text" ? i.text : i.kind))).toEqual(["Start", "outline", "Finish", "outline"]);
+    expect(log(first)).toMatchObject({ id: `${first.id}/time-log`, role: "capture", item: null, part: null });
+  });
+
+  it("is never an answer: no item, no answer area and no answer column holds it", () => {
+    const columns = (page: PageModel) => new Set(page.regions.filter((r) => r.role === "answer").map((r) => r.rect.x)).size;
+    expect(columns(first)).toBe(columns(back));
+    expect(JSON.stringify(good.items)).not.toMatch(/time-log|Start|Finish/);
+    expect(first.regions.filter((r) => r.role === "answer" || r.role === "reach").some((r) => r.id.includes("time-log"))).toBe(false);
+  });
+
+  it.each<[string, PageModel, (p: PageModel) => unknown, RegExp]>([
+    ["a time log on a back page", back, copyTo, /a back page has no time log/],
+    ["a time log on a front page that does not start a day passes", other, copyTo, /^$/],
+    ["two time logs", first, (p) => { p.captures.push({ ...p.captures[0], id: `${p.id}/time-log-2` }); }, /the page has 2 captures and may have one time log/],
+    ["a capture of another kind", first, (p) => { (p.captures[0] as { kind: string }).kind = "score"; }, /the time log has the kind "score"/],
+    ["a capture with another id", first, (p) => { p.captures[0].id = `${p.id}/times`; }, /the time log is named ".*\/times" and must be named ".*\/time-log"/],
+    ["the fields in the other order", first, (p) => p.captures[0].fields.reverse(), /the time log has the fields finish, start and must have start, finish, in this order/],
+    ["no finish field", first, (p) => p.captures[0].fields.pop(), /the time log has the fields start and must have start, finish/],
+    ["a box that is not where the capture says", first, (p) => { const b = boxOf(p, 0); b.rect = { ...b.rect, x: b.rect.x + 1 }; }, /the time log must print an outline in \(158\.5, 705, 72 by 26\)/],
+    ["a capture that is not where the box is", first, (p) => { const f = p.captures[0].fields[1]; f.rect = { ...f.rect, y: f.rect.y + 1 }; }, /the time log has the box "finish" at .* and it must be at \(290\.5, 705, 72 by 26\)/],
+    ["a reach that is too small", first, (p) => { const f = p.captures[0].fields[0]; f.reach = { ...f.reach, w: f.reach.w - 2 }; }, /the time log has the clear space of "start" at/],
+    ["no box", first, (p) => { log(p)!.ink = log(p)!.ink.filter((i) => i.kind !== "outline"); }, /the time log must print an outline in/],
+    ["the labels in the other order", first, (p) => { const [a, b] = [labelOf(p, 0), labelOf(p, 1)]; [a.text, b.text] = [b.text, a.text]; }, /the time log prints "Finish", "Start" and must print "Start", "Finish"/],
+    ["a label of another size", first, (p) => { labelOf(p, 1).size = 12; }, /the time log must print a text of 11 points and weight 600 at the right in/],
+    ["a label at the left", first, (p) => { labelOf(p, 0).align = "left"; }, /the time log must print a text of 11 points/],
+    ["a mark in a box", first, (p) => { log(p)!.ink.push({ kind: "fill", rect: { x: 170, y: 712, w: 4, h: 4 }, color: "black" }); }, /the time log prints a line that it does not have there|clear space of the box "start"/],
+    ["a label in the clear space of a box", first, (p) => { const t = labelOf(p, 1); t.rect = { ...t.rect, x: t.rect.x - 12 }; }, /the time log has ink of time-log in the clear space of the box "start"|must print a text/],
+    ["a time log that is moved up into the questions", first, (p) => { const r = log(p)!; r.rect = { ...r.rect, y: r.rect.y - 60 }; r.ink = r.ink.map((i) => ({ ...i, rect: { ...i.rect, y: i.rect.y - 60 } })); }, /the time log is at \(111\.5, 640, 256 by 36\) and must be at \(111\.5, 700, 256 by 36\)/],
+    ["a time log in the spine zone", first, (p) => move(log(p)!, -30, 0), /"time-log" enters the spine zone/],
+    ["a time log over the QR code", first, (p) => move(log(p)!, 200, 0), /"time-log" and "qr" overlap|"qr" and "time-log" overlap/],
+    ["a time log with no capture", first, (p) => { p.captures = []; }, /time-log prints a capture that the page does not have/],
+    ["a capture with no rectangle", first, (p) => { p.regions = p.regions.filter((r) => r.role !== "capture"); }, /the time log has no rectangle that prints it/],
+    ["a time log that belongs to a question", first, (p) => { log(p)!.item = `${p.id}/1`; }, /"time-log" must belong to no question/],
+  ])("%s", (name, page, change, problem) => {
+    const found = problemsAfter(page, change);
+    if (name.endsWith("passes")) expect(found).toBe("");
+    else expect(found).toMatch(problem);
+  });
+});
+
 describe("what a question prints", () => {
   // One question of each form of a face: the first one on each template, the forms with a blank in another place, and a
   // sequence that stands below another one.
-  const books = [goodBook(), factsBook(), divisionBook(), placesBook()];
-  const formOf = ({ face }: BookItem) => (face.kind === "column" ? "column" : face.kind === "fields" ? "fields" : `${face.kind} ${(face.kind === "bracket" ? face.above : face.tokens).map((t) => ("text" in t ? "t" : "_")).join("")}`);
+  const books = [goodBook(), factsBook(), divisionBook(), placesBook(), inventedBook()];
+  const formOf = ({ face }: BookItem) => (face.kind === "column" ? "column" : face.kind === "fields" ? "fields" : face.kind === "figure" ? `figure ${face.figure.parts.length} bars` : `${face.kind} ${(face.kind === "bracket" ? face.above : face.tokens).map((t) => ("text" in t ? "t" : "_")).join("")}`);
   const linesOf = (page: PageModel, item: BookItem) => page.regions.find((r) => r.item === item.id && r.role === "question")!.ink.filter((i) => i.kind === "fill").length;
   const cases = new Map(books.flatMap(({ pages, items }) => pages.flatMap((page) => items.filter((i) => i.id.startsWith(`${page.id}/`)).map((item) => [`${page.template}, ${formOf(item)}, ${linesOf(page, item)} lines`, { page, item }] as const))).reverse());
 
   it("is looked at for each face, with and without its line", () => {
     const names = [...cases.keys()];
-    expect(new Set([...cases.values()].map(({ item }) => item.face.kind))).toEqual(new Set(["column", "equation", "sequence", "bracket", "fields"]));
+    expect(new Set([...cases.values()].map(({ item }) => item.face.kind))).toEqual(new Set(["column", "equation", "sequence", "bracket", "fields", "figure"]));
+    expect(names.filter((n) => n.startsWith("figures-1x4"))).toEqual(expect.arrayContaining(["figures-1x4, figure 2 bars, 3 lines", "figures-1x4, figure 6 bars, 3 lines"]));
     expect(names.filter((n) => n.startsWith("column") || n.startsWith("bracket")).every((n) => n.endsWith("1 lines"))).toBe(true);
     expect(["0 lines", "1 lines"].map((end) => names.some((n) => n.startsWith("sequences-2x2") && n.endsWith(end)))).toEqual([true, true]);
     expect(names).toEqual(expect.arrayContaining(["blanks-1x10, equation _tttt, 0 lines", "blanks-1x10, equation tt_tt, 0 lines", "remainders-1x10, equation tttt_t_, 0 lines", "brackets-1x3, bracket _t_, 1 lines", "brackets-2x6, bracket _, 1 lines",
