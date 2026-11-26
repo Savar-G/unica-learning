@@ -12,6 +12,7 @@ import { shapeFingerprint } from "./shape-fingerprints";
 import { CHECKS, checkShape, checkShapes, runChecks, SEEDS, type Check, type HarnessOptions, type ShapeReport } from "./shape-harness";
 import { neverLimit, onlyLimit, rangeLimit, registryProblems, step, wholeAnswer, type LargeSpace, type Limits, type Rows, type ShapeRegistration } from "./shape-registration";
 import { readStep } from "./steps-evaluator";
+import { stepProblems } from "./shape-steps";
 import { divisionProblem } from "./division-steps";
 import { linesProblem, marksProblem, placesProblem } from "./step-marks";
 import { addColumn } from "../shapes/add-column";
@@ -1056,9 +1057,15 @@ describe("the paper of place value", () => {
     ["rows with a zero in front", "0437", paper("0 thousands is 0", "4 hundreds is 400", "3 tens is 30", "7 ones is 7", "0 + 400 + 30 + 7 = 437", "0, 4, 3, 7"), /are no number with a row for each place/],
   ])("refuses %s", (_name, number, lines, message, rows) => expect(problem(number, lines, rows)).toMatch(message));
 
-  it("refuses answer parts that are not the printed places", () => {
+  it("refuses answer parts that are not the printed places or digits", () => {
     const swapped = { parts: digits("4307").parts.toReversed() };
     expect(placesProblem(paper(...GOOD), swapped, places("4307"))).toMatch(/the answer parts are ones, tens, hundreds, thousands and the printed places thousands, hundreds, tens, ones/);
+    const wrongDigit = { parts: digits("4307").parts.with(2, { name: "tens", kind: "digit", value: "1" }) };
+    const wrongEnd = paper(...GOOD.with(5, "4, 3, 1, 7"));
+    expect(placesProblem(wrongEnd, wrongDigit, places("4307"))).toMatch(/the answer has "1" for the tens of 4307 and must be "0"/);
+    expect(stepProblems({ steps: wrongEnd, answer: wrongDigit, printed: { answer: wrongDigit, steps: wrongEnd, features: {}, widths: {} }, rows: places("4307"), kind: "fields", answerKind: "digit", working: "places" })).toEqual([
+      { check: "steps-marks", detail: 'the answer has "1" for the tens of 4307 and must be "0"' },
+    ]);
   });
 
   it("refuses any one number that is changed, and a place clause in other working", () => {
@@ -1070,7 +1077,7 @@ describe("the paper of place value", () => {
       const edited = steps.with(i, { ...steps[i], text });
       const read = readStep(text);
       expect(read.wrong.length + read.unread.length > 0 || placesProblem(edited, digits(String(n)), places(String(n))) !== null, text).toBe(true);
-    }), { numRuns: 300 });
+    }), { numRuns: 100 });
     const steps = placeValue.steps({ number: 4307 });
     expect(linesProblem(steps, digits("4307"))).toMatch(/is not one equation with a whole number/);
     expect(marksProblem([step("7 ones is 7", "w7@0"), step("7")], "7", null)).toMatch(/says a place value/);

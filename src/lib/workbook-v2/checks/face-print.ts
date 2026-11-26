@@ -23,14 +23,14 @@ export function faceText(face: Face): string {
 export const faceBlanks = (face: Face): string[] | null => (face.kind === "column" ? null : faceTokens(face).flatMap((t) => ("blank" in t ? [t.blank] : [])));
 
 /** One part of a face on the page. A line has no text. */
-interface Print { text: string | null; rect: Rect }
+interface Print { text: string | null; rect: Rect; align?: "left" | "center" | "right" }
 export interface Area { answer: Rect; reach: Rect }
 
 const middle = (r: Rect): number => r.y + r.h / 2;
-const text = (value: string, x: number, y: number, w: number, h: number): Print => ({ text: value, rect: { x, y, w, h } });
+const text = (value: string, x: number, y: number, w: number, h: number, align?: Print["align"]): Print => ({ text: value, rect: { x, y, w, h }, align });
 const line = (x: number, y: number, w: number): Print => ({ text: null, rect: { x, y, w, h: LINE.height } });
 /** A text of one line that stands in the line of an area. */
-const beside = (value: string, x: number, w: number, area: Rect): Print => text(value, x, middle(area) - TEXT_HEIGHT / 2, w, TEXT_HEIGHT);
+const beside = (value: string, x: number, w: number, area: Rect, align?: Print["align"]): Print => text(value, x, middle(area) - TEXT_HEIGHT / 2, w, TEXT_HEIGHT, align);
 
 /** Ones under ones from the right end of the question, the sign left of the lower number, and the line below all of it. */
 function columnPrint({ top, sign, bottom: low }: ColumnFace, question: Rect): Print[] {
@@ -100,9 +100,9 @@ function fieldsPrint({ prompt, rows }: FieldsFace, areas: ReadonlyMap<string, Ar
   if (!first) return [];
   const labels = rows.flatMap(({ label, blank }): Print[] => {
     const area = areas.get(blank);
-    return area ? [beside(label, question.x, area.reach.x - question.x, area.answer)] : [];
+    return area ? [beside(label, question.x, area.reach.x - question.x, area.answer, "right")] : [];
   });
-  return [...(isBelow ? [line(question.x, question.y, question.w)] : []), text(prompt, question.x, first.reach.y - TEXT_HEIGHT, question.w, TEXT_HEIGHT), ...labels];
+  return [...(isBelow ? [line(question.x, question.y, question.w)] : []), text(prompt, question.x, first.reach.y - TEXT_HEIGHT, question.w, TEXT_HEIGHT, "left"), ...labels];
 }
 
 function facePrint(face: Face, question: Region, areas: ReadonlyMap<string, Area>, isBelow: boolean): Print[] {
@@ -112,8 +112,8 @@ function facePrint(face: Face, question: Region, areas: ReadonlyMap<string, Area
   return face.kind === "equation" ? equationPrint(face.tokens, areas, question.ink) : sequencePrint(face.tokens, areas, question.rect, isBelow);
 }
 
-const isPrint = ({ text: wanted, rect }: Print, ink: Ink): boolean => {
-  const isKind = wanted === null ? ink.kind === "fill" : ink.kind === "text" && ink.text === wanted && ink.size >= SIZE.min && ink.size <= SIZE.max;
+const isPrint = ({ text: wanted, rect, align }: Print, ink: Ink): boolean => {
+  const isKind = wanted === null ? ink.kind === "fill" : ink.kind === "text" && ink.text === wanted && ink.size >= SIZE.min && ink.size <= SIZE.max && (align === undefined || ink.align === align);
   return isKind && near(ink.rect.x, rect.x) && near(ink.rect.y, rect.y) && near(ink.rect.w, rect.w) && near(ink.rect.h, rect.h);
 };
 const round = (n: number) => Math.round(n * 100) / 100;

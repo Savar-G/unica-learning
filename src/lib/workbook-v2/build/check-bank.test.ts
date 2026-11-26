@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PageModel, Rect } from "../contract";
-import addSubSnapshot from "../fixtures/snapshot-add-sub.json";
 import divisionSnapshot from "../fixtures/snapshot-division.json";
 import factsSnapshot from "../fixtures/snapshot-facts.json";
 import placesSnapshot from "../fixtures/snapshot-place-value.json";
@@ -104,6 +103,20 @@ describe("the texts of a row", () => {
     expect(problems).toEqual([]);
     for (const [side, w] of [["front", 23], ["back", 22]] as const) {
       expect(new Set(texts.flatMap((t) => (t.side === side && t.ink.rect.w === w && t.ink.kind === "text" ? [t.ink.text] : [])))).toEqual(new Set("0123456789"));
+    }
+  });
+
+  it("of a fields row have every digit at each admitted width and every place label on both sides", () => {
+    const shape = SHAPES.get("place.value");
+    const template = SMALL.get("places-2x2");
+    if (!shape || !template) throw new Error("no shape or template");
+    const limits = { digits: { min: 2, max: 4 }, number: { min: 10, max: 9999 }, zeros: { min: 0, max: 3 }, zeroInOnes: "allowed", zeroInTens: "allowed", zeroInHundreds: "allowed" };
+    const { texts, problems } = rowTexts({ id: "places", shape, limits, items: 1 }, template);
+    expect(problems).toEqual([]);
+    for (const side of ["front", "back"] as const) {
+      const shown = new Set(texts.flatMap((t) => (t.side === side && t.ink.kind === "text" ? [t.ink.text] : [])));
+      for (const d of "0123456789") expect([...shown]).toEqual(expect.arrayContaining([d.repeat(2), d.repeat(3), d.repeat(4)]));
+      expect([...shown]).toEqual(expect.arrayContaining(["thousands", "hundreds", "tens", "ones"]));
     }
   });
 
@@ -262,7 +275,11 @@ describe.skipIf(skipTypstTests())("with the real Typst", () => {
   /** A level with a side of each template, with one row on each side. The sequences have few forms. */
   function allTemplates() {
     const [times, , groups, missing, long] = factsSnapshot.sheets;
-    const pairs = [[rawSnapshot.sheets[0].front, wideSnapshot.sheets[0].front], [times.front, groups.front], [groups.back, missing.back], [long.front, addSubSnapshot.sheets[1].front], ...[1, 3, 5].map((i) => [divisionSnapshot.sheets[i].front, divisionSnapshot.sheets[i + 1].front]), [placesSnapshot.sheets[0].front, placesSnapshot.sheets[1].back]];
+    const pairs = [
+      [rawSnapshot.sheets[0].front, wideSnapshot.sheets[0].front], [times.front, groups.front], [groups.back, missing.back],
+      [long.front, placesSnapshot.sheets[0].front], ...[1, 3, 5].map((i) => [divisionSnapshot.sheets[i].front, divisionSnapshot.sheets[i + 1].front]),
+      [placesSnapshot.sheets[1].back, rawSnapshot.sheets[0].front],
+    ];
     const sheets = pairs.map((pair, i) => {
       const [front, back] = structuredClone(pair).map((side, s) => ({ ...side, rows: side.rows.slice(0, 1).map((row) => ({ ...row, id: `row-${s}`, items: Math.min(row.items, 2), limits: row.shape === "count.skip" ? { ...row.limits, blanks: { min: 1, max: 1 }, places: { min: 3, max: 3 } } : row.shape === "add.repeated" ? { ...row.limits, count: { min: 5, max: 5 } } : row.limits })) }));
       return { id: `sheet-${i}`, firstPage: 2 * i + 1, front, back };

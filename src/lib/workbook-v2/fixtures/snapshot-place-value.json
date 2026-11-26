@@ -18,7 +18,7 @@
       "id": "places-two-digits",
       "firstPage": 61,
       "front": {
-        "instruction": "Write the digit of each place.",
+        "instruction": "Write the digit of each place. A zero is 0.",
         "template": "places-2x3",
         "rows": [
           {"id": "two-digits-no-zero", "shape": "place.value", "items": 3, "limits": {"digits": {"min": 2, "max": 2}, "number": {"min": 10, "max": 9999}, "zeros": {"min": 0, "max": 0}, "zeroInOnes": "allowed", "zeroInTens": "allowed", "zeroInHundreds": "allowed"}},

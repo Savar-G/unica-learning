@@ -338,6 +338,8 @@ describe("a question of fields", () => {
     ["a reach that is too small on the left", 3, (p) => { const g = named(p, "reach-1-tens"); g.rect = { ...g.rect, x: g.rect.x + 1, w: g.rect.w - 1 }; }, /"reach-1-tens" does not leave enough space on the left of "answer-1-tens"/],
     ["a label that the fonts cannot print", 1, (p, items) => { face(items).rows[0].label = "tens✓"; textAt(p, "question-1", 1).text = "tens✓"; }, /"question-1" has the text "tens✓", which the fonts cannot print/],
     ["a label of a size that is too small", 1, (p) => { textAt(p, "question-1", 1).size = 15; }, /question 1 must print "tens" at/],
+    ["a label that is aligned to the left", 1, (p) => { textAt(p, "question-1", 1).align = "left"; }, /question 1 must print "tens" at/],
+    ["a prompt that is aligned to the right", 1, (p) => { textAt(p, "question-1", 0).align = "right"; }, /question 1 must print "\d+" at/],
   ])("%s stops the page", (_name, number, change, problem) => expect(problemsAfter(number, change)).toMatch(problem));
 });
 
@@ -345,7 +347,7 @@ describe("what a question prints", () => {
   // One question of each form of a face: the first one on each template, the forms with a blank in another place, and a
   // sequence that stands below another one.
   const books = [goodBook(), factsBook(), divisionBook(), placesBook()];
-  const formOf = ({ face }: BookItem) => (face.kind === "column" ? "column" : face.kind === "fields" ? `fields ${face.rows.length}` : `${face.kind} ${(face.kind === "bracket" ? face.above : face.tokens).map((t) => ("text" in t ? "t" : "_")).join("")}`);
+  const formOf = ({ face }: BookItem) => (face.kind === "column" ? "column" : face.kind === "fields" ? "fields" : `${face.kind} ${(face.kind === "bracket" ? face.above : face.tokens).map((t) => ("text" in t ? "t" : "_")).join("")}`);
   const linesOf = (page: PageModel, item: BookItem) => page.regions.find((r) => r.item === item.id && r.role === "question")!.ink.filter((i) => i.kind === "fill").length;
   const cases = new Map(books.flatMap(({ pages, items }) => pages.flatMap((page) => items.filter((i) => i.id.startsWith(`${page.id}/`)).map((item) => [`${page.template}, ${formOf(item)}, ${linesOf(page, item)} lines`, { page, item }] as const))).reverse());
 
@@ -355,7 +357,7 @@ describe("what a question prints", () => {
     expect(names.filter((n) => n.startsWith("column") || n.startsWith("bracket")).every((n) => n.endsWith("1 lines"))).toBe(true);
     expect(["0 lines", "1 lines"].map((end) => names.some((n) => n.startsWith("sequences-2x2") && n.endsWith(end)))).toEqual([true, true]);
     expect(names).toEqual(expect.arrayContaining(["blanks-1x10, equation _tttt, 0 lines", "blanks-1x10, equation tt_tt, 0 lines", "remainders-1x10, equation tttt_t_, 0 lines", "brackets-1x3, bracket _t_, 1 lines", "brackets-2x6, bracket _, 1 lines",
-      "places-2x3, fields 2, 0 lines", "places-2x3, fields 2, 1 lines", "places-2x2, fields 3, 0 lines", "places-2x2, fields 3, 1 lines", "places-2x2, fields 4, 0 lines", "places-2x2, fields 4, 1 lines"]));
+      "places-2x3, fields, 0 lines", "places-2x3, fields, 1 lines", "places-2x2, fields, 0 lines", "places-2x2, fields, 1 lines"]));
   });
 
   /** Each change of one printed part. A change that leaves the part as it is gives null. */

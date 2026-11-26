@@ -239,6 +239,8 @@ export function placesProblem(steps: readonly Step[], answer: Answer, rows: Rows
   if (number === "" || rows.length !== names.length + 1 || names.some((name, i) => rows[i + 1] !== `${name}□`)) return `the printed rows ${JSON.stringify(rows)} are no number with a row for each place`;
   const parts = answer.parts.map((p) => p.name);
   if (parts.join() !== names.join()) return `the answer parts are ${parts.join(", ")} and the printed places ${names.join(", ")}`;
+  const wrongPart = answer.parts.findIndex((p, i) => p.value !== number[i]);
+  if (wrongPart >= 0) return `the answer has "${answer.parts[wrongPart].value}" for the ${names[wrongPart]} of ${number} and must be "${number[wrongPart]}"`;
   const parsed = read ?? parseSteps(steps);
   const values: string[] = [];
   for (const [i, name] of names.entries()) {
