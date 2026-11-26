@@ -16,6 +16,11 @@ import { drawPage, paint, toColourPng, toPng } from "../testing/raster";
 import { stackOf } from "../testing/sample";
 import { quickRenderer, skipTypstTests, testAssets } from "../testing/typst";
 import { BANK_SEEDS, checkBank, FIGURE_SAMPLE_SEEDS } from "./check-bank";
+import { capacityOf, freezeBank, FULL_LEVEL, UNSEEN_ATTEMPTS } from "./freeze-bank";
+import { validateSnapshot } from "../bank/snapshot";
+import inventedDraft from "../fixtures/draft-invented-topic.json";
+import inventedSnapshot from "../fixtures/snapshot-invented-topic.json";
+import { canonicalJson, sha256 } from "../hash";
 import { rowTexts } from "./row-texts";
 
 const isWhole = (page: PageModel) => page.regions.some((r) => r.role === "qr");
@@ -399,5 +404,123 @@ describe.skipIf(skipTypstTests())("with the real Typst", () => {
     const problems = (await checkBank(one, await quickRenderer(folder, { ...testAssets(), template }), FEW)).problems.join("\n");
     expect(problems).toMatch(/^Sheet "column-multiplication-1", front side, row "no-carry": Page 381: the image has ink that the model does not have, at \(70, \d+\) in the spine zone\.$/m);
     for (const side of ["front", "back"]) expect(problems).toContain(`${FRONT}: question 2 of the ${side} side, drawn alone: it has ink outside "slot-2".`);
+  });
+});
+
+describe("the freeze of a draft", () => {
+  type Draft = typeof inventedDraft & Record<string, unknown>;
+  const draftWith = (change: (d: Draft) => unknown = () => {}): Draft => {
+    const draft = structuredClone(inventedDraft) as Draft;
+    change(draft);
+    return draft;
+  };
+  const QUICK = { seeds: 2 };
+  const SENTINEL = "made-up-source-7f3a: page 12 of an invented book";
+  /** More notes in the checked-in draft, with a made-up source: at the level, a topic, a sheet, a side and a row. */
+  const notes = (d: Draft) => {
+    const [mul, bars] = d.sheets as Record<string, unknown>[];
+    Object.assign(d, { basis: { source: SENTINEL } });
+    Object.assign(d.topics[0], { basis: SENTINEL });
+    Object.assign(mul, { basis: [SENTINEL, { deeper: SENTINEL }] });
+    Object.assign((bars as { back: object }).back, { basis: { note: SENTINEL } });
+    Object.assign((mul as { front: { rows: object[] } }).front.rows[1], { basis: { photo: SENTINEL, page: 12 } });
+  };
+  /** That draft, frozen one time for the tests that read the result. */
+  let noted: ReturnType<typeof freezeBank> | undefined;
+  const frozenOwn = () => (noted ??= freezeBank(draftWith(notes), fakeRenderer(), QUICK));
+
+  it("copies the content only: no note and no word of a note is in the frozen snapshot, and it is the checked-in snapshot", async () => {
+    expect(JSON.stringify(inventedDraft)).toContain('"basis"');
+    expect(JSON.stringify(draftWith(notes))).toContain(SENTINEL);
+    const result = await frozenOwn();
+    if (!result.ok) throw new Error(result.problems.join("\n"));
+    const frozen = JSON.stringify(result.snapshot);
+    expect(frozen).not.toContain("basis");
+    expect(frozen).not.toContain(SENTINEL);
+    expect(frozen).not.toContain("made-up-source");
+    expect(canonicalJson(result.snapshot)).toBe(canonicalJson(inventedSnapshot));
+    expect(result.hash).toBe(sha256(canonicalJson(inventedSnapshot)));
+    expect(result.checked).toMatchObject({ sheets: 2, rows: 8, seeds: 2, samples: expect.any(Number) });
+    expect(result.checked.samples).toBeGreaterThan(10);
+  });
+
+  it("gives the capacity of each sheet and row", async () => {
+    const result = await frozenOwn();
+    if (!result.ok) throw new Error(result.problems.join("\n"));
+    const bars = result.capacity.find((c) => c.sheet === "equal-groups-1");
+    // Counted by hand: 2 or 3 bars of 2 to 20 with a total up to 60 are 19 + 19; 4 to 6 bars of 2 to 25 are 3 x 24; and so on.
+    expect(bars?.rows.map(({ row, side, items, possible, attemptsWithoutRepeat }) => [row, side, items, possible, attemptsWithoutRepeat])).toEqual([
+      ["two-or-three-bars", "front", 2, 38, 19], ["four-to-six-bars", "front", 2, 72, 36], ["larger-bars", "back", 2, 123, 61], ["five-or-six-bars", "back", 2, 180, 90],
+    ]);
+    expect(bars).toMatchObject({ attemptsWithoutRepeat: 19, warnings: [] });
+    expect(result.capacity.map((c) => c.sheet)).toEqual(["column-multiplication-1", "equal-groups-1"]);
+  });
+
+  it("warns of a row with less than one full unseen repeat", () => {
+    expect(UNSEEN_ATTEMPTS).toBe(2);
+    const draft = draftWith((d) => {
+      const [, sheet] = d.sheets;
+      sheet.front.rows[1].limits = { groups: { min: 6, max: 6 }, size: { min: 98, max: 99 }, product: { min: 4, max: 594 } };
+      sheet.back.rows[0].limits = { groups: { min: 2, max: 2 }, size: { min: 10, max: 13 }, product: { min: 20, max: 200 } };
+      for (const one of [d, d.topics[0], sheet, sheet.front, sheet.front.rows[0]]) Reflect.deleteProperty(one, "basis");
+    });
+    const bank = validateSnapshot(draft);
+    if (!bank.ok) throw new Error(bank.problems.join("\n"));
+    const [, bars] = capacityOf(bank.snapshot.sheets);
+    expect(bars.attemptsWithoutRepeat).toBe(1);
+    expect(bars.warnings).toEqual(['Sheet "equal-groups-1", front side, row "four-to-six-bars": its limits allow 2 questions for 2 places, so the next attempt of the sheet repeats questions of this row.']);
+    expect(bars.rows.find((r) => r.row === "larger-bars")).toMatchObject({ possible: 4, attemptsWithoutRepeat: 2, warnings: [] });
+  });
+
+  it.each<[string, (d: Draft) => unknown, RegExp]>([
+    ["a note in the limits of a row", (d) => { Object.assign(d.sheets[1].front.rows[0].limits, { basis: SENTINEL }); }, /The draft has a note "basis" at sheets\[1\]\.front\.rows\[0\]\.limits, where a draft may not have one/],
+    ["a note in the level", (d) => { Object.assign(d.level, { basis: SENTINEL }); }, /The draft has a note "basis" at level, where a draft may not have one/],
+    ["a field that is not a note", (d) => { Object.assign(d.sheets[0], { source: SENTINEL }); }, /Sheet "column-multiplication-1": unknown field "source"\./],
+    ["a sheet that does not follow the one before it", (d) => { d.sheets[1].firstPage = 385; }, /^Topic "topic-20": the sheet "equal-groups-1" starts on page 385 and must start on page 383, after the sheet "column-multiplication-1"\.$/],
+    ["sheets of a topic in another order than their pages", (d) => { d.topics[0].sheets.reverse(); }, /the sheet "column-multiplication-1" starts on page 381 and must start on page 385/],
+    ["a template that a row does not fit", (d) => { d.sheets[1].front.template = "places-2x2"; }, /Sheet "equal-groups-1", front side, row "two-or-three-bars": the template "places-2x2" has no place for a figure question/],
+    ["a row that asks for more questions than its limits allow", (d) => { d.sheets[1].front.rows[0].limits = { groups: { min: 2, max: 2 }, size: { min: 2, max: 2 }, product: { min: 4, max: 4 } }; }, /row "two-or-three-bars": the row asks for 2 different questions and its limits allow 1/],
+    ["a level of one topic when a full level is asked for", (d) => { Object.assign(d, { full: true }); }, /^The level has 1 topic and a full level has 20\.\nTopic "topic-20" has 2 sheets and a topic of a full level has 10\.$/],
+  ])("refuses %s and gives no snapshot", async (_name, change, problem) => {
+    const draft = draftWith(change);
+    const full = Reflect.get(draft, "full") === true;
+    Reflect.deleteProperty(draft, "full");
+    const renderer = fakeRenderer();
+    const result = await freezeBank(draft, renderer, { ...QUICK, requireFullLevel: full });
+    expect(result.ok).toBe(false);
+    expect("snapshot" in result).toBe(false);
+    if (!result.ok) expect(result.problems.join("\n")).toMatch(new RegExp(problem.source, "m"));
+    expect(renderer.drawn).toEqual({ render: [], images: [], report: [] });
+  });
+
+  it("asks for 20 topics of 10 sheets only for a full level", async () => {
+    expect(FULL_LEVEL).toEqual({ topics: 20, sheets: 10 });
+    expect((await frozenOwn()).ok).toBe(true);
+  });
+
+  it("refuses a row of an answer kind that marking cannot read", async () => {
+    const shapes = shapeLibrary([...SHAPES.values()].map((shape) => (shape.id === "figure.bar" ? { ...shape, answerKind: "time" as "whole-number" } : shape)));
+    const kind = await freezeBank(draftWith(), fakeRenderer(), { ...QUICK, shapes });
+    expect(kind.ok ? [] : kind.problems).toEqual(['Sheet "equal-groups-1", front side, row "two-or-three-bars": the shape "figure.bar" has the answer kind "time", which marking cannot read.', 'Sheet "equal-groups-1", front side, row "four-to-six-bars": the shape "figure.bar" has the answer kind "time", which marking cannot read.', 'Sheet "equal-groups-1", back side, row "larger-bars": the shape "figure.bar" has the answer kind "time", which marking cannot read.', 'Sheet "equal-groups-1", back side, row "five-or-six-bars": the shape "figure.bar" has the answer kind "time", which marking cannot read.']);
+  });
+
+  it("refuses a problem of the bank check, with its sheet, side and row", async () => {
+    // One sheet of one row a side, so that little is drawn.
+    const draft = draftWith((d) => {
+      d.topics[0].sheets = ["column-multiplication-1"];
+      d.sheets = [d.sheets[0]];
+      for (const side of [d.sheets[0].front, d.sheets[0].back]) side.rows = [{ ...side.rows[0], items: 2 }];
+    });
+    const blurred = fakeRenderer({ render: (out) => { out.images = out.images.map(() => new Uint8Array([1])); } });
+    const drawn = await freezeBank(draft, blurred, { ...QUICK, templates: SMALL });
+    expect(drawn.ok).toBe(false);
+    expect(drawn.ok ? "" : drawn.problems[0]).toMatch(/^Sheet "column-multiplication-1", front side, row "no-carry": Page 381: /);
+  });
+
+  it("refuses a draft that is no plain data", async () => {
+    expect(await freezeBank([], fakeRenderer(), QUICK)).toEqual({ ok: false, problems: ["The draft must be an object."] });
+    const computed = draftWith();
+    Object.defineProperty(computed, "id", { get: () => "x", enumerable: true });
+    expect(await freezeBank(computed, fakeRenderer(), QUICK)).toEqual({ ok: false, problems: ["The draft, id: this must be a plain value."] });
   });
 });
