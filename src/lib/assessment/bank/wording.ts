@@ -10,6 +10,7 @@
 //
 // 185 word problems and 443 bare-number questions. A test in bank-coverage.test.ts fails when a template has no entry.
 import type { Wording } from "../types";
+import { UPPER_WORDING } from "./upper-grades";
 
 const WORD_PROBLEMS = [
   // Grades 1-2 bank (also levels 2 and 3 of the grades 3-5 bank): 51
@@ -165,6 +166,7 @@ const BARE_NUMBERS = [
 
 /** Every template id, with its wording. */
 export const WORDING: Readonly<Record<string, Wording>> = Object.fromEntries([
+  ...Object.entries(UPPER_WORDING),
   ...WORD_PROBLEMS.map((id) => [id, "word-problem"] as const),
   ...BARE_NUMBERS.map((id) => [id, "bare-number"] as const),
 ]);

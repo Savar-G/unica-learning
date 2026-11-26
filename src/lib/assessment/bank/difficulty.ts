@@ -11,6 +11,7 @@
 //
 // 185 easy, 281 medium and 162 hard. A test in bank-coverage.test.ts fails when a template has no rating.
 import type { Difficulty } from "../types";
+import { UPPER_DIFFICULTY } from "./upper-grades";
 
 const EASY = [
   "k-count-shapes", "k-number-after", "k-number-before", "k-numeral-match", "k-biggest-number", "k-five-frame",
@@ -161,6 +162,7 @@ const HARD = [
 ];
 
 export const DIFFICULTY: Readonly<Record<string, Difficulty>> = Object.fromEntries([
+  ...Object.entries(UPPER_DIFFICULTY),
   ...EASY.map((id) => [id, "easy"] as const),
   ...MEDIUM.map((id) => [id, "medium"] as const),
   ...HARD.map((id) => [id, "hard"] as const),

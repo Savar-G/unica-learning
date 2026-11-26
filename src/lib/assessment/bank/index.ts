@@ -1,5 +1,4 @@
-// Question banks by grade band. A test draws only from its band's bank.
-// Layout: one folder per band (grades-1-2/, then grades-3-5/ for #75 and grades-6-7/ for #76), one file per level.
+// Question banks by grade band, with a separate set of upper-grade placement items in the oldest band.
 import { bandFor, type GradeBandId } from "../constants";
 import type { Difficulty, Grade, Wording } from "../types";
 import type { TaggedTemplate } from "./kit";
@@ -7,6 +6,7 @@ import { GRADE_1_2_BANK as GRADES_1_2 } from "./grades-1-2";
 import { GRADE_3_5_BANK as GRADES_3_5 } from "./grades-3-5";
 import { GRADE_6_7_BANK as GRADES_6_7 } from "./grades-6-7";
 import { DIFFICULTY } from "./difficulty";
+import { UPPER_TEMPLATES } from "./upper-grades";
 import { WORDING } from "./wording";
 
 /** A template as the banks hold it: tagged for every province, and marked as a word problem or not (#187). */
@@ -27,13 +27,10 @@ export const GRADE_1_2_BANK: readonly BankTemplate[] = GRADES_1_2.map(withWordin
 export const BANKS: Record<GradeBandId, readonly BankTemplate[]> = {
   "1-2": GRADE_1_2_BANK,
   "3-5": GRADES_3_5.map(withWording),
-  "6-7": GRADES_6_7.map(withWording),
+  "6-7": [...GRADES_6_7, ...UPPER_TEMPLATES].map(withWording),
 };
 
-/**
- * Every template of every band, once. Only a third stage (D-282) needs it: it can pass the edge of the child's band, as a
- * Grade 2 child going up to level 4 or a Grade 3 child going down to level 1.
- */
+/** The deduplicated pool for adaptive tests and third stages that can cross a grade band. */
 export const ALL_TEMPLATES: readonly BankTemplate[] = [...flagged.values()];
 
 /** How hard a template is for a child at its grade (D-282); "medium" for an id no bank holds, as in a test's own bank. */

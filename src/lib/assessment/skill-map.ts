@@ -1,11 +1,13 @@
 // The BC skill map (#192, spec #181): the BC Mathematics content standards from Kindergarten to grade 9 (every one the
-// bank uses, and grade 9 for the workbooks), divided into smaller skills, with prerequisite edges between the skills.
+// bank uses through Grade 9), divided into smaller skills, with prerequisite edges between the skills.
 // Pure data and pure checks: no network, database or clock.
+import { UP_ROUTE_TOP } from "./grades";
 import type { Level, Strand } from "./types";
 import type { BcSkill, BcStandard, SkillMap, SkillMapGrade } from "./skill-map/kit";
 import { BC_GRADES_K_2 } from "./skill-map/grades-k-2";
 import { BC_GRADES_3_5 } from "./skill-map/grades-3-5";
 import { BC_GRADES_6_8 } from "./skill-map/grades-6-8";
+import { UPPER_STANDARDS } from "./bank/upper-grades";
 import { BC_GRADE_9 } from "./skill-map/grade-9";
 
 export type { BcSkill, BcStandard, SkillMap, SkillMapGrade };
@@ -15,6 +17,12 @@ export const BC_SKILL_MAP: SkillMap = {
   status: "draft",
   drafted: "AI first draft (2026-10-16), from the BC elaborations in .design/research/assessment-audit-2026-10-15/; grade 9 (2026-10-27) from the BC Mathematics 9 elaborations on curriculum.gov.bc.ca",
   standards: [...BC_GRADES_K_2, ...BC_GRADES_3_5, ...BC_GRADES_6_8, ...BC_GRADE_9],
+};
+
+/** The assessment also measures local placement objectives for Levels 10–12. */
+export const ASSESSMENT_SKILL_MAP: SkillMap = {
+  ...BC_SKILL_MAP,
+  standards: [...BC_SKILL_MAP.standards, ...UPPER_STANDARDS],
 };
 
 /** A standard of the map at grade 8 or below. */
@@ -31,7 +39,7 @@ export type LevelStandard = BcStandard & { grade: Level };
  * edges), never as a next challenge from one placement test. BC grade 9 is the first year of high school, and one test
  * is too thin evidence for that jump. Do not widen this filter to grade 9 without a new decision.
  */
-export const BC_LEVEL_STANDARDS: readonly LevelStandard[] = BC_SKILL_MAP.standards.filter((s): s is LevelStandard => s.grade !== 9);
+export const BC_LEVEL_STANDARDS: readonly LevelStandard[] = BC_SKILL_MAP.standards.filter((s): s is LevelStandard => s.grade <= UP_ROUTE_TOP);
 
 /**
  * What is wrong with a skill map's structure, one line per problem; empty when it is sound.

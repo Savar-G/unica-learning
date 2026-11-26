@@ -10,7 +10,7 @@ import type { StartState } from "@/lib/assessment";
 import { gradeLabel, gradeShort } from "@/lib/assessment/grades";
 import { normalizePhone } from "@/lib/phone-number";
 import { goalsPath } from "@/lib/child-goals";
-import { GRADES, gradeHint, PASSWORD_MAX, PASSWORD_MIN, signInFailure, validPassword, type AccountError, type SignInFailure, type AccountResult, type ChildInput } from "@/lib/account";
+import { PUBLIC_GRADES, gradeHint, PASSWORD_MAX, PASSWORD_MIN, signInFailure, validPassword, type AccountError, type SignInFailure, type AccountResult, type ChildInput } from "@/lib/account";
 import { browserClient } from "@/lib/supabase-browser";
 import type { PinFormResult } from "@/lib/parent-pin-server";
 import { track } from "@/lib/track";
@@ -99,7 +99,7 @@ function ChildFields({ prefix, value, onChange, bad, badProvince }: { prefix: st
       <div className="fld">
         <span className="lbl" id={`${prefix}-grade`}>School grade</span>
         <div className="seg" role="radiogroup" aria-labelledby={`${prefix}-grade`} aria-describedby={`h-${prefix}-grade`}>
-          {GRADES.map((g) => (
+          {PUBLIC_GRADES.map((g) => (
             <label key={g} title={gradeLabel(g)}><input type="radio" name={`${prefix}-grade`} checked={value.grade === g} onChange={() => onChange({ ...value, grade: g })} aria-label={gradeLabel(g)} />{gradeShort(g)}</label>
           ))}
         </div>

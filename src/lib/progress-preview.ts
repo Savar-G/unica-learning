@@ -45,7 +45,7 @@ type AreaKey = (typeof SKILL_AREAS)[number]["key"];
  * What a child can do at each grade, in plain words, from the BC curriculum's content for the grade and its unit titles
  * (workbook-unit-titles.ts). Null: the area starts in a later grade. Approved by Savar in round r-progress-preview-5.
  */
-export const GRADE_SKILLS: Record<Level, Record<AreaKey, string | null>> = {
+export const GRADE_SKILLS: Partial<Record<Level, Record<AreaKey, string | null>>> = {
   0: { num: "Counts to 10", add: "Adds and takes away to 10, with objects", mul: null, part: null },
   1: { num: "Numbers to 20", add: "Adds and subtracts 1-digit numbers", mul: null, part: null },
   2: { num: "Numbers to 100", add: "Adds and subtracts 2-digit numbers", mul: null, part: null },
@@ -95,8 +95,8 @@ export function goalGrade(working: Level, grade: Level): Level {
 /** The skill rows for today and the goal: every area the goal grade has. */
 export function skillRows(today: Level, goal: Level): ProgressPreview["rows"] {
   return SKILL_AREAS.flatMap((a) => {
-    const goalSkill = GRADE_SKILLS[goal][a.key];
-    return goalSkill ? [{ area: a.name, today: GRADE_SKILLS[today][a.key], goal: goalSkill }] : [];
+    const goalSkill = GRADE_SKILLS[goal]?.[a.key];
+    return goalSkill ? [{ area: a.name, today: GRADE_SKILLS[today]?.[a.key] ?? null, goal: goalSkill }] : [];
   });
 }
 

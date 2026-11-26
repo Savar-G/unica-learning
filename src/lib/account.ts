@@ -1,12 +1,12 @@
 // Parent accounts for the online assessment (#62, D-082). Shared by the account forms (client) and /api/account (server).
-import { isGrade } from "@/lib/assessment/grades";
+import { PUBLIC_GRADES } from "@/lib/assessment/grades";
 import { CURRICULA, clip, cleanSource, type CurriculumId } from "@/lib/signup";
 
 export const PASSWORD_MIN = 8;
 /** Stops a script from adding children without end. No family needs more. */
 export const MAX_CHILDREN = 8;
 /** The grades the picker offers: Kindergarten (0) to Grade 9 (D-156). Labels: gradeLabel, never "Grade 0". */
-export { GRADES } from "@/lib/assessment/grades";
+export { PUBLIC_GRADES } from "@/lib/assessment/grades";
 
 /**
  * D-156: what the test is for this grade, where it differs, in plain words; null for grades 1-9. Kindergarten: the voice
@@ -88,9 +88,10 @@ export function cleanChild(raw: unknown): ChildInput | null {
   const c = (raw ?? {}) as Partial<Record<keyof ChildInput, unknown>>;
   const firstName = cleanFirstName(c.firstName);
   // 0 is Kindergarten, so a missing or empty grade must not become 0 the way Number(null) and Number("") do.
-  const grade = typeof c.grade === "number" ? c.grade : typeof c.grade === "string" && c.grade.trim() !== "" ? Number(c.grade) : NaN;
+  const requestedGrade = typeof c.grade === "number" ? c.grade : typeof c.grade === "string" && c.grade.trim() !== "" ? Number(c.grade) : NaN;
+  const grade = PUBLIC_GRADES.find((g) => g === requestedGrade);
   const province = typeof c.province === "string" && Object.hasOwn(CURRICULA, c.province) ? (c.province as CurriculumId) : null;
-  if (!firstName || !isGrade(grade) || !province) return null;
+  if (!firstName || grade === undefined || !province) return null;
   return { firstName, grade, province };
 }
 

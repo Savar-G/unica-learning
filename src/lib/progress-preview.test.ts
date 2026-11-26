@@ -148,7 +148,7 @@ describe("skill table", () => {
     for (const a of SKILL_AREAS) {
       let started = false;
       for (let g = 0; g <= 9; g++) {
-        const skill = GRADE_SKILLS[g as Level][a.key];
+        const skill = GRADE_SKILLS[g as Level]?.[a.key];
         if (started) expect(skill, `${a.name}, grade ${g}`).not.toBeNull();
         if (skill) started = true;
       }

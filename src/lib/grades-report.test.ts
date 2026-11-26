@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 import { reportModel, type Grade } from "@/lib/assessment";
 import { allRight, allWrong, knowsUpTo, takeTest, type Script } from "@/lib/assessment/scripted-child";
-import { GRADES, cleanChild, gradeHint } from "@/lib/account";
+import { PUBLIC_GRADES, cleanChild, gradeHint } from "@/lib/account";
 import { reportAlert, reportEmail } from "@/lib/report-email";
 import { comparisonView, howWeHelp, levelNotes, levelSentence, rulerLevels, verdictSentence, type ReportView } from "@/lib/report-view";
 
@@ -16,8 +16,8 @@ const emailText = (v: ReportView) => reportEmail({ view: v, parentName: "Sam Lee
 
 describe("the grade picker (D-156)", () => {
   it("offers Kindergarten to Grade 9 and says what K is", () => {
-    expect(GRADES).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
-    for (const g of GRADES) expect(gradeHint(g)).toMatch(/^K is Kindergarten\./);
+    expect(PUBLIC_GRADES).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    for (const g of PUBLIC_GRADES) expect(gradeHint(g)).toMatch(/^K is Kindergarten\./);
     expect(gradeHint(0)).toContain("reads each question aloud");
   });
 
@@ -28,10 +28,10 @@ describe("the grade picker (D-156)", () => {
 
   it("keeps stored grades 1-7 valid, takes 0, 8 and 9, and never reads a missing grade as Kindergarten", () => {
     const child = (grade: unknown) => cleanChild({ firstName: "Ava", grade, province: "BC" });
-    for (const g of GRADES) expect(child(g)?.grade).toBe(g);
+    for (const g of PUBLIC_GRADES) expect(child(g)?.grade).toBe(g);
     expect(child("0")?.grade).toBe(0);
     expect(child("7")?.grade).toBe(7);
-    for (const bad of [null, undefined, "", " ", 10, -1, 2.5, "K", "nine"]) expect(child(bad), String(bad)).toBeNull();
+    for (const bad of [null, undefined, "", " ", 10, 11, 12, 13, -1, 2.5, "K", "nine"]) expect(child(bad), String(bad)).toBeNull();
   });
 });
 
@@ -98,4 +98,29 @@ describe("the report for a Grade 9 child (D-158)", () => {
     const alert = reportAlert({ view: v, parent: { name: "Sam Lee", email: "sam@example.com" }, url: URL, flags: [], parentEmail: { sent: true } });
     expect(alert.text).toContain("School grade: 9 (BC), tested up to grade 8");
   });
+});
+
+it("uses the existing endpoint report wording for Grade 12", () => {
+  const existing = view(9, allRight);
+  const v: ReportView = {
+    ...existing,
+    model: { ...existing.model, level: { ...existing.model.level, grade: 12, testedTo: 12, working: 12 } },
+  };
+  expect(rulerLevels(v).at(-1)).toBe(12);
+  expect(rulerLevels({
+    model: { ...v.model, level: { ...v.model.level, grade: 9, testedTo: 9 } },
+  }).at(-1)).toBe(12);
+  expect(howWeHelp(v).text).toBe(`${v.childName}'s books keep grade 12 work steady, and add harder grade 12 problems when ${v.childName} is ready.`);
+});
+
+it("renders a twelve-grade gap in a Grade 12 adaptive report", () => {
+  const existing = view(9, allRight);
+  const v: ReportView = {
+    ...existing, completedAt: "2026-03-15T19:30:00Z",
+    model: {
+      ...existing.model,
+      level: { ...existing.model.level, grade: 12, testedTo: 12, working: 0, adaptiveVersion: 2, mastered: true },
+    },
+  };
+  expect(verdictSentence(v)).toContain("12 grades below");
 });

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { BANKS, fillTemplate, wordingOf } from "@/lib/assessment";
+import { BANKS, fillTemplate, skillFamily, wordingOf } from "@/lib/assessment";
 import { DIFFICULTY } from "@/lib/assessment/bank/difficulty";
 
 // Structural checks across every band's bank (#187): the BC standards it covers, and how much a template varies.
@@ -44,9 +44,17 @@ describe("every bank", () => {
     expect(new Set(Object.values(DIFFICULTY))).toEqual(new Set(["easy", "medium", "hard"]));
   });
 
-  it("has no template that asks the same prompt for every seed", () => {
+  it("varies prompts by seed through Level 9", () => {
     // A retake or a sibling should not meet a fixed question: the prompt itself must change, not only the choices.
-    const fixed = TEMPLATES.filter((t) => new Set(SEEDS.map((seed) => fillTemplate(t, seed).prompt)).size < 2).map((t) => t.id);
+    const fixed = TEMPLATES.filter(t => t.grades.BC <= 9).filter((t) => new Set(SEEDS.map((seed) => fillTemplate(t, seed).prompt)).size < 2).map((t) => t.id);
     expect(fixed).toEqual([]);
   });
+});
+
+it.each([10, 11, 12] as const)("Level %i has four distinct items for each of six placement skills", level => {
+  const templates = TEMPLATES.filter(t => t.grades.BC === level);
+  const families = Map.groupBy(templates, template => skillFamily({ templateId: template.id }));
+  expect([...families.values()].map(variants => variants.length)).toEqual([4, 4, 4, 4, 4, 4]);
+  expect(new Set(templates.map(t => fillTemplate(t, 1).prompt)).size).toBe(24);
+  for (const template of templates) expect(Object.values(template.grades)).toEqual([level, level, level, level, level]);
 });

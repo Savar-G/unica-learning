@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BANKS, BC_SKILL_MAP, SKILL_TAGS, skillTagProblems, templateSkills, type BcStandard, type SkillMap } from "@/lib/assessment";
+import { BANKS, ASSESSMENT_SKILL_MAP, SKILL_TAGS, skillTagProblems, templateSkills, type BcStandard, type SkillMap } from "@/lib/assessment";
 
 /** A small map: standards as [code, grade, skills as [id, ...requires]]. */
 const tiny = (...standards: [string, number, [string, ...string[]][]][]): SkillMap => ({
@@ -75,9 +75,9 @@ describe("templateSkills", () => {
 describe("the bank's skill tags", () => {
   const templates = [...new Map(Object.values(BANKS).flat().map((t) => [t.id, t])).values()];
 
-  it("tag every template with skills of the BC skill map, from its own standard or a noted prerequisite", () => {
+  it("tag every template with skills in the assessment skill map, from its own standard or a noted prerequisite", () => {
     expect(templates.length).toBeGreaterThan(500);
-    expect(skillTagProblems(templates, SKILL_TAGS, BC_SKILL_MAP)).toEqual([]);
+    expect(skillTagProblems(templates, SKILL_TAGS, ASSESSMENT_SKILL_MAP)).toEqual([]);
   });
 
   it("tag no template that the banks do not hold", () => {

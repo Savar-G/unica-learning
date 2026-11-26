@@ -10,7 +10,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNod
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/ds";
-import { UNKNOWN_RESPONSE, UNKNOWN_WAIT_MS, breakDue, spokenChoices, type AnsweredQuestion, type HelpAnswer, type PublicQuestion, type TestStep } from "@/lib/assessment";
+import { LEGACY_TOP_LEVEL, UNKNOWN_RESPONSE, UNKNOWN_WAIT_MS, breakDue, spokenChoices, type AnsweredQuestion, type HelpAnswer, type PublicQuestion, type TestStep } from "@/lib/assessment";
 import { ANSWER_MAX, type FinishResult, type StartResult, type StepResult, type TestError, type WorkPayload } from "@/lib/test-api";
 import { answerRecorder, mergeEvents, type AnswerEvents } from "@/lib/answer-events";
 import { deviceOf, type BreakEvent, type BreakResume, type ContextResult, type TestDevice } from "@/lib/test-context";
@@ -24,6 +24,7 @@ import { FactsSection } from "./facts";
 import { breakSeen, loadBreak, markBreakSeen, saveBreak, TestBreak } from "./test-break";
 import { Choices } from "./test-choices";
 import { BarGraph, ChoiceFace, PromptText } from "./test-figures";
+import { NumberPad } from "./test-number-pad";
 import { TestHelp } from "./test-help";
 import { AdaptiveBreakProgress, TestProgress } from "./test-progress";
 import { BackLabel, NextLabel, TestCheck, TestSteps } from "./test-steps";
@@ -724,8 +725,6 @@ function saveMarks(testId: string, marks: ReadonlySet<number>) {
   }
 }
 
-const PAD_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0"];
-
 interface QuestionProps {
   testId: string;
   /** Grades 3-9 can type on the whiteboard; Kindergarten to grade 2 draw only (#67). */
@@ -848,10 +847,13 @@ function Question({ testId, typing, question, initial, initialBoard, storedWork,
   const drawn = hasDrawing(board.strokes) && erased !== board.strokes;
   const text = typing ? board.text : "";
 
+  const signed = question.level > LEGACY_TOP_LEVEL;
+  const hasAnswer = !!value && value !== "-";
   const press = useCallback((key: string) => {
     setValue((previous) => {
       const v = previous === UNKNOWN_RESPONSE ? "" : previous;
       if (key === "back") return v.slice(0, -1);
+      if (key === "-" && v) return v;
       if (v.length >= ANSWER_MAX || (key === "." && v.includes("."))) return v;
       return v === "0" && key !== "." ? key : v + key;
     });
@@ -865,7 +867,7 @@ function Question({ testId, typing, question, initial, initialBoard, storedWork,
     // A ref, not the state: a failed save can call this before the screen shows that the question is leaving.
     if (busy.current) return false;
     // Next needs an answer; on an answered question Back and a step do too (a child cannot clear an answer).
-    if (!reopening(to) && !value && (to === "next" || revisit)) return false;
+    if (!reopening(to) && !hasAnswer && (to === "next" || revisit)) return false;
     busy.current = true;
     setSending(true);
     const timeMs = performance.now() - shownAt.current;
@@ -934,14 +936,14 @@ function Question({ testId, typing, question, initial, initialBoard, storedWork,
       const onOtherButton = !!target?.closest("button, a") && !target?.closest(".test-pad");
       if (e.key === "Enter" && !onOtherButton) submitRef.current();
       else if (question.format !== "number") return;
-      else if (/^[0-9.]$/.test(e.key)) press(e.key);
+      else if (/^[0-9.]$/.test(e.key) || (signed && e.key === "-")) press(e.key);
       else if (e.key === "Backspace") press("back");
       else return;
       e.preventDefault();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [question.format, press]);
+  }, [question.format, press, signed]);
 
   // Accessible choice names follow the shuffled rows on screen (#79).
   const shown = question.format === "choice" ? question.choices ?? [] : [];
@@ -959,15 +961,7 @@ function Question({ testId, typing, question, initial, initialBoard, storedWork,
           {question.format === "choice" ? (
             <Choices options={shown.map((c, i) => ({ value: c, label: <ChoiceFace text={c} />, name: names[i] }))} value={value || null} onChange={setValue} labelledBy="test-q-title" />
           ) : (
-            <div className="test-num">
-              <output className="test-display" aria-live="polite" aria-label="Your answer">{value || <i>Type your answer</i>}</output>
-              <div className="test-pad" role="group" aria-label="Number pad">
-                {PAD_KEYS.map((k) => (
-                  <button key={k} type="button" onClick={() => press(k)} aria-label={k === "." ? "Decimal point" : undefined}>{k}</button>
-                ))}
-                <button type="button" onClick={() => press("back")} aria-label="Delete">⌫</button>
-              </div>
-            </div>
+            <NumberPad value={value} signed={signed} onPress={press} />
           )}
           <div className="test-question-actions">
             <button type="button" className="test-mark" aria-pressed={marked} onClick={onMark}>
@@ -978,8 +972,8 @@ function Question({ testId, typing, question, initial, initialBoard, storedWork,
           <Problem error={failure} />
           <div className="test-next">
             {/* #249: Back to the answered question before this one; hidden on the first question of a section. */}
-            {canBack && <Button variant="ghost" className="test-back" onClick={() => void leave("back")} disabled={sending || (revisit && !value)}><BackLabel /></Button>}
-            <Button type="submit" className="test-go" arrow={false} disabled={!value || sending} aria-busy={sending}>{main === "Next" ? <NextLabel /> : <span>{main}</span>}</Button>
+            {canBack && <Button variant="ghost" className="test-back" onClick={() => void leave("back")} disabled={sending || (revisit && !hasAnswer)}><BackLabel /></Button>}
+            <Button type="submit" className="test-go" arrow={false} disabled={!hasAnswer || sending} aria-busy={sending}>{main === "Next" ? <NextLabel /> : <span>{main}</span>}</Button>
           </div>
         </div>
       </div>

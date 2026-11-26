@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BANKS, fillTemplate, toPublicQuestion, spokenChoices } from "@/lib/assessment";
 
-const BANK = BANKS["6-7"];
+const BANK = BANKS["6-7"].filter(t => t.grades.BC <= 9);
 const SEEDS = Array.from({ length: 400 }, (_, i) => i * 7919 + 3);
 const NOT_SPOKEN = /[=+−×÷<>%$²³√π/()●■▲★◆▼▬▮]|\s\?|-\d|\d:\d(?!\d)/;
 
@@ -35,4 +35,26 @@ describe.each(BANK.map((t) => [t.id, t] as const))("%s", (_, template) => {
       }
     }
   });
+});
+
+it.each([
+  ["v2-11-rational-power-1", "81³ᐟ⁴", "81 to the power of 3 over 4"],
+  ["v2-12-exponential-equation-1", "(1/2)ᵗ", "1 over 2 to the power of t equals 4"],
+  ["v2-12-logarithmic-equation-1", "log₂(x − 1)", "log base 2 of x minus 1 equals 3"],
+  ["v2-12-log-product-and-quotient-1", "log base b", "log base b of open bracket x squared divided by y close bracket"],
+  ["v2-11-radical-equation-1", "√", "square root of open bracket x plus 5 close bracket"],
+  ["v2-10-sine-ratio-1", "sin θ", "sine of theta"],
+])("shows and reads the notation for %s", (id, written, spoken) => {
+  const q = fillTemplate(BANKS["6-7"].find(t => t.id === id)!, 1);
+  expect(q.prompt.replaceAll("\u00a0", " ")).toContain(written);
+  expect(q.readAloud).toContain(spoken);
+});
+
+it("speaks every upper-grade prompt and choice without raw notation", () => {
+  for (const template of BANKS["6-7"].filter(t => t.grades.BC >= 10)) {
+    const q = toPublicQuestion(fillTemplate(template, 1));
+    for (const text of [q.readAloud, ...spokenChoices(q, q.choices ?? [])]) {
+      expect(text, template.id).not.toMatch(/[ᐟᵗ₀-₉⁰¹²³⁴⁵⁶⁷⁸⁹θ√=+−×÷%/()]/);
+    }
+  }
 });

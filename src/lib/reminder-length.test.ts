@@ -98,6 +98,17 @@ describe("a stopped test, as the reminder job reads it", () => {
     expect(due).toMatchObject([{ kind: "continue" }]);
     expect(reminderMessage(due[0], "tok", state, ORIGIN)?.text).toContain("answered 10 questions");
   });
+
+  it("uses the existing older-grade band for an upper-grade reminder", async () => {
+    for (const answered of [41, 42]) {
+      const tables = mayaTables(null, answered);
+      tables.children[0].grade = 12;
+      tables.assessments[0].grade = 12;
+      const { due } = await remindersFor(tables);
+      if (answered === 41) expect(due).toMatchObject([{ kind: "continue" }]);
+      else expect(due).toEqual([]);
+    }
+  });
 });
 
 it("R425M-3: a younger child's reminder uses the older inactive sibling's province", async () => {

@@ -1,20 +1,24 @@
-// The school grades the assessment takes (D-156): Kindergarten (stored as 0) to Grade 9. No imports but types, so the
+// The school grades the assessment takes. No imports but types, so the
 // account forms (client) can use it without loading the question bank.
 import type { Grade, Level, Stage3Direction } from "./types";
 
-/** Every school grade a parent can choose, in order. 0 is Kindergarten. Stored rows from before D-156 hold 1-7. */
-export const GRADES: readonly Grade[] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+/** Every school grade a parent can choose, in order. 0 is Kindergarten. */
+export const PUBLIC_GRADES: readonly Grade[] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
 
-/** True for a school grade the assessment takes: a whole number from 0 (Kindergarten) to 9. */
+/** The Grade 9 ceiling used by original forms and reports (D-158). */
+export const LEGACY_TOP_LEVEL = 9;
+
+/** Every grade the assessment can support, including grades reserved for internal testing. */
+export const TOP_LEVEL = 12;
+export const GRADES: readonly Grade[] = [...PUBLIC_GRADES, 10, 11, TOP_LEVEL];
+
+/** True for a school grade the assessment takes: a whole number from 0 (Kindergarten) to 12. */
 export const isGrade = (value: unknown): value is Grade => typeof value === "number" && (GRADES as readonly number[]).includes(value);
 
-/** The highest level the question bank has: grade 9 (D-158). Only a Grade 9 child's test asks it. */
-export const TOP_LEVEL: Level = 9;
-
 /**
- * The highest level a route above the school grade reaches: grade 8. D-153 rule 2: a Grade 7 or 8 child never gets
- * grade 9 work from the assessment; grade 9 work starts through the workbook level tests. So a Grade 8 child's up route
- * is a second level 8 form, and only a Grade 9 child's test reaches level 9.
+ * The highest level an up route for Grades K–8 reaches: Level 8. D-153 rule 2: a Grade 7 or 8 child never gets
+ * grade 9 work from the assessment; grade 9 work starts through the workbook level tests. A Grade 8 child gets
+ * a second Level 8 form on the staged up route.
  */
 export const UP_ROUTE_TOP: Level = 8;
 
@@ -22,10 +26,11 @@ export const UP_ROUTE_TOP: Level = 8;
 export const startLevel = (grade: Grade): Level => grade;
 
 /**
- * The level a stage 1 score of 80% or more routes to: one above the start, and no higher than grade 8 (D-153 rule 2).
- * A Grade 9 child's up form is a second level 9 form, the top of the bank: clearing it is the test's ceiling.
+ * The level a stage 1 score of 80% or more routes to, subject to the staged form ceiling.
+ * A Grade 9 child's up form stays at Level 9. Grades 10–12 use the upper-grade scale.
  */
-export const upLevel = (grade: Grade): Level => (grade === TOP_LEVEL ? TOP_LEVEL : (Math.min(grade + 1, UP_ROUTE_TOP) as Level));
+export const upLevel = (grade: Grade): Level =>
+  grade === LEGACY_TOP_LEVEL ? grade : Math.min(grade + 1, grade < LEGACY_TOP_LEVEL ? UP_ROUTE_TOP : TOP_LEVEL) as Level;
 
 /** The level a stage 1 score under 40% routes to: one below the start, and no lower than Kindergarten. */
 export const downLevel = (grade: Grade): Level => Math.max(startLevel(grade) - 1, 0) as Level;
@@ -38,7 +43,8 @@ export const downLevel = (grade: Grade): Level => Math.max(startLevel(grade) - 1
 export function stage3Level(grade: Grade, direction: Stage3Direction): Level | null {
   if (direction === "up") {
     const up = upLevel(grade);
-    return up > grade && up < UP_ROUTE_TOP ? ((up + 1) as Level) : null;
+    const top = grade <= LEGACY_TOP_LEVEL ? UP_ROUTE_TOP : TOP_LEVEL;
+    return up > grade && up < top ? ((up + 1) as Level) : null;
   }
   const down = downLevel(grade);
   return down < grade && down > 0 ? ((down - 1) as Level) : null;
@@ -56,7 +62,7 @@ export const testedGrade = (grade: Grade, levels: readonly { level: Level }[]): 
  * `testedTo`), grade 8 for a Grade 9 child and the school grade for every other child.
  */
 export const comparedGrade = (level: { grade: Grade; testedTo?: Level }): Level =>
-  level.testedTo ?? ((level.grade === TOP_LEVEL ? UP_ROUTE_TOP : level.grade) as Level);
+  level.testedTo ?? (level.grade === LEGACY_TOP_LEVEL ? UP_ROUTE_TOP : level.grade);
 
 /** "Kindergarten" or "Grade 4": a school grade as a label. Never "Grade 0". */
 export const gradeLabel = (grade: Grade | number): string => (grade === 0 ? "Kindergarten" : `Grade ${grade}`);

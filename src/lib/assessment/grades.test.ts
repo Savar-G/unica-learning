@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   BANKS,
   GRADES,
+  PUBLIC_GRADES,
+  comparedGrade,
+  stage3Level,
   REPORTED_STRAND,
   bandFor,
   bankFor,
@@ -51,8 +54,9 @@ function routedAfter(grade: Grade, right: (i: number) => boolean, province: Prov
 }
 
 describe("the school grades (D-156)", () => {
-  it("are Kindergarten (0) to Grade 9, and Kindergarten is never called Grade 0", () => {
-    expect(GRADES).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  it("are Kindergarten (0) to Grade 12, and Kindergarten is never called Grade 0", () => {
+    expect(PUBLIC_GRADES).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(GRADES).toEqual([...PUBLIC_GRADES, 10, 11, 12]);
     expect(gradeLabel(0)).toBe("Kindergarten");
     expect(gradeName(0)).toBe("kindergarten");
     expect(gradeShort(0)).toBe("K");
@@ -60,19 +64,27 @@ describe("the school grades (D-156)", () => {
     for (const g of GRADES) expect(gradeLabel(g)).not.toMatch(/grade 0/i);
   });
 
-  it("accept only a whole number from 0 to 9", () => {
+  it("accept only a whole number from 0 to 12", () => {
     for (const g of GRADES) expect(isGrade(g)).toBe(true);
-    for (const bad of [-1, 10, 2.5, NaN, "3", null, undefined]) expect(isGrade(bad), String(bad)).toBe(false);
+    for (const bad of [-1, 13, 2.5, NaN, "3", null, undefined]) expect(isGrade(bad), String(bad)).toBe(false);
   });
 
-  it("start at the school grade; only Grade 9 routes reach level 9 (D-158, D-153 rule 2)", () => {
-    expect(GRADES.map(startLevel)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
-    expect(GRADES.map(upLevel)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 8, 9]);
-    expect(GRADES.map(downLevel)).toEqual([0, 0, 1, 2, 3, 4, 5, 6, 7, 8]);
+  it("start at the school grade and keep the staged route limits for Grades K–9", () => {
+    expect(GRADES.map(startLevel)).toEqual(GRADES);
+    expect(GRADES.map(upLevel)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 8, 9, 11, 12, 12]);
+    expect(GRADES.map(downLevel)).toEqual([0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    expect(stage3Level(10, "up")).toBe(12);
+    expect(stage3Level(12, "up")).toBeNull();
+  });
+
+  it.each([10, 11, 12] as const)("accepts Grade %i for reports and uses the existing older-grade band", grade => {
+    expect(testedGrade(grade, [{ level: grade }])).toBe(grade);
+    expect(comparedGrade({ grade })).toBe(grade);
+    expect(bandFor(grade)).toBe(bandFor(9));
   });
 
   it("each have a band and a bank: Kindergarten the grades 1-2 band, Grades 8 and 9 the grades 6-7 band", () => {
-    expect(GRADES.map((g) => bandFor(g).id)).toEqual(["1-2", "1-2", "1-2", "3-5", "3-5", "3-5", "6-7", "6-7", "6-7", "6-7"]);
+    expect(PUBLIC_GRADES.map((g) => bandFor(g).id)).toEqual(["1-2", "1-2", "1-2", "3-5", "3-5", "3-5", "6-7", "6-7", "6-7", "6-7"]);
     expect(bankFor(0)).toBe(BANKS["1-2"]);
     expect(bankFor(8)).toBe(BANKS["6-7"]);
     expect(bankFor(9)).toBe(BANKS["6-7"]);
