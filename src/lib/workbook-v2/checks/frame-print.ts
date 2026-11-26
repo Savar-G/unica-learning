@@ -9,17 +9,18 @@ const { frame: { gap: GAP, mark: MARK, heading: HEADING, instruction: INSTRUCTIO
 
 type Style = Pick<Extract<Ink, { kind: "text" }>, "size" | "weight" | "align">;
 /** One part of the frame. A line has no style, and an outline is a line round its rectangle with this width. */
-interface Print { rect: Rect; style: Style | null; outline?: number }
+interface Print { rect: Rect; style: Style | null; outline?: number; text?: string }
 /** A rectangle of the frame with all that it prints. */
 interface Wanted { name: string; rect: Rect; prints: Print[] }
 
 const same = (a: Rect, b: Rect): boolean => near(a.x, b.x) && near(a.y, b.y) && near(a.w, b.w) && near(a.h, b.h);
+const sameList = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((one, i) => one === b[i]);
 const round = (n: number) => Math.round(n * 100) / 100;
 const at = ({ x, y, w, h }: Rect) => `(${round(x)}, ${round(y)}, ${round(w)} by ${round(h)})`;
 
-function isPrint({ rect, style, outline }: Print, ink: Ink): boolean {
+function isPrint({ rect, style, outline, text }: Print, ink: Ink): boolean {
   const isLine = outline === undefined ? ink.kind === "fill" : ink.kind === "outline" && near(ink.width, outline);
-  const isKind = style === null ? isLine : ink.kind === "text" && ink.size === style.size && ink.weight === style.weight && ink.align === style.align;
+  const isKind = style === null ? isLine : ink.kind === "text" && ink.size === style.size && ink.weight === style.weight && ink.align === style.align && (text === undefined || ink.text === text);
   return isKind && same(ink.rect, rect);
 }
 
@@ -33,7 +34,7 @@ function regionProblems(region: Region, { name, rect, prints }: Wanted): string[
   });
   return [
     ...(same(region.rect, rect) ? [] : [`${name} is at ${at(region.rect)} and must be at ${at(rect)}`]),
-    ...missing.map((p) => `${name} must print ${p.style !== null ? `a text of ${p.style.size} points and weight ${p.style.weight} at the ${p.style.align}` : p.outline === undefined ? "a line" : "an outline"} in ${at(p.rect)}`),
+    ...missing.map((p) => `${name} must print ${p.style !== null ? `a text of ${p.style.size} points and weight ${p.style.weight} at the ${p.style.align}` : p.outline === undefined ? "a line" : "an outline"} in ${at(p.rect)}${p.text === undefined ? "" : ` saying "${p.text}"`}`),
     ...left.map((ink) => `${name} prints ${ink.kind === "text" ? `"${ink.text}"` : ink.kind === "flow" ? "flow text" : ink.kind === "outline" ? "an outline" : "a line"} that it does not have there`),
   ];
 }
@@ -117,16 +118,16 @@ export function timeLogProblems(page: PageModel, live: Rect): string[] {
     if (capture.id !== `${page.id}/time-log`) tell(`is named "${capture.id}" and must be named "${page.id}/time-log"`);
     if (!same(capture.rect, band)) tell(`is at ${show(capture.rect)} and must be at ${show(band)}`);
     const names = capture.fields.map((f) => f.name);
-    if (names.join() !== TIME_LOG.fields.join()) tell(`has the fields ${names.join(", ") || "none"} and must have ${TIME_LOG.fields.join(", ")}, in this order`);
+    if (!sameList(names, TIME_LOG.fields)) tell(`has the fields ${names.join(", ") || "none"} and must have ${TIME_LOG.fields.join(", ")}, in this order`);
     const prints: Wanted["prints"] = [];
     TIME_LOG.fields.forEach((name, i) => {
       const x = left + i * pitch;
       const around = { x: x + TIME_LOG.label.w + TIME_LOG.labelGap, y: TIME_LOG.top + (TIME_LOG.h - reach.h) / 2, ...reach };
       const box = { x: around.x + TIME_LOG.reach, y: around.y + TIME_LOG.reach, w: TIME_LOG.box.w, h: TIME_LOG.box.h };
-      const field = capture.fields.find((f) => f.name === name);
+      const field = capture.fields[i];
       if (field && !same(field.rect, box)) tell(`has the box "${name}" at ${show(field.rect)} and it must be at ${show(box)}`);
       if (field && !same(field.reach, around)) tell(`has the clear space of "${name}" at ${show(field.reach)} and it must be at ${show(around)}`);
-      prints.push({ rect: { x, y: box.y, w: TIME_LOG.label.w, h: TIME_LOG.box.h }, style: { size: TIME_LOG.label.size, weight: TIME_LOG.label.weight, align: "right" } });
+      prints.push({ rect: { x, y: box.y, w: TIME_LOG.label.w, h: TIME_LOG.box.h }, style: { size: TIME_LOG.label.size, weight: TIME_LOG.label.weight, align: "right" }, text: TIME_LOG.labels[i] });
       prints.push({ rect: box, style: null, outline: TIME_LOG.box.outline });
     });
     const region = regions.find((r) => r.id === capture.id);
@@ -136,7 +137,7 @@ export function timeLogProblems(page: PageModel, live: Rect): string[] {
     }
     problems.push(...regionProblems(region, { name: "the time log", rect: band, prints }));
     const words = region.ink.flatMap((i) => (i.kind === "text" ? [i.text] : []));
-    if (words.join() !== TIME_LOG.labels.join()) tell(`prints ${words.map((w) => `"${w}"`).join(", ") || "no text"} and must print ${TIME_LOG.labels.map((w) => `"${w}"`).join(", ")}`);
+    if (!sameList(words, TIME_LOG.labels)) tell(`prints ${words.map((w) => `"${w}"`).join(", ") || "no text"} and must print ${TIME_LOG.labels.map((w) => `"${w}"`).join(", ")}`);
   }
   return problems;
 }

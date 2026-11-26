@@ -27,6 +27,8 @@ export const rowSeparator = (face: Face): string => (face.kind === "figure" ? " 
 /** The text of each printed row: rows from top to bottom, and each row from left to right. `blanks` are answer areas. */
 export function printedRows(ink: readonly Ink[], blanks: readonly Rect[] = [], separator = ""): string[] {
   const pieces: Piece[] = [...ink.filter((i): i is Text => i.kind === "text"), ...blanks.map((rect) => ({ rect, text: BLANK }))];
+  const mark = separator.trim();
+  if (mark !== "" && pieces.some((p) => p.text.includes(mark))) return [];
   const rows: Piece[][] = [];
   for (const piece of pieces.sort((a, b) => a.rect.y - b.rect.y)) {
     const row = rows.find(([first]) => sameRow(first, piece));

@@ -15,7 +15,7 @@ function readSheet(r: FieldReader, raw: unknown, index: number, snapshot: Snapsh
   const place = `The book, sheet ${index + 1}`;
   const fields = r.object(place, raw, ["sheetId", "attempt", "qr"], ["startsDay"]);
   if (!fields) return null;
-  const { startsDay = false } = fields;
+  const startsDay = Object.hasOwn(fields, "startsDay") ? fields.startsDay : false;
   if (typeof startsDay !== "boolean") r.problem(place, "startsDay must be true or false");
   const sheet = typeof fields.sheetId === "string" ? snapshot.sheets.get(fields.sheetId) : undefined;
   if (!sheet) r.problem(place, `the snapshot has no sheet ${JSON.stringify(fields.sheetId)}`);

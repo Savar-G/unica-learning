@@ -140,6 +140,38 @@ describe.skipIf(skipTypstTests()).concurrent("the freeze command, with the real 
     expect(JSON.parse(text)).toMatchObject({ id: factsSnapshot.id, sheets: [{ id: "long-counts", front: { rows: [{ id: "one" }] } }] });
     expect(readdirSync(join(folder, "frozen"))).toEqual(["small.json"]);
   });
+
+  it("verifies the staged file before linking it, and leaves no output file on a hash mismatch", async () => {
+    const draft = writeSmallDraft("corrupt-draft.json");
+    const dir = join(folder, "corrupt");
+    mkdirSync(dir);
+    const out = join(dir, "snapshot.json");
+    const tamper = hookOn("writeFile", 'if (String(args[0]).endsWith("/snapshot.json")) args[1] = "{}";');
+    const { code, output } = await command(["--draft", draft, "--out", out], {}, tamper, bundledFreeze);
+    expect(code).toBe(1);
+    expect(output).toMatch(/does not hold the snapshot that was checked/);
+    expect(readdirSync(dir)).toEqual([]);
+  });
+
+  it("two processes that freeze into one output file at the same time: one wins, the other stops, and the file stays whole", async () => {
+    const draftA = writeSmallDraft("race-a.json", (d) => { d.id = "race-snapshot-a"; });
+    const draftB = writeSmallDraft("race-b.json", (d) => { d.id = "race-snapshot-b"; });
+    const dir = join(folder, "freeze-race");
+    mkdirSync(dir);
+    const out = join(dir, "snapshot.json");
+    const meet = (me: string, peer: string) =>
+      hookOn("link", `if (String(args[1]).endsWith("/snapshot.json")) { writeFileSync(${JSON.stringify(join(folder, `freeze-${me}`))}, ""); for (let i = 0; i < 1000 && !existsSync(${JSON.stringify(join(folder, `freeze-${peer}`))}); i++) await new Promise((r) => setTimeout(r, 10)); }`);
+    const both = await Promise.all([
+      command(["--draft", draftA, "--out", out], {}, meet("a", "b"), bundledFreeze),
+      command(["--draft", draftB, "--out", out], {}, meet("b", "a"), bundledFreeze),
+    ]);
+    expect(both.map((b) => b.code).sort()).toEqual([0, 1]);
+    const [winner, loser] = both[0].code === 0 ? [0, 1] : [1, 0];
+    expect(both[loser].output).toMatch(/is there already/);
+    expect(existsSync(join(folder, "freeze-a")) && existsSync(join(folder, "freeze-b"))).toBe(true);
+    expect(readdirSync(dir)).toEqual(["snapshot.json"]);
+    expect(JSON.parse(readFileSync(out, "utf8"))).toMatchObject({ id: ["race-snapshot-a", "race-snapshot-b"][winner] });
+  });
 });
 
 describe.skipIf(skipTypstTests()).concurrent("the bank check command, with the real Typst", () => {

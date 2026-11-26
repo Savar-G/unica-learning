@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Answer, PageModel } from "../contract";
 import rawBook from "../fixtures/book.json";
 import rawSnapshot from "../fixtures/snapshot.json";
+import inventedBookFixture from "../fixtures/book-invented-topic.json";
+import inventedSnapshotFixture from "../fixtures/snapshot-invented-topic.json";
 import { sha256 } from "../hash";
 import { openRenderer } from "../render/typst";
 import { RenderError, type Renderer, type Rendering } from "../renderer";
@@ -111,6 +113,23 @@ describe("a good input", () => {
     expect(three.items).toEqual(one.items);
   });
 
+  it("puts a time log on the front of a figure sheet when it starts a day, and ignores inherited startsDay", () => {
+    const book = structuredClone(inventedBookFixture);
+    book.sheets[1].startsDay = true;
+    const planned = planBook({ snapshot: inventedSnapshotFixture, book });
+    if (!planned.ok) throw new Error(planned.problems.join("\n"));
+    expect(planned.pages.map((p) => p.captures.map((c) => c.kind))).toEqual([["time-log"], [], ["time-log"], []]);
+
+    Object.defineProperty(Object.prototype, "startsDay", { value: true, configurable: true, writable: true });
+    try {
+      const without = planBook(input());
+      if (!without.ok) throw new Error(without.problems.join("\n"));
+      expect(without.pages.map((p) => p.captures)).toEqual([[], []]);
+    } finally {
+      Reflect.deleteProperty(Object.prototype, "startsDay");
+    }
+  });
+
   it.each<[string, (i: Input) => unknown]>([
     ["child", (i) => put(i.book, "childId", "other-child")],
     ["attempt", (i) => put(i.book.sheets[0], "attempt", 2)],
@@ -200,6 +219,28 @@ describe("a build stops, draws nothing and says why", () => {
     layout.change = (pages) => pages.map((p) => ({ ...p, regions: p.regions.filter((r) => r.role !== "qr") }));
     const renderer = fake();
     expect(await buildBook(input(), renderer)).toEqual({ status: "failed", problems: ["Page 381: there must be one qr, not 0.", "Page 382: there must be one qr, not 0."] });
+    expect(renderer.drawn).toEqual([]);
+  });
+
+  it("a front page that starts a day whose time log disappears, or one that does not start a day that gains one", async () => {
+    const goodWithLog = planBook(input((i) => put(i.book.sheets[0], "startsDay", true)));
+    if (!goodWithLog.ok) throw new Error("no plan");
+    const [frontWithLog] = goodWithLog.pages;
+    const captureRegion = frontWithLog.regions.find((r) => r.role === "capture")!;
+
+    layout.change = (pages) => pages.map((p) => ({ ...p, captures: [], regions: p.regions.filter((r) => r.role !== "capture") }));
+    const renderer = fake();
+    expect(await buildBook(input((i) => put(i.book.sheets[0], "startsDay", true)), renderer)).toEqual({
+      status: "failed",
+      problems: ["Page 381: the first page of a day must have a time log."],
+    });
+    expect(renderer.drawn).toEqual([]);
+
+    layout.change = (pages) => pages.map((p, i) => (i === 0 ? { ...p, captures: structuredClone(frontWithLog.captures), regions: [...p.regions, structuredClone(captureRegion)] } : p));
+    expect(await buildBook(input(), renderer)).toEqual({
+      status: "failed",
+      problems: ["Page 381: a page that does not start a day must not have a time log."],
+    });
     expect(renderer.drawn).toEqual([]);
   });
 

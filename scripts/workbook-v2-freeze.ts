@@ -36,12 +36,15 @@ async function checkFree(file: string): Promise<void> {
  * Writes the snapshot beside the file and links it to the name of the file in one step. A link is refused when the name
  * is taken, so of two processes one wins, and a reader never sees a part of a file.
  */
-async function publish(out: string, text: string): Promise<void> {
+async function publish(out: string, text: string, expectedHash: string): Promise<void> {
   const file = resolve(out);
   const staging = await mkdtemp(join(dirname(file), ".workbook-v2-freeze-"));
   try {
     const whole = join(staging, "snapshot.json");
     await writeFile(whole, text, { flag: "wx" });
+    // The staged file is read back before it is linked: what a book will read is the snapshot that was checked.
+    const written = sha256(canonicalJson(JSON.parse(await readFile(whole, "utf8"))));
+    if (written !== expectedHash) throw new Error(`The file ${out} does not hold the snapshot that was checked: its hash is ${written} and must be ${expectedHash}.`);
     await link(whole, file).catch((error: NodeJS.ErrnoException) => {
       throw error.code === "EEXIST" ? new Error(`The file ${out} is there already.`) : error;
     });
@@ -64,10 +67,7 @@ const renderer = await openRenderer(projectAssets(process.cwd(), homedir(), proc
 const started = performance.now();
 const result = await freezeBank(draft, renderer);
 if (!result.ok) throw new Error([...result.problems, `${result.problems.length} ${result.problems.length === 1 ? "problem" : "problems"}. Nothing was written.`].join("\n"));
-await publish(args.out, `${JSON.stringify(result.snapshot, null, 2)}\n`);
-// The file is read back: what a book will read is the snapshot that was checked.
-const written = sha256(canonicalJson(JSON.parse(await readFile(args.out, "utf8"))));
-if (written !== result.hash) throw new Error(`The file ${args.out} does not hold the snapshot that was checked: its hash is ${written} and must be ${result.hash}.`);
+await publish(args.out, `${JSON.stringify(result.snapshot, null, 2)}\n`, result.hash);
 const rows = result.capacity.reduce((sum, sheet) => sum + sheet.rows.length, 0);
 console.log(`Frozen ${result.capacity.length} sheets and ${rows} rows in ${((performance.now() - started) / 1000).toFixed(1)} s: ${args.out}, SHA-256 ${result.hash}.`);
 for (const sheet of result.capacity) console.log(`Sheet "${sheet.sheet}": ${sheet.attemptsWithoutRepeat} ${sheet.attemptsWithoutRepeat === 1 ? "attempt" : "attempts"} before a row repeats a question.`);

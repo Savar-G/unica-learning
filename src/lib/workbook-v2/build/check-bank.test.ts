@@ -190,6 +190,13 @@ describe("a bank of bar models, and the time log", () => {
     expect(pagesOf(renderer.drawn.images).filter((p) => barTexts(p).some((n) => n !== "20")).length).toBeGreaterThan(4);
   });
 
+  it("draws all five sampled seeds of a figure row when the space is wide enough", async () => {
+    const wide = barsOf({ groups: { min: 2, max: 6 }, size: { min: 2, max: 99 }, product: { min: 4, max: 594 } });
+    const report = await checkBank(wide, fakeRenderer(), { seeds: 1, templates: SMALL });
+    expect(report.problems).toEqual([]);
+    expect(report.checked.samples).toBe(2 * FIGURE_SAMPLE_SEEDS);
+  });
+
   it("has every digit in each bar, as many as the largest number of each count of bars, on both sides", () => {
     const shape = SHAPES.get("figure.bar");
     const template = TEMPLATES.get("figures-1x4");
@@ -476,6 +483,66 @@ describe("the freeze of a draft", () => {
     expect(bars.attemptsWithoutRepeat).toBe(1);
     expect(bars.warnings).toEqual(['Sheet "equal-groups-1", front side, row "four-to-six-bars": its limits allow 2 questions for 2 places, so the next attempt of the sheet repeats questions of this row.']);
     expect(bars.rows.find((r) => r.row === "larger-bars")).toMatchObject({ possible: 4, attemptsWithoutRepeat: 2, warnings: [] });
+  });
+
+  it("counts shared questions once across rows of a sheet, whether their limits match or overlap", async () => {
+    const fourA = { groups: { min: 2, max: 2 }, size: { min: 2, max: 5 }, product: { min: 4, max: 20 } };
+    const fourB = { groups: { min: 2, max: 2 }, size: { min: 3, max: 6 }, product: { min: 4, max: 20 } };
+    // Four rows of two places all sharing the same four questions: even one attempt repeats.
+    const shared = draftWith((d) => {
+      d.topics[0].sheets = ["equal-groups-1"];
+      d.sheets = [d.sheets[1]];
+      for (const side of [d.sheets[0].front, d.sheets[0].back]) for (const row of side.rows) row.limits = structuredClone(fourA);
+    });
+    const result = await freezeBank(shared, fakeRenderer(), { seeds: 1, figureSamples: 0 });
+    if (!result.ok) throw new Error(result.problems.join("\n"));
+    expect(result.capacity).toHaveLength(1);
+    expect(result.capacity[0].attemptsWithoutRepeat).toBe(0);
+    expect(result.capacity[0].warnings).toEqual(['Sheet "equal-groups-1", rows "two-or-three-bars", "four-to-six-bars", "larger-bars", "five-or-six-bars": together their limits allow 4 questions for 8 places, so one attempt of the sheet repeats a question across these rows.']);
+
+    // Two rows with different but overlapping limits (4 questions each, 5 in their union) for 4 places -> 1 attempt.
+    const overlap = draftWith((d) => {
+      const [, sheet] = d.sheets;
+      sheet.front.rows = [{ ...sheet.front.rows[0], limits: fourA, items: 2 }];
+      sheet.back.rows = [{ ...sheet.back.rows[0], limits: fourB, items: 2 }];
+    });
+    const bank = validateSnapshot(contentOf(overlap));
+    if (!bank.ok) throw new Error(bank.problems.join("\n"));
+    const [, bars] = capacityOf(bank.snapshot.sheets);
+    expect(bars.attemptsWithoutRepeat).toBe(1);
+    expect(bars.warnings).toEqual(['Sheet "equal-groups-1", rows "two-or-three-bars", "larger-bars": together their limits allow 5 questions for 4 places, so the next attempt of the sheet repeats questions across these rows.']);
+
+    // Listed shapes (fact.mul) share questions across rows too.
+    const listed = structuredClone(factsSnapshot);
+    const factsA = { tables: [3], second: { min: 1, max: 4 }, result: { min: 0, max: 100 }, order: "mixed" };
+    const factsB = { tables: [3], second: { min: 2, max: 5 }, result: { min: 0, max: 100 }, order: "mixed" };
+    listed.sheets[0].front.rows = [{ id: "f", shape: "fact.mul", items: 2, limits: factsA }];
+    listed.sheets[0].back.rows = [{ id: "b", shape: "fact.mul", items: 2, limits: factsB }];
+    listed.topics = [{ ...listed.topics[0], sheets: [listed.sheets[0].id] }];
+    listed.sheets = [listed.sheets[0]];
+    const listedBank = validateSnapshot(listed);
+    if (!listedBank.ok) throw new Error(listedBank.problems.join("\n"));
+    const [facts] = capacityOf(listedBank.snapshot.sheets);
+    expect(facts.attemptsWithoutRepeat).toBe(1);
+    expect(facts.warnings).toEqual(['Sheet "times-facts", rows "f", "b": together their limits allow 5 questions for 4 places, so the next attempt of the sheet repeats questions across these rows.']);
+  });
+
+  it("ignores inherited properties on Object.prototype when copying draft content", async () => {
+    const draft = draftWith((d) => {
+      cut(d);
+      Reflect.deleteProperty(d.sheets[0], "front");
+    });
+    const fakeFront = structuredClone(inventedDraft.sheets[0].front);
+    Object.defineProperty(Object.prototype, "front", { value: fakeFront, configurable: true, writable: true });
+    try {
+      const stripped = contentOf(draft);
+      expect(Object.hasOwn((stripped.sheets as Record<string, unknown>[])[0], "front")).toBe(false);
+      const result = await freezeBank(draft, fakeRenderer(), QUICK);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.problems.join("\n")).toMatch(/front is missing/);
+    } finally {
+      Reflect.deleteProperty(Object.prototype, "front");
+    }
   });
 
   it.each<[string, (d: Draft) => unknown, RegExp]>([

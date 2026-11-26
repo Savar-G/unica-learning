@@ -170,6 +170,8 @@ describe("a question with blanks", () => {
     ["three columns of blanks", 7, (p) => { for (const name of ["answer-1-blank-3", "reach-1-blank-3"]) move(named(p, name), 5, 0); }, /there are 3 answer columns and the limit is 2/],
     ["a question that prints another sign", 0, (p) => { const ink = named(p, "question-1").ink[1]; if (ink.kind === "text") ink.text = "+"; }, /question 1 prints "5\+1=" and must print "5×1="/],
     ["a blank that the face does not have", 0, (_p, items) => { items[0].face = { kind: "equation", tokens: [{ text: "5" }, { text: "×" }, { text: "1" }, { text: "=" }] }; }, /question 1 has the blanks  and the answer parts answer/],
+    ["one answer part named like two blanks joined with a comma", 7, (_p, items) => { items[0].answer.parts = [{ name: "blank-1,blank-2,blank-3", kind: "whole-number", value: "15" }]; }, /question 1 has the blanks blank-1, blank-2, blank-3 and the answer parts blank-1,blank-2,blank-3/],
+    ["a work area on a question worked in the head", 0, (p) => { const slot = named(p, "slot-1"); p.regions.push({ id: `${p.id}/work-1`, role: "work", rect: { x: slot.rect.x + 2, y: slot.rect.y + 2, w: 10, h: 10 }, item: slot.item, part: null, ink: [] }); }, /question 1 is worked in the head and must have no "work" rectangle/],
   ])("%s", (_name, index, change, problem) => {
     expect(problemsAfter(index, change)).toMatch(problem);
   });
@@ -399,7 +401,12 @@ describe("a bar model", () => {
     ["the prompt in the reach", 3, (p, items) => { const t = textAt(p, bars(items) + 1); t.rect = { ...t.rect, w: t.rect.w + 6 }; }, /"question-1" enters the reach "reach-1"|must print "Total =" at/],
     ["the bars in the line of the total", 3, (p, items) => { for (let i = 0; i < bars(items); i++) { const [o, t] = [inkOf(p, "outline", i), textAt(p, i)]; o.rect = { ...o.rect, y: o.rect.y + 50 }; t.rect = { ...t.rect, y: t.rect.y + 50 }; } }, /question 1 must print an outline at/],
     ["an area that is too narrow", 3, (p) => { const a = named(p, "answer-1"); a.rect = { ...a.rect, w: 71 }; a.ink = [{ ...a.ink[0], rect: a.rect }]; }, /"answer-1" is 71 by 42 points and needs 72 by 42/],
-    ["an area out of the column of the others", 3, (p) => { for (const n of ["answer-2", "reach-2"]) move(named(p, n), -6, 0); }, /2 answer columns|must print "Total =" at/],
+    ["an area out of the column of the others", 3, (p) => { for (const n of ["answer-2", "reach-2"]) move(named(p, n), -6, 0); }, /there are 2 answer columns and the limit is 1/],
+    ["a whole question shifted left into a second answer column", 3, (p) => { for (const n of ["answer-2", "reach-2", "question-2"]) move(named(p, n), -8, 0); }, /there are 2 answer columns and the limit is 1/],
+    ["a work area on a bar model", 3, (p) => { const slot = named(p, "slot-1"); p.regions.push({ id: `${p.id}/work-1`, role: "work", rect: { x: slot.rect.x + 2, y: slot.rect.y + 2, w: 10, h: 10 }, item: slot.item, part: null, ink: [] }); }, /question 1 is worked in the head and must have no "work" rectangle/],
+    ["a bar part containing the row separator", 3, (p, items) => { face(items).figure.parts[0] = "19 | 19"; textAt(p, 0).text = "19 | 19"; }, /question 1 has "\|" in bar 1/],
+    ["a total label containing the row separator", 3, (p, items) => { const f = face(items); f.figure.totalLabel = "? | ?"; textAt(p, f.figure.parts.length).text = "? | ?"; }, /question 1 has "\|" in the label of the total/],
+    ["a prompt containing the row separator", 3, (p, items) => { const f = face(items); f.prompt = "Total | ="; textAt(p, f.figure.parts.length + 1).text = "Total | ="; }, /question 1 has "\|" in the prompt/],
     ["a label of the question beside the total", 3, (p) => move(named(p, "label-1"), 0, 60), /question 1: its label is at/],
     ["a part that the fonts cannot print", 3, (p, items) => { face(items).figure.parts[0] = "1✓"; textAt(p, 0).text = "1✓"; }, /"question-1" has the text "1✓", which the fonts cannot print/],
   ])("%s stops the page", (_name, number, change, problem) => expect(problemsAfter(number, change)).toMatch(problem));
@@ -453,12 +460,14 @@ describe("the time log", () => {
     ["a capture of another kind", first, (p) => { (p.captures[0] as { kind: string }).kind = "score"; }, /the time log has the kind "score"/],
     ["a capture with another id", first, (p) => { p.captures[0].id = `${p.id}/times`; }, /the time log is named ".*\/times" and must be named ".*\/time-log"/],
     ["the fields in the other order", first, (p) => p.captures[0].fields.reverse(), /the time log has the fields finish, start and must have start, finish, in this order/],
+    ["one field named start,finish in the spine zone", first, (p) => { p.captures[0].fields = [{ name: "start,finish", rect: { x: 10, y: 705, w: 72, h: 26 }, reach: { x: 5, y: 700, w: 82, h: 36 } }]; }, /the time log has the fields start,finish and must have start, finish, in this order[^]*the time log has the box "start" at \(10,/],
     ["no finish field", first, (p) => p.captures[0].fields.pop(), /the time log has the fields start and must have start, finish/],
     ["a box that is not where the capture says", first, (p) => { const b = boxOf(p, 0); b.rect = { ...b.rect, x: b.rect.x + 1 }; }, /the time log must print an outline in \(158\.5, 705, 72 by 26\)/],
     ["a capture that is not where the box is", first, (p) => { const f = p.captures[0].fields[1]; f.rect = { ...f.rect, y: f.rect.y + 1 }; }, /the time log has the box "finish" at .* and it must be at \(290\.5, 705, 72 by 26\)/],
     ["a reach that is too small", first, (p) => { const f = p.captures[0].fields[0]; f.reach = { ...f.reach, w: f.reach.w - 2 }; }, /the time log has the clear space of "start" at/],
     ["no box", first, (p) => { log(p)!.ink = log(p)!.ink.filter((i) => i.kind !== "outline"); }, /the time log must print an outline in/],
     ["the labels in the other order", first, (p) => { const [a, b] = [labelOf(p, 0), labelOf(p, 1)]; [a.text, b.text] = [b.text, a.text]; }, /the time log prints "Finish", "Start" and must print "Start", "Finish"/],
+    ["the label rectangles swapped while keeping ink order", first, (p) => { const [a, b] = [labelOf(p, 0), labelOf(p, 1)]; [a.rect, b.rect] = [b.rect, a.rect]; }, /the time log must print a text of 11 points and weight 600 at the right in \(111\.5, 705, 40 by 26\) saying "Start"/],
     ["a label of another size", first, (p) => { labelOf(p, 1).size = 12; }, /the time log must print a text of 11 points and weight 600 at the right in/],
     ["a label at the left", first, (p) => { labelOf(p, 0).align = "left"; }, /the time log must print a text of 11 points/],
     ["a mark in a box", first, (p) => { log(p)!.ink.push({ kind: "fill", rect: { x: 170, y: 712, w: 4, h: 4 }, color: "black" }); }, /the time log prints a line that it does not have there/],

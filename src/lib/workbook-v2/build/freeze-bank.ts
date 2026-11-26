@@ -4,9 +4,10 @@
 import { plainCopy } from "../bank/plain";
 import { validateSnapshot, type SnapshotRow, type SnapshotSheet } from "../bank/snapshot";
 import { ANSWER_KINDS, type Side } from "../contract";
+import { canonicalJson, seedFrom } from "../hash";
 import type { Renderer } from "../renderer";
 import { SHAPES } from "../shapes";
-import { isRecord } from "../shapes/shape";
+import { isRecord, questionKey } from "../shapes/shape";
 import { TEMPLATES } from "../layout/templates";
 import { checkBank, type BankOptions, type BankReport } from "./check-bank";
 
@@ -45,18 +46,20 @@ const SIDES: readonly Side[] = ["front", "back"];
 const withoutBasis = (value: unknown): unknown => (isRecord(value) ? Object.fromEntries(Object.entries(value).filter(([key]) => key !== BASIS)) : value);
 const each = (value: unknown, change: (one: unknown) => unknown): unknown => (Array.isArray(value) ? value.map(change) : value);
 
+const own = (value: Record<string, unknown>, key: string): boolean => Object.hasOwn(value, key);
+
 /** The content of a draft: the same data with no note at the level, a topic, a sheet, a side or a row. */
 export function contentOf(draft: Record<string, unknown>): Record<string, unknown> {
   const side = (raw: unknown) => {
     const one = withoutBasis(raw);
-    return isRecord(one) ? { ...one, rows: each(one.rows, withoutBasis) } : one;
+    return isRecord(one) ? { ...one, ...(own(one, "rows") ? { rows: each(one.rows, withoutBasis) } : {}) } : one;
   };
   const sheet = (raw: unknown) => {
     const one = withoutBasis(raw);
-    return isRecord(one) ? { ...one, ...("front" in one ? { front: side(one.front) } : {}), ...("back" in one ? { back: side(one.back) } : {}) } : one;
+    return isRecord(one) ? { ...one, ...(own(one, "front") ? { front: side(one.front) } : {}), ...(own(one, "back") ? { back: side(one.back) } : {}) } : one;
   };
   const root = withoutBasis(draft) as Record<string, unknown>;
-  return { ...root, ...("topics" in root ? { topics: each(root.topics, withoutBasis) } : {}), ...("sheets" in root ? { sheets: each(root.sheets, sheet) } : {}) };
+  return { ...root, ...(own(root, "topics") ? { topics: each(root.topics, withoutBasis) } : {}), ...(own(root, "sheets") ? { sheets: each(root.sheets, sheet) } : {}) };
 }
 
 /** Each place of the content that still holds a note: one in a place where a draft may not have it. */
@@ -102,11 +105,105 @@ function rowCapacity(sheet: SnapshotSheet, side: Side, { id, shape, limits, item
   return { row: id, side, items, possible, attemptsWithoutRepeat: attempts, warnings };
 }
 
-/** How many attempts each sheet allows before a row repeats a question, with a warning for a row that allows less than two. */
+interface SharedLimit { rows: { id: string; attempts: number }[]; items: number; possible: number; attempts: number }
+interface RowEntry { side: Side; row: SnapshotRow; capacity: RowCapacity; limitKey: string }
+
+/** Exact question keys of a row: from its list, or by drawing all of a small space of a shape with no list. */
+function rowKeys(sheetId: string, { side, row, capacity }: RowEntry, cap: number): Set<string> | null {
+  const { shape, limits } = row;
+  if (shape.list) return new Set(shape.list(limits).map((q) => questionKey(shape, q)));
+  if (capacity.possible > cap) return null;
+  const keys = new Set<string>();
+  const tries = Math.min(4000, Math.max(64, capacity.possible * 25));
+  for (let i = 0; i < tries && keys.size < capacity.possible; i++) {
+    keys.add(questionKey(shape, shape.generate(limits, seedFrom("capacity", sheetId, side, row.id, i)).question));
+  }
+  return keys.size === capacity.possible ? keys : null;
+}
+
+/** Tightest subset of rows sharing a pool: smallest ratio of distinct questions to places (ties: fewest rows). */
+function pickTighter(best: SharedLimit | null, candidate: SharedLimit): SharedLimit {
+  if (!best) return candidate;
+  const left = candidate.possible * best.items;
+  const right = best.possible * candidate.items;
+  if (left !== right) return left < right ? candidate : best;
+  return candidate.rows.length < best.rows.length ? candidate : best;
+}
+
+/** Tightest shared-question limit across rows of one shape on a sheet, or null when no two rows share a tighter bound. */
+function sharedCapacity(sheet: SnapshotSheet, entries: readonly RowEntry[]): SharedLimit | null {
+  if (entries.length < 2) return null;
+  let best: SharedLimit | null = null;
+  const limitOf = (rows: readonly RowEntry[], possible: number): SharedLimit => {
+    const items = rows.reduce((sum, e) => sum + e.row.items, 0);
+    return { rows: rows.map((e) => ({ id: e.row.id, attempts: e.capacity.attemptsWithoutRepeat })), items, possible, attempts: Math.floor(possible / items) };
+  };
+  // Identical limits always draw from one pool, whatever the size of the space.
+  const byLimits = new Map<string, RowEntry[]>();
+  for (const entry of entries) {
+    const group = byLimits.get(entry.limitKey) ?? [];
+    group.push(entry);
+    byLimits.set(entry.limitKey, group);
+  }
+  for (const group of byLimits.values()) if (group.length >= 2) best = pickTighter(best, limitOf(group, group[0].capacity.possible));
+  if (byLimits.size < 2) return best;
+  const totalItems = entries.reduce((sum, e) => sum + e.row.items, 0);
+  const floor = Math.min(...entries.map((e) => e.capacity.attemptsWithoutRepeat), best ? best.attempts : Infinity);
+  const cap = Math.min(200, Math.max(UNSEEN_ATTEMPTS, floor + 1) * totalItems);
+  const groups = [...byLimits.values()].map((group) => ({ group, keys: rowKeys(sheet.id, group[0], cap) })).filter((g): g is { group: RowEntry[]; keys: Set<string> } => g.keys !== null);
+  const subsetLimit = (picked: typeof groups): SharedLimit | null => {
+    const rows = picked.flatMap((g) => g.group);
+    if (rows.length < 2) return null;
+    const union = new Set<string>();
+    for (const g of picked) for (const key of g.keys) union.add(key);
+    return limitOf(rows, union.size);
+  };
+  if (groups.length <= 12) {
+    for (let mask = 1; mask < 1 << groups.length; mask++) {
+      const picked = groups.filter((_, i) => (mask & (1 << i)) !== 0);
+      if (picked.length >= 2) {
+        const candidate = subsetLimit(picked);
+        if (candidate) best = pickTighter(best, candidate);
+      }
+    }
+  } else {
+    for (let i = 0; i < groups.length; i++) for (let j = i + 1; j < groups.length; j++) {
+      const candidate = subsetLimit([groups[i], groups[j]]);
+      if (candidate) best = pickTighter(best, candidate);
+    }
+    const all = subsetLimit(groups);
+    if (all) best = pickTighter(best, all);
+  }
+  return best;
+}
+
+/** How many attempts each sheet allows before a row or shared group repeats a question, with warnings under two. */
 export function capacityOf(sheets: ReadonlyMap<string, SnapshotSheet>): SheetCapacity[] {
   return [...sheets.values()].map((sheet) => {
-    const rows = SIDES.flatMap((side) => sheet[side].rows.map((row) => rowCapacity(sheet, side, row)));
-    return { sheet: sheet.id, attemptsWithoutRepeat: Math.min(...rows.map((r) => r.attemptsWithoutRepeat)), rows, warnings: rows.flatMap((r) => r.warnings) };
+    const entries: RowEntry[] = SIDES.flatMap((side) =>
+      sheet[side].rows.map((row) => ({ side, row, capacity: rowCapacity(sheet, side, row), limitKey: canonicalJson(row.limits) })),
+    );
+    const byShape = new Map<string, RowEntry[]>();
+    for (const entry of entries) {
+      const list = byShape.get(entry.row.shape.id) ?? [];
+      list.push(entry);
+      byShape.set(entry.row.shape.id, list);
+    }
+    const rows = entries.map((e) => e.capacity);
+    const warnings = rows.flatMap((r) => r.warnings);
+    let attemptsWithoutRepeat = Math.min(...rows.map((r) => r.attemptsWithoutRepeat));
+    for (const group of byShape.values()) {
+      const shared = sharedCapacity(sheet, group);
+      if (!shared) continue;
+      if (shared.attempts < attemptsWithoutRepeat) attemptsWithoutRepeat = shared.attempts;
+      const singleMin = Math.min(...shared.rows.map((r) => r.attempts));
+      if (shared.attempts < UNSEEN_ATTEMPTS && shared.attempts < singleMin) {
+        const names = shared.rows.map((r) => `"${r.id}"`).join(", ");
+        const { possible, items, attempts } = shared;
+        warnings.push(`Sheet "${sheet.id}", rows ${names}: together their limits allow ${possible} ${possible === 1 ? "question" : "questions"} for ${items} ${items === 1 ? "place" : "places"}, so ${attempts === 0 ? "one attempt of the sheet repeats a question" : "the next attempt of the sheet repeats questions"} across these rows.`);
+      }
+    }
+    return { sheet: sheet.id, attemptsWithoutRepeat, rows, warnings };
   });
 }
 

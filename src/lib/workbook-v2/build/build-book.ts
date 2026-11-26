@@ -73,7 +73,15 @@ export function planPages(sheets: readonly PlannedSheet[], shapes: ShapeLibrary,
   const layout = buildPages(sheets);
   if (!layout.ok) return layout;
   const pages = layout.pages.filter((page) => sides.includes(page.side));
-  const problems = [...checkPrintedAnswers(pages, items, shapes), ...pages.flatMap((page) => checkPage(page, items))];
+  const startsDay = new Map(sheets.map((s) => [`${s.sheet.id}/${s.attempt}`, s.startsDay === true]));
+  const logProblems = pages.flatMap((page) => {
+    const wanted = page.side === "front" && startsDay.get(`${page.sheetId}/${page.attempt}`) === true;
+    const has = page.captures.some((c) => c.kind === "time-log");
+    if (wanted && !has) return [`Page ${page.page}: the first page of a day must have a time log.`];
+    if (!wanted && has) return [`Page ${page.page}: a page that does not start a day must not have a time log.`];
+    return [];
+  });
+  const problems = [...checkPrintedAnswers(pages, items, shapes), ...pages.flatMap((page) => checkPage(page, items)), ...logProblems];
   return problems.length > 0 ? { ok: false, problems } : { ok: true, pages };
 }
 

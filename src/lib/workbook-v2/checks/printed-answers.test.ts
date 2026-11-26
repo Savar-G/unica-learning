@@ -304,5 +304,14 @@ describe("a bar model", () => {
     ["an answer area below the question", 3, (_item, regions) => { const a = regions.find((r) => r.role === "answer")!; a.rect = { ...a.rect, y: a.rect.y + 400 }; }, /cannot be read as figure\.bar/],
     ["another total in the book", 4, ({ answer: { parts } }) => { parts[0].value = String(Number(parts[0].value) + 1); }, /the answer is "\d+" by one computation and "\d+" by another/],
     ["another question in the book", 4, (item) => { (item.question as { size: number }).size += 1; }, /the page prints another question than the book holds/],
+    ["two bars whose texts contain the row separator to look like four bars", 3, (item, regions) => {
+      const bars = textsOf(regions).slice(0, (item.question as { groups: number }).groups);
+      for (const t of bars.slice(0, 2)) t.text = "19 | 19";
+      const q = question(regions);
+      q.ink = q.ink.filter((i) => !bars.slice(2).includes(i as Extract<Ink, { kind: "text" }>));
+      item.question = { groups: 4, size: 19 };
+      item.answer = wholeNumber(76);
+      item.steps = [{ text: "76", marks: [] }];
+    }, /cannot be read as figure\.bar/],
   ])("%s stops the book", (_name, number, change, problem) => expect(after(number, change)).toMatch(problem));
 });
