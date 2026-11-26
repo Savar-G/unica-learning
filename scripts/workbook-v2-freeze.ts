@@ -70,5 +70,10 @@ if (!result.ok) throw new Error([...result.problems, `${result.problems.length} 
 await publish(args.out, `${JSON.stringify(result.snapshot, null, 2)}\n`, result.hash);
 const rows = result.capacity.reduce((sum, sheet) => sum + sheet.rows.length, 0);
 console.log(`Frozen ${result.capacity.length} sheets and ${rows} rows in ${((performance.now() - started) / 1000).toFixed(1)} s: ${args.out}, SHA-256 ${result.hash}.`);
-for (const sheet of result.capacity) console.log(`Sheet "${sheet.sheet}": ${sheet.attemptsWithoutRepeat} ${sheet.attemptsWithoutRepeat === 1 ? "attempt" : "attempts"} before a row repeats a question.`);
+for (const sheet of result.capacity) {
+  const count = `${sheet.attemptsWithoutRepeat} ${sheet.attemptsWithoutRepeat === 1 ? "attempt" : "attempts"}`;
+  const bound = sheet.exact ? count : `at most ${count}`;
+  const note = sheet.exact ? "" : " (different limits of a shape with no list were too large to compare for overlap)";
+  console.log(`Sheet "${sheet.sheet}": ${bound} before a row repeats a question${note}.`);
+}
 for (const warning of result.capacity.flatMap((sheet) => sheet.warnings)) console.log(`Warning: ${warning}`);

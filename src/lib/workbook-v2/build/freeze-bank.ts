@@ -34,7 +34,14 @@ export interface RowCapacity {
   attemptsWithoutRepeat: number;
   warnings: string[];
 }
-export interface SheetCapacity { sheet: string; attemptsWithoutRepeat: number; rows: RowCapacity[]; warnings: string[] }
+export interface SheetCapacity {
+  sheet: string;
+  attemptsWithoutRepeat: number;
+  /** False when rows of a shape with no list have different limits whose pools were too large to compare for overlap, so `attemptsWithoutRepeat` is an upper bound. */
+  exact: boolean;
+  rows: RowCapacity[];
+  warnings: string[];
+}
 
 export type FreezeResult =
   | { ok: true; snapshot: Record<string, unknown>; hash: string; capacity: SheetCapacity[]; checked: BankReport["checked"] }
@@ -105,76 +112,166 @@ function rowCapacity(sheet: SnapshotSheet, side: Side, { id, shape, limits, item
   return { row: id, side, items, possible, attemptsWithoutRepeat: attempts, warnings };
 }
 
+/** Largest pool of a shape with no list that we draw in full to check overlap across different limits (covers all of figure.bar, max 490). */
+const OVERLAP_ENUM_LIMIT = 500;
+
 interface SharedLimit { rows: { id: string; attempts: number }[]; items: number; possible: number; attempts: number }
 interface RowEntry { side: Side; row: SnapshotRow; capacity: RowCapacity; limitKey: string }
+interface KeyGroup { entries: RowEntry[]; items: number; keys: Set<string> }
 
-/** Exact question keys of a row: from its list, or by drawing all of a small space of a shape with no list. */
-function rowKeys(sheetId: string, { side, row, capacity }: RowEntry, cap: number): Set<string> | null {
+/** Exact question keys of a row: from its list, or by drawing all of a bounded space of a shape with no list. */
+function rowKeys(sheetId: string, { side, row, capacity }: RowEntry): Set<string> | null {
   const { shape, limits } = row;
   if (shape.list) return new Set(shape.list(limits).map((q) => questionKey(shape, q)));
-  if (capacity.possible > cap) return null;
+  if (capacity.possible > OVERLAP_ENUM_LIMIT) return null;
   const keys = new Set<string>();
-  const tries = Math.min(4000, Math.max(64, capacity.possible * 25));
+  const tries = Math.max(64, capacity.possible * 30);
   for (let i = 0; i < tries && keys.size < capacity.possible; i++) {
     keys.add(questionKey(shape, shape.generate(limits, seedFrom("capacity", sheetId, side, row.id, i)).question));
   }
   return keys.size === capacity.possible ? keys : null;
 }
 
-/** Tightest subset of rows sharing a pool: smallest ratio of distinct questions to places (ties: fewest rows). */
-function pickTighter(best: SharedLimit | null, candidate: SharedLimit): SharedLimit {
-  if (!best) return candidate;
-  const left = candidate.possible * best.items;
-  const right = best.possible * candidate.items;
-  if (left !== right) return left < right ? candidate : best;
-  return candidate.rows.length < best.rows.length ? candidate : best;
+/**
+ * Tests whether `attempts` repeat-free builds are achievable across `groups` (each needing `attempts * g.items` distinct
+ * questions) via bipartite max-flow (Hopcroft-Karp). Returns null if achievable, or the Hall-violating subset otherwise.
+ */
+function findViolation(groups: readonly KeyGroup[], adj: readonly number[][], keyCount: number, attempts: number): { groups: KeyGroup[]; unionSize: number } | null {
+  if (attempts <= 0) return null;
+  const n = groups.length;
+  const cap = groups.map((g) => attempts * g.items);
+  const matched = new Int32Array(n);
+  const owner = new Int32Array(keyCount).fill(-1);
+  const dist = new Int32Array(n);
+  const iter = new Int32Array(n);
+
+  const bfs = (): boolean => {
+    dist.fill(-1);
+    const queue: number[] = [];
+    for (let g = 0; g < n; g++) if (matched[g] < cap[g]) { dist[g] = 0; queue.push(g); }
+    let found = false;
+    for (let head = 0; head < queue.length; head++) {
+      const g = queue[head];
+      for (const q of adj[g]) {
+        const who = owner[q];
+        if (who === -1) found = true;
+        else if (dist[who] === -1) { dist[who] = dist[g] + 1; queue.push(who); }
+      }
+    }
+    return found;
+  };
+
+  const dfs = (g: number): boolean => {
+    while (iter[g] < adj[g].length) {
+      const q = adj[g][iter[g]++];
+      const who = owner[q];
+      if (who === -1 || (dist[who] === dist[g] + 1 && dfs(who))) { owner[q] = g; return true; }
+    }
+    return false;
+  };
+
+  while (bfs()) {
+    iter.fill(0);
+    for (let g = 0; g < n; g++) while (matched[g] < cap[g] && dfs(g)) matched[g]++;
+  }
+  const picked = groups.filter((_, g) => dist[g] !== -1);
+  if (picked.length === 0) return null;
+  const union = new Set<string>();
+  for (const g of picked) for (const key of g.keys) union.add(key);
+  return { groups: picked, unionSize: union.size };
 }
 
-/** Tightest shared-question limit across rows of one shape on a sheet, or null when no two rows share a tighter bound. */
-function sharedCapacity(sheet: SnapshotSheet, entries: readonly RowEntry[]): SharedLimit | null {
-  if (entries.length < 2) return null;
-  let best: SharedLimit | null = null;
-  const limitOf = (rows: readonly RowEntry[], possible: number): SharedLimit => {
-    const items = rows.reduce((sum, e) => sum + e.row.items, 0);
-    return { rows: rows.map((e) => ({ id: e.row.id, attempts: e.capacity.attemptsWithoutRepeat })), items, possible, attempts: Math.floor(possible / items) };
-  };
-  // Identical limits always draw from one pool, whatever the size of the space.
+/** Splits groups into connected components that share at least one question key. */
+function connectedComponents(groups: readonly KeyGroup[]): KeyGroup[][] {
+  const byKey = new Map<string, number[]>();
+  groups.forEach((g, i) => {
+    for (const key of g.keys) {
+      const list = byKey.get(key) ?? [];
+      list.push(i);
+      byKey.set(key, list);
+    }
+  });
+  const seen = new Uint8Array(groups.length);
+  const components: KeyGroup[][] = [];
+  for (let start = 0; start < groups.length; start++) {
+    if (seen[start]) continue;
+    const queue = [start];
+    seen[start] = 1;
+    for (let head = 0; head < queue.length; head++) {
+      for (const key of groups[queue[head]].keys) {
+        for (const next of byKey.get(key) ?? []) {
+          if (!seen[next]) { seen[next] = 1; queue.push(next); }
+        }
+      }
+    }
+    components.push(queue.sort((a, b) => a - b).map((i) => groups[i]));
+  }
+  return components;
+}
+
+/** Exact repeat-free capacity and limiting subset of one connected component of groups. */
+function componentCapacity(component: readonly KeyGroup[]): SharedLimit {
+  const keyIndex = new Map<string, number>();
+  const adj = component.map((g) => [...g.keys].map((key) => {
+    const existing = keyIndex.get(key);
+    if (existing !== undefined) return existing;
+    const id = keyIndex.size;
+    keyIndex.set(key, id);
+    return id;
+  }));
+  const totalItems = component.reduce((sum, g) => sum + g.items, 0);
+  let lo = 0;
+  let hi = Math.min(Math.floor(keyIndex.size / totalItems), ...component.map((g) => Math.floor(g.keys.size / g.items)));
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi + 1) / 2);
+    if (findViolation(component, adj, keyIndex.size, mid) === null) lo = mid;
+    else hi = mid - 1;
+  }
+  const violation = findViolation(component, adj, keyIndex.size, lo + 1);
+  const chosen = violation ? violation.groups : component;
+  const rows = chosen.flatMap((g) => g.entries.map((e) => ({ id: e.row.id, attempts: e.capacity.attemptsWithoutRepeat })));
+  const items = chosen.reduce((sum, g) => sum + g.items, 0);
+  const possible = violation ? violation.unionSize : keyIndex.size;
+  return { rows, items, possible, attempts: lo };
+}
+
+/** Shared-question limits across rows of one shape on a sheet, and whether overlap analysis was exact. */
+function shapeSharedCapacity(sheet: SnapshotSheet, entries: readonly RowEntry[]): { limits: SharedLimit[]; exact: boolean } {
+  if (entries.length < 2) return { limits: [], exact: true };
   const byLimits = new Map<string, RowEntry[]>();
   for (const entry of entries) {
     const group = byLimits.get(entry.limitKey) ?? [];
     group.push(entry);
     byLimits.set(entry.limitKey, group);
   }
-  for (const group of byLimits.values()) if (group.length >= 2) best = pickTighter(best, limitOf(group, group[0].capacity.possible));
-  if (byLimits.size < 2) return best;
-  const totalItems = entries.reduce((sum, e) => sum + e.row.items, 0);
-  const floor = Math.min(...entries.map((e) => e.capacity.attemptsWithoutRepeat), best ? best.attempts : Infinity);
-  const cap = Math.min(200, Math.max(UNSEEN_ATTEMPTS, floor + 1) * totalItems);
-  const groups = [...byLimits.values()].map((group) => ({ group, keys: rowKeys(sheet.id, group[0], cap) })).filter((g): g is { group: RowEntry[]; keys: Set<string> } => g.keys !== null);
-  const subsetLimit = (picked: typeof groups): SharedLimit | null => {
-    const rows = picked.flatMap((g) => g.group);
-    if (rows.length < 2) return null;
-    const union = new Set<string>();
-    for (const g of picked) for (const key of g.keys) union.add(key);
-    return limitOf(rows, union.size);
+  const limits: SharedLimit[] = [];
+  const identicalLimit = (group: readonly RowEntry[]): SharedLimit => {
+    const items = group.reduce((sum, e) => sum + e.row.items, 0);
+    const possible = group[0].capacity.possible;
+    return { rows: group.map((e) => ({ id: e.row.id, attempts: e.capacity.attemptsWithoutRepeat })), items, possible, attempts: Math.floor(possible / items) };
   };
-  if (groups.length <= 12) {
-    for (let mask = 1; mask < 1 << groups.length; mask++) {
-      const picked = groups.filter((_, i) => (mask & (1 << i)) !== 0);
-      if (picked.length >= 2) {
-        const candidate = subsetLimit(picked);
-        if (candidate) best = pickTighter(best, candidate);
-      }
-    }
-  } else {
-    for (let i = 0; i < groups.length; i++) for (let j = i + 1; j < groups.length; j++) {
-      const candidate = subsetLimit([groups[i], groups[j]]);
-      if (candidate) best = pickTighter(best, candidate);
-    }
-    const all = subsetLimit(groups);
-    if (all) best = pickTighter(best, all);
+  if (byLimits.size < 2) {
+    for (const group of byLimits.values()) if (group.length >= 2) limits.push(identicalLimit(group));
+    return { limits, exact: true };
   }
-  return best;
+  const enumerated: KeyGroup[] = [];
+  const unenumerated: RowEntry[][] = [];
+  for (const group of byLimits.values()) {
+    const keys = rowKeys(sheet.id, group[0]);
+    if (keys) enumerated.push({ entries: group, items: group.reduce((sum, e) => sum + e.row.items, 0), keys });
+    else {
+      unenumerated.push(group);
+      if (group.length >= 2) limits.push(identicalLimit(group));
+    }
+  }
+  for (const component of connectedComponents(enumerated)) {
+    if (component.length === 1 && component[0].entries.length < 2) continue;
+    limits.push(componentCapacity(component));
+  }
+  const totalItems = entries.reduce((sum, e) => sum + e.row.items, 0);
+  const knownMin = Math.min(...entries.map((e) => e.capacity.attemptsWithoutRepeat), ...limits.map((l) => l.attempts));
+  const exact = unenumerated.every((group) => group[0].capacity.possible >= (knownMin + 1) * totalItems);
+  return { limits, exact };
 }
 
 /** How many attempts each sheet allows before a row or shared group repeats a question, with warnings under two. */
@@ -192,18 +289,21 @@ export function capacityOf(sheets: ReadonlyMap<string, SnapshotSheet>): SheetCap
     const rows = entries.map((e) => e.capacity);
     const warnings = rows.flatMap((r) => r.warnings);
     let attemptsWithoutRepeat = Math.min(...rows.map((r) => r.attemptsWithoutRepeat));
+    let exact = true;
     for (const group of byShape.values()) {
-      const shared = sharedCapacity(sheet, group);
-      if (!shared) continue;
-      if (shared.attempts < attemptsWithoutRepeat) attemptsWithoutRepeat = shared.attempts;
-      const singleMin = Math.min(...shared.rows.map((r) => r.attempts));
-      if (shared.attempts < UNSEEN_ATTEMPTS && shared.attempts < singleMin) {
-        const names = shared.rows.map((r) => `"${r.id}"`).join(", ");
-        const { possible, items, attempts } = shared;
-        warnings.push(`Sheet "${sheet.id}", rows ${names}: together their limits allow ${possible} ${possible === 1 ? "question" : "questions"} for ${items} ${items === 1 ? "place" : "places"}, so ${attempts === 0 ? "one attempt of the sheet repeats a question" : "the next attempt of the sheet repeats questions"} across these rows.`);
+      const shared = shapeSharedCapacity(sheet, group);
+      if (!shared.exact) exact = false;
+      for (const limit of shared.limits) {
+        if (limit.attempts < attemptsWithoutRepeat) attemptsWithoutRepeat = limit.attempts;
+        const singleMin = Math.min(...limit.rows.map((r) => r.attempts));
+        if (limit.rows.length >= 2 && limit.attempts < UNSEEN_ATTEMPTS && limit.attempts < singleMin) {
+          const names = limit.rows.map((r) => `"${r.id}"`).join(", ");
+          const { possible, items, attempts } = limit;
+          warnings.push(`Sheet "${sheet.id}", rows ${names}: together their limits allow ${possible} ${possible === 1 ? "question" : "questions"} for ${items} ${items === 1 ? "place" : "places"}, so ${attempts === 0 ? "one attempt of the sheet repeats a question" : "the next attempt of the sheet repeats questions"} across these rows.`);
+        }
       }
     }
-    return { sheet: sheet.id, attemptsWithoutRepeat, rows, warnings };
+    return { sheet: sheet.id, attemptsWithoutRepeat, exact, rows, warnings };
   });
 }
 

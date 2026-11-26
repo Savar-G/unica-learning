@@ -114,7 +114,9 @@ describe.concurrent("the freeze command, before it checks", () => {
     expect({ code, output }).toEqual({ code: 1, output: `The file ${out} is there already.\n` });
     expect(readFileSync(out, "utf8")).toBe("an older snapshot");
   });
+});
 
+describe.skipIf(skipTypstTests()).concurrent("the freeze command, with the real Typst", () => {
   it("writes nothing for a draft with a problem, and lists the problems", async () => {
     const bad = writeSmallDraft("bad-draft.json", (d) => { Reflect.set(d, "sheets", [{ ...(d.sheets as object[])[0], firstPage: 2 }]); });
     const out = join(folder, "never.json");
@@ -124,16 +126,14 @@ describe.concurrent("the freeze command, before it checks", () => {
     expect(existsSync(out)).toBe(false);
     expect(readdirSync(folder).filter((f) => f.startsWith(".workbook-v2-freeze-"))).toEqual([]);
   });
-});
 
-describe.skipIf(skipTypstTests()).concurrent("the freeze command, with the real Typst", () => {
   it("writes the snapshot with no note, says what it froze, and leaves nothing beside it", async () => {
     const draft = writeSmallDraft("small-draft.json");
     const out = join(folder, "frozen", "small.json");
     mkdirSync(join(folder, "frozen"));
     const { code, output } = await freeze(["--draft", draft, "--out", out]);
     expect(code).toBe(0);
-    expect(output).toMatch(/^Frozen 1 sheets and 2 rows in \d+\.\d s: .*small\.json, SHA-256 [0-9a-f]{64}\.\nSheet "long-counts": \d+ attempts before a row repeats a question\.\n$/);
+    expect(output).toMatch(/^Frozen 1 sheets and 2 rows in \d+\.\d s: .*small\.json, SHA-256 [0-9a-f]{64}\.\nSheet "long-counts": (?:at most )?\d+ attempts before a row repeats a question(?: \(different limits of a shape with no list were too large to compare for overlap\))?\.\n$/);
     const text = readFileSync(out, "utf8");
     expect(text).not.toContain("basis");
     expect(text).not.toContain("made-up-source-cli");

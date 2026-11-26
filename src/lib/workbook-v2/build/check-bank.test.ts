@@ -524,7 +524,61 @@ describe("the freeze of a draft", () => {
     if (!listedBank.ok) throw new Error(listedBank.problems.join("\n"));
     const [facts] = capacityOf(listedBank.snapshot.sheets);
     expect(facts.attemptsWithoutRepeat).toBe(1);
+    expect(facts.exact).toBe(true);
     expect(facts.warnings).toEqual(['Sheet "times-facts", rows "f", "b": together their limits allow 5 questions for 4 places, so the next attempt of the sheet repeats questions across these rows.']);
+
+    // Bounded figure.bar pools up to 490 questions are enumerated in full: 490 union / 8 places = 61 exact attempts.
+    const wideBars = draftWith((d) => {
+      const [, sheet] = d.sheets;
+      const mins = [2, 3, 4, 5];
+      [...sheet.front.rows, ...sheet.back.rows].forEach((row, i) => {
+        row.limits = { groups: { min: 2, max: 6 }, size: { min: mins[i], max: 99 }, product: { min: 4, max: 594 } };
+        row.items = 2;
+      });
+    });
+    const wideBank = validateSnapshot(contentOf(wideBars));
+    if (!wideBank.ok) throw new Error(wideBank.problems.join("\n"));
+    const [, wideBarCap] = capacityOf(wideBank.snapshot.sheets);
+    expect(wideBarCap).toMatchObject({ attemptsWithoutRepeat: 61, exact: true, warnings: [] });
+
+    // More than 12 distinct limit groups: exact bipartite solver catches a 3-row bottleneck among 13 groups.
+    const thirteen = structuredClone(factsSnapshot);
+    const makeRow = (id: string, table: number, min: number, max: number) => ({ id, shape: "fact.mul", items: 1, limits: { tables: [table], second: { min, max }, result: { min: 0, max: 100 }, order: "mixed" } });
+    thirteen.sheets[0].front.rows = [
+      makeRow("t1-lo", 1, 1, 5),
+      makeRow("t2-lo", 2, 1, 5),
+      makeRow("t3-a", 3, 1, 4),
+      makeRow("t3-b", 3, 1, 5),
+      makeRow("t3-c", 3, 2, 5),
+      makeRow("t4", 4, 6, 10),
+      makeRow("t6", 6, 6, 10),
+    ];
+    thirteen.sheets[0].back.rows = [
+      makeRow("t1-hi", 1, 6, 10),
+      makeRow("t2-hi", 2, 6, 10),
+      makeRow("t5", 5, 6, 10),
+      makeRow("t7", 7, 6, 10),
+      makeRow("t8", 8, 6, 10),
+      makeRow("t9", 9, 6, 10),
+    ];
+    thirteen.topics = [{ ...thirteen.topics[0], sheets: [thirteen.sheets[0].id] }];
+    thirteen.sheets = [thirteen.sheets[0]];
+    const thirteenBank = validateSnapshot(thirteen);
+    if (!thirteenBank.ok) throw new Error(thirteenBank.problems.join("\n"));
+    const [thirteenCap] = capacityOf(thirteenBank.snapshot.sheets);
+    expect(thirteenCap.attemptsWithoutRepeat).toBe(1);
+    expect(thirteenCap.exact).toBe(true);
+    expect(thirteenCap.warnings).toEqual(['Sheet "times-facts", rows "t3-a", "t3-b", "t3-c": together their limits allow 5 questions for 3 places, so the next attempt of the sheet repeats questions across these rows.']);
+
+    // Huge non-listed overlapping pools (> 500 questions each) report exact: false (upper bound) instead of claiming exact capacity.
+    const huge = structuredClone(wideSnapshot);
+    const bigLimits = (aMin: number) => ({ digits: { min: 4, max: 4 }, a: { min: aMin, max: 9999 }, b: { min: 2, max: 9 }, carries: { min: 0, max: 3 }, carryIntoTens: { min: 0, max: 8 }, carryIntoHundreds: { min: 0, max: 8 }, carryIntoThousands: { min: 0, max: 8 }, product: { min: 2000, max: 89991 }, zeroInProduct: "allowed", wholeTens: "allowed" });
+    huge.sheets[0].front.rows = [{ id: "big-a", shape: "mul.column", items: 2, limits: bigLimits(1000) }];
+    huge.sheets[0].back.rows = [{ id: "big-b", shape: "mul.column", items: 2, limits: bigLimits(1001) }];
+    const hugeBank = validateSnapshot(huge);
+    if (!hugeBank.ok) throw new Error(hugeBank.problems.join("\n"));
+    const [hugeCap] = capacityOf(hugeBank.snapshot.sheets);
+    expect(hugeCap.exact).toBe(false);
   });
 
   it("ignores inherited properties on Object.prototype when copying draft content", async () => {
