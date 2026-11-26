@@ -12,9 +12,11 @@ import { shapeFingerprint } from "./shape-fingerprints";
 import { CHECKS, checkShape, checkShapes, runChecks, SEEDS, type Check, type HarnessOptions, type ShapeReport } from "./shape-harness";
 import { neverLimit, onlyLimit, rangeLimit, registryProblems, step, wholeAnswer, type LargeSpace, type Limits, type Rows, type ShapeRegistration } from "./shape-registration";
 import { readStep } from "./steps-evaluator";
-import { marksProblem } from "./step-marks";
+import { divisionProblem } from "./division-steps";
+import { linesProblem, marksProblem, placesProblem } from "./step-marks";
 import { addColumn } from "../shapes/add-column";
 import { mulColumn } from "../shapes/mul-column";
+import { placeValue } from "../shapes/place-value";
 import { subColumn } from "../shapes/sub-column";
 import { divFact } from "../shapes/div-fact";
 import { factMul, type FactLimits, type FactQuestion } from "../shapes/facts";
@@ -658,11 +660,16 @@ describe("reading a worked step", () => {
     ["2 + 3 = 5.1", ["2 + 3 = 5.1"]],
     ["3 × 4 = 12, write 2, carry 1", []], ["3 × 4 = 13, write 3, carry 1", ["3 × 4 = 13"]], ["3 × 2 = 6, plus 1 is 7", []],
     ["3 × 4 = 12, plus 2 is 14, write 4, carry 1", []], ["12", []],
+    ["4 thousands is 4000", []], ["1 thousand is 1000", []], ["3 hundreds is 300", []], ["1 hundred is 100", []], ["0 tens is 0", []], ["1 ten is 10", []], ["7 ones is 7", []], ["1 one is 1", []], ["0 ones is 0", []],
+    ["4 thousands is 400", ["4 thousands is 400"]], ["4 thousand is 4000", ["4 thousand is 4000"]], ["1 thousands is 1000", ["1 thousands is 1000"]], ["0 ten is 0", ["0 ten is 0"]],
+    ["2 one is 2", ["2 one is 2"]], ["1 ones is 1", ["1 ones is 1"]], ["3 tens is 3", ["3 tens is 3"]], ["0 hundreds is 100", ["0 hundreds is 100"]],
+    ["4 thousands is 4000, 3 hundreds is 300", ["3 hundreds is 300"]], ["7 ones is 7, write 7", ["7 ones is 7, write 7"]],
   ])("%s", (step, wrong) => expect(readStep(step)).toEqual({ wrong, unread: [] }));
 
   it.each<[string, string[]]>([
     "3 × 4 = 10 + 2", "3 × 4 = 12 = 13", "3 x 4 = 12", "So 2 + 3 = 5", "2 + 3 = 5 more", "2 + 3 =5", "2+3=5", "= 5", "5 = 5", "2 + 3 = ", "2 - 3 = - 1", "1,000 + 1 = 1", "1 + 999 = 1,000",
     "4 + 1 = 5½", "½ + ½ = 1", "2 · 3 = 6", "2 × (1 + 2) = 6", "7 ÷ 2 = 3 R 1", "x = 4", "-x + 2 = 5", "", "Think hard.",
+    "4 thousands are 4000", "10 tens is 100", "04 tens is 40", "4 millions is 4000000", "4 thousands is 04000", "4 thousands = 4000", "4 Thousands is 4000", "four thousands is 4000", "4 thousands is 4,000",
   ].map((step): [string, string[]] => [step, [step]]))("cannot read %s", (step, unread) => expect(readStep(step)).toEqual({ wrong: [], unread }));
 
   it("cannot read one clause, and says of the others whether they are true", () => {
@@ -678,13 +685,13 @@ describe("reading a worked step", () => {
 
   // No clause is left alone: every piece of a step that passes must be a known valid clause or plain answer.
   it("leaves no clause unread", () => {
-    const piece = fc.constantFrom("1", "2", "12", " ", " + ", " = ", "=", "-", "−", ",", ", ", ".", ". ", "½", "x", "write", "carry", "plus", "nothing", "borrow ", "borrow 1 ", "ten", "tens", "hundred", "hundreds", "thousand", "thousands", " become ", " becomes ");
+    const piece = fc.constantFrom("1", "2", "12", "0", "10", "100", " ", " + ", " = ", "=", "-", "−", ",", ", ", ".", ". ", "½", "x", "write", "carry", "plus", "nothing", "borrow ", "borrow 1 ", "ten", "tens", "hundred", "hundreds", "thousand", "thousands", " become ", " becomes ", " is ", "one", "ones");
     fc.assert(fc.property(fc.array(piece, { maxLength: 9 }), (pieces) => {
       const step = pieces.join("");
       const { wrong, unread } = readStep(step);
       if (wrong.length + unread.length > 0) return;
       if (/^(?:0|[1-9]\d*)$/.test(step)) return;
-      const clause = /^(?:-?(?:0|[1-9]\d*)(?:\.\d+)?(?: [+-] -?(?:0|[1-9]\d*)(?:\.\d+)?)+ = -?(?:0|[1-9]\d*)(?:\.\d+)?|\d|plus [1-9]\d* is (?:0|[1-9]\d*)|write (?:nothing|0|[1-9]\d*)|carry [1-9]\d*|borrow 1 (?:ten|hundred|thousand)|(?:[1-9]|10) (?:(?:ten|hundred|thousand)s become|(?:ten|hundred|thousand) becomes) \d (?:ten|hundred|thousand)s?)$/;
+      const clause = /^(?:-?(?:0|[1-9]\d*)(?:\.\d+)?(?: [+-] -?(?:0|[1-9]\d*)(?:\.\d+)?)+ = -?(?:0|[1-9]\d*)(?:\.\d+)?|\d|plus [1-9]\d* is (?:0|[1-9]\d*)|write (?:nothing|0|[1-9]\d*)|carry [1-9]\d*|borrow 1 (?:ten|hundred|thousand)|(?:[1-9]|10) (?:(?:ten|hundred|thousand)s become|(?:ten|hundred|thousand) becomes) \d (?:ten|hundred|thousand)s?|\d (?:one|ten|hundred|thousand)s? is (?:0|[1-9]\d*))$/;
       for (const part of step.replaceAll("−", "-").split(", ")) expect(part).toMatch(clause);
     }));
   });
@@ -1005,5 +1012,63 @@ describe("closed grammar of worked steps and marks", () => {
       fc.integer({ min: 1, max: 9 }),
       checkEdit,
     ), { numRuns: 300 });
+  });
+});
+
+describe("the paper of place value", () => {
+  const paper = (...lines: string[]): Step[] => lines.map((line) => step(...(line.split(" | ") as [string, string?])));
+  const places = (number: string): Rows => [number, ...["thousands", "hundreds", "tens", "ones"].slice(4 - number.length).map((name) => `${name}□`)];
+  const digits = (number: string) => ({ parts: [...number].map((value, i) => ({ name: ["thousands", "hundreds", "tens", "ones"][4 - number.length + i], kind: "digit" as const, value })) });
+  const problem = (number: string, lines: Step[], rows = places(number), answer = digits(number)) => placesProblem(lines, answer, rows);
+  const GOOD = ["4 thousands is 4000", "3 hundreds is 300", "0 tens is 0", "7 ones is 7", "4000 + 300 + 0 + 7 = 4307", "4, 3, 0, 7"];
+
+  it.each<[string, string, string[]]>([
+    ["a number with a zero inside", "4307", GOOD],
+    ["2 digits", "10", ["1 ten is 10", "0 ones is 0", "10 + 0 = 10", "1, 0"]],
+    ["ones", "1001", ["1 thousand is 1000", "0 hundreds is 0", "0 tens is 0", "1 one is 1", "1000 + 0 + 0 + 1 = 1001", "1, 0, 0, 1"]],
+  ])("accepts %s", (_name, number, lines) => {
+    expect(problem(number, paper(...lines))).toBeNull();
+    expect(placeValue.steps({ number: Number(number) })).toEqual(paper(...lines));
+  });
+
+  it.each<[string, string, Step[], RegExp, Rows?]>([
+    ["a mark", "4307", paper(...GOOD.with(3, "7 ones is 7 | w7@0")), /draws something/],
+    ["a mark on the last step", "4307", paper(...GOOD.with(5, "4, 3, 0, 7 | w7@0")), /draws something/],
+    ["the places in another order", "4307", paper(GOOD[1], GOOD[0], ...GOOD.slice(2)), /must say the hundreds and says "3 hundreds is 300"|must say the thousands/],
+    ["a place that is left out", "4307", paper(GOOD[0], GOOD[1], ...GOOD.slice(3)), /must say the tens/],
+    ["a place said twice", "4307", paper(GOOD[0], ...GOOD), /must say the hundreds/],
+    ["a digit that the number does not have there", "4307", paper(GOOD[0], "7 hundreds is 700", ...GOOD.slice(2)), /the hundreds of 4307 are 3/],
+    ["the digits of a turned number", "4307", paper("7 thousands is 7000", "0 hundreds is 0", "3 tens is 30", "4 ones is 4", "7000 + 0 + 30 + 4 = 7034", "4, 3, 0, 7"), /the thousands of 4307 are 4/],
+    ["no sum", "4307", paper(...GOOD.toSpliced(4, 1)), /must add the values of the places to 4307/],
+    ["a sum with a place left out", "4307", paper(...GOOD.with(4, "4000 + 300 + 7 = 4307")), /must add the values of the places to 4307/],
+    ["a sum in another order", "4307", paper(...GOOD.with(4, "7 + 0 + 300 + 4000 = 4307")), /must add the values of the places to 4307/],
+    ["a true sum of other values", "4307", paper(...GOOD.with(4, "4000 + 307 = 4307")), /must add the values of the places to 4307/],
+    ["a step after the sum", "4307", paper(...GOOD.toSpliced(5, 0, "4307 + 0 = 4307")), /comes after the sum/],
+    ["a step that is not a place", "4307", paper(...GOOD.with(0, "4 × 1000 = 4000")), /must say the thousands/],
+    ["another last line", "4307", paper(...GOOD.with(5, "4307")), /the last step is "4307" and not "4, 3, 0, 7"/],
+    ["rows with the places in another order", "4307", paper(...GOOD), /the printed rows .* are no number with a row for each place/, ["4307", "thousands□", "tens□", "hundreds□", "ones□"]],
+    ["rows with a place left out", "4307", paper(...GOOD), /are no number with a row for each place/, ["4307", "thousands□", "hundreds□", "ones□"]],
+    ["rows with a zero in front", "0437", paper("0 thousands is 0", "4 hundreds is 400", "3 tens is 30", "7 ones is 7", "0 + 400 + 30 + 7 = 437", "0, 4, 3, 7"), /are no number with a row for each place/],
+  ])("refuses %s", (_name, number, lines, message, rows) => expect(problem(number, lines, rows)).toMatch(message));
+
+  it("refuses answer parts that are not the printed places", () => {
+    const swapped = { parts: digits("4307").parts.toReversed() };
+    expect(placesProblem(paper(...GOOD), swapped, places("4307"))).toMatch(/the answer parts are ones, tens, hundreds, thousands and the printed places thousands, hundreds, tens, ones/);
+  });
+
+  it("refuses any one number that is changed, and a place clause in other working", () => {
+    fc.assert(fc.property(fc.integer({ min: 10, max: 9999 }), fc.nat(40), fc.integer({ min: 1, max: 9 }), (n, at, delta) => {
+      const steps = placeValue.steps({ number: n });
+      const numbers = steps.slice(0, -1).flatMap((s, i) => [...s.text.matchAll(/\d+/g)].map((m) => ({ i, m })));
+      const { i, m } = numbers[at % numbers.length];
+      const text = `${steps[i].text.slice(0, m.index)}${Number(m[0]) + delta}${steps[i].text.slice((m.index ?? 0) + m[0].length)}`;
+      const edited = steps.with(i, { ...steps[i], text });
+      const read = readStep(text);
+      expect(read.wrong.length + read.unread.length > 0 || placesProblem(edited, digits(String(n)), places(String(n))) !== null, text).toBe(true);
+    }), { numRuns: 300 });
+    const steps = placeValue.steps({ number: 4307 });
+    expect(linesProblem(steps, digits("4307"))).toMatch(/is not one equation with a whole number/);
+    expect(marksProblem([step("7 ones is 7", "w7@0"), step("7")], "7", null)).toMatch(/says a place value/);
+    expect(divisionProblem([step("4 ones is 4", "q4@0"), step("4")], whole("4"), ["8÷2=□"])).not.toBeNull();
   });
 });

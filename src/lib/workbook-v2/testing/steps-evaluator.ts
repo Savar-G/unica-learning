@@ -17,11 +17,13 @@ const TOO_MUCH = /^([1-9]\d*) × ([1-9]\d*) = ([1-9]\d*) is too much$/;
 const MULTIPLE = /^([1-9]\d*) × ([1-9]\d*)$/;
 const BRING_DOWN = /^bring down (\d)$/;
 const NOW = /^now (0|[1-9]\d*)$/;
+/** The value of one digit in its place: "3 hundreds is 300", and the word of one for the digit 1: "1 ten is 10". */
+const PLACE = /^(\d) (one|ten|hundred|thousand)(s?) is (0|[1-9]\d*)$/;
 /** The units that a place can give, by place. */
 export const UNITS = ["one", "ten", "hundred", "thousand"] as const;
 
 /** The closed list of clause kinds in a working step, in strict order. Later shapes add kinds here. */
-export const CLAUSE_KINDS = ["borrow", "becomes", "less", "use", "equation", "digit", "too-much", "plus", "write", "carry", "bring-down", "now"] as const;
+export const CLAUSE_KINDS = ["place", "borrow", "becomes", "less", "use", "equation", "digit", "too-much", "plus", "write", "carry", "bring-down", "now"] as const;
 export type ClauseKind = (typeof CLAUSE_KINDS)[number];
 /** The clauses that only a division says. */
 const DIVISION_KINDS: readonly ClauseKind[] = ["less", "use", "too-much", "bring-down", "now"];
@@ -29,6 +31,7 @@ const DIVISION_KINDS: readonly ClauseKind[] = ["less", "use", "too-much", "bring
 const DIVISION_STEPS: readonly string[] = ["less use", "less write", "less write bring-down now", "equation too-much write", "equation bring-down now"];
 
 export type StepClause =
+  | { kind: "place"; text: string; digit: number; unit: string; value: bigint; ok: boolean }
   | { kind: "borrow"; text: string; unit: string }
   | { kind: "becomes"; text: string; unit: string; from: number; ok: boolean }
   | { kind: "equation"; text: string; left: string; ok: boolean; value: bigint | null }
@@ -80,6 +83,13 @@ const isTrue = (left: string, right: string): boolean => {
 };
 
 const CLAUSE_PARSERS: readonly ((part: string) => StepClause | null)[] = [
+  (part) => {
+    const found = PLACE.exec(part);
+    if (!found) return null;
+    const [digit, unit, value] = [Number(found[1]), found[2], BigInt(found[4])];
+    const ok = (found[3] === "s") === (digit !== 1) && BigInt(digit) * BigInt(10) ** BigInt(UNITS.indexOf(unit as (typeof UNITS)[number])) === value;
+    return { kind: "place", text: part, digit, unit, value, ok };
+  },
   (part) => {
     const found = BORROW.exec(part);
     return found ? { kind: "borrow", text: part, unit: found[1] } : null;
@@ -198,6 +208,7 @@ function divisionClauseProblem(clauses: readonly StepClause[]): ClauseProblem | 
 /** The first clause that does not go with the others of its step. */
 function clauseProblem(clauses: readonly StepClause[]): ClauseProblem | null {
   if (isDividing(clauses)) return divisionClauseProblem(clauses);
+  if (clauseOf(clauses, "place")) return clauses.length > 1 ? { text: "", reason: "says the value of a place and something more" } : null;
   const [borrow, becomes, eq, digit] = [clauseOf(clauses, "borrow"), clauseOf(clauses, "becomes"), clauseOf(clauses, "equation"), clauseOf(clauses, "digit")];
   const problem = (text: string, reason: string): ClauseProblem => ({ text, reason });
   if (borrow || becomes) {
@@ -249,7 +260,7 @@ export function parseStep(step: string): ParsedStep {
     else {
       lastOrder = order;
       clauses.push(clause);
-      if ((clause.kind === "equation" || clause.kind === "becomes") && !clause.ok) fail(wrong, part, `holds "${part}"`);
+      if ((clause.kind === "equation" || clause.kind === "becomes" || clause.kind === "place") && !clause.ok) fail(wrong, part, `holds "${part}"`);
     }
   }
   const dividing = isDividing(clauses);

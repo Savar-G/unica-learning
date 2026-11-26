@@ -2,7 +2,7 @@
 // and no shape: it parses each step with the closed clause grammar and compares marks, clauses, carries and the answer.
 // When the printed rows are a column, it also works on the paper: it starts from the two rows, goes column by column from
 // the ones, and each step must say exactly what its column shows then.
-import type { Answer, Step, StepMark } from "../contract";
+import { answerLine, type Answer, type Step, type StepMark } from "../contract";
 import { canonicalJson } from "../hash";
 import { hasNames, type Rows } from "./shape-registration";
 import { clauseOf, parseSteps, UNITS, type ParsedStep } from "./steps-evaluator";
@@ -204,9 +204,10 @@ export function marksProblem(steps: readonly Step[], answer: string, rows: Rows 
   if (digitsOf(writes) !== answer) return `the steps write "${digitsOf(writes)}" and not the answer "${answer}"`;
 
   const working = (read ?? parseSteps(steps)).map((parsed, i): Working => ({ step: steps[i], ...parsed }));
-  for (const { step, problem, answerOnly, dividing } of working) {
+  for (const { step, problem, answerOnly, dividing, clauses } of working) {
     if (problem) return `the step "${step.text}": ${problem}`;
     if (answerOnly) return `the step "${step.text}" has no equation`;
+    if (clauseOf(clauses, "place")) return `the step "${step.text}" says a place value and the printed rows are no column`;
     if (dividing) return `the step "${step.text}" divides and the printed rows are no division`;
   }
   const paper = rows && paperOf(rows);
@@ -220,4 +221,40 @@ export function marksProblem(steps: readonly Step[], answer: string, rows: Rows 
     incomingCarry = carry;
   }
   return paper && columnsProblem(working, paper);
+}
+
+/** The places of a number of 2 to 4 digits, from the ones up. */
+const PLACE_NAMES = ["ones", "tens", "hundreds", "thousands"];
+
+/**
+ * What is wrong with the steps of a question that asks for the digit of each place, or null. The printed rows are the
+ * number and a row for each place from the highest one, and the answer parts are those places. The steps say the value of
+ * each place in that order, then the number as the sum of exactly these values, then the digits, and draw nothing.
+ */
+export function placesProblem(steps: readonly Step[], answer: Answer, rows: Rows, read?: readonly ParsedStep[]): string | null {
+  const drawing = steps.find((s) => !hasNames(s, ["text", "marks"]) || !Array.isArray(s.marks) || s.marks.length > 0);
+  if (drawing) return `the step ${JSON.stringify(drawing.text)} draws something`;
+  const number = /^[1-9]\d{1,3}$/.test(rows[0] ?? "") ? rows[0] : "";
+  const names = PLACE_NAMES.slice(0, number.length).reverse();
+  if (number === "" || rows.length !== names.length + 1 || names.some((name, i) => rows[i + 1] !== `${name}□`)) return `the printed rows ${JSON.stringify(rows)} are no number with a row for each place`;
+  const parts = answer.parts.map((p) => p.name);
+  if (parts.join() !== names.join()) return `the answer parts are ${parts.join(", ")} and the printed places ${names.join(", ")}`;
+  const parsed = read ?? parseSteps(steps);
+  const values: string[] = [];
+  for (const [i, name] of names.entries()) {
+    const said = steps[i]?.text;
+    const { clauses = [], problem = null } = parsed[i] ?? {};
+    const place = clauses.length === 1 ? clauseOf(clauses, "place") : undefined;
+    if (problem || !place || UNITS.indexOf(place.unit as (typeof UNITS)[number]) !== names.length - 1 - i) return `the step ${JSON.stringify(said)} must say the ${name}`;
+    if (String(place.digit) !== number[i]) return `the step "${said}" says ${place.digit} and the ${name} of ${number} are ${number[i]}`;
+    values.push(String(place.value));
+  }
+  const sum = parsed[names.length];
+  const [equation, ...more] = sum?.clauses ?? [];
+  if (!sum || sum.problem || more.length > 0 || equation?.kind !== "equation" || equation.left !== values.join(" + ") || String(equation.value) !== number) {
+    return `the step ${JSON.stringify(steps[names.length]?.text)} must add the values of the places to ${number}: ${values.join(" + ")} = ${number}`;
+  }
+  if (parsed.length > names.length + 1) return `the step "${steps[names.length + 1].text}" comes after the sum`;
+  const end = answerLine(answer);
+  return steps.at(-1)?.text === end ? null : `the last step is "${steps.at(-1)?.text}" and not "${end}"`;
 }

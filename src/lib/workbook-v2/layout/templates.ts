@@ -41,7 +41,13 @@ export interface TokenPlace extends PlaceFrame { forms: TokenCell[][]; from: "fi
  */
 export interface BracketPlace extends PlaceFrame { above: TokenCell[]; outside: Rect; sign: Rect; inside: Rect[]; line: Rect; work: Rect | null }
 
-export type ItemPlace = ColumnPlace | TokenPlace | BracketPlace;
+/**
+ * A place for a prompt and its rows, one below the other: in each row a label, then an answer area. A question with fewer
+ * rows than the place takes the first ones. A `rule` is a line above a question that stands below another one.
+ */
+export interface FieldsPlace extends PlaceFrame { prompt: Rect; fields: { label: Rect; area: AnswerArea }[]; promptSize: number; labelSize: number; rule: Rect | null }
+
+export type ItemPlace = ColumnPlace | TokenPlace | BracketPlace | FieldsPlace;
 
 /** How large a question is, in each way that a template cares about. */
 export type Needs = Readonly<Record<string, number>>;
@@ -267,6 +273,36 @@ function brackets(id: string, columns: 1 | 2, rows: number): PageTemplate<Bracke
   return { id, faces: ["bracket"], holds, sides: bothSides(columns * rows, place) };
 }
 
+/** Where the questions of fields start, their height together, the room above a prompt, and the size of the texts. */
+const FIELDS = { top: 82, height: 616, above: 8, promptSize: 22, labelSize: 16, labelCharacters: 9, promptCharacters: 4 };
+
+/**
+ * Questions of fields in two columns, `down` of them in each: the prompt, then a row for each field, as high as an answer
+ * area with its reach. The answer areas are at the right end of each column, so that a side has two columns of them.
+ */
+function fieldsTemplate(id: string, down: number): PageTemplate<FieldsPlace> {
+  const height = FIELDS.height / down;
+  const first = FIELDS.above + TEXT_HEIGHT;
+  const rows = Math.floor((height - first) / CLEAR_HEIGHT);
+  const place = (s: Side, i: number): FieldsPlace => {
+    const x = liveLeft(s) + (i % 2) * TWO.pitch;
+    const y = FIELDS.top + Math.floor(i / 2) * height;
+    const left = x + LABEL;
+    const reach = x + TWO.w - CLEAR_WIDTH;
+    const fields = Array.from({ length: rows }, (_, r) => {
+      const top = y + first + r * CLEAR_HEIGHT;
+      return { label: rect(left, top + (CLEAR_HEIGHT - TEXT_HEIGHT) / 2, reach - left, TEXT_HEIGHT), area: areaAt(rect(reach + PRINT_RULES.reach.left, top + PRINT_RULES.reach.top, AREA.w, AREA.h)) };
+    });
+    return {
+      slot: rect(x, y, TWO.w, height), label: rect(x, y + FIELDS.above, LABEL - 2, TEXT_HEIGHT),
+      question: rect(left, y, TWO.w - LABEL, first + rows * CLEAR_HEIGHT), prompt: rect(left, y + FIELDS.above, TWO.w - LABEL, TEXT_HEIGHT),
+      fields, promptSize: FIELDS.promptSize, labelSize: FIELDS.labelSize, rule: i >= 2 ? rect(left, y, TWO.w - LABEL, PRINTED_LINE.height) : null,
+    };
+  };
+  const holds = { rows, "characters in the prompt": FIELDS.promptCharacters, "characters in a label": FIELDS.labelCharacters, "characters in an answer": AREA_CHARACTERS };
+  return { id, faces: ["fields"], holds, sides: bothSides(2 * down, place) };
+}
+
 const ALL: readonly PageTemplate[] = [
   columns2x4, columns2x4Wide,
   endBlank("facts-2x10", 2, FACT_LINE, TWO.w, 3, 18),
@@ -277,6 +313,7 @@ const ALL: readonly PageTemplate[] = [
   twoBlanks("remainders-1x10"),
   brackets("brackets-2x6", 2, 6), brackets("brackets-2x4", 2, 4), brackets("brackets-2x3", 2, 3),
   brackets("brackets-1x4", 1, 4), brackets("brackets-1x3", 1, 3),
+  fieldsTemplate("places-2x2", 2), fieldsTemplate("places-2x3", 3),
 ];
 export const TEMPLATES: ReadonlyMap<string, PageTemplate> = new Map(ALL.map((t) => [t.id, t]));
 
@@ -285,6 +322,7 @@ export function needsOf(face: Face, { parts }: Answer): Needs {
   const answer = parts.reduce((most, p) => Math.max(most, p.value.length), 0);
   if (face.kind === "column") return { "digit places": Math.max(face.top.length, face.sign.length + face.bottom.length, answer) };
   if (face.kind === "bracket") return { "characters outside": face.outside.length, "characters inside": face.inside.length, "characters in an answer": answer, "lines of work": face.workLines };
+  if (face.kind === "fields") return { rows: face.rows.length, "characters in the prompt": face.prompt.length, "characters in a label": face.rows.reduce((most, r) => Math.max(most, r.label.length), 0), "characters in an answer": answer };
   const characters = face.tokens.reduce((most, t) => ("text" in t ? Math.max(most, t.text.length) : most), answer);
   return face.kind === "equation" ? { "places in its line": face.tokens.length, "characters in a number": characters } : { terms: face.tokens.length, "characters in a number": characters };
 }
@@ -300,13 +338,17 @@ export function cellsFor({ forms, from }: TokenPlace, tokens: readonly FaceToken
 
 const isAt = (cell: TokenCell, token: FaceToken): boolean => ("text" in token ? cell.text : cell.area) !== null;
 
-/** The tokens of a face: of its line, or of what stands above its bracket. A stack has none. */
-export const tokensOf = (face: Face): readonly FaceToken[] => (face.kind === "column" ? [] : face.kind === "bracket" ? face.above : face.tokens);
+/** The tokens of a face: of its line, of what stands above its bracket, or its prompt and each label with its blank. A stack has none. */
+export function tokensOf(face: Face): readonly FaceToken[] {
+  if (face.kind === "fields") return [{ text: face.prompt }, ...face.rows.flatMap((row): FaceToken[] => [{ text: row.label }, { blank: row.blank }])];
+  return face.kind === "column" ? [] : face.kind === "bracket" ? face.above : face.tokens;
+}
 
 /** Whether a place has a text cell for each text of the question, and an area for each blank. */
 function hasCells(place: ItemPlace, face: Face): boolean {
   const tokens = tokensOf(face);
   if (face.kind === "column") return "topCells" in place;
+  if (face.kind === "fields") return "fields" in place && face.rows.length <= place.fields.length;
   if (face.kind === "bracket") return "above" in place && place.above.length === tokens.length && tokens.every((token, i) => isAt(place.above[i], token));
   return "forms" in place && cellsFor(place, tokens) !== null;
 }

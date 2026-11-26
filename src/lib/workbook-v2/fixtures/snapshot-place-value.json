@@ -1,0 +1,58 @@
+{
+  "format": 1,
+  "id": "invented-level-2-places-v1",
+  "level": {
+    "id": "level-2",
+    "name": "2"
+  },
+  "topics": [
+    {
+      "id": "topic-4",
+      "code": "2-4",
+      "title": "Place value",
+      "sheets": ["places-two-digits", "places-large"]
+    }
+  ],
+  "sheets": [
+    {
+      "id": "places-two-digits",
+      "firstPage": 61,
+      "front": {
+        "instruction": "Write the digit of each place.",
+        "template": "places-2x3",
+        "rows": [
+          {"id": "two-digits-no-zero", "shape": "place.value", "items": 3, "limits": {"digits": {"min": 2, "max": 2}, "number": {"min": 10, "max": 9999}, "zeros": {"min": 0, "max": 0}, "zeroInOnes": "allowed", "zeroInTens": "allowed", "zeroInHundreds": "allowed"}},
+          {"id": "two-digits-end-zero", "shape": "place.value", "items": 3, "limits": {"digits": {"min": 2, "max": 2}, "number": {"min": 10, "max": 9999}, "zeros": {"min": 0, "max": 3}, "zeroInOnes": "only", "zeroInTens": "allowed", "zeroInHundreds": "allowed"}}
+        ]
+      },
+      "back": {
+        "instruction": "Write the digit of each place. A zero is 0.",
+        "template": "places-2x3",
+        "rows": [
+          {"id": "any-two-digits", "shape": "place.value", "items": 6, "limits": {"digits": {"min": 2, "max": 2}, "number": {"min": 10, "max": 9999}, "zeros": {"min": 0, "max": 3}, "zeroInOnes": "allowed", "zeroInTens": "allowed", "zeroInHundreds": "allowed"}}
+        ]
+      }
+    },
+    {
+      "id": "places-large",
+      "firstPage": 63,
+      "front": {
+        "instruction": "Write the digit of each place. A zero is 0.",
+        "template": "places-2x2",
+        "rows": [
+          {"id": "three-digits-end-zero", "shape": "place.value", "items": 2, "limits": {"digits": {"min": 3, "max": 3}, "number": {"min": 10, "max": 9999}, "zeros": {"min": 0, "max": 3}, "zeroInOnes": "only", "zeroInTens": "allowed", "zeroInHundreds": "allowed"}},
+          {"id": "three-digits-zero-inside", "shape": "place.value", "items": 2, "limits": {"digits": {"min": 3, "max": 3}, "number": {"min": 10, "max": 9999}, "zeros": {"min": 0, "max": 3}, "zeroInOnes": "never", "zeroInTens": "only", "zeroInHundreds": "allowed"}}
+        ]
+      },
+      "back": {
+        "instruction": "Write the digit of each place. A zero is 0.",
+        "template": "places-2x2",
+        "rows": [
+          {"id": "the-widest", "shape": "place.value", "items": 1, "limits": {"digits": {"min": 2, "max": 4}, "number": {"min": 9999, "max": 9999}, "zeros": {"min": 0, "max": 3}, "zeroInOnes": "allowed", "zeroInTens": "allowed", "zeroInHundreds": "allowed"}},
+          {"id": "four-digits-end-zeros", "shape": "place.value", "items": 1, "limits": {"digits": {"min": 4, "max": 4}, "number": {"min": 10, "max": 9999}, "zeros": {"min": 3, "max": 3}, "zeroInOnes": "allowed", "zeroInTens": "allowed", "zeroInHundreds": "allowed"}},
+          {"id": "four-digits-two-zeros-inside", "shape": "place.value", "items": 2, "limits": {"digits": {"min": 4, "max": 4}, "number": {"min": 10, "max": 9999}, "zeros": {"min": 0, "max": 3}, "zeroInOnes": "never", "zeroInTens": "only", "zeroInHundreds": "only"}}
+        ]
+      }
+    }
+  ]
+}

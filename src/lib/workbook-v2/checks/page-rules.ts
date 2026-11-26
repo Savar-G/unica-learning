@@ -228,6 +228,10 @@ function checkItem(page: PageModel, item: BookItem, tell: Tell): void {
   const [slot, label, question] = ITEM_ROLES.map((role) => parts.get(role));
   if (slot) for (const part of page.regions.filter((r) => r.item === item.id)) if (!inside(part.rect, slot.rect)) tell(`${regionName(part)} is not inside ${regionName(slot)}`);
   if (label && texts(label.ink).join("") !== String(item.number)) tell(`question ${item.number} has the label "${texts(label.ink).join("")}"`);
+  if (item.face.kind === "fields") {
+    if (item.face.prompt.trim() === "") tell(`question ${item.number} has an empty prompt`);
+    for (const { label, blank } of item.face.rows) if (label.trim() === "") tell(`question ${item.number} has an empty label in the row of "${blank}"`);
+  }
   if (question) {
     const printed = texts(question.ink).join("");
     const wanted = faceText(item.face);

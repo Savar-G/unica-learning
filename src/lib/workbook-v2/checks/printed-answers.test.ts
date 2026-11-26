@@ -1,9 +1,10 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import type { BookItem, ColumnFace, Ink, PageModel, Region } from "../contract";
+import type { Answer, BookItem, ColumnFace, Ink, PageModel, Region } from "../contract";
 import { SHAPES, shapeLibrary, type Shape, type ShapeLibrary } from "../shapes";
 import { wholeNumber } from "../shapes/shape";
 import { bookOf, divisionBook, factsBook, goodBook, stackOf, type GoodBook } from "../testing/sample";
+import { answerProblem } from "./answer-form";
 import { BLANK, checkPrintedAnswers, printedRows, questionRows } from "./printed-answers";
 
 const MUL = SHAPES.get("mul.column");
@@ -126,7 +127,7 @@ describe("the two computations of an answer, and the worked steps", () => {
 describe("an answer that has no good form, in both computations", () => {
   const skip = SHAPES.get("count.skip");
   if (!skip) throw new Error("no shape");
-  type Part = { name: string; kind: "whole-number"; value: string };
+  type Part = Answer["parts"][number];
   const withParts = (change: (parts: Part[]) => unknown[], which: "both" | "first" | "second" = "both") => {
     const changed = <T extends { answer: { parts: Part[] } }>(item: T): T => ({ ...item, answer: { parts: change(item.answer.parts) as Part[] } });
     const shape: Shape = {
@@ -156,6 +157,26 @@ describe("an answer that has no good form, in both computations", () => {
     expect(withParts(change, "first").join("\n")).toMatch(problem);
     expect(withParts(change, "second").join("\n")).toMatch(problem);
     for (const text of withParts(change)) expect(text).toMatch(/^Sheet "long-counts", (front|back) side, question \d \(.*\): the answer /);
+  });
+});
+
+describe("an answer of digits, one for each place", () => {
+  const places = (...values: string[]) => ({ parts: ["thousands", "hundreds", "tens", "ones"].slice(4 - values.length).map((name, i) => ({ name, kind: "digit" as const, value: values[i] })) });
+  it.each([["4", "3", "0", "7"], ["9", "0"], ["1", "0", "0"]])("is good with the digits %s", (...values) => expect(answerProblem(places(...values), "digit")).toBeNull());
+  it.each<[string, unknown, RegExp]>([
+    ["two digits", places("1", "10"), /the part "ones" has the value "10", which is no digit/],
+    ["a zero in front", places("4", "00"), /the part "ones" has the value "00", which is no digit/],
+    ["no digit", places("4", ""), /has the value "", which is no digit/],
+    ["a minus", places("4", "-1"), /has the value "-1", which is no digit/],
+    ["a space", places("4", " 3"), /has the value " 3", which is no digit/],
+    ["a letter", places("4", "a"), /has the value "a", which is no digit/],
+    ["a whole number in a part of digits", { parts: [{ name: "tens", kind: "whole-number", value: "4" }] }, /has a part of the kind "whole-number", which is not "digit"/],
+    ["a place that marking does not know", { parts: [{ name: "millions", kind: "digit", value: "4" }] }, /the name "millions", which is not known/],
+    ["one place twice", { parts: [{ name: "tens", kind: "digit", value: "4" }, { name: "tens", kind: "digit", value: "3" }] }, /two parts with the name "tens"/],
+  ])("refuses %s", (_name, answer, problem) => expect(answerProblem(answer as Answer, "digit")).toMatch(problem));
+  it("is no whole number, and a whole number is no digit", () => {
+    expect(answerProblem(places("4", "3"), "whole-number")).toMatch(/kind "digit", which is not "whole-number"/);
+    expect(answerProblem({ parts: [{ name: "answer", kind: "whole-number", value: "10" }] }, "whole-number")).toBeNull();
   });
 });
 

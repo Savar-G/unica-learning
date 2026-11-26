@@ -1,0 +1,22 @@
+{
+  "bookId": "example-places",
+  "childId": "example-child",
+  "sheets": [
+    {
+      "sheetId": "places-two-digits",
+      "attempt": 1,
+      "qr": {
+        "front": "https://unicalearning.com/tutor/p/example-places-61",
+        "back": "https://unicalearning.com/tutor/p/example-places-62"
+      }
+    },
+    {
+      "sheetId": "places-large",
+      "attempt": 1,
+      "qr": {
+        "front": "https://unicalearning.com/tutor/p/example-places-63",
+        "back": "https://unicalearning.com/tutor/p/example-places-64"
+      }
+    }
+  ]
+}
