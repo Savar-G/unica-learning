@@ -7,7 +7,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { answerLine, type Answer, type Step } from "../contract";
 import rawSnapshot from "../fixtures/snapshot.json";
 import factsSnapshot from "../fixtures/snapshot-facts.json";
-import inventedDraft from "../fixtures/draft-invented-topic.json";
 import { SHAPES } from "../shapes";
 import { fixture, skipTypstTests } from "../testing/typst";
 
@@ -88,14 +87,15 @@ describe.concurrent("the bank check command, before it checks", () => {
   });
 });
 
-/** The invented draft cut to its sheet of stacks with one question a side, and a made-up source in a note of each kind. */
+/**
+ * A draft of one sheet of long counts with one question a side, in a template of two places, so that little is drawn: the
+ * invented level, a topic and a made-up source in a note of the sheet and of a row.
+ */
 function writeSmallDraft(name: string, change: (draft: Record<string, unknown>) => unknown = () => {}): string {
-  const draft = structuredClone(inventedDraft) as typeof inventedDraft & Record<string, unknown>;
-  draft.topics[0].sheets = ["column-multiplication-1"];
-  draft.sheets = [draft.sheets[0]];
-  for (const side of [draft.sheets[0].front, draft.sheets[0].back]) side.rows = [{ ...side.rows[0], items: 1 }];
-  Object.assign(draft.sheets[0], { basis: "made-up-source-cli: page 9" });
-  Object.assign(draft.sheets[0].front.rows[0], { basis: { page: 9, source: "made-up-source-cli" } });
+  const counts = factsSnapshot.sheets[4];
+  const sideOf = (side: typeof counts.front, id: string) => ({ ...side, rows: [{ ...side.rows[0], id, items: 1, limits: { ...side.rows[0].limits, blanks: { min: 1, max: 1 }, places: { min: 3, max: 3 } } }] });
+  const sheet = { ...counts, basis: "made-up-source-cli: page 9", front: sideOf(counts.front, "one"), back: { ...sideOf(counts.back, "two"), basis: { page: 9, source: "made-up-source-cli" } } };
+  const draft: Record<string, unknown> = { ...factsSnapshot, basis: "made-up-source-cli", topics: [{ ...factsSnapshot.topics[0], sheets: [counts.id] }], sheets: [sheet] };
   change(draft);
   const file = join(folder, name);
   writeFileSync(file, JSON.stringify(draft));
@@ -104,16 +104,8 @@ function writeSmallDraft(name: string, change: (draft: Record<string, unknown>) 
 const freeze = (args: string[]) => command(args, {}, "", bundledFreeze);
 
 describe.concurrent("the freeze command, before it checks", () => {
-  it.each<[string, string[], RegExp]>([
-    ["no argument", [], /^Usage: npm run workbook:v2:freeze -- --draft FILE --out FILE\n$/],
-    ["no output file", ["--draft", "a.json"], /^Usage/],
-    ["an argument twice", ["--draft", "a", "--draft", "b", "--out", "c"], /^Usage/],
-    ["a draft that is not JSON", ["--draft", "README.md", "--out", "/nowhere/frozen.json"], /^README\.md is not JSON\.\n$/],
-  ])("stops on %s", async (_name, args, message) => {
-    const { code, output } = await freeze(args);
-    expect(code).toBe(1);
-    expect(output).toMatch(message);
-  });
+  // Its arguments are read as those of the other commands; one case says that they are read.
+  it("stops with no output file", async () => expect(await freeze(["--draft", "a.json"])).toEqual({ code: 1, output: "Usage: npm run workbook:v2:freeze -- --draft FILE --out FILE\n" }));
 
   it("does not replace a file that is there, and does not start", async () => {
     const out = join(folder, "taken.json");
@@ -128,7 +120,7 @@ describe.concurrent("the freeze command, before it checks", () => {
     const out = join(folder, "never.json");
     const { code, output } = await freeze(["--draft", bad, "--out", out]);
     expect(code).toBe(1);
-    expect(output).toBe('Sheet "column-multiplication-1": firstPage must be odd, because the front of a sheet is a right-hand page.\n1 problem. Nothing was written.\n');
+    expect(output).toBe('Sheet "long-counts": firstPage must be odd, because the front of a sheet is a right-hand page.\n1 problem. Nothing was written.\n');
     expect(existsSync(out)).toBe(false);
     expect(readdirSync(folder).filter((f) => f.startsWith(".workbook-v2-freeze-"))).toEqual([]);
   });
@@ -141,11 +133,11 @@ describe.skipIf(skipTypstTests()).concurrent("the freeze command, with the real 
     mkdirSync(join(folder, "frozen"));
     const { code, output } = await freeze(["--draft", draft, "--out", out]);
     expect(code).toBe(0);
-    expect(output).toMatch(/^Frozen 1 sheets and 2 rows in \d+\.\d s: .*small\.json, SHA-256 [0-9a-f]{64}\.\nSheet "column-multiplication-1": \d+ attempts before a row repeats a question\.\n$/);
+    expect(output).toMatch(/^Frozen 1 sheets and 2 rows in \d+\.\d s: .*small\.json, SHA-256 [0-9a-f]{64}\.\nSheet "long-counts": \d+ attempts before a row repeats a question\.\n$/);
     const text = readFileSync(out, "utf8");
     expect(text).not.toContain("basis");
     expect(text).not.toContain("made-up-source-cli");
-    expect(JSON.parse(text)).toMatchObject({ id: inventedDraft.id, sheets: [{ id: "column-multiplication-1" }] });
+    expect(JSON.parse(text)).toMatchObject({ id: factsSnapshot.id, sheets: [{ id: "long-counts", front: { rows: [{ id: "one" }] } }] });
     expect(readdirSync(join(folder, "frozen"))).toEqual(["small.json"]);
   });
 });

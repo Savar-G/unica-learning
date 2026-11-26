@@ -12,7 +12,7 @@ import { fakeRenderer } from "../testing/fake-renderer";
 import { drawPage, paint, pagePng, toPng } from "../testing/raster";
 import { stackOf } from "../testing/sample";
 import { skipTypstTests, testAssets } from "../testing/typst";
-import { buildBook, type BuiltBook } from "./build-book";
+import { buildBook, planBook, type BuiltBook } from "./build-book";
 
 // A hook between the layout and the checks: the layout of the engine makes no wrong page, and one must still stop a book.
 const layout = vi.hoisted(() => ({ change: (pages: PageModel[]) => pages }));
@@ -100,12 +100,14 @@ describe("a good input", () => {
   });
 
   it("is the same book when a sheet says that it does not start a day, and has a time log on its front page when it does", async () => {
-    const [one, two, three] = [await plain(), await built(input((i) => put(i.book.sheets[0], "startsDay", false))), await built(input((i) => put(i.book.sheets[0], "startsDay", true)))];
-    expect(Buffer.from(two.pdf).equals(Buffer.from(one.pdf))).toBe(true);
-    expect(two.pages.map((p) => p.image)).toEqual(one.pages.map((p) => p.image));
+    // The drawing is made from the page models alone, so the same models are the same book.
+    const one = await plain();
+    const [two, three] = [false, true].map((startsDay) => planBook(input((i) => put(i.book.sheets[0], "startsDay", startsDay))));
+    if (!two.ok || !three.ok) throw new Error("no plan");
+    expect(two.pages).toEqual(one.pages.map((p) => p.model));
     expect(one.pages.map((p) => p.model.captures)).toEqual([[], []]);
-    expect(three.pages.map((p) => p.model.captures.map((c) => c.kind))).toEqual([["time-log"], []]);
-    expect(Buffer.from(three.pdf).equals(Buffer.from(one.pdf))).toBe(false);
+    expect(three.pages.map((p) => p.captures.map((c) => c.kind))).toEqual([["time-log"], []]);
+    expect(three.pages[1]).toEqual(one.pages[1].model);
     expect(three.items).toEqual(one.items);
   });
 

@@ -461,8 +461,8 @@ describe("the time log", () => {
     ["the labels in the other order", first, (p) => { const [a, b] = [labelOf(p, 0), labelOf(p, 1)]; [a.text, b.text] = [b.text, a.text]; }, /the time log prints "Finish", "Start" and must print "Start", "Finish"/],
     ["a label of another size", first, (p) => { labelOf(p, 1).size = 12; }, /the time log must print a text of 11 points and weight 600 at the right in/],
     ["a label at the left", first, (p) => { labelOf(p, 0).align = "left"; }, /the time log must print a text of 11 points/],
-    ["a mark in a box", first, (p) => { log(p)!.ink.push({ kind: "fill", rect: { x: 170, y: 712, w: 4, h: 4 }, color: "black" }); }, /the time log prints a line that it does not have there|clear space of the box "start"/],
-    ["a label in the clear space of a box", first, (p) => { const t = labelOf(p, 1); t.rect = { ...t.rect, x: t.rect.x - 12 }; }, /the time log has ink of time-log in the clear space of the box "start"|must print a text/],
+    ["a mark in a box", first, (p) => { log(p)!.ink.push({ kind: "fill", rect: { x: 170, y: 712, w: 4, h: 4 }, color: "black" }); }, /the time log prints a line that it does not have there/],
+    ["a label in the clear space of a box", first, (p) => { const t = labelOf(p, 1); t.rect = { ...t.rect, x: t.rect.x - 12 }; }, /the time log must print a text of 11 points and weight 600 at the right in \(243\.5, 705, 40 by 26\)/],
     ["a time log that is moved up into the questions", first, (p) => { const r = log(p)!; r.rect = { ...r.rect, y: r.rect.y - 60 }; r.ink = r.ink.map((i) => ({ ...i, rect: { ...i.rect, y: i.rect.y - 60 } })); }, /the time log is at \(111\.5, 640, 256 by 36\) and must be at \(111\.5, 700, 256 by 36\)/],
     ["a time log in the spine zone", first, (p) => move(log(p)!, -30, 0), /"time-log" enters the spine zone/],
     ["a time log over the QR code", first, (p) => move(log(p)!, 200, 0), /"time-log" and "qr" overlap|"qr" and "time-log" overlap/],
@@ -480,14 +480,14 @@ describe("what a question prints", () => {
   // One question of each form of a face: the first one on each template, the forms with a blank in another place, and a
   // sequence that stands below another one.
   const books = [goodBook(), factsBook(), divisionBook(), placesBook(), inventedBook()];
-  const formOf = ({ face }: BookItem) => (face.kind === "column" ? "column" : face.kind === "fields" ? "fields" : face.kind === "figure" ? `figure ${face.figure.parts.length} bars` : `${face.kind} ${(face.kind === "bracket" ? face.above : face.tokens).map((t) => ("text" in t ? "t" : "_")).join("")}`);
+  const formOf = ({ face }: BookItem) => (face.kind === "column" ? "column" : face.kind === "fields" ? "fields" : face.kind === "figure" ? `figure ${face.figure.parts.length < 4 ? "of few" : "of many"} bars` : `${face.kind} ${(face.kind === "bracket" ? face.above : face.tokens).map((t) => ("text" in t ? "t" : "_")).join("")}`);
   const linesOf = (page: PageModel, item: BookItem) => page.regions.find((r) => r.item === item.id && r.role === "question")!.ink.filter((i) => i.kind === "fill").length;
   const cases = new Map(books.flatMap(({ pages, items }) => pages.flatMap((page) => items.filter((i) => i.id.startsWith(`${page.id}/`)).map((item) => [`${page.template}, ${formOf(item)}, ${linesOf(page, item)} lines`, { page, item }] as const))).reverse());
 
   it("is looked at for each face, with and without its line", () => {
     const names = [...cases.keys()];
     expect(new Set([...cases.values()].map(({ item }) => item.face.kind))).toEqual(new Set(["column", "equation", "sequence", "bracket", "fields", "figure"]));
-    expect(names.filter((n) => n.startsWith("figures-1x4"))).toEqual(expect.arrayContaining(["figures-1x4, figure 2 bars, 3 lines", "figures-1x4, figure 6 bars, 3 lines"]));
+    expect(names.filter((n) => n.startsWith("figures-1x4"))).toEqual(expect.arrayContaining(["figures-1x4, figure of few bars, 3 lines", "figures-1x4, figure of many bars, 3 lines"]));
     expect(names.filter((n) => n.startsWith("column") || n.startsWith("bracket")).every((n) => n.endsWith("1 lines"))).toBe(true);
     expect(["0 lines", "1 lines"].map((end) => names.some((n) => n.startsWith("sequences-2x2") && n.endsWith(end)))).toEqual([true, true]);
     expect(names).toEqual(expect.arrayContaining(["blanks-1x10, equation _tttt, 0 lines", "blanks-1x10, equation tt_tt, 0 lines", "remainders-1x10, equation tttt_t_, 0 lines", "brackets-1x3, bracket _t_, 1 lines", "brackets-2x6, bracket _, 1 lines",

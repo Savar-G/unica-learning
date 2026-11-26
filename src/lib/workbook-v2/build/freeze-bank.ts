@@ -46,7 +46,7 @@ const withoutBasis = (value: unknown): unknown => (isRecord(value) ? Object.from
 const each = (value: unknown, change: (one: unknown) => unknown): unknown => (Array.isArray(value) ? value.map(change) : value);
 
 /** The content of a draft: the same data with no note at the level, a topic, a sheet, a side or a row. */
-function contentOf(draft: Record<string, unknown>): Record<string, unknown> {
+export function contentOf(draft: Record<string, unknown>): Record<string, unknown> {
   const side = (raw: unknown) => {
     const one = withoutBasis(raw);
     return isRecord(one) ? { ...one, rows: each(one.rows, withoutBasis) } : one;

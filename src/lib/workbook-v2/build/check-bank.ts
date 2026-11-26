@@ -38,7 +38,8 @@ export interface BankReport {
   checked: { sheets: number; rows: number; seeds: number; questions: number; pages: number; alone: number; texts: number; samples: number };
 }
 
-export interface BankOptions { shapes?: ShapeLibrary; templates?: TemplateLibrary; seeds?: number }
+/** `figureSamples` is how many seeds of each row with a figure are drawn: `FIGURE_SAMPLE_SEEDS` for a freeze. */
+export interface BankOptions { shapes?: ShapeLibrary; templates?: TemplateLibrary; seeds?: number; figureSamples?: number }
 
 interface Planned { pages: PageModel[]; items: BookItem[] }
 /** Pages that are drawn and checked together, for one row. */
@@ -84,7 +85,7 @@ class BankCheck {
   private readonly texts = new Map<string, Measured>();
   private runs = 0;
 
-  constructor(private readonly levelName: string, private readonly shapes: ShapeLibrary, seeds: number, private readonly renderer: Renderer) {
+  constructor(private readonly levelName: string, private readonly shapes: ShapeLibrary, seeds: number, private readonly renderer: Renderer, private readonly figureSamples: number) {
     this.checked = { sheets: 0, rows: 0, seeds, questions: 0, pages: 0, alone: 0, texts: 0, samples: 0 };
   }
 
@@ -191,7 +192,7 @@ class BankCheck {
   private samples(sheet: SnapshotSheet, side: Side, row: SnapshotRow, forms: readonly Item<unknown>[]): void {
     const owner = rowPlace(sheet, side, [row]);
     const drawn = new Set(forms.map(({ question }) => questionKey(row.shape, question)));
-    for (let seed = 1; seed <= FIGURE_SAMPLE_SEEDS; seed++) {
+    for (let seed = 1; seed <= this.figureSamples; seed++) {
       const made = attempt("a question of a sampled seed cannot be made", () => row.shape.generate(row.limits, seedFrom("bank-check-figure", sheet.id, side, row.id, seed)));
       if (!made.ok) return this.tell(owner, made.problems);
       const key = questionKey(row.shape, made.value.question);
@@ -324,7 +325,8 @@ function alonePage(page: PageModel, own: readonly Region[]): { page: PageModel; 
   const regions = own.map((r): Region => ({ ...r, rect: movedRect(r.rect, dx, dy), ink: r.ink.map((ink): Ink => ({ ...ink, rect: movedRect(ink.rect, dx, dy) })) }));
   const slot = regions.find((r) => r.role === "slot");
   const size = (length: number) => Math.ceil((length + 2 * ALONE_EDGE) / PIXEL) * PIXEL;
-  return slot ? { page: { ...page, size: { w: size(place.rect.w), h: size(place.rect.h) }, regions }, slot } : null;
+  // The question is alone: the time log of its page is not drawn, so it has no capture either.
+  return slot ? { page: { ...page, size: { w: size(place.rect.w), h: size(place.rect.h) }, regions, captures: [] }, slot } : null;
 }
 
 const MEASURE = { gap: 4, high: 700 };
@@ -363,10 +365,10 @@ function readBank(snapshot: unknown, shapes: ShapeLibrary, templates: TemplateLi
 }
 
 /** Every problem of a snapshot, with its sheet, side and row. It changes nothing, and the same snapshot gives the same report. */
-export async function checkBank(snapshot: unknown, renderer: Renderer, { shapes = SHAPES, templates = TEMPLATES, seeds = BANK_SEEDS }: BankOptions = {}): Promise<BankReport> {
+export async function checkBank(snapshot: unknown, renderer: Renderer, { shapes = SHAPES, templates = TEMPLATES, seeds = BANK_SEEDS, figureSamples = FIGURE_SAMPLE_SEEDS }: BankOptions = {}): Promise<BankReport> {
   const bank = readBank(snapshot, shapes, templates);
   if (!bank.ok) return { problems: bank.problems, checked: { sheets: 0, rows: 0, seeds: 0, questions: 0, pages: 0, alone: 0, texts: 0, samples: 0 } };
-  const check = new BankCheck(bank.snapshot.level.name, shapes, seeds, renderer);
+  const check = new BankCheck(bank.snapshot.level.name, shapes, seeds, renderer, figureSamples);
   for (const sheet of bank.snapshot.sheets.values()) {
     check.checked.sheets++;
     check.seeds(sheet);

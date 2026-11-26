@@ -3,7 +3,7 @@
 // and the print of the question (face-print.ts), never from a template. The words are for the rules of the page.
 import { CAPTURE_KINDS, PRINT_RULES, type Face, type Ink, type PageModel, type Rect, type Region } from "../contract";
 import { faceTokens, type Area } from "./face-print";
-import { bottom, inside, near, overlaps, right } from "./rects";
+import { bottom, near, right } from "./rects";
 
 const { frame: { gap: GAP, mark: MARK, heading: HEADING, instruction: INSTRUCTION, footer: FOOTER }, label: LABEL, cell: CELL, line: LINE, textHeight: TEXT_HEIGHT, figure: FIGURE } = PRINT_RULES;
 
@@ -97,7 +97,9 @@ const show = (rect: Rect) => at(rect);
 /**
  * The time log of the first page of a day: a band above the footer, from its left end, with a label and an outlined box for
  * each field in reading order, and clear space round each box. The places follow from the live part of the page and the
- * print rules. A back page has none, and a page has one at most. `live` is the part of the page that may hold print.
+ * print rules. A back page has none, and a page has one at most. `live` is the part of the page that may hold print. No
+ * other ink stands in the clear space of a box: the time log prints exactly its labels and boxes, no region may overlap
+ * it (`checkPage`), and the image check holds each box and its clear space blank but for the border of the box.
  */
 export function timeLogProblems(page: PageModel, live: Rect): string[] {
   const problems: string[] = [];
@@ -135,14 +137,6 @@ export function timeLogProblems(page: PageModel, live: Rect): string[] {
     problems.push(...regionProblems(region, { name: "the time log", rect: band, prints }));
     const words = region.ink.flatMap((i) => (i.kind === "text" ? [i.text] : []));
     if (words.join() !== TIME_LOG.labels.join()) tell(`prints ${words.map((w) => `"${w}"`).join(", ") || "no text"} and must print ${TIME_LOG.labels.map((w) => `"${w}"`).join(", ")}`);
-    // A child writes in a box: no other ink of the page may stand in its clear space, not even a part of the time log.
-    for (const field of capture.fields) {
-      if (!inside(field.reach, live)) tell(`has the box "${field.name}" outside the part of the page that may hold print`);
-      for (const other of page.regions) for (const ink of other.ink) {
-        const isOwnBox = other === region && ink.kind === "outline" && same(ink.rect, field.rect);
-        if (!isOwnBox && overlaps(ink.rect, field.reach)) tell(`has ink of ${other.id.slice(page.id.length + 1)} in the clear space of the box "${field.name}"`);
-      }
-    }
   }
   return problems;
 }
