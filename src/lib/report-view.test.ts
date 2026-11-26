@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MISCONCEPTIONS, reportModel, type Grade, type Province, type ReportFacts, type ReportFindings } from "@/lib/assessment";
+import { createAdaptiveSession, finish, lockAdaptiveBlock, MISCONCEPTIONS, nextQuestion, reportModel, submitAnswer, testStep, UNKNOWN_RESPONSE, type Grade, type Placement, type Province, type ReportFacts, type ReportFindings } from "@/lib/assessment";
 import { allRight, knowsUpTo, takeTest, type Script } from "@/lib/assessment/scripted-child";
 import {
   comparisonView,
@@ -33,6 +33,10 @@ import type { BookOne } from "@/lib/report-book-one";
 /** A finished report for a scripted child, as the page and the email get it. */
 function view(isRight: Script, { grade = 4, province = "BC", name = "Maya" }: { grade?: Grade; province?: Province; name?: string } = {}): ReportView {
   const { placement } = takeTest({ grade, province }, 1, isRight);
+  return placementView(placement, province, name);
+}
+
+function placementView(placement: Placement, province: Province, name: string): ReportView {
   return {
     id: "r-1",
     childName: name,
@@ -320,6 +324,32 @@ describe("how we help, by verdict (D-084)", () => {
       text: "Maya already does grade 5 work. The books start there, so Maya learns new things instead of repeating known work, and the topics from school stay covered.",
     });
   });
+  it.each([
+    [10, 10, "Get ahead", ["grade 10 work", "grade 11 topics"]],
+    [11, 11, "Get ahead", ["grade 11 work", "grade 12 topics"]],
+    [12, 12, "Get ahead", ["grade 12 work", "harder grade 12 problems"]],
+    [10, 9, "Catch up, then move ahead", ["grade 9 work", "grade 10 work"]],
+    [11, 10, "Catch up, then move ahead", ["grade 10 work", "grade 11 work"]],
+    [12, 11, "Catch up, then move ahead", ["grade 11 work", "up to grade 12 work"]],
+    [10, 11, "Go further", ["already does grade 11 work"]],
+    [11, 12, "Go further", ["already does grade 12 work"]],
+  ] as const)("uses the right grades for a school Grade %i child placed at Level %i", (grade, level, title, phrases) => {
+    let session = createAdaptiveSession({ grade, province: "BC" }, 1);
+    for (let i = 0; i < 100 && testStep(session).status !== "complete"; i++) {
+      const q = nextQuestion(session);
+      session = q
+        ? submitAnswer(session, { questionId: q.id, response: q.level <= level ? q.answer : UNKNOWN_RESPONSE, timeMs: 20_000 })
+        : lockAdaptiveBlock(session);
+    }
+    const placement = finish(session);
+    const report = placementView(placement, "BC", "Maya");
+    expect(report.model.level).toMatchObject({ grade, working: level });
+    const help = howWeHelp(report);
+    expect(help.title).toBe(title);
+    for (const phrase of phrases) expect(help.text).toContain(phrase);
+    expect(help.text).not.toMatch(/grade 13/i);
+  });
+
   it("never invents a weakness: with every area secure, no verdict mentions extra practice", () => {
     const secure = (v: ReportView): ReportView => ({ ...v, model: { ...v.model, strands: v.model.strands.map((s) => ({ ...s, status: "secure" as const })) } });
     for (const v of [view(knowsUpTo(3)), view(knowsUpTo(4)), view(allRight)]) {
