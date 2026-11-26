@@ -1,5 +1,5 @@
 // Six-question assessment blocks drawn from a stored pool. A lock alone advances the search.
-import { LEVEL_3_CHECK_QUESTION_COUNT, placeV2Workbook, workbookStartFromPrerequisites } from "@/lib/workbook-v2-placement";
+import { placeV2Workbook, workbookStartFromPrerequisites } from "@/lib/workbook-v2-placement";
 import { ALL_TEMPLATES, difficultyOf } from "./bank";
 import { atLeast, bandFor, REPORTED_STRAND, STRAND_MINIMUM_QUESTIONS, WORKING_LEVEL_PERCENT } from "./constants";
 import { leftOutOfScore, paceOf } from "./rushing";
@@ -70,6 +70,7 @@ export function skillFamily(q: Pick<Question, "templateId">): string {
 export function blockQuestions(pool: readonly Question[], strands: readonly ReportedStrand[], offset: number, balanceSkills: boolean): Question[] {
   const chosen: Question[] = [];
   const families = new Set<string>();
+  const repeats = new Set<Question>();
   const open = (q: Question) => !chosen.includes(q);
   const fresh = (q: Question) => open(q) && !(balanceSkills && families.has(skillFamily(q)));
   const inStrand = (strand: ReportedStrand | undefined) => (q: Question) => REPORTED_STRAND[q.strand] === strand;
@@ -78,11 +79,13 @@ export function blockQuestions(pool: readonly Question[], strands: readonly Repo
     const q = pool.find(q => inStrand(strand)(q) && fresh(q)) ?? pool.find(fresh)
       ?? pool.find(q => inStrand(strand)(q) && open(q)) ?? pool.find(open);
     if (!q) break;
+    if (balanceSkills && families.has(skillFamily(q))) repeats.add(q);
     chosen.push(q);
     families.add(skillFamily(q));
   }
-  const rank = { easy: 0, medium: 1, hard: 2 };
-  return chosen.sort((a, b) => rank[difficultyOf(a.templateId)] - rank[difficultyOf(b.templateId)]);
+  // Easy questions first; a repeated skill family stays after every family's first question.
+  const rank = (q: Question) => (repeats.has(q) ? 3 : 0) + { easy: 0, medium: 1, hard: 2 }[difficultyOf(q.templateId)];
+  return chosen.sort((a, b) => rank(a) - rank(b));
 }
 
 function selectBlock(a: AdaptiveTest, profile: ChildProfile, level: Level, purpose: AdaptiveBlock["purpose"]): AdaptiveBlock {
@@ -327,8 +330,8 @@ function lockPlacementBlock(session: Session, a: AdaptiveTest, questions: Questi
   const checkGrade = gradeCheckFor(session);
   const best = confirmedGrade(a, answers, byLevel, checkGrade);
   const top = adaptiveTop(profile);
-  const reserved = a.workbookPlacement ? LEVEL_3_CHECK_QUESTION_COUNT : 0;
-  const room = ADAPTIVE_QUESTION_LIMIT - reserved - questions.length;
+  // The workbook placement check comes after the assessment and outside its limit, so the assessment route never changes.
+  const room = ADAPTIVE_QUESTION_LIMIT - questions.length;
   const searchCount = a.blocks.filter(b => b.purpose === "search").reduce((n, b) => n + b.questions.length, 0);
   const select = (level: Level, purpose: "search" | "confirm", limit = BLOCK_SIZE) => {
     const block = selectBlock(a, profile, level, purpose);

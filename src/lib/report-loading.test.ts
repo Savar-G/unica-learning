@@ -308,7 +308,8 @@ describe("the report inputs (#162)", () => {
     const readers = memoryReportReaders({ ...tables(), assessments: [assessment], answers: [main, workbook] });
     const inputs = (await loadReportInputs(readers.key(), assessment.id, noComparison))!;
 
-    expect(inputs).toMatchObject({ questions: 2, minutes: 2 });
+    const without = (await loadReportInputs(memoryReportReaders({ ...tables(), assessments: [assessment], answers: [main] }).key(), assessment.id, noComparison))!;
+    expect({ questions: inputs.questions, minutes: inputs.minutes }).toEqual({ questions: without.questions, minutes: without.minutes });
     expect(inputs.shownWork.map((piece) => piece.questionId)).toEqual([question.id]);
     expect(inputs.reviewPieces().map((piece) => piece.questionId)).toEqual([question.id]);
     expect(inputs.profileAnswers().map((answer) => answer.question.id)).toEqual([question.id]);
