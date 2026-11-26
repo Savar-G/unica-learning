@@ -630,15 +630,17 @@ export const breakDue = (step: TestStep): boolean => step.status === "question" 
 
 /**
  * A completed test's answers for the area rule (D-243): one per question, with what `finish` leaves out of the score
- * (a very fast wrong answer in a run, #189) left out here too.
+ * (the workbook placement check and very fast wrong answers in a run, #189) left out here too.
  */
 export function testAreaAnswers(session: Session): AreaAnswer[] {
   const questions = questionsOnRoute(session);
   if (!session.route || session.answers.length < questions.length || (session.adaptive && (!session.adaptive.complete || !session.adaptive.sufficientEvidence))) {
     throw new Error(`The test is not complete: ${session.answers.length} of ${questions.length} answered`);
   }
-  const out = leftOutOfScore(session.answers);
-  return questions.flatMap((q, i) => (out[i] ? [] : [{ area: REPORTED_STRAND[q.strand], level: q.level, correct: session.answers[i].correct }]));
+  const count = session.adaptive ? assessmentQuestionsOnly(session.adaptive) : questions.length;
+  const answers = session.answers.slice(0, count);
+  const out = leftOutOfScore(answers);
+  return questions.slice(0, count).flatMap((q, i) => (out[i] ? [] : [{ area: REPORTED_STRAND[q.strand], level: q.level, correct: answers[i].correct }]));
 }
 
 /**

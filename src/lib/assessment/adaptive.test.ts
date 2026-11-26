@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ADAPTIVE_QUESTION_LIMIT, BLOCK_SIZE, createAdaptiveSession, finish, givenQuestions, lockAdaptiveBlock, nextQuestion, restoreSession, storedTest, submitAnswer, testStep, UNKNOWN_RESPONSE, paceOf, flagsFor, REPORTED_STRAND, rescoreAdaptivePlacement, type AdaptiveBlock, type Grade, type Session, type Province } from "@/lib/assessment";
+import { ADAPTIVE_QUESTION_LIMIT, BLOCK_SIZE, createAdaptiveSession, finish, givenQuestions, lockAdaptiveBlock, nextQuestion, restoreSession, storedTest, submitAnswer, testAreaAnswers, testStep, UNKNOWN_RESPONSE, paceOf, flagsFor, REPORTED_STRAND, rescoreAdaptivePlacement, type AdaptiveBlock, type Grade, type Session, type Province } from "@/lib/assessment";
 
 function run(grade: Grade, ability: number, seed: number, province: Province = "BC"): Session {
   const created = createAdaptiveSession({ grade, province }, seed);
@@ -301,5 +301,6 @@ describe("test-account v2 workbook placement", () => {
     const completed = lockAdaptiveBlock(resumed);
     expect(testStep(completed).status).toBe("complete");
     expect(finish(completed)).toEqual({ ...finish(ordinary), workbookStart: { level, topic: 1 } });
+    expect(testAreaAnswers(completed)).toEqual(testAreaAnswers(ordinary));
   });
 });
