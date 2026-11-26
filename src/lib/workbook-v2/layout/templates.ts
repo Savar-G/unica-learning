@@ -58,9 +58,8 @@ const rect = (x: number, y: number, w: number, h: number): Rect => ({ x, y, w, h
 
 const TOP = PRINT_RULES.outerMargin;
 const BOTTOM = PAPER.h - PRINT_RULES.outerMargin;
-const MARK = 13.5;
+const { gap: GAP, mark: { size: MARK }, heading: HEADING, instruction: INSTRUCTION, footer: FOOTER } = PRINT_RULES.frame;
 const QR = 57.6;
-const GAP = 8;
 const LIVE = PAPER.w - PRINT_RULES.spineZone - PRINT_RULES.outerMargin;
 const liveLeft = (side: Side) => (side === "front" ? PRINT_RULES.spineZone : PRINT_RULES.outerMargin);
 
@@ -71,9 +70,9 @@ function frame(side: Side): PageFrame {
   const textWidth = LIVE - 2 * (MARK + GAP);
   const qrLeft = side === "front" ? right - MARK - GAP - QR : left + MARK + GAP;
   return {
-    heading: rect(textLeft, TOP, textWidth, 20),
-    instruction: rect(left, TOP + 26, LIVE, 18),
-    footer: rect(side === "front" ? textLeft : qrLeft + QR + GAP, BOTTOM - 16, textWidth - QR - GAP, 16),
+    heading: rect(textLeft, TOP, textWidth, HEADING.h),
+    instruction: rect(left, TOP + INSTRUCTION.top, LIVE, INSTRUCTION.h),
+    footer: rect(side === "front" ? textLeft : qrLeft + QR + GAP, BOTTOM - FOOTER.h, textWidth - QR - GAP, FOOTER.h),
     qr: rect(qrLeft, BOTTOM - QR, QR, QR),
     marks: {
       tl: rect(left, TOP, MARK, MARK),
@@ -106,7 +105,7 @@ function place(side: Side, digits: number, column: number, row: number): ColumnP
   const cells = (top: number) => Array.from({ length: digits }, (_, i) => rect(stack + i * CELL.w, top, CELL.w, CELL.h));
   return {
     slot: rect(x, y, SLOT.w, SLOT.h),
-    label: rect(x, y + 14, 24, CELL.h),
+    label: rect(x, y + 14, CELL.w, CELL.h),
     question: rect(stack, y + 14, width, 60),
     topCells: cells(y + 14),
     bottomCells: cells(y + 14 + CELL.h),
@@ -135,7 +134,8 @@ const LINE = { top: 82, pitch: 61.6, rows: 10 };
 const AREA = { w: PRINT_RULES.answer.minWidth, h: PRINT_RULES.answer.minHeight };
 /** An answer area of the smallest size with its reach. */
 const CLEAR_WIDTH = PRINT_RULES.reach.left + AREA.w + PRINT_RULES.reach.right;
-const LABEL = 22;
+/** The number of a question, and the space after it. */
+const LABEL = PRINT_RULES.label.w + 2;
 const TWO = { w: 240, pitch: 246 };
 /** The characters that the smallest answer area has room for. */
 const AREA_CHARACTERS = Math.floor((AREA.w - PRINT_RULES.answer.extra) / PRINT_RULES.answer.perCharacter);
@@ -151,22 +151,28 @@ function lineCells(x: number, y: number, cells: readonly (number | "area")[], pi
   });
 }
 
-const labelAt = (x: number, y: number): Rect => rect(x, y + (LINE.pitch - TEXT_HEIGHT) / 2, LABEL - 2, TEXT_HEIGHT);
+const labelAt = (x: number, y: number): Rect => rect(x, y + (LINE.pitch - TEXT_HEIGHT) / 2, PRINT_RULES.label.w, TEXT_HEIGHT);
 const rowTop = (row: number) => LINE.top + row * LINE.pitch;
 
 /** A number and the sign after it. */
 const FACT = { number: 33, sign: 16 };
 const SUM = { number: 24, sign: 14 };
 const SUM_NUMBERS = 9;
-const FACT_LINE = [FACT.number, FACT.sign, FACT.number, FACT.sign, "area"] as const;
-const SUM_LINE = [...Array.from({ length: SUM_NUMBERS }, () => [SUM.number, SUM.sign]).flat(), "area" as const];
+/**
+ * Any number of three digits fits its cell: "500" is wider than "100". The signs have less room and stand a little before
+ * the area, so that each text has the same middle as in cells of 33 and 16 points.
+ */
+const WIDE_FACT = { number: 36.9375, sign: 12.0625, gap: 1.96875 };
+const FACT_LINE = [WIDE_FACT.number, WIDE_FACT.sign, WIDE_FACT.number, WIDE_FACT.sign];
+const SUM_LINE = Array.from({ length: SUM_NUMBERS }, () => [SUM.number, SUM.sign]).flat();
 
-/** Equations that end in their one blank. */
-function endBlank(id: string, columns: number, cells: readonly (number | "area")[], width: number, characters: number, textSize: number): PageTemplate<TokenPlace> {
+/** Equations that end in their one blank. `gap` is the space before its area. */
+function endBlank(id: string, columns: number, texts: readonly number[], gap: number, width: number, characters: number, textSize: number): PageTemplate<TokenPlace> {
   const place = (s: Side, i: number): TokenPlace => {
     const x = liveLeft(s) + Math.floor(i / LINE.rows) * TWO.pitch;
     const y = rowTop(i % LINE.rows);
-    const form = lineCells(x + width - CLEAR_WIDTH - cells.reduce<number>((sum, cell) => sum + (cell === "area" ? 0 : cell), 0), y, cells);
+    const area = x + width - CLEAR_WIDTH;
+    const form = [...lineCells(area - gap - texts.reduce((sum, cell) => sum + cell, 0), y, texts), ...lineCells(area, y, ["area"])];
     const [first] = form;
     const textLeft = first.text?.x ?? x;
     return {
@@ -174,7 +180,7 @@ function endBlank(id: string, columns: number, cells: readonly (number | "area")
       question: rect(textLeft, y + (LINE.pitch - TEXT_HEIGHT) / 2, x + width - CLEAR_WIDTH - textLeft, TEXT_HEIGHT),
     };
   };
-  return { id, faces: ["equation"], holds: { "places in its line": cells.length, "characters in a number": characters }, sides: bothSides(columns * LINE.rows, place) };
+  return { id, faces: ["equation"], holds: { "places in its line": texts.length + 1, "characters in a number": characters }, sides: bothSides(columns * LINE.rows, place) };
 }
 
 /** Equations with one blank in the place of the first or the second number. The answer areas are in one column. */
@@ -211,7 +217,7 @@ function ladders(id: string, terms: number, down: number): PageTemplate<TokenPla
       return { area, text: rect(area.answer.x, top + (LADDER.pitch - TEXT_HEIGHT) / 2, AREA.w, TEXT_HEIGHT) };
     });
     return {
-      slot: rect(x, y - above, TWO.w, height + above), label: rect(x, y + (LADDER.pitch - TEXT_HEIGHT) / 2, LABEL - 2, TEXT_HEIGHT),
+      slot: rect(x, y - above, TWO.w, height + above), label: rect(x, y + (LADDER.pitch - TEXT_HEIGHT) / 2, PRINT_RULES.label.w, TEXT_HEIGHT),
       question: rect(left, y - above, CLEAR_WIDTH, height + above), forms: [form], from: "first", textSize: 20,
       rule: above > 0 ? rect(left, y - above, CLEAR_WIDTH, PRINTED_LINE.height) : null,
     };
@@ -255,7 +261,7 @@ function brackets(id: string, columns: 1 | 2, rows: number): PageTemplate<Bracke
     const above = lineCells(number - PRINT_RULES.reach.left, y, columns === 1 ? ["area", BRACKET.between, "area"] : ["area"], CLEAR_HEIGHT);
     const last = above[above.length - 1].area?.reach ?? rect(x, y, 0, 0);
     return {
-      slot: rect(x, y, width, height), label: rect(x, y + numberTop, LABEL - 2, CELL.h), above,
+      slot: rect(x, y, width, height), label: rect(x, y + numberTop, PRINT_RULES.label.w, CELL.h), above,
       question: rect(outside, y, last.x + last.w - outside, numberTop + CELL.h),
       outside: rect(outside, y + numberTop, BRACKET.outside, CELL.h), sign: rect(sign, y + CLEAR_HEIGHT + PRINTED_LINE.height, BRACKET.sign, PRINTED_LINE.gap + CELL.h),
       inside: Array.from({ length: INSIDE }, (_, c) => rect(number + c * CELL.w, y + numberTop, CELL.w, CELL.h)),
@@ -269,8 +275,8 @@ function brackets(id: string, columns: 1 | 2, rows: number): PageTemplate<Bracke
 
 const ALL: readonly PageTemplate[] = [
   columns2x4, columns2x4Wide,
-  endBlank("facts-2x10", 2, FACT_LINE, TWO.w, 3, 18),
-  endBlank("sums-1x10", 1, SUM_LINE, LIVE, 2, 16),
+  endBlank("facts-2x10", 2, FACT_LINE, WIDE_FACT.gap, TWO.w, 3, 18),
+  endBlank("sums-1x10", 1, SUM_LINE, 0, LIVE, 2, 16),
   innerBlank("blanks-1x10"),
   ladders("sequences-2x2", 5, 2),
   ladders("sequences-2x1", 10, 1),

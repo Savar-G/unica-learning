@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { answerLine, type Answer, type Step } from "../contract";
 import rawSnapshot from "../fixtures/snapshot.json";
+import factsSnapshot from "../fixtures/snapshot-facts.json";
 import { SHAPES } from "../shapes";
 import { fixture, skipTypstTests } from "../testing/typst";
 
@@ -28,14 +29,21 @@ function writeShort(): void {
 const WHOLE = "scripts/workbook-v2.mjs";
 /** The same command with a bundle that is made one time for this file: what npm runs, without its first step. */
 let bundled = "";
+/** The bank check in the same way. */
+let bundledCheck = "";
 beforeAll(async () => {
   folder = mkdtempSync(join(tmpdir(), "workbook-v2-cli-"));
   writeShort();
-  const [bundle, make] = [join(folder, "bundle.mjs"), join(folder, "make.mjs")];
-  bundled = join(folder, "command.mjs");
+  const make = join(folder, "make.mjs");
   const runner = JSON.stringify(pathToFileURL(resolve("scripts/run-script.mjs")).href);
-  writeFileSync(make, `import { bundleScript } from ${runner}; await bundleScript("scripts/workbook-v2.ts", ${JSON.stringify(bundle)});`);
-  writeFileSync(bundled, `import { runBundle } from ${runner}; await runBundle(${JSON.stringify(bundle)});`);
+  const bundle = (script: string) => join(folder, `${script}-bundle.mjs`);
+  const scripts = ["workbook-v2", "workbook-v2-check"];
+  writeFileSync(make, `import { bundleScript } from ${runner}; ${scripts.map((s) => `await bundleScript("scripts/${s}.ts", ${JSON.stringify(bundle(s))});`).join(" ")}`);
+  [bundled, bundledCheck] = scripts.map((s) => {
+    const file = join(folder, `${s}.mjs`);
+    writeFileSync(file, `import { runBundle } from ${runner}; await runBundle(${JSON.stringify(bundle(s))});`);
+    return file;
+  });
   expect(await run([make])).toEqual({ code: 0, output: "" });
 });
 afterAll(() => rmSync(folder, { recursive: true, force: true }));
@@ -64,6 +72,33 @@ describe.concurrent("the command, before it builds", () => {
     const { code, output } = await command(args);
     expect(code).toBe(1);
     expect(output).toMatch(message);
+  });
+});
+
+describe.concurrent("the bank check command, before it checks", () => {
+  it.each<[string, string[], RegExp]>([
+    ["no argument", [], /^Usage: npm run workbook:v2:check -- --snapshot FILE\n$/],
+    ["a file that is not JSON", ["--snapshot", "README.md"], /^README\.md is not JSON\.\n$/],
+  ])("stops on %s", async (_name, args, message) => {
+    const { code, output } = await command(args, {}, "", bundledCheck);
+    expect(code).toBe(1);
+    expect(output).toMatch(message);
+  });
+});
+
+describe.skipIf(skipTypstTests()).concurrent("the bank check command, with the real Typst", () => {
+  it("says what it checked, and stops with the list of problems", async () => {
+    // A template with two places on each side, and one form: each place and each form costs drawings.
+    const counts = factsSnapshot.sheets[4];
+    const sideOf = (side: typeof counts.front, id: string) => ({ ...side, rows: [{ ...side.rows[0], id, items: 1, limits: { ...side.rows[0].limits, blanks: { min: 1, max: 1 }, places: { min: 3, max: 3 } } }] });
+    const snapshot = { ...factsSnapshot, topics: [{ ...factsSnapshot.topics[0], sheets: [counts.id] }], sheets: [{ ...counts, front: sideOf(counts.front, "one"), back: sideOf(counts.back, "two") }] };
+    const [few, wrong] = [join(folder, "few.json"), join(folder, "wrong-template.json")];
+    writeFileSync(few, JSON.stringify(snapshot));
+    writeFileSync(wrong, JSON.stringify(snapshot).replaceAll('"sequences-2x1"', '"columns-9x9"'));
+    const [good, bad] = await Promise.all([command(["--snapshot", few], {}, "", bundledCheck), command(["--snapshot", wrong], {}, "", bundledCheck)]);
+    expect(good).toMatchObject({ code: 0, output: expect.stringMatching(/^No problem in 1 sheets and 2 rows: 200 seeds, 400 questions, \d+ texts, 4 full pages and \d questions drawn alone, in \d+\.\d s\.\n$/) });
+    expect(bad.code).toBe(1);
+    expect(bad.output).toBe(["front", "back"].map((side) => `Sheet "long-counts", ${side} side: there is no template "columns-9x9".\n`).join("") + "2 problems.\n");
   });
 });
 

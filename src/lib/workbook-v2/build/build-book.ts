@@ -3,14 +3,12 @@
 // it touches files and starts a program (render/typst.ts). Every check runs before anything is returned.
 import { plainCopy } from "../bank/plain";
 import { validateSnapshot, type TemplateLibrary } from "../bank/snapshot";
-import { checkImages } from "../checks/images";
+import { checkDrawing } from "../checks/drawn";
 import { checkPage } from "../checks/page-rules";
-import { checkPositions, checkTexts } from "../checks/positions";
 import { checkAnswerForms, checkPrintedAnswers } from "../checks/printed-answers";
-import { checkRendering } from "../checks/rendering";
-import { ENGINE_VERSION, type BookItem, type PageModel, type Position } from "../contract";
+import { ENGINE_VERSION, type BookItem, type PageModel, type Position, type Side } from "../contract";
 import { canonicalJson, sha256 } from "../hash";
-import { buildPages } from "../layout/build-pages";
+import { buildPages, type PlannedSheet } from "../layout/build-pages";
 import { TEMPLATES } from "../layout/templates";
 import { RenderError, type Renderer, type Rendering } from "../renderer";
 import { SHAPES, type ShapeLibrary } from "../shapes";
@@ -65,6 +63,20 @@ interface BookPlan {
   notices: string[];
 }
 
+type PagePlan = { ok: true; pages: PageModel[] } | { ok: false; problems: string[] };
+
+/** The page models of some sheets with their questions, with every check that needs no drawing. `sides` are the sides to look at. */
+export function planPages(sheets: readonly PlannedSheet[], shapes: ShapeLibrary, sides: readonly Side[] = ["front", "back"]): PagePlan {
+  const items = sheets.flatMap((s) => s.items);
+  const formless = checkAnswerForms(items, shapes);
+  if (formless.length > 0) return { ok: false, problems: formless };
+  const layout = buildPages(sheets);
+  if (!layout.ok) return layout;
+  const pages = layout.pages.filter((page) => sides.includes(page.side));
+  const problems = [...checkPrintedAnswers(pages, items, shapes), ...pages.flatMap((page) => checkPage(page, items))];
+  return problems.length > 0 ? { ok: false, problems } : { ok: true, pages };
+}
+
 /** The questions and the page models of a book, with every check that needs no drawing. */
 export function planBook(input: BuildInput, shapes: ShapeLibrary = SHAPES, templates: TemplateLibrary = TEMPLATES): BookPlan | { ok: false; problems: string[] } {
   const stop = (problems: string[]) => ({ ok: false as const, problems });
@@ -76,16 +88,11 @@ export function planBook(input: BuildInput, shapes: ShapeLibrary = SHAPES, templ
   if (Array.isArray(book)) return stop(book);
 
   const sheets = book.sheets.map((s) => ({ ...s, items: sheetItems(s.sheet, book.childId, s.attempt), levelName: bank.snapshot.level.name }));
-  const items = sheets.flatMap((s) => s.items);
-  const formless = checkAnswerForms(items, shapes);
-  if (formless.length > 0) return stop(formless);
-  const layout = buildPages(sheets);
+  const layout = planPages(sheets, shapes);
   if (!layout.ok) return layout;
-  const { pages } = layout;
-  const problems = [...checkPrintedAnswers(pages, items, shapes), ...pages.flatMap((page) => checkPage(page, items))];
-  if (problems.length > 0) return stop(problems);
+  const items = sheets.flatMap((s) => s.items);
   const inputHash = sha256(canonicalJson({ snapshot: bank.hash, book: request.value }));
-  return { ok: true, bookId: book.bookId, snapshot: { id: bank.snapshot.id, hash: bank.hash }, inputHash, items, pages, notices: sheets.flatMap((s) => repeatNotices(s.sheet, s.items)) };
+  return { ok: true, bookId: book.bookId, snapshot: { id: bank.snapshot.id, hash: bank.hash }, inputHash, items, pages: layout.pages, notices: sheets.flatMap((s) => repeatNotices(s.sheet, s.items)) };
 }
 
 export async function buildBook(input: BuildInput, renderer: Renderer, shapes: ShapeLibrary = SHAPES): Promise<BuildResult> {
@@ -94,10 +101,8 @@ export async function buildBook(input: BuildInput, renderer: Renderer, shapes: S
   const { pages, items } = plan;
   const drawn = await draw(renderer, pages);
   if (typeof drawn === "string") return failed([drawn]);
-  const missing = checkRendering(pages, drawn);
-  if (missing.length > 0) return failed(missing);
-  const drawnProblems = [...checkPositions(pages, drawn.positions), ...checkTexts(pages, drawn.texts), ...checkImages(pages, drawn.images)];
-  if (drawnProblems.length > 0) return failed(drawnProblems);
+  const problems = checkDrawing(pages, items, drawn);
+  if (problems.length > 0) return failed(problems);
 
   return {
     status: "built",

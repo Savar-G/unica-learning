@@ -100,7 +100,7 @@ describe("the QR code of a page image", () => {
 
   it("may stand on a page with marks that only look like a corner of a QR code", () => {
     const corner = (c: Canvas, x: number, y: number) => { paint(c, { x, y, w: 14, h: 14 }); paint(c, { x: x + 2, y: y + 2, w: 10, h: 10 }, 255); paint(c, { x: x + 4, y: y + 4, w: 6, h: 6 }); };
-    expect(problemsWith(changed((c) => { corner(c, 300, 660); corner(c, 340, 660); corner(c, 300, 690); }))).toEqual([]);
+    expect(problemsWith(changed((c) => { corner(c, 300, 660); corner(c, 340, 660); corner(c, 300, 690); })).filter((p) => p.includes("QR"))).toEqual([]);
   });
 
   it("reads stray QR codes when the pixel buffer starts at an unaligned byte offset", () => {
@@ -112,11 +112,11 @@ describe("the QR code of a page image", () => {
       const view = padded.subarray(offset);
       expect(view.byteOffset % 4).toBe(offset);
       const qrBox = { left: Math.floor((qr.rect.x * 150) / 72), top: Math.floor((qr.rect.y * 150) / 72), right: Math.ceil(((qr.rect.x + qr.rect.w) * 150) / 72), bottom: Math.ceil(((qr.rect.y + qr.rect.h) * 150) / 72) };
-      expect(strayQrTexts({ width: canvas.width, height: canvas.height, grey: view }, qrBox)).toEqual(["stray-unaligned"]);
-      expect(strayQrTexts({ width: 10, height: 3, grey: new Uint8Array(30 + offset).fill(255).subarray(offset) }, { left: 0, top: 0, right: 0, bottom: 0 })).toEqual([]);
+      expect(strayQrTexts({ width: canvas.width, height: canvas.height, low: view, colour: null }, qrBox)).toEqual(["stray-unaligned"]);
+      expect(strayQrTexts({ width: 10, height: 3, low: new Uint8Array(30 + offset).fill(255).subarray(offset), colour: null }, { left: 0, top: 0, right: 0, bottom: 0 })).toEqual([]);
     }
     // A view that ends before the first aligned byte.
-    expect(strayQrTexts({ width: 1, height: 1, grey: new Uint8Array(2).fill(255).subarray(1) }, { left: 0, top: 0, right: 0, bottom: 0 })).toEqual([]);
+    expect(strayQrTexts({ width: 1, height: 1, low: new Uint8Array(2).fill(255).subarray(1), colour: null }, { left: 0, top: 0, right: 0, bottom: 0 })).toEqual([]);
   });
 });
 
@@ -139,6 +139,9 @@ describe("ink that the model has and the image does not", () => {
     ["a piece of one side of an answer area", changed((c) => { const { rect } = part(front, "answer"); paint(c, { x: rect.x + rect.w / 2, y: rect.y - 1, w: 6, h: 2 }, 255); }), /the image has no ink for a part of "answer-1"/],
     ["one side of an answer area", changed((c) => paint(c, { x: part(front, "answer").rect.x - 1, y: part(front, "answer").rect.y + 2, w: 2, h: 38 }, 255)), /the image has no ink for a part of "answer-1"/],
     ["one square of the QR code", changed((c) => paint(c, qr.ink[20].rect, 255)), /the image has no ink for a part of "qr"/],
+    ["a grey that is not light in place of black", changed((c) => { const { rect } = part(front, "heading"); for (let i = 0; i < c.grey.length; i++) if (i / c.width < ((rect.y + rect.h) * 150) / 72 && i / c.width > (rect.y * 150) / 72 && c.grey[i] === 0) c.grey[i] = 72; }), /"heading" must print/],
+    ["a grey line in place of a black one", changed((c) => { const { rect } = part(front, "answer"); paint(c, { x: rect.x - 0.375, y: rect.y + 2, w: 0.75, h: 38 }, 100); }), /the image has no ink for a part of "answer-1"/],
+    ["a fill that is nearly black", changed((c) => paint(c, part(front, "question").ink[4].rect, 1)), /the image has no ink for a part of "question-1"/],
     ["grey in place of black", changed((c) => { const { rect } = part(front, "heading"); for (let i = 0; i < c.grey.length; i++) if (i / c.width < ((rect.y + rect.h) * 150) / 72 && i / c.width > (rect.y * 150) / 72 && c.grey[i] === 0) c.grey[i] = 200; }), /"heading" must print/],
   ])("%s stops the book", (_name, image, problem) => {
     expect(problemsWith(image).join("\n")).toMatch(problem);
@@ -146,8 +149,9 @@ describe("ink that the model has and the image does not", () => {
 
   it("the outline of an answer area is looked for, also when the model has none", () => {
     const bare = { ...front, regions: front.regions.map((r) => (r.role === "answer" ? { ...r, ink: [] } : r)) };
-    expect(checkImages([bare], [pagePng(front)])).toEqual([]);
-    expect(checkImages([bare], [pagePng(bare)])).toEqual(front.regions.filter((r) => r.role === "answer").map((_, i) => `Page 381: the image has no outline of "answer-${i + 1}".`));
+    const outlines = (image: Uint8Array) => checkImages([bare], [image]).filter((p) => p.includes("outline"));
+    expect(outlines(pagePng(front))).toEqual([]);
+    expect(outlines(pagePng(bare))).toEqual(front.regions.filter((r) => r.role === "answer").map((_, i) => `Page 381: the image has no outline of "answer-${i + 1}".`));
   });
 
   it("a text of spaces has no ink", () => {
@@ -196,15 +200,16 @@ describe("reading a page image", () => {
     ["grey", () => source().removeAlpha().greyscale().png({ adaptiveFiltering: true }).toBuffer()],
     ["one filter", () => source().removeAlpha().png({ adaptiveFiltering: false }).toBuffer()],
     ["red, green, blue and a see-through part", () => source().png({ adaptiveFiltering: true }).toBuffer()],
-  ])("%s", async (_name, make) => {
+  ])("%s", async (name, make) => {
     const png = await make();
     const image = readPageImage(png);
     if (typeof image === "string") throw new Error(image);
     const { data } = await sharp(png).flatten({ background: "white" }).removeAlpha().toColourspace("srgb").raw().toBuffer({ resolveWithObject: true });
     expect([image.width, image.height]).toEqual([64, 48]);
+    expect(image.colour === null).toBe(name === "grey");
     for (let i = 0; i < 64 * 48; i++) {
       const [r, g, b] = [data[i * 3], data[i * 3 + 1], data[i * 3 + 2]];
-      expect(Math.abs(image.grey[i] - (r * 299 + g * 587 + b * 114) / 1000)).toBeLessThanOrEqual(2);
+      expect(Math.abs(image.low[i] - Math.min(r, g, b))).toBeLessThanOrEqual(2);
     }
   });
 
@@ -227,7 +232,7 @@ describe("reading a page image", () => {
     const other = await sharp(png).removeAlpha().toColourspace("srgb").raw().toBuffer();
     const image = readPageImage(png);
     if (typeof image === "string") throw new Error(image);
-    const wanted = Array.from({ length: width * height }, (_, i) => Math.floor((other[3 * i] * 299 + other[3 * i + 1] * 587 + other[3 * i + 2] * 114) / 1000));
-    expect([...image.grey]).toEqual(wanted);
+    const wanted = Array.from({ length: width * height }, (_, i) => Math.min(other[3 * i], other[3 * i + 1], other[3 * i + 2]));
+    expect([...image.low]).toEqual(wanted);
   });
 });

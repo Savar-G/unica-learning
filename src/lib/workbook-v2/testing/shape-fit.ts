@@ -40,6 +40,7 @@ export class FitChecks {
       if (found.has(one.form)) this.tell(`the forms of ${json} have "${one.form}" twice`);
       found.set(one.form, one);
     }
+    if (found.size === 0) this.tell(`the forms of ${json} are none, so the size of its questions is not known`);
     this.knownForms.set(json, found);
     return found;
   }

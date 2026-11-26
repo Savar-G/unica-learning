@@ -2,7 +2,7 @@
 // answer areas of the question and the print rules, never from a template, so a template that leaves a part out fails.
 // The image check looks for all that the model prints, so a part of a face is on the paper too.
 import { BRACKET_SIGN, PRINT_RULES, type BracketFace, type ColumnFace, type Face, type FaceToken, type Ink, type Rect, type Region } from "../contract";
-import { bottom, near, right } from "./rects";
+import { bottom, EPSILON, near, right } from "./rects";
 
 const { cell: CELL, line: LINE, textHeight: TEXT_HEIGHT, questionSize: SIZE, bracket: BRACKET } = PRINT_RULES;
 
@@ -57,8 +57,8 @@ function bracketPrint({ above, outside, inside }: BracketFace, areas: ReadonlyMa
 }
 
 /**
- * The tokens stand side by side, an area with its reach. Every second one is a sign and the others are numbers: the signs
- * have one width, and so do the numbers.
+ * The tokens stand side by side, an area with its reach, and the texts before the first area may stand a little before it.
+ * Every second token is a sign and the others are numbers: the signs have one width, and so do the numbers.
  */
 function equationPrint(tokens: readonly FaceToken[], areas: ReadonlyMap<string, Area>, ink: readonly Ink[]): Print[] {
   const printed = ink.filter((i) => i.kind === "text");
@@ -69,8 +69,12 @@ function equationPrint(tokens: readonly FaceToken[], areas: ReadonlyMap<string, 
   const at = tokens.findIndex((t) => areaOf(t) !== undefined);
   const anchor = at < 0 ? undefined : areaOf(tokens[at]);
   if (!anchor) return [];
-  const start = anchor.reach.x - tokens.slice(0, at).reduce((sum, t, i) => sum + widthOf(t, i), 0);
-  return tokens.flatMap((t, i): Print[] => ("text" in t ? [beside(t.text, start + tokens.slice(0, i).reduce((sum, other, j) => sum + widthOf(other, j), 0), widths[i % 2], anchor.answer)] : []));
+  const before = printed[isText.slice(0, at).filter(Boolean).length - 1];
+  const space = before ? anchor.reach.x - right(before.rect) : 0;
+  const gap = space >= 0 && space <= PRINT_RULES.equationGap + EPSILON ? space : 0;
+  const widthFrom = (from: number, to: number) => tokens.slice(from, to).reduce((sum, t, i) => sum + widthOf(t, from + i), 0);
+  const leftOf = (i: number) => (i < at ? anchor.reach.x - gap - widthFrom(i, at) : anchor.reach.x + widthFrom(at, i));
+  return tokens.flatMap((t, i): Print[] => ("text" in t ? [beside(t.text, leftOf(i), widths[i % 2], anchor.answer)] : []));
 }
 
 /** The terms go down the page in the places of areas. A sequence below another one has a line at its top. */
@@ -105,5 +109,5 @@ export function printProblems(face: Face, question: Region, areas: ReadonlyMap<s
     const { x, y, w, h } = wanted.rect;
     return found >= 0 ? [] : [`must print ${wanted.text === null ? "a line" : `"${wanted.text}"`} at (${[x, y].map(round).join(", ")}, ${round(w)} by ${round(h)})`];
   });
-  return [...missing, ...left.map((ink) => `prints ${ink.kind === "text" ? `"${ink.text}"` : "a line"} that its face does not have there`)];
+  return [...missing, ...left.map((ink) => `prints ${ink.kind === "text" ? `"${ink.text}"` : ink.kind === "flow" ? "flow text" : "a line"} that its face does not have there`)];
 }

@@ -341,7 +341,7 @@ const REFUSED: readonly Refused[] = [
   }), message]),
   ["book", "a back side that reverses the digits", () => ({ shape: add(), options: reversedBack }), /back side, question \d \(/],
   ["book", "a generate that widens the limits of the book", () => widensInTheBook("generate"), /threw Cannot assign to read only property 'a'/],
-  ["book", "a count that widens the limits of the book", () => widensInTheBook("count"), /threw Cannot assign to read only property 'a'/],
+  ["book", "a count that widens the limits of the book", () => widensInTheBook("count"), /threw Sheet "sheet-0", front side, row "front-0": the shape fails \(Cannot assign to read only property 'a'/],
   ["layout", "a face that turns the rows when it is asked again, which the shape and the reader accept", () => ({ shape: add(facesThatTurn()), registration: { read: (rows) => addRegistration.read(largeFirst(rows)) } }), /prints \["\d","\+\d\d"\] and the first place prints/],
   ["evidence", "a template that no page of the book fills", () => ({ ...plusOne(1, 120), seeds: 1, options: withNarrow }), /no page of the book fills narrow, front side and narrow, back side/],
   ["evidence", "limits that are all the same, so that nothing can be wider", oneSpace, /and 1 limits were used/],
@@ -454,6 +454,11 @@ describe("wrong shapes that touch more than one check", () => {
   ])("a registration %s", (_name, wanted, broken) => {
     const found = checksOf(check(broken()));
     for (const name of wanted) expect(found).toContain(name);
+  });
+
+  it("stops a shape that gives no form of its questions", () => {
+    const { failures } = check({ shape: { ...missingFactor, forms: () => [] } as Shape });
+    expect(failures.map((f) => f.message).join("\n")).toMatch(/forms: the forms of \{.*\} are none, so the size of its questions is not known/);
   });
 
   it("stops a shape that changes the limits that it gets", () => {

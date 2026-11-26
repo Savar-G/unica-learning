@@ -325,6 +325,53 @@ test("the workbook engine has no level branch", () => {
   assert.deepEqual(engineViolations({ [`${ENGINE}/render/bad.typ`]: "#if sheet.level == 3 { }\n" }), [`engine-level-branch ${ENGINE}/render/bad.typ`]);
 });
 
+test("a drawing file of the workbook engine depends on nothing but the pages and the report input", () => {
+  const file = `${ENGINE}/render/bad.typ`;
+  const bad = [
+    "#datetime.today()",
+    "#let now = std.datetime",
+    "#let d = datetime\n#d.today()",
+    "#sys.inputs.at(\"name\")",
+    "#let given = sys.inputs",
+    "#let all = sys\n#all.version",
+    "#sys.version.at(0)",
+    '#let other = json("other.json")',
+    '#let other = json("pages.json", encoding: "utf8")',
+    "#let other = json(path)",
+    "#let get = json",
+    '#read("page.typ")',
+    '#let model = csv("pages.csv")',
+    '#let model = yaml("pages.yaml")',
+    '#let model = toml("pages.toml")',
+    '#let model = xml("pages.xml")',
+    '#let model = cbor("pages.cbor")',
+    '#image("photo.png")',
+    '#let p = plugin("a.wasm")',
+    '#bibliography("a.bib")',
+    '#import "other.typ": a',
+    '#include "other.typ"',
+    '#import "@preview/suiji:0.3.0": random',
+    '#eval("datetime.today()")',
+    "#let seed = random()",
+    '#raw(read("x"))',
+    "/* a note */ #datetime.today()",
+    'http: #link("x") \n// a note\n#datetime.today()',
+    '#let a = "//" + str(datetime.today())',
+    '#let a = 1 /* a note */ + datetime.today().day()',
+    '#json("pages.json").at(sys.inputs.name)',
+  ];
+  for (const line of bad) assert.deepEqual(engineViolations({ [file]: `${line}\n` }), [`engine-purity ${file}`], line);
+  const fine = [
+    '#let model = json("pages.json")',
+    '#assert(str(sys.version) == model.typst)',
+    '#let reports = "report" in sys.inputs',
+    "// datetime.today() and read and sys are words of a note",
+    "#let already = ready + spread",
+    "#let reading = thread.read-only",
+  ];
+  for (const line of fine) assert.deepEqual(engineViolations({ [file]: `${line}\n` }), [], line);
+});
+
 test("app code names no file of the workbook engine that is not code", () => {
   const app = "src/lib/uses-engine.ts";
   for (const line of [

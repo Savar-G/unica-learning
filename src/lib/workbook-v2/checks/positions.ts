@@ -1,5 +1,5 @@
-// The typesetter says where it put each region and which text it drew. Both must equal the page model.
-import type { DrawnText, PageModel, Position, Rect } from "../contract";
+// The typesetter says where it put each region. It must equal the page model.
+import type { PageModel, Position, Rect } from "../contract";
 import { near } from "./rects";
 
 const show = (r: Rect) => `(${r.x}, ${r.y}, ${r.w} by ${r.h})`;
@@ -22,27 +22,5 @@ export function checkPositions(pages: readonly PageModel[], positions: readonly 
     }
   });
   for (const id of reported.keys()) problems.push(`"${id}" is not in the model.`);
-  return problems;
-}
-
-/** Every text of the model is drawn once at its place, and nothing else is drawn. */
-export function checkTexts(pages: readonly PageModel[], texts: readonly DrawnText[]): string[] {
-  const problems: string[] = [];
-  const left = [...texts];
-  pages.forEach((page, index) => {
-    for (const region of page.regions) {
-      for (const ink of region.ink) {
-        if (ink.kind !== "text") continue;
-        const found = left.findIndex((t) => t.sheet === index + 1 && near(t.x, ink.rect.x) && near(t.y, ink.rect.y));
-        if (found < 0) {
-          problems.push(`"${ink.text}" of "${region.id}" was not drawn at its place.`);
-          continue;
-        }
-        const [drawn] = left.splice(found, 1);
-        if (drawn.text !== ink.text) problems.push(`"${region.id}" prints "${ink.text}" and the typesetter drew "${drawn.text}".`);
-      }
-    }
-  });
-  for (const text of left) problems.push(`"${text.text}" on page ${text.sheet} of the file is not in the model.`);
   return problems;
 }
