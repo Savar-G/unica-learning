@@ -1,6 +1,8 @@
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, truncateSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import fc from "fast-check";
@@ -15,8 +17,9 @@ import {
   TRANSCRIPT_STATUSES,
   type TranscriptStatus,
 } from "./import";
-import { checkPathOwnership } from "./import-replace";
-import { MemoryReferenceStore, type StoredRow } from "./import-store.fixtures";
+import { findSharedPhotoPaths } from "./import-replace";
+import { contentPath, MemoryReferenceStore, type StoredRow } from "./import-store.fixtures";
+import { FakeSupabase } from "./store.fixtures";
 import type { ContentsRecord, PageRecord } from "./types";
 
 function makePage(sourceRef: string, topicTitle = "Adding small numbers"): PageRecord {
@@ -198,13 +201,13 @@ describe("importReferenceRecords", () => {
     });
     expect(store.rows.get("sample:M:contents")).toMatchObject({
       kind: "contents",
-      path: "sample/M/contents.jpg",
+      path: contentPath("sample:M:contents", "jpg", img),
       transcript_status: "human_checked",
     });
   });
 
   it("writes a valid batch, and refuses every bad input kind before the first write when paired with a valid first record", async () => {
-    const WRITE_CALL_RE = /^(insertRow|uploadObject|replaceObject|updateRow):/;
+    const WRITE_CALL_RE = /^(insertRow|uploadObject|updateRow):/;
     const goodImg = new Uint8Array([1, 2, 3, 4]);
     const secondImg = new Uint8Array([5, 6, 7, 8]);
     const manifestEntry = (file: string, bytes: Uint8Array, ref: string) => ({
@@ -1334,18 +1337,18 @@ describe("importReferenceRecords", () => {
               manifestEntry("target.jpg", secondImg, "sample:M:2a"),
             ],
           });
-          caseStore.objects.set("sample/M/2a.jpg", {
+          caseStore.objects.set(contentPath("sample:M:2a", "jpg", secondImg), {
             bytes: new Uint8Array([99, 98, 97]),
             contentType: "image/jpeg",
           });
         },
-        expectedProblem: /sample\/M\/2a\.jpg.*does not match planned photo/,
+        expectedProblem: /sample\/M\/2a\.[0-9a-f]{16}\.jpg" has other bytes/,
       },
-      {
-        name: "replace would overwrite a photo shared by another row",
+      ...["sample/M/2a.jpg", contentPath("sample:M:2a", "jpg", secondImg)].map((storedPath) => ({
+        name: `existing storage object sha256 mismatch for the row with the path ${storedPath}`,
         usePhotos: true,
         replace: true,
-        setup: ({ recs, photos, store: caseStore }) => {
+        setup: ({ recs, photos, store: caseStore }: Parameters<RefusalCase["setup"]>[0]) => {
           writeJson(recs, "02-target.json", makePage("sample:M:2a"));
           writeBytes(photos, "target.jpg", secondImg);
           writeJson(photos, "photos-manifest.json", {
@@ -1358,24 +1361,16 @@ describe("importReferenceRecords", () => {
           caseStore.rows.set("sample:M:2a", {
             source_ref: "sample:M:2a",
             kind: "page",
-            path: "sample/M/2a.jpg",
+            path: storedPath,
             transcript: makePage("sample:M:2a"),
             transcript_status: "machine_read",
           });
-          caseStore.rows.set("sample:M:9a", {
-            source_ref: "sample:M:9a",
-            kind: "page",
-            path: "sample/M/2a.jpg",
-            transcript: makePage("sample:M:9a"),
-            transcript_status: "machine_read",
-          });
-          caseStore.objects.set("sample/M/2a.jpg", {
-            bytes: new Uint8Array([99, 98, 97]),
-            contentType: "image/jpeg",
-          });
+          for (const path of ["sample/M/2a.jpg", contentPath("sample:M:2a", "jpg", secondImg)]) {
+            caseStore.objects.set(path, { bytes: new Uint8Array([99, 98, 97]), contentType: "image/jpeg" });
+          }
         },
-        expectedProblem: /would overwrite the photo that the row "sample:M:9a" also uses/,
-      },
+        expectedProblem: /sample\/M\/2a\.[0-9a-f]{16}\.jpg" has other bytes/,
+      })),
     ];
 
     for (const c of refusalCases) {
@@ -1536,8 +1531,10 @@ describe("importReferenceRecords", () => {
       ],
     });
 
-    // Pre-populate matching object for sample/M/3b.png so import reuses it without overwriting.
-    store.objects.set("sample/M/3b.png", {
+    // Pre-populate the matching object for sample:M:3b so import reuses it without overwriting.
+    const path3a = contentPath("sample:M:3a", "jpg", img1);
+    const path3b = contentPath("sample:M:3b", "png", img2);
+    store.objects.set(path3b, {
       bytes: new Uint8Array(img2),
       contentType: "image/png",
     });
@@ -1552,15 +1549,15 @@ describe("importReferenceRecords", () => {
       skippedDifferent: 0,
       photosUploaded: 1,
     });
-    expect(store.rows.get("sample:M:3a")?.path).toBe("sample/M/3a.jpg");
-    expect(store.rows.get("sample:M:3b")?.path).toBe("sample/M/3b.png");
+    expect(store.rows.get("sample:M:3a")?.path).toBe(path3a);
+    expect(store.rows.get("sample:M:3b")?.path).toBe(path3b);
     expect(store.rows.get("sample:M:4a")?.path).toBeNull();
-    expect(store.objects.get("sample/M/3a.jpg")?.contentType).toBe("image/jpeg");
-    expect(store.objects.get("sample/M/3b.png")?.bytes).toEqual(img2);
-    expect(store.objects.has("sample/M/99a.jpg")).toBe(false);
+    expect(store.objects.get(path3a)?.contentType).toBe("image/jpeg");
+    expect(store.objects.get(path3b)?.bytes).toEqual(img2);
+    expect([...store.objects.keys()].sort()).toEqual([path3a, path3b]);
 
     // Upload must happen before row insert for sample:M:3a.
-    const uploadIdx = store.calls.indexOf("uploadObject:sample/M/3a.jpg");
+    const uploadIdx = store.calls.indexOf(`uploadObject:${path3a}`);
     const insertIdx = store.calls.indexOf("insertRow:sample:M:3a");
     expect(uploadIdx).toBeGreaterThan(-1);
     expect(insertIdx).toBeGreaterThan(uploadIdx);
@@ -1673,8 +1670,66 @@ describe("importReferenceRecords", () => {
     expect(stderr).toContain("SUPABASE_SECRET_KEY");
   });
 
+  it("CLI sends the calls of the store, and exits with an error when another run changes the row first", async () => {
+    const ref = "sample:M:3a";
+    const [oldImg, newImg] = [new Uint8Array([1, 2, 3, 4]), new Uint8Array([5, 6, 7, 8])];
+    const fake = new FakeSupabase(store);
+    const server = createServer(async (req, res) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(chunk as Buffer);
+      const body = Buffer.concat(chunks);
+      const isJson = req.headers["content-type"]?.includes("json") ?? false;
+      const answer = await fake.fetch(`http://db.invalid${req.url}`, {
+        method: req.method,
+        headers: Object.entries(req.headers).map(([key, value]) => [key, String(value)] as [string, string]),
+        ...(body.length > 0 ? { body: isJson ? body.toString("utf8") : new Uint8Array(body) } : {}),
+      });
+      res.writeHead(answer.status, { "content-type": answer.headers.get("content-type") ?? "image/jpeg" });
+      res.end(Buffer.from(await answer.arrayBuffer()));
+    });
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+    const { port } = server.address() as AddressInfo;
+    const runCli = (title: string, img: Uint8Array) => {
+      writeJson(recordsDir, "p1.json", makePage(ref, title));
+      writeBytes(photosDir, "a.jpg", img);
+      writeJson(photosDir, "photos-manifest.json", { version: 1, photos: [{ file: "a.jpg", sha256: sha256Hex(img), source_ref: ref }] });
+      const args = [resolve(process.cwd(), "scripts/reference-import.mjs"), "--records", recordsDir, "--photos", photosDir, "--replace"];
+      const env = { NODE_ENV: "test" as const, PATH: process.env.PATH ?? "", SUPABASE_URL: `http://127.0.0.1:${port}`, SUPABASE_SECRET_KEY: "key" };
+      return new Promise<{ code: number; output: string }>((done) => {
+        execFile(process.execPath, args, { env }, (err, stdout, stderr) =>
+          done({ code: err ? Number(err.code) : 0, output: `${stdout}${stderr}` }),
+        );
+      });
+    };
+    try {
+      const first = await runCli("First title", oldImg);
+      expect(first).toMatchObject({ code: 0, output: expect.stringContaining("inserted=1") });
+      const second = await runCli("Second title", newImg);
+      expect(second).toMatchObject({ code: 0, output: expect.stringContaining(`new_photo_path: ${ref} -> "${contentPath(ref, "jpg", newImg)}"`) });
+
+      fake.onRequest = ({ method }) => {
+        const row = store.rows.get(ref);
+        if (method === "PATCH" && row) row.updated_at = "2030-01-01T00:00:00+00:00";
+      };
+      const third = await runCli("Third title", oldImg);
+      expect(third).toMatchObject({ code: 1, output: expect.stringContaining(`problem: ${ref}: the row changed`) });
+      expect((store.rows.get(ref)?.transcript as PageRecord).topic.title).toBe("Second title");
+      expect(store.rows.get(ref)?.path).toBe(contentPath(ref, "jpg", newImg));
+    } finally {
+      await new Promise((done) => server.close(done));
+    }
+    const uploads = fake.sent.filter((r) => r.method === "POST" && r.path.startsWith("/storage/v1/object/curriculum-reference/"));
+    expect(uploads.map((r) => r.headers.get("x-upsert"))).toEqual(["false", "false"]);
+    const updates = fake.sent.filter((r) => r.method === "PATCH");
+    expect(updates.map((r) => [r.params.get("source_ref"), r.params.get("path"), r.params.get("transcript_status")])).toEqual([
+      [`eq.${ref}`, `eq.${contentPath(ref, "jpg", oldImg)}`, "eq.machine_read"],
+      [`eq.${ref}`, `eq.${contentPath(ref, "jpg", newImg)}`, "eq.machine_read"],
+    ]);
+    for (const { params } of updates) expect(params.get("updated_at")).toMatch(/^eq\.2/);
+  }, 60_000);
+
   describe("with replace", () => {
-    const WRITE_CALL_RE = /^(insertRow|uploadObject|replaceObject|updateRow):/;
+    const WRITE_CALL_RE = /^(insertRow|uploadObject|updateRow):/;
     const oldImg = new Uint8Array([1, 2, 3, 4]);
     const newImg = new Uint8Array([5, 6, 7, 8]);
 
@@ -1732,14 +1787,11 @@ describe("importReferenceRecords", () => {
 
     it("refuses two records of one run that plan the same photo path", () => {
       // buildReferencePhotoPath gives each source_ref its own path, so files alone cannot make this.
-      const res = checkPathOwnership(
-        [
-          { ref: "sample:M:3a", plannedPhotoPath: "sample/M/3a.jpg", decision: null },
-          { ref: "sample:M:3b", plannedPhotoPath: "sample/M/3a.jpg", decision: null },
-        ],
-        new Map(),
-      );
-      expect(res.problems).toEqual([
+      const problems = findSharedPhotoPaths([
+        { ref: "sample:M:3a", plannedPhotoPath: "sample/M/3a.jpg", decision: null },
+        { ref: "sample:M:3b", plannedPhotoPath: "sample/M/3a.jpg", decision: null },
+      ]);
+      expect(problems).toEqual([
         'storage: sample:M:3a and sample:M:3b plan the same photo path "sample/M/3a.jpg"; nothing was written',
       ]);
     });
@@ -1858,7 +1910,7 @@ describe("importReferenceRecords", () => {
       ]);
     });
 
-    it("overwrites the photo when only its bytes changed and touches nothing in the row but updated_at", async () => {
+    it("puts a changed photo at a new path, switches the row to it in one update and writes over no object", async () => {
       writeJson(recordsDir, "p1.json", makePage("sample:M:3a"));
       writePhotos([{ file: "IMG_0001.jpg", bytes: oldImg, ref: "sample:M:3a" }]);
       await importReferenceRecords({ recordsDir, photosDir, store });
@@ -1869,12 +1921,16 @@ describe("importReferenceRecords", () => {
       const res = await importReferenceRecords({ recordsDir, photosDir, store, replace: true });
       expect(res.ok).toBe(true);
       expect(res.counts).toMatchObject({ replaced: 1, skipped: 0, photosUploaded: 1 });
-      expect(writeCalls()).toEqual(["replaceObject:sample/M/3a.jpg", "updateRow:sample:M:3a"]);
-      expect(store.objects.get("sample/M/3a.jpg")?.bytes).toEqual(newImg);
+      const [oldPath, newPath] = [oldImg, newImg].map((bytes) => contentPath("sample:M:3a", "jpg", bytes));
+      expect(writeCalls()).toEqual([`uploadObject:${newPath}`, "updateRow:sample:M:3a"]);
+      expect(store.objects.get(oldPath)?.bytes).toEqual(oldImg);
+      expect(store.objects.get(newPath)?.bytes).toEqual(newImg);
       const after = rowOf("sample:M:3a");
-      expect({ ...after, updated_at: undefined }).toEqual({ ...before, updated_at: undefined });
+      expect({ ...after, updated_at: undefined }).toEqual({ ...before, path: newPath, updated_at: undefined });
       expect(after.updated_at).not.toBe(before.updated_at);
-      expect(res.leftoverPhotos).toEqual([]);
+      expect(res.newPhotoPaths).toEqual([{ ref: "sample:M:3a", path: newPath }]);
+      expect(formatImportResult(res)).toContain(`new_photo_path: sample:M:3a -> "${newPath}"`);
+      expect(res.leftoverPhotos).toEqual([oldPath]);
     });
 
     it("moves the row to a new photo path and names the old object as a leftover without deleting it", async () => {
@@ -1886,12 +1942,14 @@ describe("importReferenceRecords", () => {
 
       const res = await importReferenceRecords({ recordsDir, photosDir, store, replace: true });
       expect(res.ok).toBe(true);
-      expect(rowOf("sample:M:3a").path).toBe("sample/M/3a.png");
-      expect(store.objects.get("sample/M/3a.jpg")?.bytes).toEqual(oldImg);
-      expect(store.objects.get("sample/M/3a.png")?.bytes).toEqual(newImg);
-      expect(res.leftoverPhotos).toEqual(["sample/M/3a.jpg"]);
-      expect(writeCalls()).toEqual(["replaceObject:sample/M/3a.png", "updateRow:sample:M:3a"]);
-      expect(formatImportResult(res)).toContain('leftover_photo: "sample/M/3a.jpg"');
+      const oldPath = contentPath("sample:M:3a", "jpg", oldImg);
+      const newPath = contentPath("sample:M:3a", "png", newImg);
+      expect(rowOf("sample:M:3a").path).toBe(newPath);
+      expect(store.objects.get(oldPath)?.bytes).toEqual(oldImg);
+      expect(store.objects.get(newPath)?.bytes).toEqual(newImg);
+      expect(res.leftoverPhotos).toEqual([oldPath]);
+      expect(writeCalls()).toEqual([`uploadObject:${newPath}`, "updateRow:sample:M:3a"]);
+      expect(formatImportResult(res)).toContain(`leftover_photo: "${oldPath}"`);
     });
 
     it("prints a stored path in one quoted form with quote, backslash, control and direction marks escaped", async () => {
@@ -1910,6 +1968,7 @@ describe("importReferenceRecords", () => {
         transcript: makePage("sample:M:3a"),
         transcript_status: "machine_read",
       });
+      store.objects.set(storedPath, { bytes: oldImg, contentType: "image/jpeg" });
 
       const res = await importReferenceRecords({ recordsDir, photosDir, store, replace: true });
       const out = formatImportResult(res);
@@ -1922,38 +1981,30 @@ describe("importReferenceRecords", () => {
       for (const mark of marks) expect(out).not.toContain(mark);
     });
 
-    it("refuses before any write when a replace would overwrite a photo that another row uses", async () => {
+    it("leaves the photo of another row that uses the same object, and does not name it as a leftover", async () => {
       writeJson(recordsDir, "z.json", makeContents("demo:Z:contents"));
-      writePhotos([{ file: "chart.jpg", bytes: oldImg, ref: "demo:Z:contents" }]);
-      await importReferenceRecords({ recordsDir, photosDir, store });
-      // A row that is not in this run points to the same object.
-      store.rows.set("demo:Y:contents", {
-        source_ref: "demo:Y:contents",
-        kind: "contents",
-        path: "demo/Z/contents.jpg",
-        transcript: makeContents("demo:Y:contents"),
-        transcript_status: "machine_read",
-      });
       writePhotos([{ file: "chart.jpg", bytes: newImg, ref: "demo:Z:contents" }]);
+      // demo:Y:contents is not in this run and points to the same object.
+      for (const ref of ["demo:Z:contents", "demo:Y:contents"]) {
+        store.rows.set(ref, {
+          source_ref: ref,
+          kind: "contents",
+          path: "demo/Z/contents.jpg",
+          transcript: makeContents(ref),
+          transcript_status: "machine_read",
+        });
+      }
+      store.objects.set("demo/Z/contents.jpg", { bytes: oldImg, contentType: "image/jpeg" });
 
       for (const dryRun of [true, false]) {
-        store.calls = [];
-        const res = await importReferenceRecords({
-          recordsDir,
-          photosDir,
-          store,
-          replace: true,
-          dryRun,
-        });
-        expect(res.ok).toBe(false);
-        expect(res.stopped).toBeUndefined();
-        expect(store.calls).toContain("refsByPath:demo/Z/contents.jpg");
-        expect(writeCalls()).toEqual([]);
-        expect(res.problems).toHaveLength(1);
-        expect(res.problems[0]).toContain('"demo/Z/contents.jpg"');
-        expect(res.problems[0]).toContain('"demo:Y:contents"');
+        const res = await importReferenceRecords({ recordsDir, photosDir, store, replace: true, dryRun });
+        expect(res.problems).toEqual([]);
+        expect(res.counts).toMatchObject({ replaced: 1, photosUploaded: 1 });
+        expect(res.leftoverPhotos).toEqual([]);
       }
+      expect(rowOf("demo:Y:contents").path).toBe("demo/Z/contents.jpg");
       expect(store.objects.get("demo/Z/contents.jpg")?.bytes).toEqual(oldImg);
+      expect(rowOf("demo:Z:contents").path).toBe(contentPath("demo:Z:contents", "jpg", newImg));
     });
 
     it("names an old path as a leftover only when no row uses it after the run, and only once", async () => {
@@ -1961,47 +2012,73 @@ describe("importReferenceRecords", () => {
       writeJson(recordsDir, "p2.json", makePage("sample:M:3b"));
       writePhotos([{ file: "IMG_0001.jpg", bytes: oldImg, ref: "sample:M:3a" }]);
       await importReferenceRecords({ recordsDir, photosDir, store });
+      const shared = contentPath("sample:M:3a", "jpg", oldImg);
       // sample:M:3b uses the same object as sample:M:3a.
-      rowOf("sample:M:3b").path = "sample/M/3a.jpg";
+      rowOf("sample:M:3b").path = shared;
+      const dryAndReal = async () => {
+        const dry = await importReferenceRecords({ recordsDir, photosDir, store, replace: true, dryRun: true });
+        const real = await importReferenceRecords({ recordsDir, photosDir, store, replace: true });
+        expect({ ...dry, dryRun: false }).toEqual(real);
+        return real;
+      };
 
       // The run holds only sample:M:3a and moves it to a new path; sample:M:3b still uses the old one.
       rmSync(join(recordsDir, "p2.json"));
       writePhotos([{ file: "IMG_0001.png", bytes: newImg, ref: "sample:M:3a" }]);
-      const dryOne = await importReferenceRecords({
-        recordsDir,
-        photosDir,
-        store,
-        replace: true,
-        dryRun: true,
-      });
-      const one = await importReferenceRecords({ recordsDir, photosDir, store, replace: true });
-      expect({ ...dryOne, dryRun: false }).toEqual(one);
+      const one = await dryAndReal();
       expect(one.counts.replaced).toBe(1);
       expect(one.leftoverPhotos).toEqual([]);
       expect(formatImportResult(one)).not.toContain("leftover_photo");
-      expect(rowOf("sample:M:3b").path).toBe("sample/M/3a.jpg");
-      expect(store.objects.get("sample/M/3a.jpg")?.bytes).toEqual(oldImg);
+      expect(rowOf("sample:M:3b").path).toBe(shared);
+      expect(store.objects.get(shared)?.bytes).toEqual(oldImg);
 
       // Both rows use the old path again, and this run moves both away: one leftover line.
-      rowOf("sample:M:3a").path = "sample/M/3a.jpg";
+      rowOf("sample:M:3a").path = shared;
       writeJson(recordsDir, "p2.json", makePage("sample:M:3b"));
       writePhotos([
         { file: "IMG_0001.png", bytes: newImg, ref: "sample:M:3a" },
         { file: "IMG_0002.png", bytes: oldImg, ref: "sample:M:3b" },
       ]);
-      const dryBoth = await importReferenceRecords({
-        recordsDir,
-        photosDir,
-        store,
-        replace: true,
-        dryRun: true,
-      });
-      const both = await importReferenceRecords({ recordsDir, photosDir, store, replace: true });
-      expect({ ...dryBoth, dryRun: false }).toEqual(both);
+      const both = await dryAndReal();
       expect(both.counts.replaced).toBe(2);
-      expect(both.leftoverPhotos).toEqual(["sample/M/3a.jpg"]);
+      expect(both.leftoverPhotos).toEqual([shared]);
       expect(formatImportResult(both).match(/leftover_photo:/g)).toHaveLength(1);
-      expect(store.objects.has("sample/M/3a.jpg")).toBe(true);
+      expect(store.objects.has(shared)).toBe(true);
+    });
+
+    it("names no leftover when the old object was not there, or when only one of two rows left it before a stop", async () => {
+      const refs = ["sample:M:3a", "sample:M:3b"];
+      refs.forEach((ref, i) => writeJson(recordsDir, `p${i}.json`, makePage(ref)));
+      writePhotos(refs.map((ref, i) => ({ file: `IMG_${i}.jpg`, bytes: newImg, ref })));
+      const start = (objectIsThere: boolean) => {
+        store = new MemoryReferenceStore();
+        for (const ref of refs) {
+          store.rows.set(ref, { source_ref: ref, kind: "page", path: "sample/M/3a.jpg", transcript: makePage(ref), transcript_status: "machine_read" });
+        }
+        if (objectIsThere) store.objects.set("sample/M/3a.jpg", { bytes: oldImg, contentType: "image/jpeg" });
+      };
+      const run = (dryRun = false) => importReferenceRecords({ recordsDir, photosDir, store, replace: true, dryRun });
+
+      start(true);
+      const realUpdate = store.updateRow.bind(store);
+      store.updateRow = async (row, seen) => {
+        if (row.source_ref === refs[1]) throw new Error("database is not reachable");
+        return realUpdate(row, seen);
+      };
+      const stopped = await run();
+      expect(stopped).toMatchObject({ ok: false, stopped: true, replacedRefs: [refs[0]], leftoverPhotos: [] });
+      store.updateRow = realUpdate;
+      const retry = await run();
+      expect(retry).toMatchObject({ ok: true, replacedRefs: [refs[1]], leftoverPhotos: ["sample/M/3a.jpg"] });
+      expect((await run()).leftoverPhotos).toEqual([]);
+
+      // The row of sample:M:3a points to its own path, where no object is.
+      start(false);
+      store.rows.delete(refs[1]);
+      rmSync(join(recordsDir, "p1.json"));
+      for (const dryRun of [true, false]) {
+        expect(await run(dryRun)).toMatchObject({ ok: true, replacedRefs: [refs[0]], leftoverPhotos: [] });
+      }
     });
 
     it("keeps the stored path and touches no object on a status-only lower with no planned photo, and refuses a status-only raise", async () => {
@@ -2021,7 +2098,7 @@ describe("importReferenceRecords", () => {
       const partial = await importReferenceRecords({ recordsDir, photosDir, store, replace: true });
       expect(partial.ok).toBe(true);
       expect(partial.counts).toMatchObject({ replaced: 1, skipped: 1, photosUploaded: 0 });
-      expect(rowOf("sample:M:3b")).toMatchObject({ path: "sample/M/3b.jpg", transcript_status: "machine_read" });
+      expect(rowOf("sample:M:3b")).toMatchObject({ path: contentPath("sample:M:3b", "jpg", newImg), transcript_status: "machine_read" });
       expect(partial.statusLowered).toEqual([
         { ref: "sample:M:3b", from: "double_read", to: "machine_read" },
       ]);
@@ -2034,9 +2111,9 @@ describe("importReferenceRecords", () => {
       const none = await importReferenceRecords({ recordsDir, store, replace: true });
       expect(none.ok).toBe(true);
       expect(none.counts).toMatchObject({ replaced: 1, skipped: 1, photosUploaded: 0 });
-      expect(rowOf("sample:M:3a")).toMatchObject({ path: "sample/M/3a.jpg", transcript_status: "machine_read" });
+      expect(rowOf("sample:M:3a")).toMatchObject({ path: contentPath("sample:M:3a", "jpg", oldImg), transcript_status: "machine_read" });
       expect(
-        store.calls.filter((c) => c.startsWith("objectSha256:") || c.startsWith("replaceObject:")),
+        store.calls.filter((c) => c.startsWith("objectSha256:") || c.startsWith("uploadObject:")),
       ).toEqual([]);
       expect(none.leftoverPhotos).toEqual([]);
 
@@ -2183,7 +2260,7 @@ describe("importReferenceRecords", () => {
                 } else {
                   expect(rowOf(ref, caseStore).transcript_status, label).toBe(to);
                   expect(rowOf(ref, caseStore).path, label).toBe(
-                    storedPhoto || plannedPhoto ? "sample/M/3a.jpg" : null,
+                    storedPhoto ? "sample/M/3a.jpg" : plannedPhoto ? contentPath(ref, "jpg", oldImg) : null,
                   );
                 }
                 const expectedLowered = rankOf(from) >= 0 && rankOf(from) > rankOf(to);
@@ -2285,20 +2362,23 @@ describe("importReferenceRecords", () => {
       expect(real.statusLowered).toEqual([
         { ref: "sample:M:3a", from: "human_checked", to: "machine_read" },
       ]);
-      expect(real.leftoverPhotos).toEqual(["sample/M/3a.jpg"]);
+      expect(real.newPhotoPaths).toEqual([{ ref: "sample:M:3a", path: contentPath("sample:M:3a", "png", newImg) }]);
+      expect(formatImportResult(dry)).toContain(`new_photo_path: sample:M:3a -> "${contentPath("sample:M:3a", "png", newImg)}"`);
+      expect(real.leftoverPhotos).toEqual([contentPath("sample:M:3a", "jpg", oldImg)]);
       expect({ ...dry, dryRun: false }).toEqual(real);
     });
 
     it("still refuses before any write when an object with other bytes is at the path of a ref with no row", async () => {
       writeJson(recordsDir, "p1.json", makePage("sample:M:3a"));
       writePhotos([{ file: "IMG_0001.jpg", bytes: newImg, ref: "sample:M:3a" }]);
-      store.objects.set("sample/M/3a.jpg", { bytes: oldImg, contentType: "image/jpeg" });
+      const planned = contentPath("sample:M:3a", "jpg", newImg);
+      store.objects.set(planned, { bytes: oldImg, contentType: "image/jpeg" });
 
       const res = await importReferenceRecords({ recordsDir, photosDir, store, replace: true });
       expect(res.ok).toBe(false);
       expect(res.stopped).toBeUndefined();
       expect(writeCalls()).toEqual([]);
-      expect(res.problems.some((p) => p.includes("sample/M/3a.jpg") && p.includes("by hand"))).toBe(
+      expect(res.problems.some((p) => p.includes(planned) && p.includes("by hand"))).toBe(
         true,
       );
     });
@@ -2315,7 +2395,7 @@ describe("importReferenceRecords", () => {
       expect(res.problems.some((p) => p.includes("p2.json"))).toBe(true);
     });
 
-    it("stops when a row update fails after its photo was replaced, and a second run ends like a clean run", async () => {
+    it("stops when a row update fails after its photo was uploaded, and a second run ends like a clean run", async () => {
       const clean = new MemoryReferenceStore();
       writeJson(recordsDir, "p1.json", makePage("sample:M:3a", "First title"));
       writeJson(recordsDir, "p2.json", makePage("sample:M:3b", "First title"));
@@ -2329,12 +2409,12 @@ describe("importReferenceRecords", () => {
 
       const realUpdate = store.updateRow.bind(store);
       let failNext = true;
-      store.updateRow = async (row) => {
+      store.updateRow = async (row, seen) => {
         if (row.source_ref === "sample:M:3b" && failNext) {
           failNext = false;
           throw new Error("database is not reachable");
         }
-        return realUpdate(row);
+        return realUpdate(row, seen);
       };
 
       const first = await importReferenceRecords({ recordsDir, photosDir, store, replace: true });
@@ -2342,14 +2422,11 @@ describe("importReferenceRecords", () => {
       expect(first.stopped).toBe(true);
       expect(first.counts).toMatchObject({ replaced: 1, photosUploaded: 1 });
       expect(first.replacedRefs).toEqual(["sample:M:3a"]);
-      expect(
-        first.problems.some(
-          (p) => p.includes('"sample/M/3b.jpg"') && p.includes("already the new one"),
-        ),
-      ).toBe(true);
+      expect(first.unreferencedPhotos).toEqual([contentPath("sample:M:3b", "jpg", newImg)]);
       expect(first.problems.some((p) => p.includes("replaced 1"))).toBe(true);
       expect(formatImportResult(first)).toContain("Import stopped after a write error");
-      expect(store.objects.get("sample/M/3b.jpg")?.bytes).toEqual(newImg);
+      // The row still has its old text with its old photo.
+      expect(store.objects.get(rowOf("sample:M:3b").path ?? "")?.bytes).toEqual(oldImg);
       expect(titleOf("sample:M:3b")).toBe("First title");
 
       const second = await importReferenceRecords({ recordsDir, photosDir, store, replace: true });
@@ -2387,7 +2464,7 @@ describe("importReferenceRecords", () => {
       expect(res.counts.replaced).toBe(0);
       expect(res.replacedRefs).toEqual([]);
       expect(
-        res.problems.some((p) => p.includes("sample:M:3a") && p.includes("no row with this source_ref")),
+        res.problems.some((p) => p.includes("sample:M:3a") && p.includes("changed or was removed")),
       ).toBe(true);
     });
 

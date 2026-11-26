@@ -62,6 +62,26 @@ function runsDown(dark: (y: number) => boolean, y: number): number[] {
 /** Longer than three squares of the largest code that a page can hold. */
 const MAX_RUN = 400;
 
+const WHITE = 0xffffffff;
+
+/** Whether each line can hold dark pixels. It looks at four pixels at a time, because most of a page is white. */
+function linesWithInk({ width, height, grey }: PageImage): boolean[] {
+  const lines = new Array<boolean>(height).fill(false);
+  const start = Math.min((4 - (grey.byteOffset & 3)) & 3, grey.length);
+  for (let i = 0; i < start; i++) if (grey[i] < DARK) lines[Math.floor(i / width)] = true;
+  if (start === grey.length) return lines;
+  const count = (grey.length - start) >> 2;
+  const fours = new Uint32Array(grey.buffer, grey.byteOffset + start, count);
+  for (let i = 0; i < count; i++) {
+    if (fours[i] === WHITE) continue;
+    const at = start + 4 * i;
+    const last = Math.floor((at + 3) / width);
+    for (let y = Math.floor(at / width); y <= last; y++) lines[y] = true;
+  }
+  for (let i = start + 4 * count; i < grey.length; i++) if (grey[i] < DARK) lines[Math.floor(i / width)] = true;
+  return lines;
+}
+
 function cornerMarks(image: PageImage, hidden: Box): CornerMark[] {
   const marks: CornerMark[] = [];
   const dark = (x: number, y: number) => isDark(image, x, y) && !holds(hidden, x, y);
@@ -72,13 +92,18 @@ function cornerMarks(image: PageImage, hidden: Box): CornerMark[] {
     const square = [...runs, ...down].reduce((sum, n) => sum + n, 0) / 14;
     if (!marks.some((m) => Math.abs(m.x - x) < 2 * square && Math.abs(m.y - centre) < 3 * square)) marks.push({ x, y: centre, square });
   };
-  for (let y = 0; y < image.height; y++) {
+  const { width, height } = image;
+  const inked = linesWithInk(image);
+  for (let y = 0; y < height; y++) {
+    if (!inked[y]) continue;
+    const line = image.grey.subarray(y * width, (y + 1) * width);
+    const [from, to] = y >= hidden.top && y < hidden.bottom ? [hidden.left, hidden.right] : [width, width];
     let runs = [0, 0, 0, 0, 0];
     let length = 0;
     let last = false;
-    for (let x = 0; x <= image.width; x++) {
-      const now = x < image.width && image.grey[y * image.width + x] < DARK && !(y >= hidden.top && y < hidden.bottom && x >= hidden.left && x < hidden.right);
-      if (now === last && x < image.width) {
+    for (let x = 0; x <= width; x++) {
+      const now = x < width && line[x] < DARK && (x < from || x >= to);
+      if (now === last && x < width) {
         length++;
         continue;
       }

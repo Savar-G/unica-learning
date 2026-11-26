@@ -33,7 +33,7 @@ For table-level behavior, read the generated types and the domain doc for that s
 
 - **`shown-work`**: holds assessment drawings (`.png`) and whiteboard strokes (`<parent>/<assessment>/<question>-<random>.strokes.json`). Parents may read `.png` only; admins read strokes. Never include strokes in parent reports or anonymized copies (`public.anonymous_tests`).
 - **`workbook-pages`**: private bucket holding rendered workbook PDFs, page images, proof images, and first-pages previews (`<parent>/<workbook-or-draft-id>/<name>`). Parents read only their own family's **shipped** workbooks (`workbooks_parent_shipped_only`); admins read all.
-- **`curriculum-reference`**: private bucket holding masked reference page photos (`<source>/<level>/<sheet><side>.<ext>`), paired with `public.bank_reference_images`. Service-role only (no browser-role table grants or storage policies); not family data.
+- **`curriculum-reference`**: private bucket holding masked reference page photos (`<source>/<level>/<sheet><side>.<16 of the SHA-256>.<ext>`, older rows `<source>/<level>/<sheet><side>.<ext>`; no object is written over), paired with `public.bank_reference_images`. Service-role only (no browser-role table grants or storage policies); not family data.
 - Family deletion empties the family buckets (`docs/assessment-deletion.md`).
 
 ## Cross-cutting database conventions

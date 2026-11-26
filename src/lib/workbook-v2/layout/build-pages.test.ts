@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
-import type { PageModel, Rect, Region, RegionRole } from "../contract";
-import { goodPages } from "../testing/sample";
+import { planBook } from "../build/build-book";
+import { answerLine, type Answer, type BracketFace, type Face, type FaceToken, type PageModel, type Rect, type Region, type RegionRole } from "../contract";
+import wideBook from "../fixtures/book-4-digits.json";
+import wideSnapshot from "../fixtures/snapshot-4-digits.json";
+import { canonicalJson, sha256 } from "../hash";
+import { factsBook, goodPages } from "../testing/sample";
+import { SHAPES, shapeLibrary } from "../shapes";
+import { wholeNumber } from "../shapes/shape";
+import { validateSnapshot } from "../bank/snapshot";
+import { sheetItems } from "../build/items";
+import factsSnapshot from "../fixtures/snapshot-facts.json";
+import { buildPages } from "./build-pages";
+import { fitProblem, needsOf, questionText, TEMPLATES } from "./templates";
 
 const pages = () => goodPages();
 const regions = (page: PageModel, role: RegionRole) => page.regions.filter((r) => r.role === role);
@@ -56,5 +67,203 @@ describe("the two pages of a sheet", () => {
   it("have ids that no other rectangle of the book has", () => {
     const ids = pages().flatMap((p) => p.regions.map((g) => g.id));
     expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+describe("a sheet of 4 digits by 1 digit", () => {
+  const plan = planBook({ snapshot: wideSnapshot, book: wideBook });
+  const wide = plan.ok ? plan.pages : [];
+
+  it("passes every check that needs no drawing, with all places of both sides full", () => {
+    expect(plan).toMatchObject({ ok: true });
+    expect(wide.map((page) => [page.template, regions(page, "slot").length])).toEqual([["columns-2x4-wide", 8], ["columns-2x4-wide", 8]]);
+    if (plan.ok) expect(Math.max(...plan.items.map((i) => answerLine(i.answer).length))).toBe(5);
+  });
+
+  it("has answer areas of five digit places in the two columns of the other template, mirrored between the sides", () => {
+    const [front, back] = wide;
+    const answers = (page: PageModel) => regions(page, "answer").map(({ rect }) => [rect.x, rect.y, rect.w, rect.h]);
+    expect(answers(front)).toEqual([178, 326, 474, 622].flatMap((y) => [[134, y, 120, 42], [384, y, 120, 42]]));
+    expect(answers(back)).toEqual(answers(front).map(([x, ...more]) => [x - 54, ...more]));
+  });
+
+  it("lines up the digits from the right: ones under ones, and the sign left of the bottom number", () => {
+    const placed = regions(wide[0], "question")[0].ink.flatMap((i) => (i.kind === "text" ? [[i.text, i.rect.x - 134]] : []));
+    expect(placed.map(([, x]) => x)).toEqual([24, 48, 72, 96, 72, 96]);
+    expect(placed[4][0]).toBe("×");
+  });
+
+  it("leaves a work area beside each stack, outside the reach of its answer", () => {
+    expect(wide).toHaveLength(2);
+    for (const page of wide) {
+      const works = regions(page, "work");
+      expect(works).toHaveLength(8);
+      works.forEach(({ rect }, i) => {
+        const reach = regions(page, "reach")[i].rect;
+        expect(rect.x).toBeGreaterThan(reach.x + reach.w);
+        expect([rect.w, rect.h]).toEqual([38, 140]);
+      });
+    }
+  });
+
+  it("uses the only template that 5 digit places fit", () => {
+    expect([...TEMPLATES.values()].filter((t) => t.faces.includes("column")).map((t) => [t.id, t.holds])).toEqual([["columns-2x4", { "digit places": 3 }], ["columns-2x4-wide", { "digit places": 5 }]]);
+  });
+});
+
+describe("a question with one answer area", () => {
+  // Made with engine 2.0.0-s3, before answers had parts.
+  it.each([["the example sheet", goodPages, "e5178d1410a99bedfd236e5646995d0098220db7a76ac3ae041c66ae9634ea40"], ["the sheet of 4 digits by 1 digit", () => { const plan = planBook({ snapshot: wideSnapshot, book: wideBook }); return plan.ok ? plan.pages : []; }, "64247e899f4c41149ba0972ab661f5b12af658adeaee253c88187151c931ace5"]])("is laid out as before answers had parts: %s", (_name, made, hash) => {
+    const before = made().map((page) => ({
+      ...page,
+      regions: page.regions.map(({ part, ...region }) => {
+        expect(part).toBe(region.role === "answer" || region.role === "reach" ? "answer" : null);
+        if (region.role !== "footer") return region;
+        return {
+          ...region,
+          ink: region.ink.map((ink) => {
+            if (ink.kind !== "text") return ink;
+            expect(ink.text).toBe(`Level ${page.levelName} (Grade ${page.levelName} work) · Page ${page.page}`);
+            // Keep comparing to the original page model after accounting for the new grade wording.
+            return { ...ink, text: `Level ${page.levelName} · Page ${page.page}` };
+          }),
+        };
+      }),
+    }));
+    expect(sha256(canonicalJson(before))).toBe(hash);
+  });
+});
+
+describe("the templates of tokens", () => {
+  const book = factsBook();
+  const [facts, , , , sums, blanks, , short, long] = book.pages;
+  const corners = (page: PageModel, role: RegionRole) => regions(page, role).map(({ rect }) => [rect.x, rect.y]);
+  const columnsOf = (page: PageModel) => [...new Set(regions(page, "answer").map(({ rect }) => rect.x))];
+
+  it("have as many places as the print rules allow", () => {
+    expect([...TEMPLATES.values()].map((t) => [t.id, t.sides.front.places.length, t.sides.back.places.length])).toEqual([
+      ["columns-2x4", 8, 8], ["columns-2x4-wide", 8, 8], ["facts-2x10", 20, 20], ["sums-1x10", 10, 10], ["blanks-1x10", 10, 10], ["sequences-2x2", 4, 4], ["sequences-2x1", 2, 2],
+      ["remainders-1x10", 10, 10], ["brackets-2x6", 12, 12], ["brackets-2x4", 8, 8], ["brackets-2x3", 6, 6], ["brackets-1x4", 4, 4], ["brackets-1x3", 3, 3],
+    ]);
+    // One row more would reach the QR code: a row is an answer area with its reach.
+    const [qr] = regions(facts, "qr");
+    const lowest = Math.max(...regions(facts, "slot").map(({ rect }) => rect.y + rect.h));
+    expect(lowest).toBeLessThanOrEqual(qr.rect.y);
+    expect(lowest + 61.2).toBeGreaterThan(qr.rect.y + 40);
+  });
+
+  it("run down a column, so that a table in order reads down", () => {
+    const answers = corners(facts, "answer");
+    expect(answers.slice(0, 3).map(([x]) => x)).toEqual([229.2, 229.2, 229.2]);
+    expect(answers[10][1]).toBe(answers[0][1]);
+    expect(answers[10][0] - answers[0][0]).toBe(246);
+  });
+
+  it("keep the answer areas of a side in one or two columns, wherever the blank stands", () => {
+    expect([facts, sums, blanks, short, long].map((page) => columnsOf(page).length)).toEqual([2, 1, 1, 2, 2]);
+    const kinds = new Set(book.items.filter((i) => i.id.startsWith(`${blanks.id}/`)).map((i) => (i.question as { blank: string }).blank));
+    expect([...kinds].sort()).toEqual(["first", "second"]);
+  });
+
+  it("give each blank an area and a reach with the name of its part, and no work area", () => {
+    const own = short.regions.filter((g) => g.item === `${short.id}/1`).map((g) => [g.id.slice(short.id.length + 1), g.role, g.part]);
+    expect(own).toEqual([["slot-1", "slot", null], ["label-1", "label", null], ["question-1", "question", null],
+      ...["blank-1", "blank-2", "blank-3"].flatMap((part) => [[`answer-1-${part}`, "answer", part], [`reach-1-${part}`, "reach", part]])]);
+    expect(book.pages.flatMap((page) => regions(page, "work"))).toEqual([]);
+  });
+
+  it("put a line above the lower of two sequences", () => {
+    const lines = regions(short, "question").map((g) => g.ink.filter((i) => i.kind === "fill").length);
+    expect(lines).toEqual([0, 1, 0, 1]);
+  });
+
+  const equation = (...tokens: string[]) => ({ kind: "equation" as const, tokens: tokens.map((t) => (t === "□" ? { blank: "answer" } : { text: t })) });
+  const column = { kind: "column" as const, top: "24", sign: "×", bottom: "3" };
+  it.each([
+    ["a fact", "facts-2x10", equation("10", "×", "10", "=", "□"), 100, null],
+    ["a short sum in a long line", "sums-1x10", equation("4", "+", "4", "=", "□"), 8, null],
+    ["a blank in the first place", "blanks-1x10", equation("□", "×", "7", "=", "35"), 5, null],
+    ["a blank in the second place", "blanks-1x10", equation("5", "×", "□", "=", "35"), 7, null],
+    ["a blank inside, in a template with one at the end", "facts-2x10", equation("5", "×", "□", "=", "35"), 7, 'has its blanks where the template "facts-2x10" has no answer area'],
+    ["a blank at the end, in a template with one inside", "blanks-1x10", equation("5", "×", "7", "=", "□"), 35, 'has its blanks where the template "blanks-1x10" has no answer area'],
+    ["a line that is too long", "facts-2x10", equation("4", "+", "4", "+", "4", "=", "□"), 12, 'needs 7 places in its line and the template "facts-2x10" has 5'],
+    ["a number that is too long", "sums-1x10", equation("100", "+", "100", "=", "□"), 200, 'needs 3 characters in a number and the template "sums-1x10" has 2'],
+    ["an answer that is too long", "facts-2x10", equation("5", "×", "7", "=", "□"), 1035, 'needs 4 characters in a number and the template "facts-2x10" has 3'],
+    ["a stack", "facts-2x10", column, 72, 'is a column question and the template "facts-2x10" has no place for one'],
+    ["an equation in a template of stacks", "columns-2x4", equation("5", "×", "7", "=", "□"), 35, 'is an equation question and the template "columns-2x4" has no place for one'],
+    ["a sequence in a template of equations", "facts-2x10", { kind: "sequence" as const, tokens: [{ text: "5" }, { blank: "answer" }] }, 10, 'is a sequence question and the template "facts-2x10" has no place for one'],
+  ])("say whether %s fits", (_name, id, face, answer, problem) => {
+    const template = TEMPLATES.get(id);
+    if (!template) throw new Error("no template");
+    expect(fitProblem(template, face, wholeNumber(answer))).toBe(problem);
+  });
+
+  it.each([0, 2, 3])("say that a stack with %s answer parts does not fit", (count) => {
+    const parts = Array.from({ length: count }, (_, i) => ({ ...wholeNumber(72).parts[0], name: `blank-${i + 1}` }));
+    for (const id of ["columns-2x4", "columns-2x4-wide"]) expect(fitProblem(TEMPLATES.get(id)!, column, { parts })).toBe(`has ${count} answer parts and a stack has one answer area`);
+  });
+
+  it("show a question with its answer, and how large it is", () => {
+    expect(questionText(equation("5", "×", "□", "=", "35"), wholeNumber(7))).toBe("5 × [7] = 35");
+    expect(questionText(column, wholeNumber(72))).toBe("24 × 3 = 72");
+    expect(needsOf({ kind: "sequence", tokens: [{ text: "5" }, { text: "10" }, { blank: "blank-1" }] }, { parts: [{ name: "blank-1", kind: "whole-number", value: "115" }] })).toEqual({ terms: 3, "characters in a number": 3 });
+  });
+
+  // A division as the layout sees it: tokens, with no math.
+  const value = (name: string, text: string) => ({ name, kind: "whole-number" as const, value: text });
+  const both = { parts: [value("quotient", "73"), value("remainder", "5")] };
+  const rest = [{ text: "R" }, { blank: "remainder" }];
+  const bracket = (outside: string, inside: string, workLines: number, ...after: FaceToken[]): BracketFace => ({ kind: "bracket", above: [{ blank: after.length > 0 ? "quotient" : "answer" }, ...after], outside, inside, workLines });
+  const line = (...tokens: FaceToken[]): Face => ({ kind: "equation", tokens: [{ text: "443" }, { text: "÷" }, { text: "6" }, { text: "=" }, ...tokens] });
+  it.each<[string, Face, Answer, string[]]>([
+    ["a line with one area", line({ blank: "answer" }), wholeNumber(73), ["facts-2x10"]],
+    ["a line with a remainder", line({ blank: "quotient" }, ...rest), both, ["remainders-1x10"]],
+    ["a bracket with no work", bracket("10", "100", 0), wholeNumber(10), ["brackets-2x6", "brackets-2x4", "brackets-2x3"]],
+    ["a bracket with two lines of work", bracket("4", "36", 2), wholeNumber(9), ["brackets-2x4", "brackets-2x3"]],
+    ["a bracket with six lines of work", bracket("2", "998", 6), wholeNumber(499), ["brackets-2x3"]],
+    ["a bracket with a remainder and two lines", bracket("4", "37", 2, ...rest), both, ["brackets-1x4", "brackets-1x3"]],
+    ["a bracket with a remainder and six lines", bracket("2", "999", 6, ...rest), both, ["brackets-1x3"]],
+    ["seven lines of work", bracket("2", "999", 7, ...rest), both, []],
+    ["four characters inside", bracket("2", "1998", 2), wholeNumber(9), []],
+    ["three characters outside", bracket("100", "100", 0), wholeNumber(1), []],
+    ["an answer of five characters", bracket("2", "998", 6), wholeNumber(10000), []],
+    ["a remainder of five characters", bracket("2", "998", 6, ...rest), { parts: [both.parts[0], value("remainder", "10000")] }, []],
+    ["two areas and no text between them", bracket("2", "998", 6, { blank: "remainder" }), both, []],
+    ["no area", { ...bracket("2", "998", 6), above: [] }, { parts: [] }, []],
+    ["a text in the place of the area", { ...bracket("2", "998", 6), above: [{ text: "R" }] }, wholeNumber(9), []],
+  ])("of divisions take only their own form: %s", (_name, face, answer, wanted) => {
+    expect([...TEMPLATES.values()].filter((t) => fitProblem(t, face, answer) === null).map((t) => t.id)).toEqual(wanted);
+  });
+
+  it("say what is wrong with a division that does not fit, and show it with its answer", () => {
+    const problem = (id: string, face: Face, answer: Answer) => fitProblem(TEMPLATES.get(id)!, face, answer);
+    expect(problem("brackets-1x4", bracket("2", "999", 6, ...rest), both)).toBe('needs 6 lines of work and the template "brackets-1x4" has 3');
+    expect(problem("brackets-2x6", bracket("4", "37", 0, ...rest), both)).toBe('has its blanks where the template "brackets-2x6" has no answer area');
+    expect(problem("columns-2x4", bracket("4", "36", 2), wholeNumber(9))).toBe('is a bracket question and the template "columns-2x4" has no place for one');
+    expect([questionText(bracket("6", "443", 4, ...rest), both), questionText(bracket("6", "438", 4), wholeNumber(73)), questionText(line({ blank: "quotient" }, ...rest), both)]).toEqual(["6)443 = [73] R [5]", "6)438 = [73]", "443 ÷ 6 = [73] R [5]"]);
+    expect([answerLine(both), answerLine(wholeNumber(73)), answerLine({ parts: [value("blank-1", "20"), value("blank-2", "30")] })]).toEqual(["73 R5", "73", "20, 30"]);
+  });
+
+  it.each(["front", "back"] as const)("are looked at on the side and at the place of each question: %s", (side) => {
+    const template = TEMPLATES.get("blanks-1x10");
+    const sheet = validateSnapshot(factsSnapshot);
+    if (!template || !sheet.ok) throw new Error("no sheet");
+    const found = sheet.snapshot.sheets.get("equal-groups");
+    if (!found) throw new Error("no sheet");
+    const row = found.back.rows[0];
+    const places = template.sides[side].places.map((place, i) => (i === 3 ? { ...place, forms: [] } : place));
+    const broken = { ...template, sides: { ...template.sides, [side]: { ...template.sides[side], places } } };
+    const content = { instruction: "Write the missing number.", template: broken, rows: [{ ...row, items: 4 }] };
+    const both = { ...found, front: { ...content, rows: [{ ...row, id: "f", items: 4 }] }, back: content };
+    const pages = buildPages([{ sheet: both, levelName: "2", attempt: 1, qr: { front: "f", back: "b" }, items: sheetItems(both, "child", 1) }]);
+    expect(pages).toEqual({ ok: false, problems: [expect.stringMatching(new RegExp(`^Page ${side === "front" ? 125 : 126}: question 4 has its blanks where the template "blanks-1x10" has no answer area\\.$`))] });
+  });
+
+  it("stop a page with a question that has no place, and name it", () => {
+    const [sheet] = wideSnapshot.sheets;
+    const mul = SHAPES.get("mul.column");
+    if (!mul) throw new Error("no shape");
+    const odd = shapeLibrary([{ ...mul, worstCase: (l) => ({ ...mul.worstCase(l), question: { a: 1000, b: 2 } }), face: (q) => ((q as { a: number }).a === 1000 ? mul.face(q) : equation("5", "×", "7", "=", "□")) }]);
+    expect(planBook({ snapshot: { ...wideSnapshot, sheets: [sheet] }, book: wideBook }, odd)).toEqual({ ok: false, problems: expect.arrayContaining([expect.stringMatching(/^Page \d+: question 1 is an equation question and the template "columns-2x4-wide" has no place for one\.$/)]) });
   });
 });

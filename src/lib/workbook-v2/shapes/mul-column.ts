@@ -1,41 +1,23 @@
-// Column multiplication: 2 digits by 1 digit. A carry is a ones product of 10 or more; the tens of the product print in
-// the hundreds without one. `zeroInTens` is about the product (26 × 4 = 104), because a 2-digit number has none.
+// Column multiplication: 2, 3 or 4 digits by 1 digit. A carry goes into the next written column, so a first number of 4
+// digits has 3 carries at most; what the last column makes is written whole and carries nothing. `zeroInProduct` is a
+// zero between the first digit and the ones of the product (26 × 4 = 104), not the zero of 15 × 2 = 30.
 import { pick } from "../hash";
-import type { Answer } from "../contract";
-import { isRecord, readRange, type Item, type Range, type Shape } from "./shape";
+import type { Answer, Step, StepMark } from "../contract";
+import { chooseQuestion, countQuestions, scoreRange, widestQuestion, type Kind, type MulColumnLimits, type MulColumnQuestion } from "./mul-column-count";
+import { emptyProblem, readLimitFields, wholeNumber, type Item, type Shape } from "./shape";
 
-export interface MulColumnLimits {
-  a: Range;
-  b: Range;
-  carries: Range;
-  product: Range;
-  zeroInTens: "never" | "allowed";
-}
-export interface MulColumnQuestion { a: number; b: number }
+export type { MulColumnLimits, MulColumnQuestion } from "./mul-column-count";
 
-const BOUNDS = { a: { min: 10, max: 99 }, b: { min: 2, max: 9 }, carries: { min: 0, max: 1 }, product: { min: 10, max: 999 } };
-const LIMIT_NAMES = ["a", "b", "carries", "product", "zeroInTens"];
+const CARRY = { min: 0, max: 8 };
+const RANGES = {
+  digits: { min: 2, max: 4 }, a: { min: 10, max: 9999 }, b: { min: 2, max: 9 },
+  carries: { min: 0, max: 3 }, carryIntoTens: CARRY, carryIntoHundreds: CARRY, carryIntoThousands: CARRY,
+  product: { min: 10, max: 99_999 },
+};
+const WORDS = { zeroInProduct: ["never", "allowed"], wholeTens: ["never", "allowed", "only"] };
 
-const within = (n: number, r: Range) => n >= r.min && n <= r.max;
-const tensDigit = (n: number) => Math.floor(n / 10) % 10;
-const carried = ({ a, b }: MulColumnQuestion) => Math.floor(((a % 10) * b) / 10);
 const product = ({ a, b }: MulColumnQuestion) => a * b;
-
-function allowed(q: MulColumnQuestion, l: MulColumnLimits): boolean {
-  return within(carried(q) > 0 ? 1 : 0, l.carries) && within(product(q), l.product)
-    && (l.zeroInTens === "allowed" || tensDigit(product(q)) !== 0);
-}
-
-function questions(l: MulColumnLimits): MulColumnQuestion[] {
-  const out: MulColumnQuestion[] = [];
-  for (let a = l.a.min; a <= l.a.max; a++) {
-    for (let b = l.b.min; b <= l.b.max; b++) if (allowed({ a, b }, l)) out.push({ a, b });
-  }
-  return out;
-}
-
-const answerOf = (value: number): Answer => ({ kind: "whole-number", value: String(value) });
-const answer = (q: MulColumnQuestion): Answer => answerOf(product(q));
+const answer = (q: MulColumnQuestion): Answer => wholeNumber(product(q));
 const item = (question: MulColumnQuestion): Item<MulColumnQuestion> => ({ question, answer: answer(question) });
 
 /**
@@ -44,7 +26,7 @@ const item = (question: MulColumnQuestion): Item<MulColumnQuestion> => ({ questi
  */
 function solveAgain(rows: readonly string[]): Item<MulColumnQuestion> | null {
   const [top, low, ...more] = rows;
-  if (more.length > 0 || !/^[1-9][0-9]$/.test(top ?? "") || !/^×[2-9]$/.test(low ?? "")) return null;
+  if (more.length > 0 || !/^[1-9][0-9]{1,3}$/.test(top ?? "") || !/^×[2-9]$/.test(low ?? "")) return null;
   const times = Number(low.slice(1));
   let carry = 0;
   let written = "";
@@ -55,62 +37,69 @@ function solveAgain(rows: readonly string[]): Item<MulColumnQuestion> | null {
     written = text.slice(-1) + written;
     carry = Number(text.slice(0, -1));
   }
-  return { question: { a: Number(top), b: times }, answer: { kind: "whole-number", value: carry > 0 ? String(carry) + written : written } };
+  return { question: { a: Number(top), b: times }, answer: wholeNumber(carry > 0 ? String(carry) + written : written) };
 }
 
-function steps(q: MulColumnQuestion): string[] {
-  const ones = q.a % 10;
-  const tens = Math.floor(q.a / 10);
-  const carry = carried(q);
-  const first = `${q.b} × ${ones} = ${q.b * ones}, write ${(q.b * ones) % 10}`;
-  const second = `${q.b} × ${tens} = ${q.b * tens}`;
-  return carry > 0
-    ? [`${first}, carry ${carry}`, `${second}, plus ${carry} is ${q.b * tens + carry}`, String(product(q))]
-    : [first, second, String(product(q))];
+/** One column: what it multiplies, the carry that it adds, what it writes and what it carries. */
+interface Column { digit: number; carry: number; value: number; isLast: boolean }
+
+function columns({ a, b }: MulColumnQuestion): Column[] {
+  const digits = [...String(a)].reverse().map(Number);
+  let carry = 0;
+  return digits.map((digit, place) => {
+    const column = { digit, carry, value: b * digit + carry, isLast: place === digits.length - 1 };
+    carry = Math.floor(column.value / 10);
+    return column;
+  });
 }
 
-/** Past 100, then a carry, then a zero in the product, then a larger multiplier. */
+const written = (value: number, place: number): StepMark[] => [...String(value)].reverse().map((digit, i) => ({ mark: "write", place: place + i, digit }));
+
+function columnStep({ digit, carry, value, isLast }: Column, place: number, b: number): Step {
+  const product = `${b} × ${digit} = ${b * digit}${carry > 0 ? `, plus ${carry} is ${value}` : ""}`;
+  if (isLast) return { text: product, marks: written(value, place) };
+  const [ones, next] = [value % 10, Math.floor(value / 10)];
+  return {
+    text: `${product}, write ${ones}${next > 0 ? `, carry ${next}` : ""}`,
+    marks: [...written(ones, place), ...(next > 0 ? [{ mark: "carry" as const, place: place + 1, digit: String(next) }] : [])],
+  };
+}
+
+const steps = (q: MulColumnQuestion): Step[] => [...columns(q).map((column, place) => columnStep(column, place, q.b)), { text: String(product(q)), marks: [] }];
+
+/**
+ * From the first difference on: more digits, then a larger product (one that has a digit more than the first number),
+ * then more carries, then a zero in the product, then a larger multiplier. Other numbers of one kind are equally hard.
+ */
+const score = ({ digits, passes, carries, zero, b }: Kind): number =>
+  digits * 2000 + (passes ? 1000 : 0) + carries * 200 + (zero ? 100 : 0) + b * 10;
+
 function difficulty(q: MulColumnQuestion): number {
-  return (product(q) >= 100 ? 1000 : 0) + (carried(q) > 0 ? 500 : 0) + (tensDigit(product(q)) === 0 ? 100 : 0) + q.b * 10;
+  const value = String(product(q));
+  const all = columns(q);
+  return score({ digits: all.length, passes: value.length > all.length, carries: all.filter((c) => c.carry > 0).length, zero: value.slice(1, -1).includes("0"), b: q.b });
 }
 
 function readLimits(raw: unknown): { ok: true; limits: MulColumnLimits } | { ok: false; problem: string } {
-  const bad = (problem: string) => ({ ok: false as const, problem });
-  if (!isRecord(raw)) return bad("the limits must be an object");
-  const unknown = Object.keys(raw).find((k) => !LIMIT_NAMES.includes(k));
-  if (unknown !== undefined) return bad(`unknown limit "${unknown}"`);
-  const a = readRange(raw, "a", BOUNDS.a);
-  if (typeof a === "string") return bad(a);
-  const b = readRange(raw, "b", BOUNDS.b);
-  if (typeof b === "string") return bad(b);
-  const carries = readRange(raw, "carries", BOUNDS.carries);
-  if (typeof carries === "string") return bad(carries);
-  const products = readRange(raw, "product", BOUNDS.product);
-  if (typeof products === "string") return bad(products);
-  const zeroInTens = raw.zeroInTens;
-  if (zeroInTens !== "never" && zeroInTens !== "allowed") return bad('zeroInTens must be "never" or "allowed"');
-  const limits: MulColumnLimits = { a, b, carries, product: products, zeroInTens };
-  return questions(limits).length > 0 ? { ok: true, limits } : bad("no question meets these limits");
+  const read = readLimitFields(raw, RANGES, WORDS);
+  if (typeof read === "string") return { ok: false, problem: read };
+  const limits = read as unknown as MulColumnLimits;
+  if (countQuestions(limits) > 0) return { ok: true, limits };
+  return { ok: false, problem: emptyProblem(read, RANGES, WORDS, (wider) => countQuestions(wider as unknown as MulColumnLimits)) };
 }
 
 export const mulColumn: Shape<MulColumnLimits, MulColumnQuestion> = {
   id: "mul.column",
-  version: 1,
+  version: 2,
   answerKind: "whole-number",
   readLimits,
-  generate(limits, seed) {
-    const all = questions(limits);
-    return item(all[pick(seed, all.length)]);
-  },
+  generate: (limits, seed) => item(chooseQuestion(limits, (count) => pick(seed, count))),
   answer,
   solveAgain,
   steps,
   difficulty,
-  difficultyRange(limits) {
-    const scores = questions(limits).map(difficulty);
-    return { easiest: Math.min(...scores), hardest: Math.max(...scores) };
-  },
-  worstCase: (limits) => item(questions(limits).reduce((worst, q) => (product(q) > product(worst) ? q : worst))),
-  count: (limits) => questions(limits).length,
+  difficultyRange: (limits) => scoreRange(limits, score),
+  worstCase: (limits) => item(widestQuestion(limits)),
+  count: countQuestions,
   face: ({ a, b }) => ({ kind: "column", top: String(a), sign: "×", bottom: String(b) }),
 };

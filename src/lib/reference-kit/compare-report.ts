@@ -33,6 +33,11 @@ function formatVal(v: unknown): string {
   return JSON.stringify(v);
 }
 
+// A reader's value at a place that cannot be found in its reading is not null.
+function formatReaderVal(v: unknown): string {
+  return v === undefined ? "not available" : formatVal(v);
+}
+
 export function formatAgreementPercent(percent: number | null): string {
   if (percent === null) return "-";
   return Number.isInteger(percent) ? `${percent}%` : `${percent.toFixed(1)}%`;
@@ -116,7 +121,8 @@ function hasReaderBNeighbours(d: RecordDifference): boolean {
 }
 
 function formatReaderBNeighbours(d: RecordDifference): string {
-  const noun = d.path.startsWith("topics[") ? "topic" : "item";
+  const list = /([a-z]+)\[(?:b:|n=)\d+\]$/.exec(d.path)?.[1] ?? "items";
+  const noun = list.replace(/s$/, "");
   const after = d.reader_b_after ?? null;
   const before = d.reader_b_before ?? null;
   if (after !== null && before !== null) {
@@ -140,6 +146,9 @@ type ReviewInstructionKind =
   | "once_read_heading_checked"
   | "both_unclear_heading"
   | "empty_answer_heading"
+  | "answer_conflict_heading"
+  | "unproved_answer_heading"
+  | "printed_conflict_heading"
   | "missing_step_note"
   | "kept_find_place"
   | "checked_find_place"
@@ -159,6 +168,9 @@ const REVIEW_INSTRUCTIONS: Record<ReviewInstructionKind, { action: string; neutr
   once_read_heading_checked: { action: " (look at the photo; the final record is the one that a person checked, so find the place in that record)", neutral: "" },
   both_unclear_heading: { action: ' (look at the photo and write the value, or keep "unclear" and mark the page checked)', neutral: "" },
   empty_answer_heading: { action: ' (write the answer from the photo, or "unclear")', neutral: "" },
+  answer_conflict_heading: { action: " (look at the photo, then correct the answer or the expression)", neutral: "" },
+  unproved_answer_heading: { action: " (look at the photo, then correct the expression, the answer places or the answers; keep them when they are right)", neutral: "" },
+  printed_conflict_heading: { action: " (look at the photo, then correct the printed line or the expression)", neutral: "" },
   missing_step_note: { action: "; its step is missing from reader A's record and must be added first", neutral: "; step absent from reader A's record" },
   kept_find_place: { action: " has it; a person changed the final record, so find the place in that record", neutral: "" },
   checked_find_place: { action: " has it; the final record is the one that a person checked, so find the place in that record", neutral: "" },
@@ -475,13 +487,15 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
     if (emptyAnswers.length > 0) {
       lines.push(`- Answer places with no answer${reviewInstruction(p.status, "empty_answer_heading")}:`);
       for (const d of emptyAnswers) {
-        lines.push(`  - \`${d.path}\`: a=${formatVal(d.a)} | b=${formatVal(d.b)}`);
+        lines.push(`  - \`${d.path}\`: a=${formatReaderVal(d.a)} | b=${formatReaderVal(d.b)}`);
       }
     }
 
     const answerConflicts = p.answer_conflicts ?? [];
     if (answerConflicts.length > 0) {
-      lines.push("- Answer conflicts (stored answer does not match computed answer):");
+      lines.push(
+        `- Answer conflicts (stored answer does not match computed answer)${reviewInstruction(p.status, "answer_conflict_heading")}:`,
+      );
       for (const msg of answerConflicts) {
         lines.push(
           `  - ${/^(final record|reader [ab]): /.test(msg) ? formatConflictEntry(msg) : msg}`,
@@ -491,10 +505,28 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
 
     const readerAnswerConflicts = p.reader_answer_conflicts ?? [];
     if (readerAnswerConflicts.length > 0) {
-      lines.push("- Reader answer conflicts (a reader's answer differs from the computed answer):");
+      lines.push(
+        `- Reader answer conflicts (a reader's answer differs from the computed answer)${reviewInstruction(p.status, "answer_conflict_heading")}:`,
+      );
       for (const entry of readerAnswerConflicts) {
         lines.push(`  - ${formatConflictEntry(entry)}`);
       }
+    }
+
+    const unprovedAnswers = p.unproved_answers ?? [];
+    if (unprovedAnswers.length > 0) {
+      lines.push(
+        `- Stored answers that do not fit the computed answer${reviewInstruction(p.status, "unproved_answer_heading")}:`,
+      );
+      for (const entry of unprovedAnswers) lines.push(`  - ${formatConflictEntry(entry)}`);
+    }
+
+    const printedConflicts = p.printed_conflicts ?? [];
+    if (printedConflicts.length > 0) {
+      lines.push(
+        `- Printed lines that differ from the expression${reviewInstruction(p.status, "printed_conflict_heading")}:`,
+      );
+      for (const entry of printedConflicts) lines.push(`  - ${formatConflictEntry(entry)}`);
     }
 
     const answerDisagreements = p.answer_disagreements ?? [];
@@ -527,6 +559,8 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
       emptyAnswers.length === 0 &&
       answerConflicts.length === 0 &&
       readerAnswerConflicts.length === 0 &&
+      unprovedAnswers.length === 0 &&
+      printedConflicts.length === 0 &&
       answerDisagreements.length === 0 &&
       expressionDisagreements.length === 0 &&
       p.unnamed_teaching_marks.length === 0 &&

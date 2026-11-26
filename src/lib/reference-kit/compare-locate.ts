@@ -92,6 +92,8 @@ export function locateNumberedDiff(
 // it belongs in the fresh final record, so that a person can copy it after a look at the photo.
 export function locateOnceRead(d: RecordDifference, finalRecord: ReferenceRecord): RecordDifference {
   const reader: "a" | "b" = d.a !== null && d.a !== undefined ? "a" : "b";
+  // Reader B's neighbours stand for a place that is not sure.
+  if (d.reader_b_after !== undefined || d.reader_b_before !== undefined) return { ...d, reader };
   return {
     ...d,
     reader,

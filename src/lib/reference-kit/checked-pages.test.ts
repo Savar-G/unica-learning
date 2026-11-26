@@ -277,7 +277,7 @@ describe("a page checked by a person", () => {
           setReadings([{ photo: "p9", ref: REF }]);
           const runB = join(work, "reader-b", "run.json");
           const text = readFileSync(runB, "utf8");
-          writeFileSync(runB, text.replaceAll(fakePhoto("p9").sha256, fakePhoto("p1").sha256));
+          writeFileSync(runB, text.replaceAll(fakePhoto("p9").sha256, fakePhoto("p1").sha256).replaceAll(fakePhoto("p9").file, fakePhoto("p1").file));
         },
         reasons: [PHOTO_CHANGED],
       },
@@ -530,7 +530,7 @@ describe("a page checked by a person", () => {
     const row = store.rows.get(REF);
     expect(row?.transcript_status, name).toBe(status);
     expect(row?.transcript.kind === "page" && row.transcript.topic.title, name).toBe(title);
-    expect(await store.objectSha256("sample/M/3a.jpg"), name).toBe(fakePhoto(photo).sha256);
+    expect(await store.objectSha256(row?.path ?? ""), name).toBe(fakePhoto(photo).sha256);
   }
 
   it("is imported under a machine status only as compare wrote it, and an edited page only after a check", async () => {
@@ -605,7 +605,7 @@ describe("a page checked by a person", () => {
     const runB = join(work, "reader-b", "run.json");
     writeFileSync(
       runB,
-      readFileSync(runB, "utf8").replaceAll(fakePhoto("p1").sha256, fakePhoto("p9").sha256),
+      readFileSync(runB, "utf8").replaceAll(fakePhoto("p1").sha256, fakePhoto("p9").sha256).replaceAll(fakePhoto("p1").file, fakePhoto("p9").file),
     );
 
     const report = compare();

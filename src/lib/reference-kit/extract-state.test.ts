@@ -191,6 +191,9 @@ describe("extract-state", () => {
       { name: "photo of no page", checks: [[REF, SHA_1]], removed: [[SHA_1, REF, REF], [SHA_2, null, null]], keptPhotos: [SHA_1], keptFiles: [SHA_1] },
       { name: "record of the check let go", checks: [[REF, SHA_1]], removed: [[SHA_1, REF, REF]], noRecord: [REF], keptPhotos: [], keptFiles: [] },
       { name: "record of the check let go, no page id", checks: [[REF, SHA_1]], removed: [[SHA_1, null, null]], noRecord: [REF], keptPhotos: [], keptFiles: [] },
+      { name: "page checked before the digests, record let go", checks: [[REF, null]], removed: [[SHA_2, REF, REF]], noRecord: [REF], keptPhotos: [], keptFiles: [] },
+      { name: "page checked before the digests, record let go, only in the readings", checks: [[REF, null]], removed: [[SHA_2, null, REF]], noRecord: [REF], keptPhotos: [], keptFiles: [] },
+      { name: "two pages checked before the digests, one record let go", checks: [[REF, null], [OTHER, null]], removed: [[SHA_1, OTHER, OTHER], [SHA_2, REF, REF]], noRecord: [OTHER], keptPhotos: [SHA_2], keptFiles: [SHA_2] },
       { name: "page id in other letter case", checks: [[REF, SHA_1]], removed: [[SHA_1, REF, REF], [SHA_2, ALIAS, ALIAS]], keptPhotos: [SHA_1], keptFiles: [SHA_1] },
       { name: "id in other letter case of a page checked before the digests", checks: [[REF, null]], removed: [[SHA_2, ALIAS, ALIAS]], keptPhotos: [], keptFiles: [] },
       { name: "file name of a present photo", checks: [], removed: [[SHA_1B, OTHER, OTHER]], present: [SHA_1], keptPhotos: [], keptFiles: [SHA_1] },
@@ -224,7 +227,8 @@ describe("extract-state", () => {
         const photo = { file: fileOf(sha), sha256: sha, original_name: "01.jpg", width: 1600, height: 1200 };
         if (listed) manifest.photos.push({ ...photo, source_ref: listed });
         if (read) {
-          entries.push({ photo: fileOf(sha), photo_sha256: sha, original_name: "01.jpg", status: "ok", source_ref: read, record_file: `${sha.slice(0, 12)}.json`, notes: [] });
+          entries.push({ photo: fileOf(sha), photo_sha256: sha, original_name: "01.jpg", status: "ok", source_ref: read, record_file: `${sha}.json`, notes: [] });
+          for (const slot of ["reader-a", "reader-b"]) writeFileSync(join(dir(slot), `${sha}.json`), "reading");
         }
       }
       const pruned = pruneRemovedPhotos({
@@ -242,6 +246,9 @@ describe("extract-state", () => {
       const kept = new Set([...pruned.manifest.photos.map((p) => p.sha256), ...pruned.entriesA.map((e) => e.photo_sha256)]);
       expect([...kept], row.name).toEqual(row.keptPhotos);
       expect(readdirSync(dir("photos")).sort(), row.name).toEqual(row.keptFiles.map(fileOf).sort());
+      const keptReadings = row.removed.filter(([sha, , read]) => read && row.keptPhotos.includes(sha)).map(([sha]) => `${sha}.json`);
+      for (const slot of ["reader-a", "reader-b"]) expect(readdirSync(dir(slot)).sort(), `${row.name}, ${slot}`).toEqual(keptReadings.sort());
+      for (const list of [pruned.entriesA, pruned.entriesB]) expect(list.map((e) => e.record_file).sort(), row.name).toEqual(keptReadings);
       expect(pruned.removedPhotos.filter((p) => p.kept_human_checked).map((p) => p.photo_sha256), row.name).toEqual(row.keptPhotos);
       // The report names the page that keeps the photo.
       for (const photo of pruned.removedPhotos) {
