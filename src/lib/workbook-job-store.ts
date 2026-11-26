@@ -232,7 +232,7 @@ export function workbookJobSource(admin: SupabaseClient<Database>, prepareProfil
       ]);
       const row = must(child, "child load");
       if (!row) return null;
-      if (!isGrade(row.grade)) throw new Error(`workbook run child load: grade ${row.grade} is not K to 9`);
+      if (!isGrade(row.grade)) throw new Error(`workbook run child load: grade ${row.grade} is outside the supported range`);
       const stored = must(told, "book instructions load");
       // A stored set the code cannot read stops the run: a book made without the admin's instructions would look right.
       const instructions = stored ? workbookInstructions(stored.instructions) : null;

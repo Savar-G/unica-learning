@@ -1,6 +1,7 @@
 // The BC skill map (#192, spec #181): the BC Mathematics content standards from Kindergarten to grade 9 (every one the
 // bank uses, and grade 9 for the workbooks), divided into smaller skills, with prerequisite edges between the skills.
 // Pure data and pure checks: no network, database or clock.
+import { UP_ROUTE_TOP } from "./grades";
 import type { Level, Strand } from "./types";
 import type { BcSkill, BcStandard, SkillMap, SkillMapGrade } from "./skill-map/kit";
 import { BC_GRADES_K_2 } from "./skill-map/grades-k-2";
@@ -31,7 +32,7 @@ export type LevelStandard = BcStandard & { grade: Level };
  * edges), never as a next challenge from one placement test. BC grade 9 is the first year of high school, and one test
  * is too thin evidence for that jump. Do not widen this filter to grade 9 without a new decision.
  */
-export const BC_LEVEL_STANDARDS: readonly LevelStandard[] = BC_SKILL_MAP.standards.filter((s): s is LevelStandard => s.grade !== 9);
+export const BC_LEVEL_STANDARDS: readonly LevelStandard[] = BC_SKILL_MAP.standards.filter((s): s is LevelStandard => s.grade <= UP_ROUTE_TOP);
 
 /**
  * What is wrong with a skill map's structure, one line per problem; empty when it is sound.

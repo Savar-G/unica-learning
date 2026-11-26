@@ -200,6 +200,23 @@ describe("the parent's part of the learner profile on the report view (#198)", (
     }
   });
 
+  it("loads a workbook preview for an upper-grade child with a measured level in the existing curriculum", async () => {
+    const grade = 12;
+    const data = stored({ ...facts, test: { ...facts.test, grade, testedTo: grade } });
+    const upperModel: typeof model = {
+      ...model, level: { ...model.level, grade, testedTo: grade },
+      callToAction: "card", howWeHelp: "behind",
+    };
+    const readers = memoryReportReaders({
+      ...data,
+      assessments: data.assessments?.map(row => ({ ...row, grade })),
+      reports: data.reports?.map(row => ({ ...row, model: upperModel })),
+    });
+    const loaded = await loadReportView(readers.parent("parent-1"), "report-1");
+    expect(loaded?.view.model.level.grade).toBe(grade);
+    expect(loaded?.view.bookOne?.main.length).toBeGreaterThan(0);
+  });
+
   it("leaves out a stored wrong answer to the removed extra round (#190, D-145): the parent's example and the admin's list", async () => {
     // One stored profile was built with the round's answers: here a round answer comes first in the struggle's list.
     const roundWrong = { questionId: "x-0", templateId: struggle.wrong[0].templateId, prompt: "ROUND PROMPT", response: "round-answer", rightAnswer: "9", misconception: "ROUND-ONLY" };

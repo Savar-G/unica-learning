@@ -9,7 +9,6 @@ import {
   storedTest,
   submitAnswer,
   type Attempt,
-  type Grade,
   type StartState,
   type StoredTest,
   type Submission,
@@ -187,10 +186,10 @@ describe("the new test a start request stores", () => {
 
   it("is not made for a grade the question bank cannot cover", async () => {
     const log = logs();
-    const { store, tests: rows } = memoryAttemptStore({ children: [{ ...asha, grade: 10 as Grade }] });
+    const { store, tests: rows } = memoryAttemptStore({ children: [{ ...asha, grade: 10 }] });
     expect(await start(store, T0, { restart: false, newSeed: seeds(42) })).toEqual({ ok: false, error: "not_ready" });
     expect(rows).toEqual([]);
-    expect(log.mock.calls).toEqual([["[test] cannot build a test", 10, "No grade band for grade 10"]]);
+    expect(log.mock.calls).toEqual([["[test] cannot build a test", 10, "The bank cannot start this assessment"]]);
   });
 });
 

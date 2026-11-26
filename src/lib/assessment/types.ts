@@ -7,13 +7,11 @@ import type { Flag } from "./flags";
 import type { MisconceptionId } from "./misconceptions";
 import type { Rng } from "./rng";
 
-/** A level on the K-9 scale. 0 is Kindergarten. Only a Grade 9 child's test reaches level 9 (D-158). */
-export type Level = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
-/**
- * School grades the assessment serves (D-156): 0 is Kindergarten, then grades 1 to 9. Rows stored before D-156 hold 1-7.
- * A Grade 9 child is tested at level 9 (D-158; grades.ts). Grade 9 tests from before D-158 stopped at level 8.
- */
-export type Grade = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+/** A level on the K–12 scale. 0 is Kindergarten. */
+export type Level = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
+
+/** School grades the assessment can accept. Public pickers currently end at Grade 9. */
+export type Grade = Level;
 
 /** The parent's province. "other" = another province, or not sure; it is scored against BC (D-083). */
 export type Province = CurriculumId;
@@ -72,7 +70,7 @@ export interface BarFigure {
 export type Figure = BarFigure;
 
 /**
- * A question template. Its level on the K-8 scale is the grade where BC teaches it (grades.BC);
+ * A question template. Its level is the grade where BC teaches it (grades.BC);
  * a child in another tagged province is measured at that province's grade instead.
  */
 export interface Template {

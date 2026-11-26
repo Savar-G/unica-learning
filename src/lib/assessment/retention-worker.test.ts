@@ -186,7 +186,7 @@ describe("retention run", () => {
     // so the copy is the only reason.
     s.store.candidates = async () => families.filter((f) => ["a-request", "b-free-test"].includes(f.id));
     expect(await runRetentionWorker(workerConfiguration([], env), s.store, () => 840_000, NOW)).toMatchObject({ ok: true, copy: { families: 2, failed: 0 } });
-    tests["b-free-test"] = [{ ...test("b-free-test-1"), grade: 10 }];
+    tests["b-free-test"] = [{ ...test("b-free-test-1"), grade: 13 }];
     try {
       expect(await runRetentionWorker(workerConfiguration([], env), s.store, () => 840_000, NOW))
         .toMatchObject({ ok: false, dry: true, unknown: 0, copy: { families: 1, tests: 1, failed: 1 } });

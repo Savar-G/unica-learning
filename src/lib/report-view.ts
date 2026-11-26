@@ -10,6 +10,7 @@ import {
   STRAND_DEVELOPING_PERCENT,
   TOO_FAST_MS,
   STRAND_SECURE_PERCENT,
+  LEGACY_TOP_LEVEL,
   TOP_LEVEL,
   UP_ROUTE_TOP,
   WORKING_LEVEL_PERCENT,
@@ -91,12 +92,12 @@ const COUNT = ["zero", "one", "two", "three", "four", "five", "six", "seven", "e
  */
 export const aboveTestedGrades = (v: Pick<ReportView, "model">) => v.model.level.grade > comparedGrade(v.model.level);
 
-/**
- * The levels on the report's ruler: K to grade 8, and K to grade 9 when the test asked grade 9 (a Grade 9 child since
- * D-158). A Grade 7 or 8 child's ruler never shows grade 9 (D-153 rule 2).
- */
-export const rulerLevels = (v: Pick<ReportView, "model">): Level[] =>
-  Array.from({ length: Math.max(comparedGrade(v.model.level), UP_ROUTE_TOP) + 1 }, (_, i) => i as Level);
+/** The ruler keeps its historical minimum of K–8 and includes any upper-grade working level. */
+export const rulerLevels = (v: Pick<ReportView, "model">): Level[] => {
+  const { level } = v.model;
+  const upperResult = level.working !== null && level.working > LEGACY_TOP_LEVEL ? level.working : 0;
+  return Array.from({ length: Math.max(comparedGrade(level), UP_ROUTE_TOP, upperResult) + 1 }, (_, i) => i as Level);
+};
 
 /**
  * D-156: for a Grade 9 child tested before D-158, what the test checked and how grade 9 work starts, in plain words.
@@ -118,7 +119,7 @@ export function verdictSentence(v: ReportView): string {
     const mastery = `${v.childName} has mastered ${gradeLabel(working)} work`;
     if (aboveSchoolGrade) return `${mastery}, which is above their school grade.`;
     if (!gradesBehind) return `${mastery} and is on track for ${gradeLabel(grade)} in ${month}.`;
-    const gap = gradesBehind === 1 ? "one grade" : `${COUNT[gradesBehind]} grades`;
+    const gap = gradesBehind === 1 ? "one grade" : `${COUNT[gradesBehind] ?? gradesBehind} grades`;
     return `${mastery}, which is ${gap} below where we would expect them to be in ${month}.`;
   }
   // D-156: a Grade 9 child tested before D-158 is compared with grade 8, the highest level that test checked.
@@ -237,10 +238,6 @@ export function earlySignNote(v: ReportView, topics: readonly { certainty: Certa
   return `Topics not marked Clear are early signs: one more answer could change them.${books(v) ? " Workbook 1 checks them." : ""}`;
 }
 
-/**
- * D-305 (Cedric's call with a parent, 2026-11-08): "working at a grade 5 level" read as "only grade 5 work". This says
- * what the working level is, under the ruler; for a family that can start the books, that the books cover more.
- */
 /**
  * The free results call (report card and report email): heading and text. Only families who get workbooks hear about
  * workbook 1; the waitlist's call is about the report.
@@ -502,13 +499,14 @@ export function howWeHelp(v: ReportView): { title: string; text: string } {
   // tests, never straight from this test.
   const compared = comparedGrade(v.model.level);
   const gradeNine = `grade 9 topics one level at a time, each after ${name} passes the level test on the grade 8 skills it builds on`;
-  // D-158: a Grade 9 child tested at grade 9. Grade 9 is the program's last grade, so the books go deeper, not past it.
-  if (compared === TOP_LEVEL) {
+  // Keep the Grade 9 wording (D-158) and use the same wording at the upper endpoint.
+  if ((grade === LEGACY_TOP_LEVEL && compared === grade) || grade === TOP_LEVEL) {
+    const top = levelName(grade);
     switch (v.model.howWeHelp) {
       case "behind":
-        return { title, text: `${name}'s first book starts at ${levelName(working)} work${practice}. After each photo check-in, we see what is secure and move the next book on, up to grade 9 work.` };
+        return { title, text: `${name}'s first book starts at ${levelName(working)} work${practice}. After each photo check-in, we see what is secure and move the next book on, up to ${top} work.` };
       case "on-grade":
-        return { title, text: `${name}'s books keep grade 9 work steady${practice}, and add harder grade 9 problems when ${name} is ready.` };
+        return { title, text: `${name}'s books keep ${top} work steady${practice}, and add harder ${top} problems when ${name} is ready.` };
       case "ahead":
         break;
     }
@@ -527,7 +525,7 @@ export function howWeHelp(v: ReportView): { title: string; text: string } {
     case "behind":
       return { title, text: `${name}'s first book starts at ${levelName(working)} work${practice}. After each photo check-in, we see what is secure and move the next book on: to ${levelName(grade)} work, then past it when ${name} is ready.` };
     case "on-grade":
-      return { title, text: `${name}'s books keep ${levelName(grade)} work steady${practice}, and bring in ${levelName(grade + 1)} topics when ${name} is ready, so ${name} sees them before the class does.` };
+      return { title, text: `${name}'s books keep ${levelName(grade)} work steady${practice}, and bring in ${levelName(Math.min(grade + 1, TOP_LEVEL))} topics when ${name} is ready, so ${name} sees them before the class does.` };
     case "ahead":
       return { title, text: `${name} already does ${levelName(working)} work. The books start there${practice}, so ${name} learns new things instead of repeating known work, and the topics from school stay covered.` };
   }

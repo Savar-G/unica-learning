@@ -9,11 +9,8 @@ export interface BcSkill {
   requires: readonly string[];
 }
 
-/**
- * The grade where BC teaches a standard of the map, K-9 (0 is Kindergarten). The map reaches one grade past the
- * assessment's K-8 Level scale: grade 9 is for the workbooks, and no bank template or test level is ever 9.
- */
-export type SkillMapGrade = Level | 9;
+/** The grade where BC teaches a standard of the map. 0 is Kindergarten. */
+export type SkillMapGrade = Level;
 
 /** One BC Mathematics content standard, with its exact official text, divided into skills. */
 export interface BcStandard {

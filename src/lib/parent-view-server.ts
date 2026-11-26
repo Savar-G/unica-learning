@@ -75,7 +75,6 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
     async children() {
       const { data, error } = await session.from("children").select("id, first_name, grade, province").order("created_at").order("id");
       if (error) throw new Error(`children read: ${error.message}`);
-      // A check constraint limits grade to 0-9.
       return data.map((c) => ({ id: c.id, firstName: c.first_name, grade: c.grade as Grade, province: c.province }));
     },
     async tests() {

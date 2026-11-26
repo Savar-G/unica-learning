@@ -84,6 +84,10 @@ export const FACTS_BY_GRADE: Record<Grade, readonly FactFamilyId[]> = {
   // D-156: BC grades 8 and 9 list no new facts; 7.1 is the last fact standard, so they keep grade 7's facts.
   8: ["mul100", "div100"],
   9: ["mul100", "div100"],
+  // Reuse the existing facts round for internal upper-grade assessments.
+  10: ["mul100", "div100"],
+  11: ["mul100", "div100"],
+  12: ["mul100", "div100"],
 };
 
 /**

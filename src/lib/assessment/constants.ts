@@ -3,7 +3,7 @@ import type { Grade, ReportedStrand, Strand } from "./types";
 
 /**
  * A band's id names the bank folder it draws from (bank/grades-1-2 and so on), so stored data and tests keep their keys.
- * Since D-156 the "1-2" band also takes Kindergarten and the "6-7" band also takes grades 8 and 9.
+ * Since D-156 the "1-2" band also takes Kindergarten and the "6-7" band also takes the older grades.
  */
 export type GradeBandId = "1-2" | "3-5" | "6-7";
 
@@ -29,8 +29,8 @@ export const GRADE_BANDS: Record<GradeBandId, GradeBand> = {
   // its bank starts at level K, the child draws and does not type, and the test is the shortest.
   "1-2": { id: "1-2", grades: [0, 1, 2], length: 24, stage1: 12, stage3: 6, whiteboardRequired: 5, whiteboardTyping: false, strands: ["number", "algebra", "shapes"] },
   "3-5": { id: "3-5", grades: [3, 4, 5], length: 36, stage1: 18, stage3: 8, whiteboardRequired: 7, whiteboardTyping: true, strands: ["number", "fractions", "algebra", "shapes"] },
-  // Grades 8 and 9 (D-156) take this band: its bank holds levels 5-9; each starts at its school grade (grades.ts, D-158).
-  "6-7": { id: "6-7", grades: [6, 7, 8, 9], length: 42, stage1: 21, stage3: 8, whiteboardRequired: 10, whiteboardTyping: true, strands: ["number", "fractions", "algebra", "shapes"] },
+  // Older grades share this band's strands, timing and whiteboard settings.
+  "6-7": { id: "6-7", grades: [6, 7, 8, 9, 10, 11, 12], length: 42, stage1: 21, stage3: 8, whiteboardRequired: 10, whiteboardTyping: true, strands: ["number", "fractions", "algebra", "shapes"] },
 };
 
 export function bandFor(grade: Grade): GradeBand {

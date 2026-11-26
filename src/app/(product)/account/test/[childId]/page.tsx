@@ -37,9 +37,8 @@ export default async function TestPage(props: PageProps<"/account/test/[childId]
   const state = stateFor(states, child.id);
   const mode = state.kind === "resume" || state.kind === "finish" ? state.kind : state.kind === "expired" ? "restart" : "new";
 
-  // A check constraint limits grade to 0-9 (0 is Kindergarten, D-156).
   const grade = child.grade as Grade;
-  // Every grade has a bank (D-156); a test that cannot be built shows "not ready".
+  // A test that cannot be built for this grade shows "not ready".
   let ready = true;
   try {
     createAdaptiveSession({ grade, province: child.province }, 0);

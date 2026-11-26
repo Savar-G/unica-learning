@@ -57,7 +57,7 @@ export const STATUS_TEXT: Record<AssessmentStatus, string> = { in_progress: "In 
 
 /** A level K-8 in a table cell: "K" or the grade number. */
 export const levelText = (level: number | null) => (level === null ? "Retake" : level === 0 ? "K" : String(level));
-/** The school grades an admin filters by: Kindergarten (0) to Grade 9 (D-156). */
+/** The school grades an admin filters by: Kindergarten (0) to Grade 12. */
 export { GRADES };
 export const PROVINCES = Object.keys(CURRICULA) as Province[];
 
