@@ -436,6 +436,75 @@ describe("a book with the history of the child", () => {
   });
 });
 
+describe("rows in order that choose among the runs of their tables", () => {
+  const mul = (id: string, tables: number[], items: number, order: string, second = { min: 1, max: 9 }) =>
+    ({ id, shape: "fact.mul", items, limits: { tables, second, result: { min: 0, max: 100 }, order } });
+  const ADD_SIDE = { instruction: "Add or take away.", template: "facts-2x10", rows: structuredClone(factsSnapshotFixture.sheets[1].front.rows) };
+  /** Fills a side of 20 places with sums to 10, after the rows of the test. */
+  const side = (rows: ReturnType<typeof mul>[]) => {
+    const left = 20 - rows.reduce((sum, row) => sum + row.items, 0);
+    const fill = { id: `fill-${rows[0].id}`, shape: "fact.add", items: left, limits: { tables: [1, 2, 3, 4, 5, 6, 7, 8, 9], second: { min: 1, max: 9 }, result: { min: 2, max: 10 }, order: "mixed" } };
+    return { instruction: "Multiply.", template: "facts-2x10", rows: [...rows, ...(left > 0 ? [fill] : [])] };
+  };
+  const snapshotOf = (sheets: { id: string; front: ReturnType<typeof side>; back?: ReturnType<typeof side> }[]) => ({
+    ...structuredClone(factsSnapshotFixture),
+    topics: [{ ...factsSnapshotFixture.topics[0], sheets: sheets.map((s) => s.id) }],
+    sheets: sheets.map((s, i) => ({ id: s.id, firstPage: 381 + 2 * i, front: s.front, back: s.back ?? ADD_SIDE })),
+  });
+  const bookOf = (bookId: string, childId: string, sheetId: string, attempt: number, history?: unknown) => ({
+    bookId, childId, sheets: [{ sheetId, attempt, qr: { front: `https://unicalearning.com/tutor/p/${bookId}-front`, back: `https://unicalearning.com/tutor/p/${bookId}-back` } }],
+    ...(history ? { history } : {}),
+  });
+  const run = (book: BuiltBook, rowId: string) => book.items.filter((i) => i.rowId === rowId).map((i) => i.question as { a: number; b: number });
+  const CHILDREN = Array.from({ length: 12 }, (_, i) => `review-${i + 1}`);
+
+  it("give the row that can take another table that table when two rows can take only one table", async () => {
+    // Front: a row of the 3s or the 5s, then two rows of the 3s only. The 3s have 9 questions, so the two rows of the 3s
+    // share some; the first row must print the 5s and share none.
+    const snapshot = snapshotOf([{ id: "column-multiplication-1", front: side([mul("flexible", [3, 5], 6, "up"), mul("threes-a", [3], 6, "up"), mul("threes-b", [3], 6, "up")]) }]);
+    for (const child of CHILDREN) {
+      const result = await buildBook({ snapshot, book: bookOf("ordered-book", child, "column-multiplication-1", 1) } as unknown as Input, fake(), PART_OF_BOOK);
+      if (result.status !== "built") throw new Error(`${child}: ${result.problems.join("\n")}`);
+      expect(run(result, "flexible").map((q) => q.a)).toEqual(Array(6).fill(5));
+    }
+  });
+
+  it("give a repeat of a row in order the run with the fewest seen questions, also when they were seen in a newer book", async () => {
+    // Book 1 prints 5 × 1 and 5 × 2, Book 2 prints 6 × 1. The repeat of a row of the 5s or the 6s must print the 6s: one
+    // seen question, not two that were seen longer ago.
+    const snapshot = snapshotOf([
+      { id: "seen-fives", front: side([mul("two-fives", [5], 2, "mixed", { min: 1, max: 2 })]) },
+      { id: "seen-six", front: side([mul("one-six", [6], 1, "mixed", { min: 1, max: 1 })]) },
+      { id: "repeat-sheet", front: side([mul("fives-or-sixes", [5, 6], 9, "up")]) },
+    ]);
+    for (const child of CHILDREN) {
+      const one = await built({ snapshot, book: bookOf("book-1", child, "seen-fives", 1) } as unknown as Input);
+      const two = await built({ snapshot, book: bookOf("book-2", child, "seen-six", 1) } as unknown as Input);
+      const history = historyFromBooks([one, two]);
+      const result = await buildBook({ snapshot, book: bookOf("book-3", child, "repeat-sheet", 2, history) } as unknown as Input, fake(), PART_OF_BOOK);
+      if (result.status !== "built") throw new Error(`${child}: ${result.problems.join("\n")}`);
+      expect(run(result, "fives-or-sixes").map((q) => q.a)).toEqual(Array(9).fill(6));
+    }
+  });
+
+  it("keep a sheet or a side all different before they avoid a seen question or the front's questions", async () => {
+    // A row of the 3s or the 5s on the front and of the 5s on the back: the repeat keeps the front on its seen 3s, as the
+    // 5s would repeat the back. A back row of the 8s or the 9s beside three 9s of a mixed row takes the front's 8s.
+    const fivesBack = snapshotOf([{ id: "repeat-sheet", front: side([mul("threes-or-fives", [3, 5], 9, "up")]), back: side([mul("fives", [5], 7, "down")]) }]);
+    const ninesBack = snapshotOf([{
+      id: "repeat-sheet", front: side([mul("sevens", [7], 8, "up"), mul("sevens-to-nines", [7, 8, 9], 8, "up")]),
+      back: side([mul("eights-or-nines", [8, 9], 9, "up"), mul("three-nines", [9], 3, "mixed")]),
+    }]);
+    for (const child of CHILDREN.slice(0, 4)) {
+      for (const snapshot of [fivesBack, ninesBack]) {
+        const one = await built({ snapshot, book: bookOf("book-1", child, "repeat-sheet", 1) } as unknown as Input);
+        const two = await built({ snapshot, book: bookOf("book-2", child, "repeat-sheet", 2, historyFromBooks([one])) } as unknown as Input);
+        for (const book of [one, two]) expect(new Set(book.items.filter((i) => i.side === "back").map((i) => `${i.shape} ${canonicalJson(i.question)}`)).size).toBe(20);
+      }
+    }
+  });
+});
+
 describe("a book of word problems", () => {
   type StoryInput = { snapshot: typeof inventedSnapshotFixture; book: typeof inventedBookFixture & Record<string, unknown> };
   /** The sheet of word problems alone, for a child, with a change of the book. */

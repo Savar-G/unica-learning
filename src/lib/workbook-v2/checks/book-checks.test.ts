@@ -392,6 +392,61 @@ describe("the repeat rule on a large space and on a row in order", () => {
     expect(found[0].message).toBe('the row "row-1" in order prints questions that another row in order of the sheet prints, and its table has a run with fewer of them');
     expect(repeats(both, 1, [...printed(ordered.row, 1, fives), ...onBack(sixes)], null)).toEqual([]);
   });
+
+  /** A sheet of the given rows, and the items that print the given questions of each row, numbered down each side. */
+  const rowOf = (id: string, rawLimits: unknown, items: number): SnapshotRow => ({ ...oneRowSheet("fact.mul", rawLimits, items).row, id });
+  const facts = (tables: number[], order: string, second = { min: 1, max: 9 }) => ({ tables, second, result: { min: 0, max: 100 }, order });
+  const sheetOf = (front: SnapshotRow[], back: SnapshotRow[]): SnapshotSheet => {
+    const { sheet } = oneRowSheet("fact.mul", facts([5], "up"), 9);
+    return { ...sheet, front: { ...sheet.front, rows: front }, back: { ...sheet.back, rows: back } };
+  };
+  const itemsOf = (attempt: number, sides: Record<"front" | "back", [SnapshotRow, unknown[]][]>): BookItem[] => (["front", "back"] as const).flatMap((side) =>
+    sides[side].flatMap(([row, questions]) => questions.map((question) => ({ row, question }))).map(({ row, question }, i): BookItem => ({
+      ...printed(row, attempt, [question])[0], id: `sheet-1/${attempt}/${side}/${i + 1}`, side, number: i + 1 })));
+  const tableOf = (a: number, from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => ({ a, b: from + i }));
+
+  it("stops a row in order that shares questions with a later row in order while its other table is free", () => {
+    // The first row may print the 3s or the 5s, the two after it only the 3s: the first row must print the 5s.
+    const [flexible, threesA, threesB] = [rowOf("flexible", facts([3, 5], "up"), 6), rowOf("threes-a", facts([3], "up"), 6), rowOf("threes-b", facts([3], "up"), 6)];
+    const sheet = sheetOf([flexible, threesA, threesB], []);
+    const tampered = itemsOf(1, { front: [[flexible, tableOf(3, 1, 6)], [threesA, tableOf(3, 4, 9)], [threesB, tableOf(3, 1, 6)]], back: [] });
+    expect(repeats(sheet, 1, tampered, null)).toContainEqual(expect.objectContaining({ rule: "no-repeat", slot: "slot-1" }));
+    expect(repeats(sheet, 1, itemsOf(1, { front: [[flexible, tableOf(5, 1, 6)], [threesA, tableOf(3, 4, 9)], [threesB, tableOf(3, 1, 6)]], back: [] }), null)).toEqual([]);
+  });
+
+  it("stops a repeat of a row in order with two questions seen long ago while a run has one seen in a newer book", () => {
+    const old = seenIn(ordered.row, fives.slice(0, 2));
+    const history: BookHistory = { ...old, books: [...old.books, { bookId: "book-2", items: [{ shape: "fact.mul", key: questionKey(ordered.row.shape, sixes[0]) }] }] };
+    expect(repeats(ordered.sheet, 2, printed(ordered.row, 2, fives), history)).toEqual([expect.objectContaining({ rule: "unseen-first", slot: "slot-1" })]);
+    expect(repeats(ordered.sheet, 2, printed(ordered.row, 2, sixes), history)).toEqual([]);
+  });
+
+  it("passes a run in order whose better run would repeat a question that another row of the sheet prints, and stops it when that row does not", () => {
+    // The front may print the 3s or the 5s and the back prints the 5s. On a repeat the 3s are all seen and were the last
+    // run, but the 5s would repeat the questions of the back: the 3s stay. With a back of the 4s, the 5s beat the 3s.
+    const front = rowOf("threes-or-fives", facts([3, 5], "up"), 9);
+    const [fivesBack, foursBack] = [rowOf("fives-back", facts([5], "down"), 7), rowOf("fours-back", facts([4], "down"), 7)];
+    const threes = tableOf(3, 1, 9);
+    const shape = front.shape;
+    const history: BookHistory = {
+      books: [{ bookId: "book-1", items: threes.map((q) => ({ shape: shape.id, key: questionKey(shape, q) })) }],
+      lastAttempts: [{ sheetId: "sheet-1", attempt: 1, items: threes.map((q) => ({ shape: shape.id, key: questionKey(shape, q), side: "front" as const, rowId: front.id, form: JSON.stringify(q) })) }],
+      seenPhrasings: [],
+    };
+    const down = (a: number) => tableOf(a, 3, 9).reverse();
+    expect(repeats(sheetOf([front], [fivesBack]), 2, itemsOf(2, { front: [[front, threes]], back: [[fivesBack, down(5)]] }), history)).toEqual([]);
+    expect(repeats(sheetOf([front], [foursBack]), 2, itemsOf(2, { front: [[front, threes]], back: [[foursBack, down(4)]] }), history)).toEqual([expect.objectContaining({ rule: "unseen-first", slot: "slot-1" })]);
+  });
+
+  it("passes a back row in order that shares the front's questions when its other table would repeat a question of its own side", () => {
+    // The back row may print the 8s or the 9s; a mixed row of the back prints three 9s, and the front prints the 8s. The
+    // 9s would repeat the mixed row's questions on the back, so the 8s stay. With no 9s on the back, the 9s beat the 8s.
+    const [frontEights, back, mixedNines, mixedSevens] = [rowOf("eights", facts([8], "up"), 9), rowOf("eights-or-nines", facts([8, 9], "up"), 9), rowOf("nines", facts([9], "mixed"), 3), rowOf("sevens", facts([7], "mixed"), 3)];
+    const eights = tableOf(8, 1, 9);
+    const sheetWith = (mixed: SnapshotRow, questions: unknown[]) => repeats(sheetOf([frontEights], [back, mixed]), 1, itemsOf(1, { front: [[frontEights, eights]], back: [[back, eights], [mixed, questions]] }), null);
+    expect(sheetWith(mixedNines, tableOf(9, 1, 3))).toEqual([]);
+    expect(sheetWith(mixedSevens, tableOf(7, 1, 3))).toEqual([expect.objectContaining({ rule: "no-repeat", slot: "slot-1" })]);
+  });
 });
 
 describe("the order of the pages and the place of a typesetter's page", () => {

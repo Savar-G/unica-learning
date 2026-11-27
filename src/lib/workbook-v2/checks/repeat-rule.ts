@@ -121,7 +121,9 @@ const RUN_RULES: readonly { cost: keyof RunCost; rule: string; says: string }[] 
  * no worse on every count and better on one. The counts are the questions that the other rows in order of its side (and
  * of the front, for a row of the back) print too; on a repeat with the child's history, the questions that the child
  * has seen; and whether the run is the one that the row printed in the last attempt. The rest of the sheet stays as it
- * is printed, so a run that the check prefers fits the sheet as well as the printed one.
+ * is printed, so a run beats only when it fits the sheet as well as the printed one: it has no more questions that the
+ * other rows of its side print, and no more that the other rows of the sheet print (rows that mix their questions too).
+ * The rules of repeats come before a seen question, so a run that would repeat one more question does not beat.
  */
 function orderedRunFindings(checked: CheckedSheet, rows: ReadonlyMap<string, Printed[]>, history: BookHistory | null, placeOf: (item: BookItem) => Place): BookFinding[] {
   const found: BookFinding[] = [];
@@ -135,10 +137,17 @@ function orderedRunFindings(checked: CheckedSheet, rows: ReadonlyMap<string, Pri
     if (!runs || !runs.some((r) => r.keys.join("\n") === printedKeys.join("\n"))) continue;
     const side = first.item.side;
     const others = new Set<string>();
+    const onSide = new Set<string>();
+    const onSheet = new Set<string>();
     for (const [id, other] of rows) {
+      if (id === `${side}/${first.row.id}`) continue;
       const otherSide = other[0].item.side;
-      if (id !== `${side}/${first.row.id}` && runsOf(other[0].row) && (otherSide === side || otherSide === "front")) for (const { key } of other) others.add(key);
+      if (runsOf(other[0].row) && (otherSide === side || otherSide === "front")) for (const { key } of other) others.add(key);
+      for (const { key } of other) { onSheet.add(key); if (otherSide === side) onSide.add(key); }
     }
+    const repeats = (keys: readonly string[]) => [keys.filter((key) => onSide.has(key)).length, keys.filter((key) => onSheet.has(key)).length];
+    const [sideNow, sheetNow] = repeats(printedKeys);
+    const fits = (keys: readonly string[]) => { const [onItsSide, onTheSheet] = repeats(keys); return onItsSide <= sideNow && onTheSheet <= sheetNow; };
     const lastKeys = own?.last?.items.filter((i) => i.side === side && i.rowId === first.row.id).map((i) => historyKey(i.shape, i.key)).join("\n");
     const costOf = (keys: readonly string[]): RunCost => ({
       twice: keys.filter((key) => others.has(key)).length,
@@ -146,7 +155,7 @@ function orderedRunFindings(checked: CheckedSheet, rows: ReadonlyMap<string, Pri
       last: lastKeys !== undefined && lastKeys !== "" && keys.join("\n") === lastKeys ? 1 : 0,
     });
     const now = costOf(printedKeys);
-    const costs = runs.map((r) => costOf(r.keys));
+    const costs = runs.filter((r) => fits(r.keys)).map((r) => costOf(r.keys));
     const beats = (cost: RunCost) => RUN_RULES.every(({ cost: c }) => cost[c] <= now[c]) && RUN_RULES.some(({ cost: c }) => cost[c] < now[c]);
     const better = costs.filter(beats);
     const broken = RUN_RULES.find(({ cost }) => better.some((b) => b[cost] < now[cost]));
