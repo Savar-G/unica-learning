@@ -47,6 +47,10 @@ begin
   end if;
   select parent_id into w_parent from public.children where id = p_child;
   if not found then return jsonb_build_object('status', 'refused', 'reason', 'the child is not known'); end if;
+  -- Deletion locks the parent before it deletes any child result.
+  if jsonb_array_length(p_results) > 0 then
+    perform public.assert_family_writable(w_parent);
+  end if;
   perform pg_advisory_xact_lock(hashtextextended('child-sheet-results:' || p_child::text, 0));
 
   begin
