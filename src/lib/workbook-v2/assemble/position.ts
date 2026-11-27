@@ -73,10 +73,13 @@ function problemsOf(state: ChildState, issued: readonly IssuedSheet[], receipts:
       pages.add(`${s.bookId} ${page}`);
     }
   }
-  // The attempts of a sheet follow the books: a later attempt is in a later book.
+  // The attempts of a sheet start at 1 with no gaps and follow the books: a later attempt is in a later book.
   for (const sheet of snapshot.sheets.keys()) {
-    const own = issued.filter((s) => s.sheetId === sheet).sort((a, b) => a.attempt - b.attempt);
-    own.forEach((s, i) => { if (i > 0 && !(s.bookNumber > own[i - 1].bookNumber)) tell(`The sheet "${sheet}": attempt ${s.attempt} must be in a later book than attempt ${own[i - 1].attempt}.`); });
+    const own = issued.filter((s) => s.sheetId === sheet && isCount(s.attempt, 1)).sort((a, b) => a.attempt - b.attempt);
+    own.forEach((s, i) => {
+      if (s.attempt !== i + 1) tell(`The sheet "${sheet}": attempts must start at 1 with no gaps.`);
+      if (i > 0 && !(s.bookNumber > own[i - 1].bookNumber)) tell(`The sheet "${sheet}": attempt ${s.attempt} must be in a later book than attempt ${own[i - 1].attempt}.`);
+    });
   }
   for (const r of receipts) {
     if (!isName(r.bookId) || !isCount(r.pageNumber, 1) || !pages.has(`${r.bookId} ${r.pageNumber}`)) {
@@ -131,7 +134,7 @@ export function position(state: ChildState, issued: readonly IssuedSheet[], rece
     else if (result === "repeat") outcome.queue.push({ sheetId: id, attempt: latest.attempt + 1, reason: "repeat" });
     else {
       // Every attempt 2+ carries a durable reason, so late results on earlier attempts never alter whether an unscanned repeat was already used.
-      const repeatedOnce = attempts.slice(1).some((s) => s.reason === "unscanned");
+      const repeatedOnce = attempts.some((s) => s.reason === "unscanned");
       const [scanned, pages] = [scannedPages(latest.bookId), issuedPages(latest.bookId)];
       if (scanned * 2 < pages && !repeatedOnce) {
         outcome.queue.push({ sheetId: id, attempt: latest.attempt + 1, reason: "unscanned" });
