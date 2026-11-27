@@ -105,12 +105,16 @@ describe.each(adapters)("the %s v2 publish store", (_name, make) => {
     const p = payload as unknown as PublishPayload;
     expect(await store.publish({ ...p, workbook: { ...p.workbook, childId: REAL_CHILD } })).toEqual({ status: "refused", reason: "v2 books are only for test families" });
     expect(await store.publish({ ...p, workbook: { ...p.workbook, number: 9 } })).toEqual({ status: "refused", reason: "the book does not match its allocation" });
-    // Incomplete payloads (missing/empty arrays or mismatched counts) are refused cleanly with nothing committed.
+    // Incomplete payloads, swapped QR tokens, overlapping sheet sides, or missing day time logs are refused cleanly.
     for (const bad of [
       { ...p, questions: [], itemAnswers: [] },
       { ...p, itemAnswers: p.itemAnswers.slice(1) },
+      { ...p, itemAnswers: undefined as unknown as PublishPayload["itemAnswers"] },
       { ...p, sheets: [] },
       { ...p, timeLogs: [] },
+      { ...p, pages: p.pages.map((pg, i) => (i === 0 ? { ...pg, qrToken: p.pages[1].qrToken } : i === 1 ? { ...pg, qrToken: p.pages[0].qrToken } : pg)) },
+      { ...p, sheets: p.sheets.map((s, i) => (i === 1 ? { ...s, frontPageNumber: 2, backPageNumber: 3 } : s)) },
+      { ...p, sheets: p.sheets.map((s) => (s.day === 2 ? { ...s, startsDay: false } : s)), timeLogs: p.timeLogs.filter((t) => t.day !== 2) },
     ]) {
       expect((await store.publish(bad)).status).toBe("refused");
     }

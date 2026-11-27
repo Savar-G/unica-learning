@@ -190,6 +190,9 @@ export function payloadProblem(p: PublishPayload, parentId: string): string | nu
     return "the book payload is incomplete";
   }
   const pageNumbers = new Set(p.pages.map((page) => page.number));
+  if (pageNumbers.size !== p.pages.length || p.pages.some((page) => !Number.isInteger(page.number) || page.number < 1 || page.number > p.pages.length)) {
+    return "the page numbers do not run from 1 through the page count";
+  }
   const questionKeys = new Set(p.questions.map((q) => `${q.pageNumber}:${q.number}`));
   if (questionKeys.size !== p.questions.length || p.questions.some((q) => !pageNumbers.has(q.pageNumber))) {
     return "a question names a missing or duplicate page position";
@@ -198,11 +201,18 @@ export function payloadProblem(p: PublishPayload, parentId: string): string | nu
   if (answerKeys.size !== p.itemAnswers.length || [...answerKeys].some((k) => !questionKeys.has(k))) {
     return "an item answer does not match a question";
   }
-  if (p.sheets.some((s) => s.backPageNumber !== s.frontPageNumber + 1 || !pageNumbers.has(s.frontPageNumber) || !pageNumbers.has(s.backPageNumber))) {
-    return "a sheet names a page that the book does not have";
+  const frontPages = new Set(p.sheets.map((s) => s.frontPageNumber));
+  if (frontPages.size !== p.sheets.length || p.sheets.some((s) => s.frontPageNumber < 1 || s.backPageNumber !== s.frontPageNumber + 1 || s.backPageNumber > p.pages.length || s.frontPageNumber % 2 !== 1)) {
+    return "the sheets do not partition pages 1 through the page count";
+  }
+  const firstByDay = new Map<number, typeof p.sheets[number]>();
+  for (const s of p.sheets) {
+    const prev = firstByDay.get(s.day);
+    if (!prev || s.frontPageNumber < prev.frontPageNumber) firstByDay.set(s.day, s);
   }
   const dayStarts = p.sheets.filter((s) => s.startsDay);
-  if (dayStarts.length !== p.timeLogs.length || p.timeLogs.some((t) => !dayStarts.some((s) => s.day === t.day && s.sheetId === t.firstSheetId && s.frontPageNumber === t.pageNumber))) {
+  if (dayStarts.length !== firstByDay.size || p.timeLogs.length !== firstByDay.size
+    || [...firstByDay.values()].some((first) => !first.startsDay || !p.timeLogs.some((t) => t.day === first.day && t.firstSheetId === first.sheetId && t.pageNumber === first.frontPageNumber))) {
     return "the time logs do not match the first sheet of each day";
   }
   const input: WorkbookInput = {

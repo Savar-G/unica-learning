@@ -70,6 +70,9 @@ export function memoryPublishStore(o: MemoryStoreOptions): V2PublishStore & { ta
       }
       const problem = payloadProblem(payload, parentId);
       if (problem) return { status: "refused", reason: `the book does not pass the database check (${problem})` };
+      if (a.allocation.qrTokens.length !== payload.pages.length || payload.pages.some((p) => a.allocation.qrTokens[p.number - 1] !== p.qrToken)) {
+        return { status: "refused", reason: "the book does not pass the database check (a page QR token does not match the allocation)" };
+      }
       const tokens = new Set(tables.books.flatMap((b) => b.payload.pages.map((p) => p.qrToken)));
       if (payload.pages.some((p) => tokens.has(p.qrToken))) return { status: "refused", reason: "a value is already used (workbook_pages_qr_token_key)" };
       tables.books.push({ parentId, payload: structuredClone(payload) });
