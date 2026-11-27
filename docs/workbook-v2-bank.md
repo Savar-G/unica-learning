@@ -2,7 +2,7 @@
 
 The working copy holds the draft content of each level in Supabase (architecture spec 9.2, UNI-241). The bank import writes a draft file into it, and reads the rows back as the same draft. Reviews approve one revision of each item, and the freeze (`freezeLevel`, UNI-242) copies an approved level into an insert-only snapshot that books are built from.
 
-Code: `src/lib/workbook-v2-bank/`. Migrations: `20261127191913_bank_working_copy`, `20261127192640_bank_write_level_refusal`, `20261127195924_bank_working_copy_hardening`, `20261127202034_bank_child_version_trigger`, `20261127203021_bank_write_level_restore_flag`, `20261127205833_bank_freeze_snapshots`, `20261127222902_bank_freeze_review_repair`.
+Code: `src/lib/workbook-v2-bank/`. Migrations: `20261127191913_bank_working_copy`, `20261127192640_bank_write_level_refusal`, `20261127195924_bank_working_copy_hardening`, `20261127202034_bank_child_version_trigger`, `20261127203021_bank_write_level_restore_flag`, `20261127205833_bank_freeze_snapshots`, `20261127224116_bank_freeze_review_repair`.
 
 ## Import a draft
 

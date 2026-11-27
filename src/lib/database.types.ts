@@ -1290,54 +1290,6 @@ export type Database = {
           },
         ]
       }
-      child_bank_state: {
-        Row: {
-          child_id: string
-          created_at: string
-          level_id: string
-          level_test_state: string
-          pages_request: string
-          parent_id: string
-          start_sheet_id: string | null
-          updated_at: string
-        }
-        Insert: {
-          child_id: string
-          created_at?: string
-          level_id: string
-          level_test_state?: string
-          pages_request?: string
-          parent_id: string
-          start_sheet_id?: string | null
-          updated_at?: string
-        }
-        Update: {
-          child_id?: string
-          created_at?: string
-          level_id?: string
-          level_test_state?: string
-          pages_request?: string
-          parent_id?: string
-          start_sheet_id?: string | null
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "child_bank_state_child_fkey"
-            columns: ["child_id", "parent_id"]
-            isOneToOne: false
-            referencedRelation: "children"
-            referencedColumns: ["id", "parent_id"]
-          },
-          {
-            foreignKeyName: "child_bank_state_parent_id_fkey"
-            columns: ["parent_id"]
-            isOneToOne: false
-            referencedRelation: "parents"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       child_card_updates: {
         Row: {
           applied_at: string | null
@@ -1668,93 +1620,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "parents"
             referencedColumns: ["id"]
-          },
-        ]
-      }
-      child_sheet_results: {
-        Row: {
-          attempt: number
-          child_id: string
-          created_at: string
-          id: string
-          items_scored: number
-          items_total: number
-          marks_version: number
-          mistakes: number
-          parent_id: string
-          printed_revision: string
-          result: string
-          sheet_id: string
-          updated_at: string
-          workbook_id: string
-        }
-        Insert: {
-          attempt: number
-          child_id: string
-          created_at?: string
-          id?: string
-          items_scored: number
-          items_total: number
-          marks_version: number
-          mistakes: number
-          parent_id: string
-          printed_revision: string
-          result: string
-          sheet_id: string
-          updated_at?: string
-          workbook_id: string
-        }
-        Update: {
-          attempt?: number
-          child_id?: string
-          created_at?: string
-          id?: string
-          items_scored?: number
-          items_total?: number
-          marks_version?: number
-          mistakes?: number
-          parent_id?: string
-          printed_revision?: string
-          result?: string
-          sheet_id?: string
-          updated_at?: string
-          workbook_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "child_sheet_results_child_fkey"
-            columns: ["child_id", "parent_id"]
-            isOneToOne: false
-            referencedRelation: "children"
-            referencedColumns: ["id", "parent_id"]
-          },
-          {
-            foreignKeyName: "child_sheet_results_parent_id_fkey"
-            columns: ["parent_id"]
-            isOneToOne: false
-            referencedRelation: "parents"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "child_sheet_results_sheet_fkey"
-            columns: ["workbook_id", "sheet_id", "attempt"]
-            isOneToOne: false
-            referencedRelation: "workbook_sheets"
-            referencedColumns: ["workbook_id", "sheet_id", "attempt"]
-          },
-          {
-            foreignKeyName: "child_sheet_results_workbook_child_fkey"
-            columns: ["workbook_id", "child_id"]
-            isOneToOne: false
-            referencedRelation: "workbooks"
-            referencedColumns: ["id", "child_id"]
-          },
-          {
-            foreignKeyName: "child_sheet_results_workbook_fkey"
-            columns: ["workbook_id", "parent_id"]
-            isOneToOne: false
-            referencedRelation: "workbooks"
-            referencedColumns: ["id", "parent_id"]
           },
         ]
       }
@@ -12852,10 +12717,6 @@ export type Database = {
       workbook_run_held: {
         Args: { p_lease: string; p_run: string }
         Returns: boolean
-      }
-      write_child_sheet_results: {
-        Args: { p_child: string; p_marks_version: number; p_results: Json }
-        Returns: Json
       }
       write_workbook: {
         Args: { p_schema_version: number; p_workbook: Json }
