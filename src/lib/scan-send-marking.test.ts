@@ -17,7 +17,7 @@ const parent = "11111111-1111-4111-8111-111111111111", child = "22222222-2222-42
 const photo = (n: number) => `44444444-4444-4444-8444-${String(n).padStart(12, "0")}`;
 // A real Supabase client over a recording fetch: every table read, RPC and Storage request is listed.
 // `taken`: what holds the family's one processing slot ("upload", "check" or "job"); `slotDown`: the slot reads fail.
-const state = { test: false, plan: { open: true, reason: "open" }, requests: [] as string[], commands: [] as string[], taken: [] as string[], slotDown: false, slotQueries: [] as URL[] };
+const state = { test: false, workbookReadFailed: false, plan: { open: true, reason: "open" }, requests: [] as string[], commands: [] as string[], taken: [] as string[], slotDown: false, slotQueries: [] as URL[] };
 const SLOT = { scan_photos: "upload", scan_calibrations: "check", scan_marking_jobs: "job" } as const;
 const db = createClient<Database>("https://send-marking.example.test", "synthetic-service-key", {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -37,7 +37,7 @@ const db = createClient<Database>("https://send-marking.example.test", "syntheti
     if (url.pathname.endsWith("/workbooks")) {
       expect(url.searchParams.get("child_id")).toBe(`eq.${child}`);
       expect(url.searchParams.get("generator")).toBe("eq.v2");
-      return Response.json([]);
+      return state.workbookReadFailed ? Response.json({ message: "workbook lookup failed" }, { status: 400 }) : Response.json([]);
     }
     if (url.pathname.endsWith("/scan_marking_revisions")) {
       expect(url.searchParams.get("parent_id")).toBe(`eq.${parent}`);
@@ -56,7 +56,7 @@ const db = createClient<Database>("https://send-marking.example.test", "syntheti
 const plan = async () => state.plan as never;
 const clock = (start = 0) => { let t = start; return { now: () => t, advance: (ms: number) => { t += ms; } }; };
 
-beforeEach(() => { vi.clearAllMocks(); setProductObserver(null); Object.assign(state, { test: false, plan: { open: true, reason: "open" }, requests: [], commands: [], taken: [], slotDown: false, slotQueries: [] }); ai.transports = 0; });
+beforeEach(() => { vi.clearAllMocks(); setProductObserver(null); Object.assign(state, { test: false, workbookReadFailed: false, plan: { open: true, reason: "open" }, requests: [], commands: [], taken: [], slotDown: false, slotQueries: [] }); ai.transports = 0; });
 const free = async () => true;
 afterEach(() => { setProductObserver(null); vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
@@ -86,8 +86,9 @@ it("off and test-only with a real family read nothing but the slot and the gate"
   }
 });
 
-it("test-only with a test family: Send starts marking and the photo reaches the marking lane", async () => {
+it.each([false, true])("test family Send reaches the marking lane, workbook lookup failed: %s", async (lookupFailed) => {
   state.test = true;
+  state.workbookReadFailed = lookupFailed;
   const env = { SCAN_MARKING_ENABLED: "test-only" };
   expect(await sendMarkingStart(db, parent, child, [photo(2), photo(1), photo(1)], env, plan)).toEqual([photo(1), photo(2)]);
   const results = await markSentPhotos(parent, [photo(1)], 0, { env, plan, db: () => db, now: clock().now });

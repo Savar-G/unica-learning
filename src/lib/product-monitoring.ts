@@ -41,7 +41,7 @@ const ENUMS: Record<string, readonly string[]> = {
   mode: ["text", "voice"], kind: ["chat", "family", "admin_test"],
   flag: ["unsafe_request", "safety_concern", "safety_immediate"],
   status: ["pending", "busy", "off", "budget", "price-unverified", "attempts", "unfinished", "terminal", "unavailable"],
-  step: ["upload", "send", "check", "marking", "profile", "learning", "note", "history", "safety", "stream", "chat", "voice", "usage", "stack", "schedule", "recovery", "model", "sheet_results"],
+  step: ["upload", "send", "check", "marking", "profile", "learning", "note", "history", "safety", "stream", "chat", "voice", "usage", "stack", "schedule", "recovery", "model", "sheet_results", "sheet_results_lookup"],
   product: ["workbook", "parent_dashboard", "marking", "maya", "other"],
 };
 

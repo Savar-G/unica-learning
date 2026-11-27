@@ -3,6 +3,7 @@
 // computed each time (architecture spec 9.3).
 import type { Snapshot } from "@/lib/workbook-v2/bank/snapshot";
 import { position, type BookScanCoverage, type IssuedSheet, type PositionOutcome, type QueueReason, type ScanReceipt, type SheetResultRecord } from "@/lib/workbook-v2/assemble/position";
+import { firstIssuedAttempts } from "./issuance";
 import type { BookStore } from "./types";
 
 export interface ChildHistory {
@@ -32,7 +33,7 @@ export async function childHistory(books: BookStore, childId: string, snapshot: 
     bookCoverage.set(book.workbookId, { issuedPages: bookSheets.length * 2, scannedPages });
   }
   const resultOf = (sheetId: string, attempt: number) => stored.find((r) => r.sheetId === sheetId && r.attempt === attempt)?.result;
-  const issued = allSheets.filter((s) => snapshot.sheets.has(s.sheetId)).map((s): IssuedSheet => {
+  const issued = firstIssuedAttempts(allSheets, own).filter((s) => snapshot.sheets.has(s.sheetId)).map((s): IssuedSheet => {
     const reason: QueueReason = s.reason ?? (s.attempt === 1 ? "new" : resultOf(s.sheetId, s.attempt - 1) === "repeat" ? "repeat" : "unscanned");
     return { bookId: s.workbookId, bookNumber: numberOf.get(s.workbookId) ?? 0, sheetId: s.sheetId, attempt: s.attempt, pages: [s.frontPage, s.backPage], reason };
   });
@@ -47,8 +48,12 @@ export async function childHistory(books: BookStore, childId: string, snapshot: 
   };
 }
 
-/** The position of a child in the level of `snapshot`, from its start sheet (child_bank_state) when it has one. */
+/** A missing start uses the saved start for this level. Explicit null uses the level's default start. */
 export async function childPosition(books: BookStore, childId: string, snapshot: Snapshot, startSheetId?: string | null): Promise<PositionOutcome> {
-  const { issued, receipts, results, bookCoverage } = await childHistory(books, childId, snapshot);
-  return position({ childId, ...(startSheetId ? { startSheetId } : {}) }, issued, receipts, results, snapshot, bookCoverage);
+  const [{ issued, receipts, results, bookCoverage }, saved] = await Promise.all([
+    childHistory(books, childId, snapshot),
+    startSheetId === undefined ? books.childState(childId, snapshot.level.id) : null,
+  ]);
+  const start = startSheetId === undefined ? saved?.startSheetId : startSheetId;
+  return position({ childId, ...(start ? { startSheetId: start } : {}) }, issued, receipts, results, snapshot, bookCoverage);
 }

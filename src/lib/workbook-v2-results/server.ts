@@ -23,6 +23,13 @@ export function scanMarkSource(db: SupabaseClient<Database>): MarkSource {
   };
 }
 
+/** Whether the child has a v2 book. Used when only the sheet-result revision is pending. */
+export async function hasV2Books(db: SupabaseClient<Database>, childId: string): Promise<boolean> {
+  const { data, error } = await db.from("workbooks").select("id").eq("child_id", childId).eq("generator", "v2").limit(1);
+  if (error) throw new Error("marking_sheet_results_lookup");
+  return (data?.length ?? 0) > 0;
+}
+
 /** Rebuilds the child's v2 sheet results from the current marks. Pass a client with the secret key. */
 export function rebuildV2SheetResults(db: SupabaseClient<Database>, childId: string): Promise<RebuildOutcome> {
   return rebuildSheetResults({ books: supabaseBookStore(db), marks: scanMarkSource(db) }, childId);

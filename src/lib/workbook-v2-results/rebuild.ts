@@ -3,6 +3,7 @@
 // version says; the store keeps the newest version and skips an older rebuild that finishes late.
 import { LEVEL_MASTERY_PERCENTS } from "@/lib/workbook-v2/assemble/level-config";
 import { sheetResults, type ResultConfig } from "@/lib/workbook-v2/results/sheet-results";
+import { firstIssuedAttempts, sheetAttemptKey } from "./issuance";
 import type { BookRow, BookStore, MarkSource, SheetResultWrite } from "./types";
 
 export interface RebuildDeps {
@@ -14,6 +15,7 @@ export interface RebuildDeps {
 
 export type RebuildOutcome =
   | { status: "no-v2-books" }
+  | { status: "books-unavailable" }
   | { status: "written"; marksVersion: number; written: number; stale: number; problems: string[] }
   | { status: "refused"; reason: string; problems: string[] };
 
@@ -29,18 +31,27 @@ export function masteryConfigFor(levels: readonly number[]): ResultConfig | null
 }
 
 export async function rebuildSheetResults(deps: RebuildDeps, childId: string): Promise<RebuildOutcome> {
-  const books = await deps.books.books(childId);
-  if (books.length === 0) return { status: "no-v2-books" };
-  const parentId = books[0].parentId;
+  let initialBooks: BookRow[];
+  try { initialBooks = await deps.books.books(childId); }
+  catch { return { status: "books-unavailable" }; }
+  if (initialBooks.length === 0) return { status: "no-v2-books" };
+  const parentId = initialBooks[0].parentId;
   const marksVersion = await deps.marks.version(parentId, childId);
-  const [marks, items] = await Promise.all([deps.marks.marks(parentId, childId), deps.books.bookItems(childId)]);
+  // Any book that already has marks at this revision must be visible in the scoring read.
+  const [books, marks, items, issued] = await Promise.all([
+    deps.books.books(childId), deps.marks.marks(parentId, childId), deps.books.bookItems(childId), deps.books.issuedSheets(childId),
+  ]);
+  const scoringBookIds = new Set(books.map((book) => book.workbookId));
+  const first = firstIssuedAttempts(issued.filter((row) => scoringBookIds.has(row.workbookId)), books);
+  const firstWorkbook = new Map(first.map((row) => [sheetAttemptKey(row), row.workbookId]));
   const configFor = deps.configFor ?? ((book: BookRow) => masteryConfigFor(book.levels));
   const rows: SheetResultWrite[] = [];
   const problems: string[] = [];
   for (const book of books) {
     const printedRevision = book.printedRevision;
     if (printedRevision === null) continue;
-    const own = items.filter((i) => i.workbookId === book.workbookId && i.printedRevision === printedRevision);
+    const own = items.filter((i) => i.workbookId === book.workbookId && i.printedRevision === printedRevision
+      && (firstWorkbook.get(sheetAttemptKey(i)) ?? i.workbookId) === i.workbookId);
     if (own.length === 0) continue;
     const config = configFor(book);
     if (!config) {

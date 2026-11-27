@@ -25,9 +25,9 @@ A result row references the issued sheet in `workbook_sheets` (`workbook_id`, `s
 
 `rebuildSheetResults` (`src/lib/workbook-v2-results/rebuild.ts`) does these steps:
 
-1. Read the child's v2 books. A child with v1 books only stops here, after one read.
+1. Check that the child has a v2 book. A child with v1 books only stops after one read.
 2. Read the marks version: `scan_marking_revisions.revision` (the `revision` action of `scan_marking_command`). It only goes up: marking raises it in the same transaction as each applied mark, publication and team mark change.
-3. Read the effective marks (the canonical set that the profile also reads) and every printed question of the books (`workbook_item_answers`, paged past 1,000 rows).
+3. Read the books again after the marks version. Read the issued sheets, the printed questions, and the effective marks.
 4. Match each mark to its workbook, printed revision and item ID. Compute every sheet attempt and write the results with the marks version.
 5. Record the completed revision when every book was processed and the results saved.
 
@@ -50,5 +50,6 @@ A v2 question's package id is `v2:<engine item id>`. `childMarksFrom` (`marks.ts
 ## Limits
 
 - New books store each sheet's queue reason at publication. Older rows with a null reason use the previous attempt's result to infer the reason. A late mark can change that inference for an older book. Scan coverage always uses all the issued pages in the book, including pages for retired sheets.
+- If older books issued the same sheet attempt, the earliest workbook number supplies that attempt's result and position. All issued pages still count for scan coverage.
 - A sheet result is only for books with a printed revision.
 - `child_bank_state` has no writer in the product yet. The book job reads it when position drives the next book.

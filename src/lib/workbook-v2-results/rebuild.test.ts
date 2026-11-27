@@ -77,6 +77,54 @@ describe.each(adapters)("sheet results on the %s store", (_name, make) => {
     expect(marks.reads).toBe(0);
   });
 
+  it("uses the saved level start unless the caller supplies one", async () => {
+    const { store, seeder } = make();
+    const childId = crypto.randomUUID();
+    await seeder.seed({ parentId: crypto.randomUUID(), childId, books: [] });
+    await store.saveChildState({ childId, levelId: SNAPSHOT.level.id, startSheetId: B, levelTestState: "not-due", pagesRequest: "same" });
+    const cases = [[undefined, B], [C, C], [null, A]] as const;
+    for (const [start, expected] of cases) {
+      const placed = await childPosition(store, childId, SNAPSHOT, start);
+      expect(placed).toMatchObject({ ok: true, queue: expect.any(Array) });
+      if (placed.ok) expect(placed.queue[0]?.sheetId).toBe(expected);
+    }
+  });
+
+  it("includes books published before the observed marks version in the same rebuild", async () => {
+    const w = await world(make);
+    const marks = memoryMarks();
+    marks.set(w.book1, A, 1, tries(10, 0));
+    const outcome = await rebuildSheetResults({
+      books: w.store,
+      marks: {
+        marks: marks.marks,
+        version: async (parentId, childId) => {
+          await w.seeder.seed({ ...w.family, books: [{ workbookId: w.book2, number: 2, printedRevision: REV, levels: [3],
+            sheets: [{ sheetId: C, attempt: 1, items: ITEMS }] }] });
+          marks.set(w.book2, C, 1, tries(10, 0));
+          return marks.version(parentId, childId);
+        },
+      },
+    }, w.family.childId);
+    expect(outcome).toMatchObject({ status: "written", written: 3, marksVersion: 2 });
+    expect(await stored(w, C)).toMatchObject({ workbookId: w.book2, marksVersion: 2, result: "mastered" });
+  });
+
+  it("uses the first issuance for legacy duplicates and preserves results for all distinct attempts", async () => {
+    const w = await world(make);
+    await w.seeder.seed({ ...w.family, books: [{ workbookId: w.book2, number: 2, printedRevision: REV, levels: [3],
+      sheets: [{ sheetId: A, attempt: 1, items: ITEMS }, { sheetId: C, attempt: 1, items: ITEMS }] }] });
+    const marks = memoryMarks();
+    marks.set(w.book1, A, 1, tries(10, 0));
+    marks.set(w.book2, A, 1, tries(0, 10));
+    marks.set(w.book2, C, 1, tries(10, 0));
+    expect(await rebuildSheetResults({ books: w.store, marks }, w.family.childId)).toMatchObject({ status: "written", written: 3 });
+    expect(await stored(w, A)).toMatchObject({ workbookId: w.book1, result: "mastered" });
+    expect(await stored(w, C)).toMatchObject({ workbookId: w.book2, result: "mastered" });
+    expect(await w.store.issuedSheets(w.family.childId)).toHaveLength(4);
+    expect((await placed(w)).done).toEqual([A, C]);
+  });
+
   it("under half of a book scanned: the unknown sheets repeat one time, with a notice for the team", async () => {
     const w = await world(make);
     const marks = memoryMarks();

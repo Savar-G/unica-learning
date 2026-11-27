@@ -11,7 +11,7 @@ import { rebuildChildProfile } from "@/lib/child-profile";
 import { childProfileStore } from "@/lib/child-profile-store";
 import { learningEventStore } from "@/lib/learning-events-store";
 import { readPageExplanations } from "@/lib/parent-problem-explanation-page-server";
-import { rebuildV2SheetResults } from "@/lib/workbook-v2-results/server";
+import { hasV2Books, rebuildV2SheetResults } from "@/lib/workbook-v2-results/server";
 
 export { markingAccess, markingDecision, type ChildPlanAccess, type ChildPlanAccessDeps, type ChildPlanReason, type MarkingDecision, type MarkingScope } from "@/lib/scan-marking-access";
 
@@ -83,7 +83,14 @@ async function publishCommitted(db: SupabaseClient<Database>, parent: string, ph
   if (pending.error) throw new Error("marking_profile_revision");
   const profileBehind = Boolean(pending.data && pending.data.profile_revision < pending.data.revision);
   const sheetResultsBehind = Boolean(pending.data && typeof pending.data.sheet_results_revision === "number" && pending.data.sheet_results_revision < pending.data.revision);
-  if (profileBehind || sheetResultsBehind) await rebuildOrDefer(db, child, options);
+  if (profileBehind || (sheetResultsBehind && await sheetResultsEligible(db, child))) await rebuildOrDefer(db, child, options);
+}
+async function sheetResultsEligible(db: SupabaseClient<Database>, child: string): Promise<boolean> {
+  try { return await hasV2Books(db, child); }
+  catch {
+    monitorProduct("scan.recovery_failed", { step: "sheet_results_lookup" });
+    return false;
+  }
 }
 async function rebuildOrDefer(db: SupabaseClient<Database>, child: string, options: ProcessMarkingOptions) {
   if (options.deferRebuild) { options.deferRebuild(child); return; }
@@ -105,6 +112,10 @@ async function rebuildV2Results(db: SupabaseClient<Database>, child: string): Pr
   try {
     const rebuilt = await rebuildV2SheetResults(db, child);
     if (rebuilt.status === "no-v2-books") return false;
+    if (rebuilt.status === "books-unavailable") {
+      monitorProduct("scan.recovery_failed", { step: "sheet_results_lookup" });
+      return false;
+    }
     if (rebuilt.status === "refused" || rebuilt.problems.length > 0) {
       monitorProduct("scan.recovery_failed", { step: "sheet_results" });
       return true;
