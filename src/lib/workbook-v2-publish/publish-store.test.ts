@@ -1,4 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
+import { createSession } from "@/lib/maya";
+import { teachingPackage } from "@/lib/maya-teaching";
+import { workbookAnswerPages } from "@/lib/parent-workbook-answers";
 import { workbookStore } from "@/lib/workbook-store";
 import { publishV2Book } from "./job";
 import { memoryFiles, memoryPublishStore } from "./memory-store";
@@ -94,7 +97,7 @@ describe.each(adapters)("the %s v2 publish store", (_name, make) => {
     expect(stored?.pages).toHaveLength(8);
   });
 
-  it("refuses a book of a family that is not a test family, and a book that does not match its allocation", async () => {
+  it("refuses a book of a family that is not a test family, a mismatched allocation (even when published), and incomplete payloads", async () => {
     const { store, files, counts } = make();
     let payload: PublishPayload | null = null;
     const spy: V2PublishStore = { ...store, family: store.family, allocate: store.allocate, findByInputHash: store.findByInputHash, storedBook: store.storedBook, publish: async (p) => { payload = p; return { status: "refused", reason: "held" }; } };
@@ -102,7 +105,22 @@ describe.each(adapters)("the %s v2 publish store", (_name, make) => {
     const p = payload as unknown as PublishPayload;
     expect(await store.publish({ ...p, workbook: { ...p.workbook, childId: REAL_CHILD } })).toEqual({ status: "refused", reason: "v2 books are only for test families" });
     expect(await store.publish({ ...p, workbook: { ...p.workbook, number: 9 } })).toEqual({ status: "refused", reason: "the book does not match its allocation" });
+    // Incomplete payloads (missing/empty arrays or mismatched counts) are refused cleanly with nothing committed.
+    for (const bad of [
+      { ...p, questions: [], itemAnswers: [] },
+      { ...p, itemAnswers: p.itemAnswers.slice(1) },
+      { ...p, sheets: [] },
+      { ...p, timeLogs: [] },
+    ]) {
+      expect((await store.publish(bad)).status).toBe("refused");
+    }
     expect(counts().books).toBe(0);
+    // Once published, a retry with the same input hash but mismatched child/id/number is refused rather than returning 'existing'.
+    expect((await store.publish(p)).status).toBe("published");
+    expect(await store.publish({ ...p, workbook: { ...p.workbook, number: p.workbook.number + 1 } })).toEqual({ status: "refused", reason: "the book does not match its allocation" });
+    expect(await store.publish({ ...p, workbook: { ...p.workbook, childId: SECOND_CHILD } })).toEqual({ status: "refused", reason: "the book does not match its allocation" });
+    expect(await store.publish(p)).toMatchObject({ status: "existing", workbookId: p.workbook.id });
+    expect(counts().books).toBe(1);
   });
 });
 
@@ -134,7 +152,7 @@ describe("a full-size book in today's tables (F1, C1)", () => {
     workbookId = result.record.workbookId;
   }, 60_000);
 
-  it("reads back every one of its 1,990 questions through today's workbook store, each one found", async () => {
+  it("reads back every one of its 1,990 questions through today's workbook store, Maya teaching, and parent answer keys", async () => {
     const book = await workbookStore(fake.db).workbook(workbookId);
     const questions = book?.pages.flatMap((p) => p.questions) ?? [];
     expect(book?.pages).toHaveLength(120);
@@ -143,6 +161,19 @@ describe("a full-size book in today's tables (F1, C1)", () => {
     expect(book?.pages.every((p) => p.printContract !== null)).toBe(true);
     expect(book?.printedRevision).toMatch(/^[0-9a-f]{28}$/);
     expect((await workbookStore(fake.db).pageIndex(workbookId)).reduce((n, p) => n + p.questions, 0)).toBe(1990);
+    // Maya can teach the supported arithmetic and story items across the whole book.
+    const teachable = questions.filter((q) => q.content.status === "found"
+      && createSession({ callId: `full-${q.number}`, package: teachingPackage(q.content.package) }).package !== null).length;
+    expect(teachable).toBeGreaterThan(1900);
+    // Parent answer keys preserve units on all 30 quantity word problems.
+    const answers = workbookAnswerPages(book!);
+    expect(answers).not.toBeNull();
+    const quantityAnswers = fake.memory.store.tables.books[0].payload.itemAnswers.filter((a) => a.answerKind === "quantity");
+    expect(quantityAnswers).toHaveLength(30);
+    for (const a of quantityAnswers) {
+      const q = answers!.find((p) => p.number === a.pageNumber)?.questions.find((x) => x.number === a.questionNumber);
+      expect(q?.answers).toEqual([{ part: 1, value: `${a.answerValue} ${a.unit}`, alternatives: [] }]);
+    }
   });
 
   it("finds a page by its QR token", async () => {

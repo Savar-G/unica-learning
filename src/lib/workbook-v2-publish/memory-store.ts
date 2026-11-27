@@ -56,11 +56,17 @@ export function memoryPublishStore(o: MemoryStoreOptions): V2PublishStore & { ta
       const parentId = parentOf(w.childId);
       if (!parentId) return { status: "refused", reason: "the child is not known" };
       if (!o.testParents.includes(parentId)) return { status: "refused", reason: "v2 books are only for test families" };
-      const existing = byHash(w.inputHash);
-      if (existing) return { status: "existing", ...ref(existing) };
       const a = tables.allocations.find((x) => x.workbookId === w.id);
-      if (!a || a.childId !== w.childId || a.inputHash !== w.inputHash || a.inputPath !== w.inputPath || a.workbookNumber !== w.number) {
+      if (!a || a.childId !== w.childId || a.parentId !== parentId || a.inputHash !== w.inputHash || a.inputPath !== w.inputPath || a.workbookNumber !== w.number) {
         return { status: "refused", reason: "the book does not match its allocation" };
+      }
+      const existing = byHash(w.inputHash);
+      if (existing) {
+        const ew = existing.payload.workbook;
+        if (ew.id !== w.id || ew.childId !== w.childId || ew.number !== w.number || ew.inputPath !== w.inputPath) {
+          return { status: "refused", reason: "the book does not match its allocation" };
+        }
+        return { status: "existing", ...ref(existing) };
       }
       const problem = payloadProblem(payload, parentId);
       if (problem) return { status: "refused", reason: `the book does not pass the database check (${problem})` };

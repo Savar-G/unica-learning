@@ -32,9 +32,9 @@ describe("the v2 book job", () => {
     const result = await publishV2Book({ ...d, renderer }, request());
     expect(result.status).toBe("published");
     const firstPng = log.indexOf("files.put:image/png");
-    expect(log.slice(0, 5)).toEqual(["store.family", "store.allocate", "files.put:application/json", "store.findByInputHash", "build"]);
-    expect(log[5]).toBe("files.put:application/pdf");
-    expect(firstPng).toBe(6);
+    expect(log.slice(0, 6)).toEqual(["store.family", "store.allocate", "store.findByInputHash", "files.put:application/json", "build", "store.family"]);
+    expect(log[6]).toBe("files.put:application/pdf");
+    expect(firstPng).toBe(7);
     expect(log.at(-1)).toBe("store.publish");
     expect(log.filter((l) => l === "store.publish")).toHaveLength(1);
     // Every file is in the family's folder of this workbook, named by its hash.
@@ -74,15 +74,52 @@ describe("the v2 book job", () => {
     const { store, files } = memory();
     const first = await publishV2Book(deps(store, files), request());
     const d = deps(store, files, { seed: "b" });
-    const second = await publishV2Book(d, request());
+    const failingFiles = { ...files, put: async () => { throw new Error("storage outage"); } };
+    const second = await publishV2Book({ ...d, files: failingFiles }, request());
     if (first.status !== "published" || second.status !== "existing") throw new Error(JSON.stringify([first.status, second.status]));
     expect(second.record.workbookId).toBe(first.record.workbookId);
     expect(second.record.printedRevision).toBe(first.record.printedRevision);
     expect(second.record.httpStatus).toBe(200);
+    expect(second.record.bytes).toEqual({ pdf: 0, images: 0, input: 0, total: 0 });
     expect(d.opened()).toBe(0);
     expect(store.tables.allocations).toHaveLength(1);
     expect(store.tables.books).toHaveLength(1);
     expect(files.files.size).toBe(10);
+  });
+
+  it("refuses to upload built files if test-family status is removed during the build", async () => {
+    const { store, files } = memory();
+    let familyCalls = 0;
+    const revokingStore: V2PublishStore = {
+      ...store,
+      family: async (childId) => (++familyCalls === 1 ? store.family(childId) : { status: "not-test" }),
+    };
+    const result = await publishV2Book(deps(revokingStore, files), request());
+    expect(result).toMatchObject({ status: "refused", reason: "not-test-family" });
+    // Only the pre-build input file was written; neither the PDF nor any page PNG was uploaded.
+    expect([...files.files.keys()].every((p) => p.endsWith(".json"))).toBe(true);
+    expect(store.tables.books).toHaveLength(0);
+  });
+
+  it("stops launching new uploads and waits for in-flight uploads before rejecting", async () => {
+    const { store, files } = memory();
+    let active = 0;
+    let calls = 0;
+    const flakyFiles = {
+      get: files.get,
+      put: async (file: Parameters<typeof files.put>[0]) => {
+        if (file.contentType === "application/json") return files.put(file);
+        const n = ++calls;
+        active++;
+        await new Promise((r) => setTimeout(r, n === 1 ? 5 : 20));
+        active--;
+        if (n === 1) throw new Error("upload failed");
+        return files.put(file);
+      },
+    };
+    await expect(publishV2Book(deps(store, flakyFiles), request())).rejects.toThrow("upload failed");
+    expect(active).toBe(0);
+    expect(calls).toBeLessThan(9);
   });
 
   it("builds again after a run that stopped before its write, with the same ids and tokens", async () => {

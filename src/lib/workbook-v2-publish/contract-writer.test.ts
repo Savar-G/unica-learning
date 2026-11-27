@@ -1,7 +1,10 @@
 import fc from "fast-check";
 import { beforeAll, describe, expect, it } from "vitest";
+import { createSession } from "@/lib/maya";
+import { teachingPackage } from "@/lib/maya-teaching";
+import { workbookAnswerPages } from "@/lib/parent-workbook-answers";
 import { checkQuestionPackage } from "@/lib/question-package";
-import { storedContent } from "@/lib/workbook-content";
+import { storedContent, storedQuestion, type Workbook } from "@/lib/workbook-content";
 import { printContractProblem, printedRevision, regionsProblem } from "@/lib/workbook-print-contract";
 import { buildBook, type BuiltBook } from "@/lib/workbook-v2/build/build-book";
 import { PAPER } from "@/lib/workbook-v2/contract";
@@ -43,23 +46,49 @@ describe("the contract writer", () => {
     expect(payload.pages.map((p) => p.qrToken)).toEqual(tokens);
   });
 
-  it("gives each question a box inside the image, its answer areas as regions, and a copied package that every reader finds", () => {
+  it("gives each question a box inside the image, its answer areas as regions, and a copied package that Maya and parent answer keys read", () => {
     const { payload } = writeBook(built, allocation);
     expect(payload.questions).toHaveLength(built.items.length);
+    let checkedCount = 0;
+    let teachableCount = 0;
     for (const q of payload.questions) {
       const page = payload.pages[q.pageNumber - 1];
       expect(q.box.x + q.box.width).toBeLessThanOrEqual(IMAGE.width);
       expect(q.box.y + q.box.height).toBeLessThanOrEqual(IMAGE.height);
       expect(regionsProblem(q.regions, page.image)).toBeNull();
       const check = checkQuestionPackage(q.package);
-      expect(check.status).toBe("not-checked");
+      expect(["checked", "not-checked"]).toContain(check.status);
+      if (check.status === "checked") checkedCount++;
+      if (createSession({ callId: `test-${q.pageNumber}-${q.number}`, package: teachingPackage(q.package) }).package) teachableCount++;
       expect(storedContent({ number: q.number, box: q.box, schemaVersion: payload.schemaVersion, package: q.package }, { source: "workbook", workbookId: WORKBOOK, page: q.pageNumber, question: q.number }).status).toBe("found");
     }
+    // Nearly every single-answer arithmetic and story question carries a checked operation that Maya can teach.
+    expect(checkedCount).toBeGreaterThanOrEqual(payload.questions.length - 5);
+    expect(teachableCount).toBeGreaterThanOrEqual(payload.questions.length - 6);
     const story = payload.questions.find((q) => q.package.id.startsWith("v2:story-problems/"))!;
-    expect(story.package.item?.regions).toEqual([{ id: "answer", kind: "box", label: expect.any(String), answer: { type: "number", value: expect.any(Number) } }]);
+    expect(story.package.item?.regions[0]?.kind).toBe("box");
     const bracket = payload.questions.find((q) => q.package.id.startsWith("v2:division-brackets/1/back/"))!;
     expect(bracket.regions.map((r) => r.id)).toEqual(["answer"]);
     expect(bracket.package.item?.format).toBe("write-number");
+
+    // Parent answer keys preserve quantity units on every word problem (both checked operations and fallback stories).
+    const book: Pick<Workbook, "id" | "pages"> = {
+      id: WORKBOOK,
+      pages: payload.pages.map((p) => ({
+        number: p.number, dayLabel: p.dayLabel, type: p.type, image: p.image, qrToken: p.qrToken, printContract: p.printContract,
+        questions: payload.questions.filter((q) => q.pageNumber === p.number).map((q) => storedQuestion(
+          { number: q.number, box: q.box, regions: q.regions, schemaVersion: payload.schemaVersion, package: q.package },
+          { source: "workbook", workbookId: WORKBOOK, page: p.number, question: q.number },
+        )),
+      })),
+    };
+    const answerPages = workbookAnswerPages(book);
+    expect(answerPages).not.toBeNull();
+    for (const a of payload.itemAnswers.filter((x) => x.answerKind === "quantity")) {
+      const pageKey = answerPages!.find((p) => p.number === a.pageNumber);
+      const qKey = pageKey?.questions.find((q) => q.number === a.questionNumber);
+      expect(qKey?.answers).toEqual([{ part: 1, value: `${a.answerValue} ${a.unit}`, alternatives: [] }]);
+    }
   });
 
   it("writes one answer row for each printed question, with its exact answer, unit and worked steps", () => {

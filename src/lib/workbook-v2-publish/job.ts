@@ -51,10 +51,24 @@ const UPLOADS_AT_ONCE = 8;
 
 async function uploadAll(files: V2Storage, list: readonly V2File[]): Promise<void> {
   let next = 0;
+  let failed = false;
+  let firstError: unknown;
   const worker = async () => {
-    while (next < list.length) await files.put(list[next++]);
+    while (!failed && next < list.length) {
+      const file = list[next++];
+      try {
+        await files.put(file);
+      } catch (error) {
+        if (!failed) {
+          failed = true;
+          firstError = error;
+        }
+        return;
+      }
+    }
   };
-  await Promise.all(Array.from({ length: Math.min(UPLOADS_AT_ONCE, list.length) }, worker));
+  await Promise.allSettled(Array.from({ length: Math.min(UPLOADS_AT_ONCE, list.length) }, worker));
+  if (failed) throw firstError;
 }
 
 /** One write; on a throw (a failed call or a lost answer), read the book first, and try one more time only if it is not there. */
@@ -101,10 +115,7 @@ export async function publishV2Book(deps: JobDeps, request: PublishRequest): Pro
   if (allocated.status === "existing" && !sameBook(request, allocation)) {
     return { status: "invalid", problems: ["the request key was used for another book"] };
   }
-  const saved: SavedInput = { format: 1, snapshot: request.snapshot, book: allocation.allocation.book };
-  const input = new TextEncoder().encode(canonicalJson(saved));
-  await deps.files.put({ path: allocation.inputPath, contentType: "application/json", bytes: input });
-  const record = (status: "published" | "existing", ref: PublishedRef, counts: TimingRecord["counts"], pdf: number, images: number, t: Omit<TimingRecord["timingMs"], "overhead" | "total">): TimingRecord => {
+  const record = (status: "published" | "existing", ref: PublishedRef, counts: TimingRecord["counts"], pdf: number, images: number, inputBytes: number, t: Omit<TimingRecord["timingMs"], "overhead" | "total">): TimingRecord => {
     const total = Math.max(0, Math.ceil(deps.clock() - started));
     // (Each step rounds down and the total up, so the overhead is never below 0.)
     const steps = { allocate: Math.floor(t.allocate), build: Math.floor(t.build), upload: Math.floor(t.upload), publish: Math.floor(t.publish) };
@@ -112,18 +123,28 @@ export async function publishV2Book(deps: JobDeps, request: PublishRequest): Pro
     return {
       httpStatus: status === "published" ? 201 : 200, status, workbookId: ref.workbookId, printedRevision: ref.printedRevision,
       inputHash: allocation.inputHash, inputPath: allocation.inputPath, counts,
-      bytes: { pdf, images, input: input.length, total: pdf + images + input.length }, timingMs: { ...steps, overhead, total },
+      bytes: { pdf, images, input: inputBytes, total: pdf + images + inputBytes }, timingMs: { ...steps, overhead, total },
     };
   };
   const existing = await deps.store.findByInputHash(allocation.inputHash);
+  if (existing) {
+    const allocate = deps.clock() - started;
+    return { status: "existing", record: record("existing", existing, NO_COUNTS, 0, 0, 0, { allocate, build: 0, upload: 0, publish: 0 }) };
+  }
+  const saved: SavedInput = { format: 1, snapshot: request.snapshot, book: allocation.allocation.book };
+  const input = new TextEncoder().encode(canonicalJson(saved));
+  await deps.files.put({ path: allocation.inputPath, contentType: "application/json", bytes: input });
   const allocate = deps.clock() - started;
-  if (existing) return { status: "existing", record: record("existing", existing, NO_COUNTS, 0, 0, { allocate, build: 0, upload: 0, publish: 0 }) };
 
   const buildStart = deps.clock();
   const built = await buildBook({ snapshot: request.snapshot, book: allocation.allocation.book }, await deps.renderer());
   if (built.status === "failed") return { status: "failed", problems: built.problems };
   if (built.record.inputHash !== allocation.inputHash) return { status: "failed", problems: ["the built book is not the book of its allocation"] };
   const build = deps.clock() - buildStart;
+
+  const currentFamily = await deps.store.family(request.childId);
+  if (currentFamily.status === "unknown-child") return { status: "refused", reason: "unknown-child", detail: "the child is not known" };
+  if (currentFamily.status === "not-test") return { status: "refused", reason: "not-test-family", detail: "v2 books are only for test families" };
 
   const uploadStart = deps.clock();
   const { payload, files } = writeBook(built, allocation);
@@ -136,5 +157,5 @@ export async function publishV2Book(deps: JobDeps, request: PublishRequest): Pro
   const publish = deps.clock() - publishStart;
   const counts = { pages: payload.pages.length, questions: payload.questions.length, itemAnswers: payload.itemAnswers.length, sheets: payload.sheets.length, timeLogs: payload.timeLogs.length };
   const images = files.filter((f) => f.contentType === "image/png").reduce((n, f) => n + f.bytes.length, 0);
-  return { status: result.status, record: record(result.status, result.ref, counts, built.pdf.length, images, { allocate, build, upload, publish }) };
+  return { status: result.status, record: record(result.status, result.ref, counts, built.pdf.length, images, input.length, { allocate, build, upload, publish }) };
 }

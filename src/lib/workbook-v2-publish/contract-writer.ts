@@ -179,9 +179,32 @@ export function writeBook(built: BuiltBook, a: Allocation): WrittenBook {
   return { payload, files };
 }
 
-/** What the v1 store's check says of the book's workbook, pages and questions, or null. */
+/** What the v1 store's check and v2 relational rules say of the book payload, or null. */
 export function payloadProblem(p: PublishPayload, parentId: string): string | null {
   if (!p.workbook.inputPath.startsWith(`${parentId}/${p.workbook.id}/`)) return "the input file is not in the workbook's folder";
+  if (!Array.isArray(p.pages) || !Array.isArray(p.questions) || !Array.isArray(p.itemAnswers) || !Array.isArray(p.sheets) || !Array.isArray(p.timeLogs)) {
+    return "the book payload is incomplete";
+  }
+  if (p.pages.length < 2 || p.pages.length % 2 !== 0 || p.sheets.length !== p.pages.length / 2
+    || p.questions.length < 1 || p.itemAnswers.length !== p.questions.length || p.timeLogs.length < 1) {
+    return "the book payload is incomplete";
+  }
+  const pageNumbers = new Set(p.pages.map((page) => page.number));
+  const questionKeys = new Set(p.questions.map((q) => `${q.pageNumber}:${q.number}`));
+  if (questionKeys.size !== p.questions.length || p.questions.some((q) => !pageNumbers.has(q.pageNumber))) {
+    return "a question names a missing or duplicate page position";
+  }
+  const answerKeys = new Set(p.itemAnswers.map((a) => `${a.pageNumber}:${a.questionNumber}`));
+  if (answerKeys.size !== p.itemAnswers.length || [...answerKeys].some((k) => !questionKeys.has(k))) {
+    return "an item answer does not match a question";
+  }
+  if (p.sheets.some((s) => s.backPageNumber !== s.frontPageNumber + 1 || !pageNumbers.has(s.frontPageNumber) || !pageNumbers.has(s.backPageNumber))) {
+    return "a sheet names a page that the book does not have";
+  }
+  const dayStarts = p.sheets.filter((s) => s.startsDay);
+  if (dayStarts.length !== p.timeLogs.length || p.timeLogs.some((t) => !dayStarts.some((s) => s.day === t.day && s.sheetId === t.firstSheetId && s.frontPageNumber === t.pageNumber))) {
+    return "the time logs do not match the first sheet of each day";
+  }
   const input: WorkbookInput = {
     id: p.workbook.id, childId: p.workbook.childId, number: p.workbook.number, levels: p.workbook.levels, pdfPath: p.workbook.pdfPath, profileBuild: null,
     pdfSha256: p.workbook.pdfSha256, printManifest: p.workbook.printManifest, printedRevision: p.workbook.printedRevision,
