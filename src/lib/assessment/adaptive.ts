@@ -1,10 +1,12 @@
-// Six-question blocks. All questions are drawn at start; a lock alone advances the search.
+// Six-question assessment blocks drawn from a stored pool. A lock alone advances the search.
+import { placeV2Workbook, workbookStartFromPrerequisites } from "@/lib/workbook-v2-placement";
 import { ALL_TEMPLATES, difficultyOf } from "./bank";
 import { atLeast, bandFor, REPORTED_STRAND, STRAND_MINIMUM_QUESTIONS, WORKING_LEVEL_PERCENT } from "./constants";
 import { leftOutOfScore, paceOf } from "./rushing";
 import { rngFor } from "./rng";
+import { SKILL_TAGS, tagSkills } from "./skill-tags";
 import { fillTemplate, levelFor, sameQuestion } from "./session";
-import type { AdaptiveBlock, AdaptiveTest, Answer, ChildProfile, Level, Question, Session, StoredTest, Template } from "./types";
+import type { AdaptiveBlock, AdaptiveTest, Answer, ChildProfile, Level, Question, ReportedStrand, Session, StoredTest, Template } from "./types";
 
 export const BLOCK_SIZE = 6;
 export const ADAPTIVE_BREAK_AFTER = 12;
@@ -18,16 +20,26 @@ export const UNKNOWN_RESPONSE = "I don't know yet";
 export const UNKNOWN_WAIT_MS = 15_000;
 
 export const adaptiveQuestions = (a: AdaptiveTest): Question[] => a.blocks.flatMap(b => b.questions);
+export function assessmentQuestionsOnly(a: AdaptiveTest): number {
+  const last = a.blocks.at(-1);
+  return adaptiveQuestions(a).length - (last?.purpose === "workbook-placement" ? last.questions.length : 0);
+}
+
 export const adaptiveTop = (profile: ChildProfile): Level => profile.grade === 9 ? 9 : 8;
 
-export function createAdaptiveSession(profile: ChildProfile, seed: number, bank: readonly Template[] = ALL_TEMPLATES): Session {
+export function createAdaptiveSession(
+  profile: ChildProfile,
+  seed: number,
+  bank: readonly Template[] = ALL_TEMPLATES,
+  { workbookPlacement = false }: { workbookPlacement?: boolean } = {},
+): Session {
   if (!Number.isInteger(seed)) throw new Error("The seed must be a whole number");
   const rng = rngFor(seed, "blocks");
   const pool = rng.shuffle(bank.filter(t => levelFor(t, profile.province) <= adaptiveTop(profile)))
     .map((t, i) => fillTemplate(t, seed, profile.province, `bq-${i}`));
   const adaptive: AdaptiveTest = {
     version: 2, placementRules: "above-grade-confirmation", pool, blocks: [],
-    locked: 0, complete: false, sufficientEvidence: false,
+    locked: 0, complete: false, sufficientEvidence: false, ...(workbookPlacement && { workbookPlacement: true }),
   };
   const first = selectBlock(adaptive, profile, profile.grade, "search");
   if (first.questions.length !== BLOCK_SIZE) throw new Error("The bank cannot start this assessment");
@@ -42,19 +54,44 @@ function available(a: AdaptiveTest): Question[] {
   return a.pool.filter(q => !ids.has(q.templateId) && !seen.has(sameQuestion(q)));
 }
 
+/** From this level up, a block asks every skill family once before it repeats one (UNI-221). Lower levels keep their routes. */
+export const SKILL_BALANCED_FROM = 10;
+
+/** A question's skill family: the main skill of its template's skill tag, or the template itself when it has no tag. */
+export function skillFamily(q: Pick<Question, "templateId">): string {
+  const tag = SKILL_TAGS[q.templateId];
+  return tag ? tagSkills(tag)[0] : q.templateId;
+}
+
+/**
+ * Up to one block of questions from a level's pool, rotating the reported strands from `offset`. With `balanceSkills`,
+ * a question whose skill family is already in the block is taken only when no other family is left.
+ */
+export function blockQuestions(pool: readonly Question[], strands: readonly ReportedStrand[], offset: number, balanceSkills: boolean): Question[] {
+  const chosen: Question[] = [];
+  const families = new Set<string>();
+  const repeats = new Set<Question>();
+  const open = (q: Question) => !chosen.includes(q);
+  const fresh = (q: Question) => open(q) && !(balanceSkills && families.has(skillFamily(q)));
+  const inStrand = (strand: ReportedStrand | undefined) => (q: Question) => REPORTED_STRAND[q.strand] === strand;
+  for (let i = 0; i < BLOCK_SIZE; i++) {
+    const strand = strands[(i + offset) % strands.length];
+    const q = pool.find(q => inStrand(strand)(q) && fresh(q)) ?? pool.find(fresh)
+      ?? pool.find(q => inStrand(strand)(q) && open(q)) ?? pool.find(open);
+    if (!q) break;
+    if (balanceSkills && families.has(skillFamily(q))) repeats.add(q);
+    chosen.push(q);
+    families.add(skillFamily(q));
+  }
+  // Easy questions first; a repeated skill family stays after every family's first question.
+  const rank = (q: Question) => (repeats.has(q) ? 3 : 0) + { easy: 0, medium: 1, hard: 2 }[difficultyOf(q.templateId)];
+  return chosen.sort((a, b) => rank(a) - rank(b));
+}
+
 function selectBlock(a: AdaptiveTest, profile: ChildProfile, level: Level, purpose: AdaptiveBlock["purpose"]): AdaptiveBlock {
   const pool = available(a).filter(q => q.level === level);
   const strands = bandFor(profile.grade).strands.filter(s => pool.some(q => REPORTED_STRAND[q.strand] === s));
-  const chosen: Question[] = [];
-  const rank = { easy: 0, medium: 1, hard: 2 };
-  for (let i = 0; i < BLOCK_SIZE; i++) {
-    const strand = strands[(i + a.blocks.length * BLOCK_SIZE) % strands.length];
-    const q = pool.find(q => REPORTED_STRAND[q.strand] === strand && !chosen.includes(q))
-      ?? pool.find(q => !chosen.includes(q));
-    if (!q) break;
-    chosen.push(q);
-  }
-  return { level, purpose, questions: chosen.sort((a,b) => rank[difficultyOf(a.templateId)] - rank[difficultyOf(b.templateId)]) };
+  return { level, purpose, questions: blockQuestions(pool, strands, a.blocks.length * BLOCK_SIZE, level >= SKILL_BALANCED_FROM) };
 }
 
 /** Legacy v1 placement, including its coverage answers and 70% bar. */
@@ -227,9 +264,10 @@ function scorePlacement(test: StoredTest, answers: readonly Answer[], checkGrade
   if (answers.length !== questions.length || answers.some((a, i) => a.questionId !== questions[i].id)) {
     throw new Error("Answers do not fit the stored test");
   }
-  if (paceOf(answers).unreliable) return { outcome: "retake", level: null };
-  const { byLevel } = placementEvidence(test.adaptive, answers);
-  const best = confirmedGrade(test.adaptive, answers, byLevel, checkGrade);
+  const mainAnswers = answers.slice(0, assessmentQuestionsOnly(test.adaptive));
+  if (paceOf(mainAnswers).unreliable) return { outcome: "retake", level: null };
+  const { byLevel } = placementEvidence(test.adaptive, mainAnswers);
+  const best = confirmedGrade(test.adaptive, mainAnswers, byLevel, checkGrade);
   const floorChecked = checkGrade(0, byLevel.get(0) ?? []) === "fail";
   if (best === undefined) return { outcome: floorChecked ? "placed" : "insufficient", level: 0, passed: false, clear: false };
   const aboveLevel = (best + 1) as Level;
@@ -257,13 +295,42 @@ function searchLevel(here: Level, top: Level, byLevel: ReadonlyMap<Level, Answer
   return below;
 }
 
+function completePlacement(session: Session, adaptive: AdaptiveTest, questions: Question[], checkGrade: CheckGrade): Session {
+  const score = scorePlacement({ ...session, adaptive }, session.answers, checkGrade);
+  if (adaptive.workbookPlacement && score.outcome === "placed") {
+    const mainCount = assessmentQuestionsOnly(adaptive);
+    const mainAnswers = session.answers.slice(0, mainCount);
+    const excluded = leftOutOfScore(mainAnswers);
+    const placement = placeV2Workbook(score.level, {
+      questions: questions.slice(0, mainCount),
+      answers: mainAnswers.filter((_, index) => !excluded[index]),
+    }, session.seed);
+    if (placement.kind === "needs_level_3_check") {
+      adaptive.blocks.push({ level: 2, purpose: "workbook-placement", questions: [...placement.questions] });
+      return { ...session, adaptive };
+    }
+    if (placement.kind === "placed") adaptive.workbookStart = { level: placement.level, topic: placement.topic };
+  }
+  adaptive.complete = true;
+  adaptive.sufficientEvidence = score.outcome !== "insufficient";
+  return { ...session, adaptive };
+}
+
 function lockPlacementBlock(session: Session, a: AdaptiveTest, questions: Question[]): Session {
   const { profile, answers } = session;
-  const { byLevel, scored } = placementEvidence(a, answers);
   const block = a.blocks.at(-1)!;
+  if (block.purpose === "workbook-placement") {
+    const right = answers.slice(-block.questions.length).filter(answer => answer.correct).length;
+    a.workbookStart = workbookStartFromPrerequisites(right);
+    a.complete = true;
+    a.sufficientEvidence = true;
+    return { ...session, adaptive: a };
+  }
+  const { byLevel, scored } = placementEvidence(a, answers);
   const checkGrade = gradeCheckFor(session);
   const best = confirmedGrade(a, answers, byLevel, checkGrade);
   const top = adaptiveTop(profile);
+  // The workbook placement check comes after the assessment and outside its limit, so the assessment route never changes.
   const room = ADAPTIVE_QUESTION_LIMIT - questions.length;
   const searchCount = a.blocks.filter(b => b.purpose === "search").reduce((n, b) => n + b.questions.length, 0);
   const select = (level: Level, purpose: "search" | "confirm", limit = BLOCK_SIZE) => {
@@ -303,11 +370,8 @@ function lockPlacementBlock(session: Session, a: AdaptiveTest, questions: Questi
     const limit = best !== undefined && best > profile.grade ? ABOVE_GRADE_COVERAGE_LIMIT - used : room;
     if (limit > 0) next = coverageBlock(a, profile, scored, best ?? 0, Math.min(room, limit, BLOCK_SIZE));
   }
-  if (next?.questions.length && next.questions.length <= room) a.blocks.push(next);
-  else {
-    a.complete = true;
-    a.sufficientEvidence = scorePlacement({ ...session, adaptive: a }, answers, checkGrade).outcome !== "insufficient";
-  }
+  if (!next?.questions.length || next.questions.length > room) return completePlacement(session, a, questions, checkGrade);
+  a.blocks.push(next);
   return { ...session, adaptive: a };
 }
 

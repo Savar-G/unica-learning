@@ -37,7 +37,11 @@ export function attemptStore(admin: SupabaseClient<Database>): AttemptStore {
       const { data, error } = await admin.from("children").select("id, grade, province")
         .eq("id", childId).eq("parent_id", parent).maybeSingle();
       if (error) throw new StoreError("child load failed", error.message);
-      return data ? { id: data.id, grade: data.grade as Grade, province: data.province } : null;
+      if (!data) return null;
+      // A failed lookup is a store failure the parent can retry, never a test started without the workbook check.
+      const testFamily = await admin.from("test_accounts").select("parent_id").eq("parent_id", parent).maybeSingle();
+      if (testFamily.error) throw new StoreError("test account load failed", testFamily.error.message);
+      return { id: data.id, grade: data.grade as Grade, province: data.province, ...(testFamily.data && { workbookPlacement: true }) };
     },
 
     async attempts(parent, childId) {

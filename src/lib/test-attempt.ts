@@ -59,6 +59,7 @@ export interface AttemptChild {
   id: string;
   grade: Grade;
   province: Province;
+  workbookPlacement?: true;
 }
 
 /** A stored test without its questions and answers: the attempt, its child, and the seed that drew its questions. */
@@ -317,9 +318,7 @@ async function startFor(
   for (let round = 0; round < ROUNDS; round++) {
     const attempts = await withAnswers(store, parent, child.id);
     const decision = decideStart(attempts, now, { restart });
-    if (decision.action === "refuse") {
-      return decision.error === "expired" ? { ok: false, error: "expired" } : { ok: false, error: "retake_closed", opensAt: decision.opensAt };
-    }
+    if (decision.action === "refuse") return decision.error === "expired" ? { ok: false, error: "expired" } : { ok: false, error: "retake_closed", opensAt: decision.opensAt };
     // If the test runs out of time before the next answer, the answer route says so and the screen offers Start again.
     if (decision.action === "resume") return { ok: true, id: decision.attemptId, resumed: true };
 
@@ -330,7 +329,7 @@ async function startFor(
     while (used.has(seed)) seed = newSeed();
     let session: Session;
     try {
-      session = createAdaptiveSession({ grade: child.grade, province: child.province }, seed);
+      session = createAdaptiveSession({ grade: child.grade, province: child.province }, seed, undefined, { workbookPlacement: child.workbookPlacement });
     } catch (e) {
       console.error("[test] cannot build a test", child.grade, messageOf(e));
       return { ok: false, error: "not_ready" };

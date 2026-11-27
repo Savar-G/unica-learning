@@ -247,6 +247,7 @@ export interface Placement {
   scoredAgainst: TaggedProvince;
   workingLevel: Level | null;
   adaptiveVersion?: 2;
+  workbookStart?: import("@/lib/workbook-v2-placement").V2WorkbookStart;
   /** The measured level cleared the placement bar. */
   mastered?: boolean;
   /** "low" when no level reached the working-level bar, so the level is an estimate below the lowest level seen. */
@@ -272,13 +273,15 @@ export interface Placement {
 /** Versioned, fully drawn bank and durable block locks. Old tests have no adaptive field. */
 export interface AdaptiveBlock {
   level: Level;
-  purpose: "search" | "confirm" | "coverage";
+  purpose: "search" | "confirm" | "coverage" | "workbook-placement";
   questions: Question[];
 }
 export interface AdaptiveTest {
   version: 1 | 2;
   /** Absent on v2 attempts started before the above-grade confirmation rule. */
   placementRules?: "above-grade-confirmation";
+  workbookPlacement?: true;
+  workbookStart?: import("@/lib/workbook-v2-placement").V2WorkbookStart;
   pool: Question[];
   blocks: AdaptiveBlock[];
   locked: number;

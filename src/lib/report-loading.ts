@@ -167,7 +167,11 @@ export async function loadReportInputs(reader: ReportReader, assessmentId: strin
   const answers = await reader.answers(a.id);
   // The question map: every question the test could ask, from every stage and path.
   const questions = new Map(everyQuestion(a.test).map((q) => [q.id, q]));
-  const withWork = answers.filter((x) => x.workPath !== null || x.workText !== null);
+  const workbookQuestionIds = new Set(a.test.adaptive?.blocks.flatMap((block) =>
+    block.purpose === "workbook-placement" ? block.questions.map((question) => question.id) : [],
+  ));
+  const scored = answers.filter((x) => !workbookQuestionIds.has(x.questionId));
+  const withWork = scored.filter((x) => x.workPath !== null || x.workText !== null);
   return {
     assessment: {
       id: a.id,
@@ -222,8 +226,8 @@ export async function loadReportInputs(reader: ReportReader, assessmentId: strin
     }),
     comparison: () => comparison(a.id),
     // Every answered question (#189): the placement's levels leave out rushed wrong answers, so they cannot count them.
-    questions: answers.length,
-    minutes: Math.max(1, Math.round(answers.reduce((ms, x) => ms + x.timeMs, 0) / 60_000)),
+    questions: scored.length,
+    minutes: Math.max(1, Math.round(scored.reduce((ms, x) => ms + x.timeMs, 0) / 60_000)),
   };
 }
 

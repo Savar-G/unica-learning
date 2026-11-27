@@ -1,5 +1,6 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { ADAPTIVE_QUESTION_LIMIT, BLOCK_SIZE, createAdaptiveSession, finish, givenQuestions, lockAdaptiveBlock, nextQuestion, restoreSession, storedTest, submitAnswer, testStep, UNKNOWN_RESPONSE, paceOf, flagsFor, REPORTED_STRAND, rescoreAdaptivePlacement, type AdaptiveBlock, type Grade, type Session, type Province } from "@/lib/assessment";
+import { ADAPTIVE_QUESTION_LIMIT, assessmentQuestionsOnly, BLOCK_SIZE, blockQuestions, difficultyOf, skillFamily, createAdaptiveSession, finish, givenQuestions, lockAdaptiveBlock, nextQuestion, restoreSession, storedTest, submitAnswer, testAreaAnswers, testStep, UNKNOWN_RESPONSE, paceOf, flagsFor, REPORTED_STRAND, rescoreAdaptivePlacement, type AdaptiveBlock, type Grade, type Session, type Province } from "@/lib/assessment";
 
 function run(grade: Grade, ability: number, seed: number, province: Province = "BC"): Session {
   const created = createAdaptiveSession({ grade, province }, seed);
@@ -261,5 +262,113 @@ describe("placement rules v2", () => {
       workingLevel: 0, confidence: "low", levelCertainty: "early-sign",
     });
     expect(finish(completed)).not.toHaveProperty("adaptiveVersion");
+  });
+});
+
+describe("test-account v2 workbook placement", () => {
+  function advance(initial: Session, stopAtPlacement: boolean): Session {
+    let session = initial;
+    for (let i = 0; i < 100; i++) {
+      if (stopAtPlacement && session.adaptive?.blocks.at(-1)?.purpose === "workbook-placement") return session;
+      const step = testStep(session);
+      if (step.status === "complete") return session;
+      if (step.status === "check") session = lockAdaptiveBlock(session);
+      else {
+        const question = nextQuestion(session)!;
+        session = submitAnswer(session, {
+          questionId: question.id, response: question.level <= 3 ? question.answer : UNKNOWN_RESPONSE, timeMs: 20_000,
+        });
+      }
+    }
+    throw new Error("Assessment did not finish");
+  }
+
+  it.each([[2, 2], [3, 3]] as const)("uses %i correct in Level 3 check to place at Level %i without changing the report score", (right, level) => {
+    const profile = { grade: 3, province: "BC" } as const;
+    const seed = 3;
+    const ordinary = advance(createAdaptiveSession(profile, seed), false);
+    const checked = advance(createAdaptiveSession(profile, seed, undefined, { workbookPlacement: true }), true);
+    expect(checked.adaptive?.blocks.at(-1)?.purpose).toBe("workbook-placement");
+    expect(checked.adaptive?.blocks.at(-1)?.questions).toHaveLength(4);
+    expect(ordinary.adaptive?.blocks.every(block => block.purpose !== "workbook-placement")).toBe(true);
+    const answerCheck = (from: Session, count: number) => {
+      let next = from;
+      for (let i = 0; i < count; i++) {
+        const question = nextQuestion(next)!;
+        const done = next.answers.length - assessmentQuestionsOnly(next.adaptive!);
+        next = submitAnswer(next, { questionId: question.id, response: done < right ? question.answer : UNKNOWN_RESPONSE, timeMs: 20_000 });
+      }
+      return next;
+    };
+    const halfway = answerCheck(checked, 2);
+    const resumed = answerCheck(restoreSession(JSON.parse(JSON.stringify(storedTest(halfway))), halfway.answers), 2);
+    expect(resumed).toEqual(answerCheck(halfway, 2));
+    expect(testStep(resumed).status).toBe("check");
+    const completed = lockAdaptiveBlock(resumed);
+    expect(testStep(completed).status).toBe("complete");
+    expect(finish(completed)).toEqual({ ...finish(ordinary), workbookStart: { level, topic: 1 } });
+    expect(testAreaAnswers(completed)).toEqual(testAreaAnswers(ordinary));
+  });
+});
+
+describe("test-account workbook check leaves the assessment alone", () => {
+  function play(initial: Session, correct: (index: number) => boolean): Session {
+    let session = initial;
+    for (let i = 0; i < 200; i++) {
+      const step = testStep(session);
+      if (step.status === "complete") return session;
+      if (step.status === "check") session = lockAdaptiveBlock(session);
+      else {
+        const question = nextQuestion(session)!;
+        const index = session.answers.length;
+        session = submitAnswer(session, { questionId: question.id, response: correct(index) ? question.answer : UNKNOWN_RESPONSE, timeMs: 20_000 });
+      }
+    }
+    throw new Error("Assessment did not finish");
+  }
+
+  it("asks the same assessment questions and gives the same result, even at the question limit", () => {
+    fc.assert(fc.property(fc.constantFrom<Grade>(1, 2, 3, 4, 5, 9), fc.integer({ min: 1, max: 10_000 }), fc.array(fc.boolean(), { minLength: 80, maxLength: 80 }), (grade, seed, script) => {
+      const profile = { grade, province: "BC" } as const;
+      const ordinary = play(createAdaptiveSession(profile, seed), i => script[i]);
+      const checked = play(createAdaptiveSession(profile, seed, undefined, { workbookPlacement: true }), i => script[i]);
+      const main = assessmentQuestionsOnly(checked.adaptive!);
+      expect(main).toBe(ordinary.answers.length);
+      expect(checked.answers.slice(0, main)).toEqual(ordinary.answers);
+      if (!ordinary.adaptive!.sufficientEvidence) return;
+      const { workbookStart, ...placement } = finish(checked);
+      expect(placement).toEqual(finish(ordinary));
+      expect(testAreaAnswers(checked)).toEqual(testAreaAnswers(ordinary));
+      if (placement.workingLevel !== null && placement.workingLevel >= 2) expect(workbookStart).toBeDefined();
+    }), { numRuns: 40 });
+  });
+});
+
+describe("skill-balanced blocks", () => {
+  const strands = ["number", "fractions", "algebra", "shapes"] as const;
+  const levelPool = (seed: number, level: number) =>
+    createAdaptiveSession({ grade: 9, province: "BC" }, seed).adaptive!.pool.filter(q => q.level === level);
+
+  it("asks each skill family once before repeating one, from any rotation", () => {
+    fc.assert(fc.property(fc.integer({ min: 1, max: 10_000 }), fc.integer({ min: 0, max: 3 }), fc.constantFrom(7, 8, 9), (seed, offset, level) => {
+      const pool = levelPool(seed, level);
+      const block = blockQuestions(pool, strands, offset, true);
+      const families = new Set(pool.map(skillFamily)).size;
+      expect(block).toHaveLength(Math.min(BLOCK_SIZE, pool.length));
+      expect(new Set(block.map(skillFamily)).size).toBe(Math.min(block.length, families));
+    }), { numRuns: 60 });
+  });
+
+  it("puts every skill family's first question before a repeated family, easy first within each", () => {
+    fc.assert(fc.property(fc.integer({ min: 1, max: 10_000 }), fc.constantFrom(7, 8, 9), fc.integer({ min: 2, max: 4 }), (seed, level, kept) => {
+      const all = levelPool(seed, level);
+      const few = new Set([...new Set(all.map(skillFamily))].slice(0, kept));
+      const block = blockQuestions(all.filter(q => few.has(skillFamily(q))), strands, 0, true);
+      const firstOfFamily = block.map((q, i) => block.findIndex(other => skillFamily(other) === skillFamily(q)) === i);
+      expect(firstOfFamily.indexOf(false) === -1 || firstOfFamily.slice(firstOfFamily.indexOf(false)).every(first => !first)).toBe(true);
+      const rank = { easy: 0, medium: 1, hard: 2 };
+      const firsts = block.filter((_, i) => firstOfFamily[i]).map(q => rank[difficultyOf(q.templateId)]);
+      expect(firsts).toEqual([...firsts].sort((x, y) => x - y));
+    }), { numRuns: 60 });
   });
 });

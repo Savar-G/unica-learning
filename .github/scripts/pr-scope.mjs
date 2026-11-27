@@ -41,6 +41,7 @@ const ALWAYS_FULL_PATTERNS = [
   /^src\/lib\/maya\.ts$/,
   /^src\/lib\/maya\/session\.ts$/,
   /^src\/lib\/maya-text\.ts$/,
+  /^src\/lib\/assessment\/(adaptive|session|grades|types)\.ts$/,
 ];
 
 const SKIPPABLE_DOC_PATTERNS = [

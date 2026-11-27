@@ -130,6 +130,8 @@ test("high-blast-radius, unknown, empty, and large PRs fall back to full suite i
     "src/lib/database.ts",
     "src/lib/maya/session.ts",
     "src/lib/print-engine-chromium.ts",
+    "src/lib/assessment/adaptive.ts",
+    "src/lib/assessment/grades.ts",
     "unknown-root-config.toml",
   ]) {
     const scope = classifyScope({ eventName: "pull_request", changedFiles: [file] });

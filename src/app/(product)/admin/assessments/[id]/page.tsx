@@ -40,6 +40,7 @@ export default async function TestDetailPage({ params }: PageProps<"/admin/asses
   const live = <ProgressPanel id={t.id} initial={progress} live />;
   const ctx = Object.fromEntries(contextFacts(detail.context));
   const reportProblem = report && (report.email_error || report.alert_error);
+  const workbookStart = t.placement?.workbookStart;
   return <AdminFrame email={admin.email} title={`${child}'s test`}
     lead={`${gradeAndPlace(t.grade, t.province)} · started ${when(t.started_at)} (Pacific)`}
     actions={<>
@@ -51,6 +52,7 @@ export default async function TestDetailPage({ params }: PageProps<"/admin/asses
       ["Family", <Link key="family" href={adminParentPath(t.parent_id)}>{t.parent?.name ?? "Family"}</Link>],
       ["Status", <StatusChip key="status" status={t.status} />],
       ["Level", t.placement ? `${levelText(t.placement.workingLevel)}, route ${t.route ?? t.placement.route}` : "-"],
+      ...(workbookStart ? [["Workbook start", `Level ${workbookStart.level}, topic ${workbookStart.topic}`]] satisfies [string, string][] : []),
       ["Started (Pacific)", when(t.started_at)],
       [t.completed_at ? "Finished (Pacific)" : "Last answer (Pacific)", when(t.completed_at ?? t.last_answer_at)],
     ]} />

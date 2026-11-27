@@ -275,6 +275,46 @@ describe("the report inputs (#162)", () => {
     expect(readers.reads).toEqual({ reports: 0, assessments: 1, answers: 1 });
   });
 
+  it("counts workbook placement questions without showing their work in the assessment report", async () => {
+    const question = asked[3];
+    const workbookQuestion = { ...question, id: "level-3-check-1-0", level: 2 as const };
+    const assessment: MemoryAssessment = {
+      ...ASSESSMENT,
+      test: {
+        ...test,
+        adaptive: {
+          version: 2,
+          pool: [question],
+          blocks: [
+            { level: 4, purpose: "search", questions: [question] },
+            { level: 2, purpose: "workbook-placement", questions: [workbookQuestion] },
+          ],
+          locked: 2,
+          complete: true,
+          sufficientEvidence: true,
+          workbookPlacement: true,
+        },
+      },
+    };
+    const main = answers().find((answer) => answer.questionId === question.id)!;
+    const workbook = {
+      ...main,
+      questionId: workbookQuestion.id,
+      position: main.position + 1,
+      timeMs: 100_000,
+      workPath: null,
+      workText: "workbook check working",
+    };
+    const readers = memoryReportReaders({ ...tables(), assessments: [assessment], answers: [main, workbook] });
+    const inputs = (await loadReportInputs(readers.key(), assessment.id, noComparison))!;
+
+    const without = (await loadReportInputs(memoryReportReaders({ ...tables(), assessments: [assessment], answers: [main] }).key(), assessment.id, noComparison))!;
+    expect({ questions: inputs.questions, minutes: inputs.minutes }).toEqual({ questions: without.questions, minutes: without.minutes });
+    expect(inputs.shownWork.map((piece) => piece.questionId)).toEqual([question.id]);
+    expect(inputs.reviewPieces().map((piece) => piece.questionId)).toEqual([question.id]);
+    expect(inputs.profileAnswers().map((answer) => answer.question.id)).toEqual([question.id]);
+  });
+
   it("builds the review pieces from the same read of the test and the answers, and only when the AI step asks", async () => {
     const readers = memoryReportReaders(tables());
     const inputs = (await loadReportInputs(readers.key(), "test-1", noComparison))!;
