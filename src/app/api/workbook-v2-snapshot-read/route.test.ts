@@ -107,6 +107,33 @@ it("answers 504 when the read finishes after the deadline but the timer has not 
   expect(signal?.aborted).toBe(true);
 });
 
+it.each([
+  ["before", 9_999],
+  ["after", 10_001],
+] as const)("cancels the parallel item read when the manifest read fails %s the deadline", async (when, elapsed) => {
+  let now = 0;
+  let cancelled = false;
+  vi.spyOn(performance, "now").mockImplementation(() => now);
+  const failure = new Error("manifest read failed");
+  f.store = {
+    ...storeWithSnapshot(),
+    readSnapshotItems: (_id, _sheets, signal) => new Promise((_, reject) => {
+      signal?.addEventListener("abort", () => {
+        cancelled = true;
+        reject(new Error("item read aborted"));
+      }, { once: true });
+    }),
+    readSnapshotManifest: async () => {
+      now = elapsed;
+      throw failure;
+    },
+  };
+  const pending = call(BODY);
+  if (when === "after") expect((await pending).status).toBe(504);
+  else await expect(pending).rejects.toBe(failure);
+  expect(cancelled).toBe(true);
+});
+
 it("answers 404 for a snapshot that is not there, and 422 for a sheet that the snapshot does not have", async () => {
   expect((await call({ ...BODY, snapshotId: "00000000-0000-4000-8000-000000000000" })).status).toBe(404);
   const res = await call({ ...BODY, sheetIds: ["no-such-sheet"] });
