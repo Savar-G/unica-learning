@@ -3,7 +3,7 @@
 import { isDeepStrictEqual, parseArgs } from "node:util";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
-import { formatImport, readDraftFile, runBankImport } from "@/lib/workbook-v2-bank/import-draft";
+import { formatImport, importDraft, readDraftFile } from "@/lib/workbook-v2-bank/import-draft";
 import { supabaseBankStore } from "@/lib/workbook-v2-bank/supabase-store";
 
 async function main(): Promise<void> {
@@ -20,15 +20,23 @@ async function main(): Promise<void> {
     process.exitCode = 1;
     return;
   }
+  let draft: unknown;
+  try {
+    draft = readDraftFile(values.draft);
+  } catch (cause) {
+    console.error(formatImport({ ok: false, problems: [cause instanceof Error ? cause.message : String(cause)] }));
+    process.exitCode = 1;
+    return;
+  }
   const store = supabaseBankStore(createClient<Database>(url, key, { auth: { persistSession: false, autoRefreshToken: false } }));
-  const result = await runBankImport(values.draft, store);
+  const result = await importDraft(draft, store);
   if (!result.ok) {
     console.error(formatImport(result));
     process.exitCode = 1;
     return;
   }
   const back = await store.exportLevelDraft(result.levelId);
-  if (!isDeepStrictEqual(back, readDraftFile(values.draft))) {
+  if (!isDeepStrictEqual(back, draft)) {
     console.error(`Imported level ${result.levelId}, but it reads back different from the file. Run the import again, and report this if it repeats.`);
     process.exitCode = 1;
     return;

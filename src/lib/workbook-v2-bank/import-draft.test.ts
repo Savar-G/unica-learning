@@ -48,11 +48,16 @@ describe("assertOutsideGitRepo", () => {
     symlinkSync(outside, join(root, "repo", "link-out.json"));
     symlinkSync(join(root, "repo"), join(root, "repo-folder-link"));
     symlinkSync(join(root, "private"), join(root, "worktree", "link-dir"));
+    // Symlink bounce: private/entry -> repo/sub, repo/sub/exit -> private (bounces through repo and back outside).
+    mkdirSync(join(root, "repo", "sub"), { recursive: true });
+    symlinkSync(join(root, "repo", "sub"), join(root, "private", "entry"));
+    symlinkSync(join(root, "private"), join(root, "repo", "sub", "exit"));
     for (const path of [
       join(root, "private", "link-in.json"),
       join(root, "repo", "link-out.json"),
       join(root, "repo-folder-link", "draft.json"),
       join(root, "worktree", "link-dir", "draft.json"),
+      join(root, "private", "entry", "exit", "draft.json"),
     ]) {
       expect(() => assertOutsideGitRepo(path)).toThrow(/inside a git repository/);
     }

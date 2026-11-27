@@ -109,24 +109,30 @@ function gitAncestorUnresolved(candidate: string): string | null {
   }
 }
 
-/** Resolves symbolic links step by step in POSIX order (before collapsing `..`). */
-function resolveSymlinksPosix(path: string, links = 0): string {
+/** Resolves symbolic links step by step in POSIX order (before collapsing `..`), recording every intermediate path traversed. */
+function resolveSymlinksPosix(path: string, visited: string[] = [], links = 0): string {
   const splitParts = (p: string): string[] => p.split(/[\\/]+/).filter((seg) => seg !== "" && seg !== ".");
-  let current = isAbsolute(path) ? parse(path).root : resolveSymlinksPosix(process.cwd(), links);
+  let current = isAbsolute(path) ? parse(path).root : resolveSymlinksPosix(process.cwd(), visited, links);
   const queue = splitParts(isAbsolute(path) ? path.slice(current.length) : path);
   let linkCount = links;
   for (let i = 0; i < queue.length; i++) {
     const part = queue[i];
     if (part === "..") {
       current = dirname(current);
+      visited.push(current);
       continue;
     }
     const next = join(current, part);
+    visited.push(next);
     let isLink = false;
     try {
       isLink = lstatSync(next).isSymbolicLink();
     } catch {
-      return resolve(next, ...queue.slice(i + 1));
+      const tail = queue.slice(i + 1);
+      if (tail.includes("..")) {
+        throw new Error(`Refusing the draft file ${path}: it traverses ".." through non-existent component ${next}.`);
+      }
+      return tail.length > 0 ? join(next, ...tail) : next;
     }
     if (isLink) {
       linkCount++;
@@ -149,14 +155,16 @@ function resolveSymlinksPosix(path: string, links = 0): string {
 }
 
 /**
- * Refuses a file inside a git repository or worktree: by every ancestor of the path as written (including intermediate
- * symlinks inside a worktree that point outside git) AND by the POSIX-resolved target path. Returns the resolved path.
+ * Refuses a file inside a git repository or worktree: by every ancestor of the path as written, every intermediate
+ * symlink location visited during POSIX expansion (e.g. private -> repo -> private), AND the final resolved target.
  */
 export function assertOutsideGitRepo(filePath: string): string {
   const absolute = resolve(filePath);
-  const resolved = resolveSymlinksPosix(filePath);
+  const visited: string[] = [];
+  const resolved = resolveSymlinksPosix(filePath, visited);
   const repo =
     gitAncestorUnresolved(absolute) ??
+    visited.reduce<string | null>((found, step) => found ?? gitAncestorUnresolved(step), null) ??
     gitAncestorUnresolved(resolved) ??
     findGitAncestor(absolute) ??
     findGitAncestor(dirname(absolute)) ??
