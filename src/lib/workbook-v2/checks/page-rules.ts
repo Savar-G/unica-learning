@@ -332,15 +332,8 @@ function checkColumns(page: PageModel, onPage: readonly BookItem[], tell: Tell):
   if (lefts.length > limit) tell(`there are ${lefts.length} answer columns and the limit is ${limit}`);
 }
 
-/** The problems of one page, in plain words. `items` may hold the items of other pages too. */
-export function checkPage(page: PageModel, items: readonly BookItem[]): string[] {
-  const problems: string[] = [];
-  const tell: Tell = (problem) => {
-    const text = `Page ${page.page}: ${problem}.`;
-    if (!problems.includes(text)) problems.push(text);
-  };
+function checkFrameParts(page: PageModel, live: Rect, tell: Tell): void {
   if (page.size.w !== PAPER.w || page.size.h !== PAPER.h) tell(`the paper must be ${PAPER.w} by ${PAPER.h} points`);
-  const live = liveArea(page);
   checkEdges(page, live, tell);
   checkInk(page, tell);
   checkFrame(page, tell);
@@ -348,6 +341,39 @@ export function checkPage(page: PageModel, items: readonly BookItem[]): string[]
   checkMarks(page, live, tell);
   for (const problem of framePrintProblems(page, live)) tell(problem);
   for (const problem of timeLogProblems(page, live)) tell(problem);
+}
+
+/**
+ * The frame layout rules of a page (paper, edges, ink, QR, scan marks, heading/instruction/footer, time log, overlaps, ids),
+ * optionally including template slot rectangles so question-place bounds are checked against edges, instruction, footer, and
+ * other frame regions even before items are generated.
+ */
+export function checkPageFrame(page: PageModel, slotRects: readonly Rect[] = []): string[] {
+  const problems: string[] = [];
+  const tell: Tell = (problem) => {
+    const text = `Page ${page.page}: ${problem}.`;
+    if (!problems.includes(text)) problems.push(text);
+  };
+  const slots: Region[] = slotRects.map((rect, i) => ({
+    id: `${page.id}/slot-${i + 1}`, role: "slot", rect, item: `${page.id}/${i + 1}`, part: null, ink: [],
+  }));
+  const checked: PageModel = slots.length > 0 ? { ...page, regions: [...page.regions, ...slots] } : page;
+  const known = new Map<string, BookItem>(slots.map((s, i) => [s.item!, { number: i + 1 } as BookItem]));
+  checkFrameParts(checked, liveArea(checked), tell);
+  checkOverlaps(checked, new Set(), new Set(), tell);
+  checkIds(checked, known, tell);
+  return problems;
+}
+
+/** The problems of one page, in plain words. `items` may hold the items of other pages too. */
+export function checkPage(page: PageModel, items: readonly BookItem[]): string[] {
+  const problems: string[] = [];
+  const tell: Tell = (problem) => {
+    const text = `Page ${page.page}: ${problem}.`;
+    if (!problems.includes(text)) problems.push(text);
+  };
+  const live = liveArea(page);
+  checkFrameParts(page, live, tell);
   const onPage = items.filter((i) => i.sheetId === page.sheetId && i.side === page.side && i.id.startsWith(`${page.id}/`));
   checkColumns(page, onPage, tell);
   checkOverlaps(page, new Set(onPage.filter((i) => i.face.kind !== "column").map((i) => i.id)), new Set(onPage.filter((i) => i.face.kind === "story").map((i) => i.id)), tell);
