@@ -34,6 +34,11 @@ const db = createClient<Database>("https://send-marking.example.test", "syntheti
       return Response.json(state.taken.includes(SLOT[table]) ? [{ id: "row", photo_id: "row" }] : []);
     }
     if (url.pathname.endsWith("/scan_photos")) return Response.json([{ child_id: child }]);
+    if (url.pathname.endsWith("/workbooks")) {
+      expect(url.searchParams.get("child_id")).toBe(`eq.${child}`);
+      expect(url.searchParams.get("generator")).toBe("eq.v2");
+      return Response.json([]);
+    }
     if (url.pathname.endsWith("/scan_marking_revisions")) {
       expect(url.searchParams.get("parent_id")).toBe(`eq.${parent}`);
       expect(url.searchParams.get("child_id")).toBe(`eq.${child}`);
