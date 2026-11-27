@@ -9,7 +9,7 @@ UNI-243 (B3). The architecture spec, sections 9.3 and 10.3, is the source of the
 | `child_sheet_results` | One row per issued sheet attempt of a v2 book: questions on the sheet, questions scored, mistakes, result (`mastered`, `repeat`, `unknown`) and the `marks_version` it came from | `write_child_sheet_results` (service role only) |
 | `child_bank_state` | Per child and level: the start sheet, the level-test state and the parent's request for fewer or more pages | The service role (`BookStore.saveChildState`) |
 
-The migrations are `20261127205443_child_sheet_results` and `20261127215019_child_sheet_results_hardening`. Position is never stored. `position(...)` computes it each time from the issued sheets, the accepted page scans and these results.
+The result migrations are `20261127205443_child_sheet_results`, `20261127215019_child_sheet_results_hardening`, and `20261127234052_reconcile_legacy_sheet_results`. Position is never stored. `position(...)` computes it each time from the issued sheets, the accepted page scans and these results.
 
 A result row references the issued sheet in `workbook_sheets` (`workbook_id`, `sheet_id`, `attempt`). The database refuses a result for a sheet attempt that the workbook did not issue to the child or whose printed revision differs from the workbook.
 
@@ -31,7 +31,7 @@ A result row references the issued sheet in `workbook_sheets` (`workbook_id`, `s
 4. Match each mark to its workbook, printed revision and item ID. Compute every sheet attempt and write the results with the marks version.
 5. Record the completed revision when every book was processed and the results saved.
 
-The version is read before the marks, so a row is never newer than its version. `write_child_sheet_results` writes a row when its stored version is the same or older. It skips the row and counts it as `stale` when the stored version is newer. A trigger refuses any other write that lowers `marks_version` (SQLSTATE `PT409`).
+The version is read before the marks, so a row is never newer than its version. `write_child_sheet_results` writes a row when its stored version is the same or older. It skips the row and counts it as `stale` when the stored version is newer. A trigger refuses any other write that lowers `marks_version` (SQLSTATE `PT409`). If a result names a later duplicate v2 issuance, the next rebuild at the same or a later version re-scores it on the first issuance. An older rebuild leaves that result in place and still saves the other results in its batch.
 
 Marking calls the rebuild in `src/lib/scan-marking-server.ts`: after each profile rebuild (a photo, a closed-plan publication and the recovery run) and after our team's mark change (`publishMarkChange`). A failed sheet result rebuild reports `scan.recovery_failed` with step `sheet_results`. The recovery queue retries while the sheet results are behind the marks, even after the profile is current.
 
@@ -46,6 +46,8 @@ A v2 question's package id is `v2:<engine item id>`. `childMarksFrom` (`marks.ts
 ## Checks on the hosted database
 
 `supabase/tests/child_sheet_results_hosted.sql` runs in one transaction and rolls back. It proves the grants, the monotonic marks version, the readers (a parent who is not an admin reads no row, anon reads nothing), the family and child write fences, and the cascades (0 rows left after a child or family deletion). Last run: 27 November 2026, passed.
+
+`supabase/tests/child_sheet_results_legacy.sql` runs on local PostgreSQL. It adds a synthetic legacy duplicate and checks that a rebuild can correct the result while keeping both issued sheets and the latest marks version. The transaction rolls back.
 
 ## Limits
 

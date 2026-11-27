@@ -1,6 +1,7 @@
 // The BookStore in memory: the same rules as the tables and write_child_sheet_results of migrations
 // 20261127205443_child_sheet_results and child_sheet_results_hardening, for tests and for the fake PostgREST.
 import { SHEET_RESULTS } from "@/lib/workbook-v2/results/sheet-results";
+import { firstIssuedAttempts, sheetAttemptKey } from "./issuance";
 import { LEVEL_TEST_STATES, PAGES_REQUESTS, type BookItemRow, type BookRow, type BookStore, type ChildBankState, type IssuedSheetRow, type ReceiptRow, type SheetResultWrite, type StoredSheetResult } from "./types";
 
 const REVISION_HEX = /^[0-9a-f]{28}$/;
@@ -24,7 +25,7 @@ export type MemoryBookStore = BookStore & { tables: MemoryBookTables };
 
 const copy = <T>(rows: readonly T[] | undefined): T[] => structuredClone([...(rows ?? [])]);
 
-function rowProblem(row: SheetResultWrite, books: readonly BookRow[], issued: readonly IssuedSheetRow[], stored: readonly StoredSheetResult[]): string | null {
+function rowProblem(row: SheetResultWrite, books: readonly BookRow[], firstWorkbook: ReadonlyMap<string, string>): string | null {
   if (!REVISION_HEX.test(row.printedRevision)) return `bad printed revision for ${row.sheetId}`;
   if (typeof row.sheetId !== "string" || row.sheetId.length < 1 || row.sheetId.length > 120) return "bad sheetId";
   if (!intIn(row.attempt, 1, 1000)) return `bad attempt for ${row.sheetId}`;
@@ -34,9 +35,9 @@ function rowProblem(row: SheetResultWrite, books: readonly BookRow[], issued: re
   if (!(SHEET_RESULTS as readonly string[]).includes(row.result)) return `bad result for ${row.sheetId}`;
   const book = books.find((b) => b.workbookId === row.workbookId);
   if (!book || book.printedRevision === null || book.printedRevision !== row.printedRevision) return `printed_revision does not match workbook ${row.workbookId}`;
-  if (!issued.some((s) => s.workbookId === row.workbookId && s.sheetId === row.sheetId && s.attempt === row.attempt)) return `${row.sheetId} ${row.attempt} was not issued`;
-  const existing = stored.find((s) => s.sheetId === row.sheetId && s.attempt === row.attempt);
-  if (existing && existing.workbookId !== row.workbookId) return `${row.sheetId} ${row.attempt} already belongs to another workbook`;
+  const first = firstWorkbook.get(sheetAttemptKey(row));
+  if (!first) return `${row.sheetId} ${row.attempt} was not issued`;
+  if (first !== row.workbookId) return `${row.sheetId} ${row.attempt} was first issued in another workbook`;
   return null;
 }
 
@@ -64,16 +65,12 @@ export function memoryBookStore(): MemoryBookStore {
       if (!tables.children.has(childId)) return { status: "refused", reason: "the child is not known" };
       const childBooks = tables.books.get(childId) ?? [];
       const issued = tables.sheets.get(childId) ?? [];
+      const firstWorkbook = new Map(firstIssuedAttempts(issued, childBooks).map((row) => [sheetAttemptKey(row), row.workbookId]));
       const stored = copy(tables.results.get(childId));
-      // Validate the entire batch atomically against current + in-batch rows before mutating anything.
-      const batchWorkbook = new Map<string, string>();
+      // Validate the entire batch against the books and their first issuances before mutating anything.
       for (const row of rows) {
-        const problem = rowProblem(row, childBooks, issued, stored);
+        const problem = rowProblem(row, childBooks, firstWorkbook);
         if (problem) return { status: "refused", reason: `the results do not pass the database check (${problem})` };
-        const key = `${row.sheetId} ${row.attempt}`;
-        const prev = batchWorkbook.get(key);
-        if (prev && prev !== row.workbookId) return { status: "refused", reason: `the results do not pass the database check (${key} belongs to another workbook)` };
-        batchWorkbook.set(key, row.workbookId);
       }
       let written = 0;
       let stale = 0;

@@ -125,6 +125,27 @@ describe.each(adapters)("sheet results on the %s store", (_name, make) => {
     expect((await placed(w)).done).toEqual([A, C]);
   });
 
+  it("rebuilds a result saved against a later duplicate without losing other sheets", async () => {
+    const w = await world(make);
+    await w.seeder.seed({ ...w.family, books: [{ workbookId: w.book2, number: 2, printedRevision: REV, levels: [3],
+      sheets: [{ sheetId: A, attempt: 1, items: ITEMS }, { sheetId: C, attempt: 1, items: ITEMS }] }] });
+    const legacy = {
+      workbookId: w.book2, printedRevision: REV, sheetId: A, attempt: 1,
+      itemsTotal: ITEMS, itemsScored: ITEMS, mistakes: 4, result: "repeat", marksVersion: 2,
+    } as const;
+    w.seeder.seedResult(w.family.childId, legacy);
+    const marks = memoryMarks();
+    marks.set(w.book1, A, 1, tries(10, 0));
+    expect(await rebuildSheetResults({ books: w.store, marks }, w.family.childId)).toMatchObject({ status: "written", written: 2, stale: 1 });
+    expect(await stored(w, A)).toEqual(legacy);
+    marks.set(w.book2, C, 1, tries(10, 0));
+    expect(await rebuildSheetResults({ books: w.store, marks }, w.family.childId)).toMatchObject({ status: "written", written: 3, stale: 0 });
+    expect(await stored(w, A)).toMatchObject({ workbookId: w.book1, result: "mastered", marksVersion: 2 });
+    expect(await stored(w, C)).toMatchObject({ workbookId: w.book2, result: "mastered", marksVersion: 2 });
+    expect(await w.store.writeSheetResults(w.family.childId, 3, [legacy])).toMatchObject({ status: "refused" });
+    expect(await w.store.issuedSheets(w.family.childId)).toHaveLength(4);
+  });
+
   it.each(["selected", "duplicate"] as const)("infers a legacy retry reason with a result from the %s issuance", async (resultSource) => {
     const w = await world(make);
     const retryBook = crypto.randomUUID();
@@ -132,10 +153,10 @@ describe.each(adapters)("sheet results on the %s store", (_name, make) => {
       { workbookId: w.book2, number: 2, printedRevision: REV, levels: [3], sheets: [{ sheetId: A, attempt: 1, items: ITEMS }] },
       { workbookId: retryBook, number: 3, printedRevision: REV, levels: [3], sheets: [{ sheetId: A, attempt: 2, items: ITEMS }] },
     ] });
-    expect(await w.store.writeSheetResults(w.family.childId, 1, [{
+    w.seeder.seedResult(w.family.childId, {
       workbookId: resultSource === "selected" ? w.book1 : w.book2,
-      printedRevision: REV, sheetId: A, attempt: 1, itemsTotal: ITEMS, itemsScored: ITEMS, mistakes: 4, result: "repeat",
-    }])).toMatchObject({ status: "written", written: 1 });
+      printedRevision: REV, sheetId: A, attempt: 1, itemsTotal: ITEMS, itemsScored: ITEMS, mistakes: 4, result: "repeat", marksVersion: 1,
+    });
     const progress = await placed(w);
     expect(progress.queue.filter((q) => q.sheetId === A)).toEqual(
       resultSource === "selected" ? [{ sheetId: A, attempt: 3, reason: "unscanned" }] : [],

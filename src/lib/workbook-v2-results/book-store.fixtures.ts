@@ -5,7 +5,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import type { QueueReason } from "@/lib/workbook-v2/assemble/position";
 import { memoryBookStore, type MemoryBookStore } from "./memory-store";
-import type { BookItemRow, BookRow, IssuedSheetRow } from "./types";
+import type { BookItemRow, BookRow, IssuedSheetRow, StoredSheetResult } from "./types";
 
 /** One issued sheet attempt of an invented book, with `items` questions: the first half on its front, the rest on its back. */
 export interface SeedSheet { sheetId: string; attempt: number; items: number; reason?: QueueReason | null }
@@ -47,11 +47,15 @@ export function seedRows(family: SeedFamily, book: SeedBook): SeedRows {
 export interface BookSeeder {
   seed(family: SeedFamily): Promise<void>;
   scan(family: SeedFamily, workbookId: string, pageNumber: number): Promise<void>;
+  seedResult(childId: string, result: StoredSheetResult): void;
 }
 
 export function memorySeeder(store: MemoryBookStore): BookSeeder {
   const t = store.tables;
   return {
+    seedResult(childId, result) {
+      t.results.set(childId, [...(t.results.get(childId) ?? []), result]);
+    },
     async seed(family) {
       t.children.set(family.childId, family.parentId);
       for (const book of family.books) {
