@@ -83,12 +83,12 @@ export function writeFullBaseline(dir: string, renderer: string, builds: readonl
       renameSync(stage, safeDir);
       return;
     }
-    for (const { bookDir, folder } of plan) {
+    for (const { folder } of plan) {
       if (existsSync(folder)) {
         throw new Error(`Refused: ${folder} already exists inside ${safeDir}. Write the full baseline to a clean folder.`);
       }
-      renameSync(join(stage, bookDir), folder);
     }
+    for (const { bookDir, folder } of plan) renameSync(join(stage, bookDir), folder);
     renameSync(join(stage, "golden.json"), manifest);
   } finally {
     rmSync(stage, { recursive: true, force: true });
