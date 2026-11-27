@@ -70,7 +70,29 @@ function page(workbookId: string, p: Pick<PageRow, "page_number" | "day_label" |
   };
 }
 
+/** The most rows PostgREST gives in one response (the project's max rows). A longer read is cut with no error. */
+const PAGE_SIZE = 1000;
+
+/**
+ * Every row of a read, in pages of PAGE_SIZE ordered by `id` (unique, so no row moves between pages of a book that does
+ * not change), until a short page. A v2 book holds about 2,000 questions (UNI-141).
+ */
+async function allRows<T>(read: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await read(from, from + PAGE_SIZE - 1);
+    if (error) throw new Error(error.message);
+    rows.push(...(data ?? []));
+    if ((data ?? []).length < PAGE_SIZE) return rows;
+  }
+}
+
+const byNumber = (a: { question_number: number }, b: { question_number: number }) => a.question_number - b.question_number;
+
 export function workbookStore(db: SupabaseClient<Database>): WorkbookStore {
+  const questionsOf = (workbookId: string) =>
+    allRows((from, to) => db.from("workbook_questions").select(`id, ${QUESTION_COLUMNS}`).eq("workbook_id", workbookId).order("id", { ascending: true }).range(from, to))
+      .then((rows) => rows.sort(byNumber));
   return {
     async write(input) {
       const problem = workbookProblem(input);
@@ -93,17 +115,23 @@ export function workbookStore(db: SupabaseClient<Database>): WorkbookStore {
       const [book, pages, questions] = await Promise.all([
         db.from("workbooks").select(BOOK_COLUMNS).eq("id", id).maybeSingle(),
         db.from("workbook_pages").select(PAGE_COLUMNS).eq("workbook_id", id).order("page_number", { ascending: true }),
-        db.from("workbook_questions").select(QUESTION_COLUMNS).eq("workbook_id", id).order("question_number", { ascending: true }),
+        questionsOf(id).catch((e: Error) => { throw new Error(`workbook load: ${e.message}`); }),
       ]);
-      const error = book.error ?? pages.error ?? questions.error;
+      const error = book.error ?? pages.error;
       if (error) throw new Error(`workbook load: ${error.message}`);
       if (!book.data) return null;
+      const onPage = new Map<string, typeof questions>();
+      for (const q of questions) {
+        const list = onPage.get(q.page_id);
+        if (list) list.push(q);
+        else onPage.set(q.page_id, [q]);
+      }
       return {
         ...summary(book.data),
         pdfSha256: book.data.pdf_sha256,
         printManifest: book.data.print_manifest as ScanManifest | null,
         printedRevision: book.data.printed_revision,
-        pages: (pages.data ?? []).map((p) => page(id, p, (questions.data ?? []).filter((q) => q.page_id === p.id))),
+        pages: (pages.data ?? []).map((p) => page(id, p, onPage.get(p.id) ?? [])),
       };
     },
 
@@ -128,11 +156,13 @@ export function workbookStore(db: SupabaseClient<Database>): WorkbookStore {
       if (!isUuid(workbookId)) return [];
       const [pages, questions] = await Promise.all([
         db.from("workbook_pages").select("id, page_number").eq("workbook_id", workbookId).order("page_number", { ascending: true }),
-        db.from("workbook_questions").select("page_id").eq("workbook_id", workbookId),
+        allRows((from, to) => db.from("workbook_questions").select("id, page_id").eq("workbook_id", workbookId).order("id", { ascending: true }).range(from, to))
+          .catch((e: Error) => { throw new Error(`workbook page index load: ${e.message}`); }),
       ]);
-      const error = pages.error ?? questions.error;
-      if (error) throw new Error(`workbook page index load: ${error.message}`);
-      return (pages.data ?? []).map((p) => ({ number: p.page_number, questions: (questions.data ?? []).filter((q) => q.page_id === p.id).length }));
+      if (pages.error) throw new Error(`workbook page index load: ${pages.error.message}`);
+      const counts = new Map<string, number>();
+      for (const q of questions) counts.set(q.page_id, (counts.get(q.page_id) ?? 0) + 1);
+      return (pages.data ?? []).map((p) => ({ number: p.page_number, questions: counts.get(p.id) ?? 0 }));
     },
 
     async question(ref) {

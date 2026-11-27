@@ -1,6 +1,6 @@
 # Workbook engine v2
 
-The v2 engine turns a bank snapshot file into a book: page models, answers, a PDF, page images and the position of each rectangle. It is in `src/lib/workbook-v2/`, apart from the v1 generator, and it is not connected to the app yet. It holds fifteen shapes (addition, subtraction and multiplication in columns, the facts of +, -, × and ÷, repeated addition, skip counting, a missing factor, a missing addend, division with a remainder, long division, place value and a bar model of equal groups), word problems (see "Word problems"), seventeen page templates and invented sheets of all of them. It also freezes a draft of a level into a snapshot.
+The v2 engine turns a bank snapshot file into a book: page models, answers, a PDF, page images and the position of each rectangle. It is in `src/lib/workbook-v2/`, apart from the v1 generator. The app publishes its books only through the book job of test families (see "Publishing"). It holds fifteen shapes (addition, subtraction and multiplication in columns, the facts of +, -, × and ÷, repeated addition, skip counting, a missing factor, a missing addend, division with a remainder, long division, place value and a bar model of equal groups), word problems (see "Word problems"), seventeen page templates and invented sheets of all of them. It also freezes a draft of a level into a snapshot.
 
 ## Use it
 
@@ -327,12 +327,43 @@ The harness (`testing/shape-harness.ts`, with the step checks in `shape-steps.ts
 
 - **Program:** it must be a regular file with the pinned SHA-256. `npm run typst:stage` puts the verified program (53 MB) in `.workbook-v2/`, which Git ignores. `workbookV2TraceFiles()` lists the files that the bundle of the function must hold.
 - **No permission to run:** the bundle can only be read. When the program in it may not run, each drawing copies the verified bytes into its private temp folder.
-- **Not connected:** no function builds books yet, so no build stages the program. The first one (UNI-260) adds `typst:stage` to the build, where a failed download must fail the deployment, and the files to `outputFileTracingIncludes` for its route.
+- **Connected:** `/api/workbook-v2-publish` (see "Publishing") is the one function that builds books. `vercel.json` runs `npm run typst:stage && npm run build`, so a failed download fails the deployment, and `next.config.ts` gives only that route `workbookV2TraceFiles()`.
+
+## Publishing
+
+The book job (UNI-141) puts a v2 book into today's workbook tables, so that the scan code, Maya and the parent answer view read it as they read a v1 book. It is outside the engine, in `src/lib/workbook-v2-publish/`, and only for families in `public.test_accounts`: the job and both database functions refuse any other family, before they write a row or a file.
+
+| Module | What it does |
+|---|---|
+| `job.ts` | `publishV2Book(deps, request)`: the steps below, and the timing record |
+| `input.ts` | checks the request (a request key, whole days of the same size, pages a multiple of 4 and at most 120), plans the book with every check that needs no drawing, and makes the allocation |
+| `contract-writer.ts` | the rows of a built book: a print contract for each page (scan marks in image pixels, 150 dpi), each question's box and regions, a copied question package, the item answers, the sheets, the time logs and the printed revision; `workbookProblem` checks them, with a cap of 4,000 questions |
+| `package-copy.ts` | the copy of a question as a question package: the printed prompt and a box for each answer part with its exact value (its unit as the label). It has no operation and is not scored by code ("not-checked"), so every reader finds it and none marks from it |
+| `memory-store.ts`, `supabase-store.ts` | the store of allocations and books, and the file store; `publish-store.test.ts` runs the same tests on both |
+| `replay.ts` | rebuilds a book from its saved input and compares the bytes |
+| `full-book.ts` | an invented Level 3 snapshot and the plan of a full-size book: 60 sheets, 120 pages, 10 days, 1,990 questions |
+
+**The order of the job:**
+
+1. Check the family, plan the book, and save the allocation (`allocate_v2_workbook`: the workbook id, the next number of the child, a QR token of 24 characters for each page, the time) and the input file `<parent>/<workbook>/<input hash>.json` (canonical JSON of the snapshot and the book request) before the build. A retry with the same request key reuses the allocation, and only for the same child, sheets, region, interest and snapshot. A book that has the input hash already is given back with no build.
+2. `buildBook`.
+3. Upload the PDF and each page image as `<parent>/<workbook>/<SHA-256>.pdf` or `.png`. A path that exists already holds the same bytes, so it counts as stored.
+4. `publish_v2_workbook` writes the workbook, pages, questions, item answers, sheets and time logs in one transaction, or nothing. The same input hash again writes nothing and gives back the book. When the call fails or its answer is lost, the job reads the book by its input hash before one retry.
+
+**Tables** (migration `20261127023500_workbook_v2_publish`): `workbooks` gets `generator` (`v1` or `v2`), the snapshot id and hash, `engine_version`, `renderer_version` (`typst@<version>`, the same on every computer), `font_hashes` (each font and `page.typ`), `input_hash` (unique), `input_path` and `pages_per_day`; a v2 book has all of them and a v1 book none, and they never change. `workbook_item_answers` holds one row for each printed question, the one authority for its answer: the parameters, the prompt, the answer kind, value, unit and parts, the worked steps, the shape and its version, and the hash of the item. `workbook_sheets` holds one row for each issued sheet and `workbook_time_logs` one for each day (`reading_state` starts `pending`). `workbook_v2_allocations` keeps the allocations; only admins read it. An allocation, an item answer and a sheet never change. Parents read the rows of their own shipped books; the input file and the PDF stay with the team (`Workbook print files stay with the team`). Every new table cascades from the parent and the child and has the family and child write fences.
+
+**The timing record** of each run: `httpStatus`, `status` (`published` or `existing`), the workbook id, its printed revision, the input hash and path, `counts` (pages, questions, item answers, sheets, time logs), `bytes` (`pdf + images + input = total`) and `timingMs` (`allocate + build + upload + publish + overhead = total`; each step is rounded down and the total up). A book that existed has counts of 0.
+
+**The check route:** `POST /api/workbook-v2-publish` with `Authorization: Bearer <CRON_SECRET>` and `{"childId": ..., "requestKey": ..., "sheets": 60}` builds the full-size invented book in the function (`maxDuration` 60) and answers with the timing record: 201 published, 200 existing, 400 a bad body, 401, 403 a family that is not a test family, 404 in production unless `WORKBOOK_V2_TEST_PUBLISH=on`, 422 a book that cannot be made, 429 while the instance builds one.
+
+Measured on 2026-11-26 from a laptop against the hosted project, for the full-size book (1,990 questions, PDF 0.92 MB, images 8.9 MB, input 29 KB): allocate 1.3 s, build 4.5 s, upload 3.2 s, publish 8.6 s, total 17.5 s. In the database `publish_v2_workbook` takes 1.1 to 1.4 s (the triggers of the tables are most of it), and the call through PostgREST with its 4.3 MB argument took 5.2 s the first time. A second run gave back the book in 3.6 s and wrote nothing. A function in `sfo1` is near the database; its time is not measured yet.
+
+**Replay:** `npm run workbook:v2:replay -- --workbook <uuid>` (with `SUPABASE_URL` and `SUPABASE_SECRET_KEY`) reads the book's identity and fingerprints, downloads its input file, and compares the input hash, the engine version, the renderer version and each font and drawing file hash before it builds; a difference is named and nothing is built. Then it proves that the PDF and every page image are the same bytes. `--bundle <folder>` (with `input.json` and `expected.json`) and `--input-file` with the expected hashes work offline. The full-size book replayed on a laptop in 4.4 s, the same bytes.
 
 ## Where the next parts connect
 
 - The freeze of a level is `freezeBank`; the bank tables and the admin tool (B1, B8) call it. The questions, scenarios and region packs of a snapshot are the rows of `bank_questions`, `bank_scenarios` and `bank_region_packs`.
 - The book job gives `region` from the family and, when themes come, `scenario` from the interest of the child. Seen phrasings are an input of `choosePhrasing` that no book passes yet (UNI-258).
 - Marking reads the captures of a page (B6): the time log is the first.
-- The book job (UNI-260): see "In a Vercel function".
+- The book job for real families (UNI-260) uses the job of "Publishing" with the family's plan.
 - More shapes: follow "Adding a shape" above. A new look of a question is a new `Face` and a template that takes it.

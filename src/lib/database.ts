@@ -32,6 +32,8 @@ import type { LayoutEditPlan } from "@/lib/workbook-layout-edit";
 import type { QuestionGate } from "@/lib/workbook-gates";
 import type { PageGate } from "@/lib/workbook-page-gates";
 import type { GateOutcome } from "@/lib/workbook-run-gates";
+import type { AnswerKind, AnswerPart, Step } from "@/lib/workbook-v2/contract";
+import type { AllocationRecord, TimeLogReadingState, WorkbookGenerator } from "@/lib/workbook-v2-publish/types";
 
 export type { Json };
 
@@ -72,7 +74,10 @@ type ColumnTypes = KnownColumns<{
   scan_calibrations: { state: ScanCalibrationState; result: ScanCalibrationResult | null };
   scan_photos: { state: ScanPhotoState; reject_reason: ScanRejectReason | null };
   scan_marking_jobs: { state: ScanJobState; blocked_reason: ScanBlockedReason | null };
-  workbooks: { status: WorkbookStatus; print_manifest: ScanManifest | null };
+  workbooks: { status: WorkbookStatus; print_manifest: ScanManifest | null; generator: WorkbookGenerator; font_hashes: Record<string, string> | null };
+  workbook_item_answers: { answer_kind: AnswerKind; accepted_forms: string[]; parts: AnswerPart[]; worked_steps: Step[] };
+  workbook_time_logs: { reading_state: TimeLogReadingState };
+  workbook_v2_allocations: { allocation: AllocationRecord };
   workbook_pages: { print_contract: PagePrintContract | null };
   workbook_questions: { regions: PrintedRegion[] | null; teaching: TeachingContext | null };
   workbook_drafts: { draft: GeneratedWorkbook };

@@ -21,6 +21,9 @@ import { REFERRAL_RISKS, REFERRAL_OPERATION_STATES, REFERRAL_REWARD_KINDS, REFER
 import { GATE_OUTCOMES } from "@/lib/workbook-run-gates";
 import { REFERENCE_RECORD_KINDS, TRANSCRIPT_STATUSES } from "@/lib/reference-record/import";
 import { TOPIC_METHOD_STATUSES } from "@/lib/reference-method/types";
+import { LEARNING_EVENT_ASSISTANCE } from "@/lib/learning-events";
+import { ANSWER_KINDS } from "@/lib/workbook-v2/contract";
+import { TIME_LOG_READING_STATES, WORKBOOK_GENERATORS } from "@/lib/workbook-v2-publish/types";
 
 const LISTS: { name: string; list: readonly string[]; table: string; column: string }[] = [
   { name: "CUSTOMER_ACTIVITY_KINDS", list: CUSTOMER_ACTIVITY_KINDS, table: "customer_activity", column: "event" },
@@ -60,6 +63,11 @@ const LISTS: { name: string; list: readonly string[]; table: string; column: str
   { name: "AI_KEY_ALIASES", list: AI_KEY_ALIASES, table: "ai_usage_events", column: "key_alias" },
   // D-330: what made an AI call.
   { name: "AI_FEATURES", list: AI_FEATURES, table: "ai_usage_events", column: "feature" },
+  // UNI-141: v2 books in today's workbook tables (migration 20261127023500_workbook_v2_publish).
+  { name: "WORKBOOK_GENERATORS", list: WORKBOOK_GENERATORS, table: "workbooks", column: "generator" },
+  { name: "TIME_LOG_READING_STATES", list: TIME_LOG_READING_STATES, table: "workbook_time_logs", column: "reading_state" },
+  { name: "ANSWER_KINDS", list: ANSWER_KINDS, table: "workbook_item_answers", column: "answer_kind" },
+  { name: "LEARNING_EVENT_ASSISTANCE", list: LEARNING_EVENT_ASSISTANCE, table: "learning_events", column: "assistance" },
 ];
 
 // Grandfathered enum-like SQL checks not yet wired to an exported TS `as const` list.

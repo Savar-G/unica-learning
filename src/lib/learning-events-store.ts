@@ -9,8 +9,10 @@ import type { LearningEvent, LearningEventStore, NewLearningEvent } from "@/lib/
 // event that is already stored. The family write fence refuses an event for a family being deleted; the foreign keys
 // refuse a child of another parent and a test of another child. Tests use src/lib/learning-events-memory.ts.
 
-/** The columns the store reads: every column but the time the row was stored. */
-type Row = Omit<Database["public"]["Tables"]["learning_events"]["Row"], "created_at">;
+/** The columns the store reads (a column that the live table adds later is not read). */
+type Row = Pick<Database["public"]["Tables"]["learning_events"]["Row"],
+  | "id" | "idempotency_key" | "parent_id" | "child_id" | "source" | "question_source" | "workbook_id" | "workbook_page" | "workbook_question" | "assessment_id"
+  | "assessment_question_id" | "skill_standard" | "skills" | "result" | "stuck_step" | "mistake" | "hints" | "time_ms" | "occurred_at" | "evidence_kind" | "evidence_id">;
 
 const COLUMNS = "id, idempotency_key, parent_id, child_id, source, question_source, workbook_id, workbook_page, workbook_question, assessment_id, assessment_question_id, skill_standard, skills, result, stuck_step, mistake, hints, time_ms, occurred_at, evidence_kind, evidence_id";
 

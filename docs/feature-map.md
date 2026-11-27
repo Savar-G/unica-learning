@@ -142,4 +142,5 @@ Primary docs: `docs/maya-tutor.md`, `docs/maya-chat.md`, `docs/maya-voice.md`.
 | OpenRouter Usage Webhook | `/api/openrouter-usage` | `docs/openrouter-usage-webhook.md` |
 | Scheduled Jobs / Workers | `/api/reminders`, `/api/scan-cleanup`, `/api/scan-marking`, `/api/scan-progress`, `/api/workbook-emails`, `/api/next-book-prepare`, `/api/child-deletions`, `/api/keepalive` | `docs/supabase-ops.md` |
 | Async Recovery Endpoints | `/api/first-pages/[id]/run`, `/api/report-jobs/[id]/retry`, `/api/workbook-runs/[id]/resume`, `/api/workbook-render-check` | Worker & job recovery |
+| Workbook v2 Publish Check | `/api/workbook-v2-publish` | Builds and publishes the full-size invented v2 book for a test family (CRON_SECRET; off in production unless `WORKBOOK_V2_TEST_PUBLISH=on`; `docs/workbook-v2-engine.md`) |
 | Marketing / Tracking | `/api/contact`, `/api/visit`, `/api/visit/step`, `/api/hit`, `/api/unsubscribe` | `docs/ad-tracking.md`, `docs/web-analytics.md` |

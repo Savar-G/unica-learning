@@ -185,3 +185,10 @@ function checkEvent(e: NewLearningEvent): NewLearningEvent | string {
   if (e.evidence !== null && (!EVIDENCE.includes(e.evidence?.kind) || !text(e.evidence.id, 100))) return "the evidence needs its kind and its id";
   return { ...e, parentId: e.parentId.toLowerCase(), childId: e.childId.toLowerCase(), question: lowerRef(e.question), occurredAt };
 }
+
+/**
+ * The help a child had on a call's checked answer (learning_events.assistance). The column and its check are live from
+ * the board-led lesson work (migration 20261120211057_learning_events_lesson_observations); this list keeps the state
+ * list test in step with the live check.
+ */
+export const LEARNING_EVENT_ASSISTANCE = ["independent", "hinted", "demonstrated", "uncertain"] as const;

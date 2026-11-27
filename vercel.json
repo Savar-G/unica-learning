@@ -3,6 +3,7 @@
   "regions": [
     "sfo1"
   ],
+  "buildCommand": "npm run typst:stage && npm run build",
   "git": {
     "deploymentEnabled": {
       "main": true,
