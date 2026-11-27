@@ -36,14 +36,92 @@ export interface DraftRows {
 export type DraftCheck = { ok: true; draft: Rec; rows: DraftRows } | { ok: false; problems: string[] };
 
 const SIDES = ["front", "back"] as const;
+const MAX_WALK_DEPTH = 32;
+const SLUG_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
+const REGION_ID = /^[A-Za-z0-9][A-Za-z0-9-]{0,63}$/;
 const isRec = (value: unknown): value is Rec => typeof value === "object" && value !== null && !Array.isArray(value);
 const recs = (value: unknown): Rec[] => (Array.isArray(value) ? value.filter(isRec) : []);
+const charLen = (text: string): number => [...text].length;
 /** Validated plain data, read as the JSON it is. */
 const json = (value: unknown): Json => value as Json;
 const object = (value: unknown): JsonObject => value as JsonObject;
 const without = (value: Rec, ...keys: string[]): Rec => Object.fromEntries(Object.entries(value).filter(([key]) => !keys.includes(key)));
 const noteOf = (value: Rec): JsonObject | null => (Object.hasOwn(value, BASIS) ? object(value[BASIS]) : null);
+const ownNote = (map: object | undefined, key: string): JsonObject | undefined =>
+  (map && Object.hasOwn(map, key) ? (map as Record<string, JsonObject | undefined>)[key] : undefined);
 const withNote = (value: Rec, note: JsonObject | null | undefined): Rec => (note ? { ...value, [BASIS]: note } : value);
+
+/** Checks raw input for values PostgreSQL jsonb/text or strict readback rejects: `-0`, NUL (`\u0000`), and unpaired UTF-16 surrogates. */
+function encodingProblems(raw: unknown): string[] {
+  const problems: string[] = [];
+  const checkString = (text: string, place: string) => {
+    if (text.includes("\u0000")) problems.push(`${place} contains a NUL character, which PostgreSQL rejects.`);
+    if (!text.isWellFormed()) problems.push(`${place} contains an unpaired UTF-16 surrogate, which PostgreSQL jsonb rejects.`);
+  };
+  const walk = (value: unknown, place: string, inside: readonly object[]) => {
+    if (typeof value === "number" && Object.is(value, -0)) {
+      problems.push(`${place} holds negative zero (-0), which JSON does not preserve.`);
+      return;
+    }
+    if (typeof value === "string") {
+      checkString(value, place);
+      return;
+    }
+    if (!value || typeof value !== "object" || inside.includes(value) || inside.length >= MAX_WALK_DEPTH) return;
+    const next = [...inside, value];
+    if (Array.isArray(value)) {
+      value.forEach((item, i) => walk(item, `${place}[${i}]`, next));
+      return;
+    }
+    for (const key of Object.keys(value)) {
+      checkString(key, `${place} key ${JSON.stringify(key)}`);
+      walk((value as Rec)[key], `${place}.${key}`, next);
+    }
+  };
+  walk(raw, "The draft", []);
+  return problems;
+}
+
+/** Validates PostgreSQL column length and identifier constraints before any store call. */
+function columnProblems(draft: Rec): string[] {
+  const problems: string[] = [];
+  const checkPattern = (value: unknown, pattern: RegExp, label: string) => {
+    if (typeof value !== "string" || !pattern.test(value)) problems.push(`${label} ${JSON.stringify(value)} does not match the database identifier constraint.`);
+  };
+  const checkLen = (value: unknown, min: number, max: number, label: string) => {
+    if (typeof value !== "string") return;
+    const len = charLen(value);
+    if (len < min || len > max) problems.push(`${label} must be ${min} to ${max} characters long (got ${len}).`);
+  };
+  const level = draft.level as Rec;
+  checkPattern(level.id, SLUG_ID, "level.id");
+  checkLen(level.name, 1, 8, "level.name");
+  const levelPos = Number(level.name);
+  if (!Number.isSafeInteger(levelPos) || levelPos < 0) problems.push(`level.name ${JSON.stringify(level.name)} must be a non-negative integer position.`);
+  if (typeof draft.defaultRegion === "string") checkPattern(draft.defaultRegion, REGION_ID, "defaultRegion");
+  recs(draft.topics).forEach((t, i) => {
+    checkPattern(t.id, SLUG_ID, `topics[${i}].id`);
+    checkLen(t.code, 1, 8, `topics[${i}].code`);
+    checkLen(t.title, 1, 200, `topics[${i}].title`);
+  });
+  recs(draft.sheets).forEach((s, i) => {
+    checkPattern(s.id, SLUG_ID, `sheets[${i}].id`);
+  });
+  recs(draft.questions).forEach((q, i) => {
+    checkPattern(q.id, SLUG_ID, `questions[${i}].id`);
+    checkLen(q.scenarioKind, 1, 64, `questions[${i}].scenarioKind`);
+    checkLen(q.unit, 1, 80, `questions[${i}].unit`);
+  });
+  recs(draft.scenarios).forEach((s, i) => {
+    checkPattern(s.id, SLUG_ID, `scenarios[${i}].id`);
+    checkLen(s.interest, 1, 64, `scenarios[${i}].interest`);
+    checkLen(s.kind, 1, 64, `scenarios[${i}].kind`);
+  });
+  recs(draft.regionPacks).forEach((p, i) => {
+    checkPattern(p.id, REGION_ID, `regionPacks[${i}].id`);
+  });
+  return problems;
+}
 
 /** Each place that holds a note that is not an object: a note is a record about a source. */
 function notesThatAreNotObjects(draft: Rec): string[] {
@@ -134,13 +212,15 @@ export function checkDraft(given: unknown): DraftCheck {
   if (!isRec(given)) return { ok: false, problems: ["The draft must be an object."] };
   const plain = plainCopy("The draft", given);
   if (!plain.ok) return plain;
+  const encoding = encodingProblems(given);
+  if (encoding.length > 0) return { ok: false, problems: encoding };
   const draft = plain.value as Rec;
   const content = contentOf(draft);
   const misplaced = misplacedNotes(content);
   if (misplaced.length > 0) return { ok: false, problems: misplaced };
   const snapshot = validateSnapshot(content);
   if (!snapshot.ok) return snapshot;
-  const problems = [...notesThatAreNotObjects(draft), ...orderProblems(draft)];
+  const problems = [...notesThatAreNotObjects(draft), ...orderProblems(draft), ...columnProblems(draft)];
   return problems.length > 0 ? { ok: false, problems } : { ok: true, draft, rows: rowsOf(draft) };
 }
 
@@ -151,10 +231,10 @@ function sheetOf(row: SheetRow): Rec {
   const content = row.content as Rec;
   const side = (name: (typeof SIDES)[number]) => {
     const raw = content[name] as Rec;
-    const rows = recs(raw.rows).map((one) => withNote(one, row.basis.rows?.[String(one.id)]));
-    return withNote({ ...raw, rows }, row.basis[name]);
+    const rows = recs(raw.rows).map((one) => withNote(one, ownNote(row.basis.rows, String(one.id))));
+    return withNote({ ...raw, rows }, ownNote(row.basis, name));
   };
-  return withNote({ id: row.sheet_id, firstPage: row.first_page, front: side("front"), back: side("back") }, row.basis.sheet);
+  return withNote({ id: row.sheet_id, firstPage: row.first_page, front: side("front"), back: side("back") }, ownNote(row.basis, "sheet"));
 }
 
 /** The draft that the rows of a level hold, from the rows that are not retired; null when there is no level. */

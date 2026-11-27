@@ -2,7 +2,7 @@
 
 The working copy holds the draft content of each level in Supabase (architecture spec 9.2, UNI-241). The bank import writes a draft file into it, and reads the rows back as the same draft. The freeze (`freezeBank`, see `docs/workbook-v2-engine.md`) turns a draft into a snapshot; snapshots and reviews are UNI-242.
 
-Code: `src/lib/workbook-v2-bank/`. Migrations: `20261127191913_bank_working_copy`, `20261127192640_bank_write_level_refusal`.
+Code: `src/lib/workbook-v2-bank/`. Migrations: `20261127191913_bank_working_copy`, `20261127192640_bank_write_level_refusal`, `20261127195924_bank_working_copy_hardening`.
 
 ## Import a draft
 
@@ -16,7 +16,7 @@ SUPABASE_URL=... SUPABASE_SECRET_KEY=... npm run workbook:v2:bank:import -- --dr
 
 ## Tables
 
-All six tables are service-role only: RLS is on, `anon` and `authenticated` have no grants, and no table has a policy.
+All six tables are service-role only: RLS is on, `PUBLIC`, `anon`, and `authenticated` have no grants, and no table has a policy.
 
 | Table | Key | Holds |
 | -- | -- | -- |

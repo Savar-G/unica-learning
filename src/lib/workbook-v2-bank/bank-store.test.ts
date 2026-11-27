@@ -130,6 +130,10 @@ export function runBankStoreContract(name: string, makeStore: () => BankStore, u
         bad((d) => { d.sheets = [...recs(d.sheets)].reverse(); }),
         bad((d) => { recs(d.questions)[0].basis = "a note that is not an object"; }),
         bad((d) => { d.unknown = true; }),
+        bad((d) => { recs(d.questions)[0].unit = "x".repeat(81); }),
+        bad((d) => { recs(d.questions)[0].basis = { note: "bad\u0000nul" }; }),
+        bad((d) => { recs(d.questions)[0].basis = { note: "bad\uD800surrogate" }; }),
+        bad((d) => { recs(d.questions)[0].basis = { delta: -0 }; }),
       ];
       for (const draft of drafts) {
         const copy = structuredClone(draft);
@@ -167,6 +171,22 @@ export function runBankStoreContract(name: string, makeStore: () => BankStore, u
       expect(await store.exportLevelDraft(levelOf(draft))).toStrictEqual(draft);
     }, timeout);
 
+    it("does not inherit Object.prototype properties as row basis when a row is named constructor", async () => {
+      const store = makeStore();
+      const draft = draftFor();
+      const sheet = recs(draft.sheets)[0];
+      const frontRows = (sheet.front as Rec).rows as Rec[];
+      const backRows = (sheet.back as Rec).rows as Rec[];
+      frontRows[0].id = "constructor";
+      delete frontRows[0].basis;
+      backRows[0].basis = { note: "Real note on another row." };
+      expect(await importDraft(draft, store)).toMatchObject({ ok: true });
+      const exported = await store.exportLevelDraft(levelOf(draft));
+      expect(exported).toStrictEqual(draft);
+      const exportedRow = ((recs(exported!.sheets)[0].front as Rec).rows as Rec[])[0];
+      expect(Object.hasOwn(exportedRow, "basis")).toBe(false);
+    }, timeout);
+
     it(`reads a level with more than ${BANK_PAGE_ROWS} questions`, async () => {
       const store = makeStore();
       const draft = withExtraQuestions(draftFor(), BANK_PAGE_ROWS + 50);
@@ -190,6 +210,34 @@ describe("the Supabase bank store over PostgREST", () => {
     fake.calls.length = 0;
     await store.readLevel(levelOf(draft));
     expect(fake.calls.filter((c) => c.startsWith("GET /rest/v1/bank_questions"))).toEqual(["GET /rest/v1/bank_questions?0", "GET /rest/v1/bank_questions?1000"]);
+  });
+
+  it("retries readLevel when a concurrent write lands between bank_levels and child pages, returning one consistent snapshot", async () => {
+    const fake = fakeBankSupabase();
+    const store = supabaseBankStore(fake.db);
+    const base = withExtraQuestions(synthDraft(freshTag()), 1005);
+    expect(await importDraft(base, store)).toMatchObject({ ok: true });
+    const updated = structuredClone(base);
+    updated.id = "updated-draft-id";
+    recs(updated.questions).push({ ...structuredClone(recs(base.questions)[0]), id: "aaa-inserted-mid-read", basis: { note: "Inserted between pages." } });
+
+    let injected = false;
+    fake.onRequest = async (call) => {
+      if (!injected && call === "GET /rest/v1/bank_questions?1000") {
+        injected = true;
+        const savedHook = fake.onRequest;
+        fake.onRequest = undefined;
+        await importDraft(updated, fake.memory);
+        fake.onRequest = savedHook;
+      }
+    };
+
+    const rows = await store.readLevel(levelOf(base));
+    expect(injected).toBe(true);
+    const ids = rows.questions.map((q) => q.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toContain("aaa-inserted-mid-read");
+    expect((rows.level?.config as Rec).draft).toMatchObject({ id: "updated-draft-id" });
   });
 });
 

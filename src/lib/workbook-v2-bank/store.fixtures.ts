@@ -44,6 +44,8 @@ export interface FakeBankSupabase {
   memory: MemoryBankStore;
   /** Each call as "METHOD /path?offset". */
   calls: string[];
+  /** Optional hook run before a request executes, for injecting concurrent writes between paged reads. */
+  onRequest?: (call: string) => Promise<void> | void;
 }
 
 export function fakeBankSupabase(): FakeBankSupabase {
@@ -59,11 +61,18 @@ export function fakeBankSupabase(): FakeBankSupabase {
       bank_scenarios: rows(t.scenarios.values()), bank_region_packs: rows(t.regionPacks.values()),
     };
   };
+  const fake: FakeBankSupabase = {
+    db: null as unknown as ReturnType<typeof createClient<Database>>,
+    memory,
+    calls,
+  };
   const fetch = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     const method = init?.method ?? "GET";
     const path = decodeURIComponent(url.pathname);
-    calls.push(`${method} ${path}?${url.searchParams.get("offset") ?? ""}`);
+    const call = `${method} ${path}?${url.searchParams.get("offset") ?? ""}`;
+    calls.push(call);
+    if (fake.onRequest) await fake.onRequest(call);
     if (method === "POST" && path === "/rest/v1/rpc/bank_write_level") {
       const written = await memory.writeLevel(JSON.parse(String(init?.body)).p_write);
       if (written.ok) return json(200, { version: written.version });
@@ -78,6 +87,6 @@ export function fakeBankSupabase(): FakeBankSupabase {
     }
     return json(200, rows);
   };
-  const db = createClient<Database>("https://fixture.invalid", "synthetic-key", { auth: { persistSession: false }, global: { fetch } });
-  return { db, memory, calls };
+  fake.db = createClient<Database>("https://fixture.invalid", "synthetic-key", { auth: { persistSession: false }, global: { fetch } });
+  return fake;
 }

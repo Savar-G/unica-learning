@@ -96,7 +96,7 @@ export const DATABASE_CHECKS: readonly { table: string; name: string; definition
   {"table":"bank_region_packs","name":"bank_region_packs_status_check","definition":"CHECK ((status = ANY (ARRAY['draft'::text, 'approved'::text, 'retired'::text])))"},
   {"table":"bank_region_packs","name":"bank_region_packs_units_check","definition":"CHECK ((jsonb_typeof(units) = 'object'::text))"},
   {"table":"bank_scenarios","name":"bank_scenarios_basis_check","definition":"CHECK (((basis IS NULL) OR (jsonb_typeof(basis) = 'object'::text)))"},
-  {"table":"bank_scenarios","name":"bank_scenarios_content_check","definition":"CHECK (((jsonb_typeof(content) = 'object'::text) AND (NOT (content ? 'basis'::text))))"},
+  {"table":"bank_scenarios","name":"bank_scenarios_content_check","definition":"CHECK (((jsonb_typeof(content) = 'object'::text) AND (NOT jsonb_path_exists(content, '$.**.\"basis\"'::jsonpath))))"},
   {"table":"bank_scenarios","name":"bank_scenarios_id_check","definition":"CHECK ((id ~ '^[a-z0-9][a-z0-9-]{0,63}$'::text))"},
   {"table":"bank_scenarios","name":"bank_scenarios_interest_check","definition":"CHECK (((char_length(interest) >= 1) AND (char_length(interest) <= 64)))"},
   {"table":"bank_scenarios","name":"bank_scenarios_kind_check","definition":"CHECK (((char_length(kind) >= 1) AND (char_length(kind) <= 64)))"},

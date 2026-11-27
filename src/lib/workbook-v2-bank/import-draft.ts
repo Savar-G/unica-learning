@@ -2,8 +2,8 @@
 // item that changed gets the next revision and goes back to draft (its approval was for the old revision); an item that
 // did not change keeps its revision and status; an item that the draft no longer has is retired, never deleted. Draft
 // files hold private content, so a file inside a git repository is refused before it is read.
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { lstatSync, readFileSync, readlinkSync } from "node:fs";
+import { dirname, isAbsolute, join, parse, resolve } from "node:path";
 import { findGitAncestor } from "@/lib/reference-record/output-guard";
 import { canonicalJson } from "@/lib/workbook-v2/hash";
 import { checkDraft, KEPT_FIELDS, type DraftRows } from "./draft";
@@ -94,22 +94,83 @@ export async function importDraft(draft: unknown, store: BankStore): Promise<Imp
   return { ok: true, levelId: write.level.id, version: written.version, counts };
 }
 
-/**
- * Refuses a file inside a git repository or worktree: by its own path, and by the path its links lead to. A draft
- * holds private content and the code repository is public.
- */
-export function assertOutsideGitRepo(filePath: string): void {
-  const absolute = resolve(filePath);
-  for (const place of [absolute, dirname(absolute)]) {
-    const repo = findGitAncestor(place);
-    if (repo) throw new Error(`Refusing the draft file ${absolute}: it is inside a git repository (${repo}). Keep draft files in a private folder outside every repository.`);
+const MAX_LINKS = 40;
+
+/** Walks ancestors of a path as written (without resolving symlinks), finding any `.git` folder or worktree `.git` file. */
+function gitAncestorUnresolved(candidate: string): string | null {
+  for (let cursor = candidate; ; cursor = dirname(cursor)) {
+    try {
+      lstatSync(join(cursor, ".git"));
+      return cursor;
+    } catch {
+      // no .git entry in this ancestor
+    }
+    if (dirname(cursor) === cursor) return null;
   }
 }
 
-/** Reads a draft file that is outside every git repository. */
+/** Resolves symbolic links step by step in POSIX order (before collapsing `..`). */
+function resolveSymlinksPosix(path: string, links = 0): string {
+  const splitParts = (p: string): string[] => p.split(/[\\/]+/).filter((seg) => seg !== "" && seg !== ".");
+  let current = isAbsolute(path) ? parse(path).root : resolveSymlinksPosix(process.cwd(), links);
+  const queue = splitParts(isAbsolute(path) ? path.slice(current.length) : path);
+  let linkCount = links;
+  for (let i = 0; i < queue.length; i++) {
+    const part = queue[i];
+    if (part === "..") {
+      current = dirname(current);
+      continue;
+    }
+    const next = join(current, part);
+    let isLink = false;
+    try {
+      isLink = lstatSync(next).isSymbolicLink();
+    } catch {
+      return resolve(next, ...queue.slice(i + 1));
+    }
+    if (isLink) {
+      linkCount++;
+      if (linkCount > MAX_LINKS) throw new Error(`${path} has too many symbolic links.`);
+      const target = readlinkSync(next);
+      const rest = queue.slice(i + 1);
+      if (isAbsolute(target)) {
+        const root = parse(target).root;
+        current = root;
+        queue.splice(0, queue.length, ...splitParts(target.slice(root.length)), ...rest);
+      } else {
+        queue.splice(0, queue.length, ...splitParts(target), ...rest);
+      }
+      i = -1;
+      continue;
+    }
+    current = next;
+  }
+  return current;
+}
+
+/**
+ * Refuses a file inside a git repository or worktree: by every ancestor of the path as written (including intermediate
+ * symlinks inside a worktree that point outside git) AND by the POSIX-resolved target path. Returns the resolved path.
+ */
+export function assertOutsideGitRepo(filePath: string): string {
+  const absolute = resolve(filePath);
+  const resolved = resolveSymlinksPosix(filePath);
+  const repo =
+    gitAncestorUnresolved(absolute) ??
+    gitAncestorUnresolved(resolved) ??
+    findGitAncestor(absolute) ??
+    findGitAncestor(dirname(absolute)) ??
+    findGitAncestor(resolved);
+  if (repo) {
+    throw new Error(`Refusing the draft file ${absolute}: it is inside a git repository (${repo}). Keep draft files in a private folder outside every repository.`);
+  }
+  return resolved;
+}
+
+/** Reads a draft file that is outside every git repository, using the validated resolved path. */
 export function readDraftFile(filePath: string): unknown {
-  assertOutsideGitRepo(filePath);
-  return JSON.parse(readFileSync(resolve(filePath), "utf8"));
+  const safePath = assertOutsideGitRepo(filePath);
+  return JSON.parse(readFileSync(safePath, "utf8"));
 }
 
 /** The import command: the file check, then the import. */

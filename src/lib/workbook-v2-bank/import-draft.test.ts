@@ -38,14 +38,22 @@ describe("assertOutsideGitRepo", () => {
     }
   });
 
-  it("refuses a link outside a repository that leads into one, and a link inside a repository that leads out", () => {
+  it("refuses a link outside a repository that leads into one, a link inside a repository that leads out, and an intermediate link inside a worktree that leads out", () => {
     mkdirSync(join(root, "repo", ".git"), { recursive: true });
+    mkdirSync(join(root, "worktree"), { recursive: true });
+    writeFileSync(join(root, "worktree", ".git"), "gitdir: /tmp/example-gitdir\n");
     const inside = file("repo", "draft.json");
     const outside = file("private", "draft.json");
     symlinkSync(inside, join(root, "private", "link-in.json"));
     symlinkSync(outside, join(root, "repo", "link-out.json"));
     symlinkSync(join(root, "repo"), join(root, "repo-folder-link"));
-    for (const path of [join(root, "private", "link-in.json"), join(root, "repo", "link-out.json"), join(root, "repo-folder-link", "draft.json")]) {
+    symlinkSync(join(root, "private"), join(root, "worktree", "link-dir"));
+    for (const path of [
+      join(root, "private", "link-in.json"),
+      join(root, "repo", "link-out.json"),
+      join(root, "repo-folder-link", "draft.json"),
+      join(root, "worktree", "link-dir", "draft.json"),
+    ]) {
       expect(() => assertOutsideGitRepo(path)).toThrow(/inside a git repository/);
     }
   });
