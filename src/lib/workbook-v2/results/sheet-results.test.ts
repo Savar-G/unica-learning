@@ -1,6 +1,7 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { FIRST_TRIES, sheetResult, type FirstTry, type ItemMark, type SheetResultKind } from "./sheet-results";
+import { WORKBOOK_1_PACES } from "../assemble/level-config";
+import { FIRST_TRIES, sheetResult, sheetResults, type FirstTry, type ItemMark, type ResultItem, type SheetResultKind } from "./sheet-results";
 
 const itemsOf = (total: number) => Array.from({ length: total }, (_, i) => ({ id: `q${i + 1}` }));
 /** Marks for the first questions of a sheet: `right` right ones, then `wrong` wrong ones, then `blank` blank ones. */
@@ -21,6 +22,8 @@ describe("the result of a sheet", () => {
     ["one mistake of 16 at 90%", 16, 90, [15, 1, 0], "mastered", 1],
     ["two mistakes of 16 at 90%", 16, 90, [14, 2, 0], "repeat", 1],
     ["a proven fail with only 10 of 16 marked at 90%", 16, 90, [8, 2, 0], "repeat", 1],
+    // Savar, 2026-11-24: 16 questions at 90%, 10 marked. One wrong is not yet a fail; the sheet waits for its marks.
+    ["one wrong with only 10 of 16 marked at 90%", 16, 90, [9, 1, 0], "unknown", 1],
     ["a proven fail with only 2 of 16 marked", 16, 90, [0, 2, 0], "repeat", 1],
     ["two blanks are two mistakes", 16, 90, [14, 0, 2], "repeat", 1],
     ["one blank is one mistake", 16, 90, [15, 0, 1], "mastered", 1],
@@ -115,6 +118,74 @@ describe("properties of every sheet", () => {
       better[wrongAt[at % wrongAt.length]] = "right";
       const [before, after] = [tries, better].map((t) => resultOf(total, marksFrom(t), masteryPercent).result);
       if (before === "mastered") expect(after).toBe("mastered");
+    }));
+  });
+});
+
+/** A book of two sheets: "s1" attempt 1 with 16 questions and "s2" attempt 2 with 10. */
+const BOOK: ResultItem[] = [
+  ...Array.from({ length: 16 }, (_, i) => ({ id: `s1/1/q${i + 1}`, sheetId: "s1", attempt: 1 })),
+  ...Array.from({ length: 10 }, (_, i) => ({ id: `s2/2/q${i + 1}`, sheetId: "s2", attempt: 2 })),
+];
+const bookMarks = (sheet: string, right: number, wrong: number): ItemMark[] =>
+  marksOf(right, wrong).map((m) => ({ ...m, itemId: `${sheet}/${m.itemId}` }));
+
+describe("the results of a book", () => {
+  const paceOf = (name: string) => {
+    const pace = WORKBOOK_1_PACES.find((p) => p.names.includes(name));
+    if (!pace) throw new Error(`no pace ${name}`);
+    return pace.config;
+  };
+
+  it("gives each sheet attempt its result, in the order of its first question", () => {
+    const outcome = sheetResults([...bookMarks("s2/2", 8, 2), ...bookMarks("s1/1", 9, 1)], BOOK, { masteryPercent: 90 });
+    expect(outcome).toMatchObject({ ok: true, sheets: [
+      { sheetId: "s1", attempt: 1, result: "unknown", itemsScored: 10, mistakes: 1, total: 16 },
+      { sheetId: "s2", attempt: 2, result: "repeat", itemsScored: 10, mistakes: 2, total: 10 },
+    ] });
+  });
+
+  it("takes the mastery line from the config alone: the same marks master at 80% and repeat at 90%", () => {
+    const marks = bookMarks("s2/2", 8, 2);
+    const at = (config: { masteryPercent: number }) => {
+      const outcome = sheetResults(marks, BOOK, config);
+      if (!outcome.ok) throw new Error(outcome.problems.join("\n"));
+      return outcome.sheets.find((s) => s.sheetId === "s2")?.result;
+    };
+    expect(paceOf("5").masteryPercent).toBe(90);
+    expect(paceOf("8").masteryPercent).toBe(80);
+    expect(at(paceOf("5"))).toBe("repeat");
+    expect(at(paceOf("8"))).toBe("mastered");
+  });
+
+  it("counts a blank as wrong and never lets a correction change the first try", () => {
+    const blanks = bookMarks("s2/2", 8, 2).map((m): ItemMark => (m.firstTry === "wrong" ? { ...m, firstTry: "blank", correction: "right" } : m));
+    const outcome = sheetResults(blanks, BOOK, { masteryPercent: 90 });
+    expect(outcome.ok && outcome.sheets.find((s) => s.sheetId === "s2")).toMatchObject({ result: "repeat", mistakes: 2 });
+  });
+
+  it.each<[string, ItemMark[], ResultItem[], RegExp]>([
+    ["a mark of no question of the book", [{ itemId: "x", firstTry: "right" }], BOOK, /"x" is for no question of the book/],
+    ["a question on two sheets", [], [...BOOK, { id: "s1/1/q1", sheetId: "s2", attempt: 2 }], /"s1\/1\/q1" is on more than one sheet/],
+    ["two marks of one question", [...bookMarks("s1/1", 1, 0), ...bookMarks("s1/1", 1, 0)], BOOK, /"s1", attempt 1: The question "s1\/1\/q1" has more than one mark/],
+    ["a bad mastery percent", [], BOOK, /not 0/],
+  ])("refuses %s", (_name, marks, items, problem) => {
+    const outcome = sheetResults(marks, items, { masteryPercent: problem.source === "not 0" ? 0 : 90 });
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.problems.join("\n")).toMatch(problem);
+  });
+
+  it("is the result of each sheet on its own, whatever the other sheets and the order of the marks", () => {
+    fc.assert(fc.property(marked, marked, fc.integer({ min: 1, max: 100 }), (one, two, masteryPercent) => {
+      const items: ResultItem[] = [
+        ...Array.from({ length: one.total }, (_, i) => ({ id: `a/q${i + 1}`, sheetId: "a", attempt: 1 })),
+        ...Array.from({ length: two.total }, (_, i) => ({ id: `b/q${i + 1}`, sheetId: "b", attempt: 3 })),
+      ];
+      const [ma, mb] = [marksFrom(one.tries), marksFrom(two.tries)];
+      const prefixed = [...mb.map((m) => ({ ...m, itemId: `b/${m.itemId}` })), ...ma.map((m) => ({ ...m, itemId: `a/${m.itemId}` }))];
+      const outcome = sheetResults(prefixed, items, { masteryPercent });
+      if (!outcome.ok) throw new Error(outcome.problems.join("\n"));
+      expect(outcome.sheets.map((s) => s.result)).toEqual([resultOf(one.total, ma, masteryPercent).result, resultOf(two.total, mb, masteryPercent).result]);
     }));
   });
 });

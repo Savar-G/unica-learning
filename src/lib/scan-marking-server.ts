@@ -11,6 +11,7 @@ import { rebuildChildProfile } from "@/lib/child-profile";
 import { childProfileStore } from "@/lib/child-profile-store";
 import { learningEventStore } from "@/lib/learning-events-store";
 import { readPageExplanations } from "@/lib/parent-problem-explanation-page-server";
+import { rebuildV2SheetResults } from "@/lib/workbook-v2-results/server";
 
 export { markingAccess, markingDecision, type ChildPlanAccess, type ChildPlanAccessDeps, type ChildPlanReason, type MarkingDecision, type MarkingScope } from "@/lib/scan-marking-access";
 
@@ -89,7 +90,18 @@ async function rebuildOrDefer(db: SupabaseClient<Database>, child: string, optio
 // No profile AI call is needed. This rebuild consumes the same canonical effective set as page results.
 async function rebuildChildNow(db: SupabaseClient<Database>, child: string) {
   const rebuilt = await rebuildChildProfile(child, { profiles: childProfileStore(db), events: learningEventStore(db) });
+  await rebuildV2Results(db, child);
   if (!rebuilt.built && rebuilt.reason !== "nothing_to_build") throw new Error("marking_profile_pending");
+}
+/**
+ * UNI-243: the child's v2 sheet results from the same effective marks (docs/workbook-v2-results.md). A child with v1
+ * books only costs one read. A failure never holds back the v1 work; the next published mark rebuilds every sheet again.
+ */
+async function rebuildV2Results(db: SupabaseClient<Database>, child: string) {
+  try {
+    const rebuilt = await rebuildV2SheetResults(db, child);
+    if (rebuilt.status === "refused") monitorProduct("scan.recovery_failed", { step: "sheet_results" });
+  } catch { monitorProduct("scan.recovery_failed", { step: "sheet_results" }); }
 }
 /** Stable results read. Photo expiry is deliberately not a history filter. */
 export async function readScanMarking(db: SupabaseClient<Database>, parent: string, photo: string) {
@@ -220,12 +232,14 @@ export async function recoverScanMarking(db: SupabaseClient<Database>, env: Env 
 
 /**
  * After our team's mark (no parent changes a mark since 2026-11-14): publish the effective event and rebuild the child's
- * profile from the same canonical set. True when that work is still pending; the recovery cursor retries it.
+ * profile and the child's v2 sheet results from the same canonical set. True when the profile work is still pending;
+ * the recovery cursor retries it.
  */
 export async function publishMarkChange(db: SupabaseClient<Database>, parent: string, child: string): Promise<boolean> {
   try {
     await scanMarkingStore(db).publish(parent, child);
     const rebuilt = await rebuildChildProfile(child, { profiles: childProfileStore(db), events: learningEventStore(db) });
+    await rebuildV2Results(db, child);
     return (!rebuilt.built && rebuilt.reason !== "nothing_to_build") || (rebuilt.built && rebuilt.skillStates.outcome === "failed");
   } catch {
     // The transaction advanced the durable revision. The existing recovery cursor retries after image expiry.
