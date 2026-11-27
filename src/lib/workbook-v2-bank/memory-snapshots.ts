@@ -4,7 +4,7 @@
 // (and writes nothing) for a stale read, a version that is not the next one, an item that is not approved at its current
 // revision, items that are not exactly the items of the working copy, or a hash that is not the hash of the content. Each write checks and writes with no await in between, as the level lock of
 // bank_freeze_level does, so two concurrent writes cannot both take one version.
-import { latestReview, liveItems } from "./reviews";
+import { latestReviewOf, liveItems, storyRegionProblem } from "./reviews";
 import { frozenItems, holdsBasis, itemsThatDiffer, snapshotWriteProblem } from "./snapshot-items";
 import type { BankStore, LevelRows, NewReview, ReviewKind, ReviewResult, ReviewRow, SnapshotItemRow, SnapshotMeta, SnapshotWrite, SnapshotWriteResult } from "./types";
 
@@ -49,12 +49,15 @@ export function memorySnapshotStore(tables: MemorySnapshotTables, { rowsOf, vers
     if (write.version !== next) return { ok: false, problem: `bank level ${levelId}: version ${write.version} is taken or skipped; the next version is ${next}` };
     const rows = rowsOf(levelId);
     if (!LEVEL_NAME.test(rows.level?.display_name ?? "")) return { ok: false, problem: `bank level ${levelId}: its name must be a number from 1 to 99` };
-    const levelReviews = tables.reviews.filter((r) => r.level_id === levelId);
-    const unapproved = liveItems(rows).filter((item) => latestReview(levelReviews, item)?.decision !== "approved");
+    const regionProblem = storyRegionProblem(rows);
+    if (regionProblem) return { ok: false, problem: regionProblem };
+    const latestReview = latestReviewOf(tables.reviews.filter((r) => r.level_id === levelId));
+    const liveRows = liveItems(rows);
+    const unapproved = liveRows.filter((item) => latestReview(item)?.decision !== "approved");
     if (unapproved.length > 0) {
       return { ok: false, problem: `bank level ${levelId}: these items are not approved at their current revision: ${unapproved.map((i) => `${i.kind} "${i.key}" (revision ${i.revision})`).join(", ")}` };
     }
-    const live = new Set(liveItems(rows).map((item) => `${item.kind}/${item.key}`));
+    const live = new Set(liveRows.map((item) => `${item.kind}/${item.key}`));
     const given = new Set(write.items.filter((item) => item.kind !== "level" && item.kind !== "topic").map((item) => `${item.kind}/${item.key}`));
     const mismatch = [...live].filter((k) => !given.has(k)).concat([...given].filter((k) => !live.has(k)));
     if (mismatch.length > 0) return { ok: false, problem: `bank level ${levelId}: the snapshot items do not match the working copy: ${mismatch.join(", ")}` };

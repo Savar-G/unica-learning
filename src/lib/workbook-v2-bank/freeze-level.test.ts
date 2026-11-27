@@ -169,6 +169,43 @@ function runFreezeContract(name: string, makeStore: () => ContractStore) {
       expect(await store.readSnapshots(levelId)).toHaveLength(1);
     }, 120_000);
 
+    it("freezes a level with a maximum-length id and keeps the original level and sheet keys", async () => {
+      const { store } = makeStore();
+      const tag = freshTag();
+      const draft = fullLevelDraft(tag);
+      const longId = "long-level-".padEnd(64, "a");
+      (draft.level as Rec).id = longId;
+      expect(await importDraft(draft, store)).toMatchObject({ ok: true });
+      await approveAll(store, longId);
+      const result = await freezeLevel(store, longId, { renderer: fakeRenderer(), frozenBy: "Test admin", checks: QUICK_FREEZE });
+      expect(result).toMatchObject({ ok: true, name: expect.stringMatching(/^[a-z0-9][a-z0-9-]{0,63}$/), snapshot: { level: { id: longId } } });
+      if (!result.ok) throw new Error(result.problems.join("\n"));
+      expect(recs(result.snapshot.sheets).map((s) => s.id)).toEqual(recs(draft.sheets).map((s) => s.id));
+      expect(result.name).not.toBe(snapshotName(longId.slice(0, -1) + "b", 1));
+      expect(result.name).not.toBe(snapshotName(longId, 2));
+      expect(snapshotName("level-3", 1)).toBe("level-3-v1");
+    });
+
+    it("requires a default region while live story content remains in the working copy", async () => {
+      const { store } = makeStore();
+      const draft = await importedLevel(store, freshTag());
+      const levelId = levelOf(draft);
+      const rows = await store.readLevel(levelId);
+      if (!rows.level) throw new Error("no level");
+      expect(await store.writeLevel({ expected: rows.version, level: { ...rows.level, default_region: null },
+        topics: [], sheets: [], questions: [], scenarios: [], regionPacks: [] })).toMatchObject({ ok: true });
+      const problem = "set a default region or retire its questions, scenarios and region packs";
+      const renderer = fakeRenderer();
+      expect(await freezeLevel(store, levelId, { renderer, frozenBy: "Test admin", checks: QUICK_FREEZE })).toMatchObject({
+        ok: false, problems: [expect.stringContaining(problem)],
+      });
+      expect(renderer.drawn.render).toEqual([]);
+      expect(await store.writeSnapshot(writeOf(await store.readLevel(levelId), 1))).toMatchObject({
+        ok: false, problem: expect.stringContaining(problem),
+      });
+      expect(await store.readSnapshots(levelId)).toEqual([]);
+    });
+
     it("never lets an approval or a snapshot cover content that was not reviewed", async () => {
       const { store, tables } = makeStore();
       const tag = freshTag();

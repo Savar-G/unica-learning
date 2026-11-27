@@ -34,9 +34,16 @@ function reviewsByItem(reviews: readonly ReviewRow[]): Map<string, ReviewRow[]> 
   return byItem;
 }
 
-/** The latest review of one revision of an item, if any. */
-export const latestReview = (reviews: readonly ReviewRow[], item: LiveItem): ReviewRow | undefined =>
-  reviewsByItem(reviews).get(itemKey(item.kind, item.key))?.find((r) => r.revision === item.revision);
+/** The latest review of each current revision, with one index per level. */
+export function latestReviewOf(reviews: readonly ReviewRow[]): (item: LiveItem) => ReviewRow | undefined {
+  const byItem = reviewsByItem(reviews);
+  return (item) => byItem.get(itemKey(item.kind, item.key))?.find((r) => r.revision === item.revision);
+}
+
+export function storyRegionProblem(rows: LevelRows): string | null {
+  if (rows.level?.default_region !== null || !liveItems(rows).some((item) => item.kind !== "sheet")) return null;
+  return `For level "${rows.level.id}", set a default region or retire its questions, scenarios and region packs before it can freeze.`;
+}
 
 /** One problem in plain words for each item that is not approved at its current revision; none when the level may freeze. */
 export function approvalProblems(rows: LevelRows, reviews: readonly ReviewRow[]): string[] {

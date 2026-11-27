@@ -2,7 +2,7 @@
 
 The working copy holds the draft content of each level in Supabase (architecture spec 9.2, UNI-241). The bank import writes a draft file into it, and reads the rows back as the same draft. Reviews approve one revision of each item, and the freeze (`freezeLevel`, UNI-242) copies an approved level into an insert-only snapshot that books are built from.
 
-Code: `src/lib/workbook-v2-bank/`. Migrations: `20261127191913_bank_working_copy`, `20261127192640_bank_write_level_refusal`, `20261127195924_bank_working_copy_hardening`, `20261127202034_bank_child_version_trigger`, `20261127203021_bank_write_level_restore_flag`, `20261127205833_bank_freeze_snapshots`, `20261127224116_bank_freeze_review_repair`, `20261127231335_bank_freeze_integrity`.
+Code: `src/lib/workbook-v2-bank/`. Migrations: `20261127191913_bank_working_copy`, `20261127192640_bank_write_level_refusal`, `20261127195924_bank_working_copy_hardening`, `20261127202034_bank_child_version_trigger`, `20261127203021_bank_write_level_restore_flag`, `20261127205833_bank_freeze_snapshots`, `20261127224116_bank_freeze_review_repair`, `20261127231335_bank_freeze_integrity`, `20261127235009_bank_freeze_require_story_region`.
 
 ## Import a draft
 
@@ -61,13 +61,15 @@ An approval belongs to one exact revision. An edit gives the item the next revis
 
 `freezeLevel(store, levelId, { renderer, frozenBy })` writes nothing on any problem, and lists every problem in plain words:
 
-1. The level name must be a number from 1 to 99.
+1. The level name must be a number from 1 to 99. A level needs a default region while it has live questions, scenarios or region packs.
 2. Every sheet, question, scenario and region pack that is not retired must have an approval of its current revision. Each item that does not is named, for example `Sheet "s-1" was approved at revision 1 and changed to revision 2 since: approve revision 2.` This check runs before anything is drawn.
 3. The display codes come from the positions of the rows that are not retired: topic N is `<level name>-N` (`3-11`), and the sheets have the odd front pages 1, 3, ... 399 in topic order (topic 11, sheet 3 starts on page 205). The stored `code` and `first_page` do not count.
 4. `freezeBank(..., { requireFullLevel: true })` runs every check of a full level (`docs/workbook-v2-engine.md`, "The freeze"): 20 topics of 10 sheets, every reference resolves, rows do not get easier down a side, answer kinds that marking reads, fit and own-slot ink. Its capacity report comes back with the snapshot; a row with fewer than 2 attempts without a repeat warns and does not refuse.
 5. The snapshot is the content only. Its items are written with `bank_freeze_level` in one transaction, under a lock of the level row, which checks the rules again: the level has not changed since it was read, the level name is a number, the version is the next one (of two concurrent freezes, one is refused), every item is approved at its current revision, and the items are exactly the items of the working copy. The function builds those items in SQL, the level header and topics included, as `frozenItems` builds them in TypeScript, and refuses any item that differs in kind, key, position or content. It then checks that each item hash, the manifest hash and the content hash are the hashes of the canonical JSON (`bank_canonical_json` gives the text of `canonicalJson`; a number that JavaScript writes with an exponent makes the check fail closed). The memory store makes the same checks with the same words (`snapshotWriteProblem`). Each refusal is SQLSTATE `PT409` (never `40001`).
 
 ## Read a snapshot
+
+Snapshot names use the level ID and version when they fit in 64 characters. A longer name uses part of the level ID, the version and a 24-character hash. The level and sheet IDs stay the same.
 
 `readSnapshot(store, snapshotId)` gives the whole snapshot. It checks each item against its hash, the items against the manifest hash, and the snapshot against its content hash, so `buildBook` gives the same record, PDF and page images as from the frozen file. `readBookSnapshot(store, snapshotId, sheetIds)` reads only the header, the topics, the word problems and the book's sheets. It also reads the manifest of the whole snapshot (every item without its content) and refuses a part unless the manifest matches the manifest hash and the item count, every item read is listed in it with the same place and hash, and every item that is not a sheet is there. Build the book with `buildBook({ snapshot: part.snapshot, book, whole: part.whole })`: `whole` is the id and hash of the whole snapshot, so the record, input hash, PDF and page images are the same as from the frozen file, and its `partHash` is the hash of the part that was checked, so `buildBook` refuses any other part (one changed after the read, say).
 
@@ -79,12 +81,6 @@ An approval belongs to one exact revision. An edit gives the item the next revis
 
 ## Tests
 
-`bank-store.test.ts` runs one contract on the memory store, on the Supabase store over a fake PostgREST (with the 1,000-row cap), and, when asked, on the live project:
-
-```sh
-BANK_STORE_LIVE=1 SUPABASE_URL=... SUPABASE_SECRET_KEY=... npx vitest run src/lib/workbook-v2-bank/bank-store.test.ts
-```
-
-The live run writes only levels named `synth-test-*`, with sheet ids marked by the run, and deletes them after the run. `import-draft.test.ts` tests the git rule and the statuses of the plan.
+`bank-store.test.ts` runs one contract on the memory store and on the Supabase store over a fake PostgREST with the 1,000-row cap. The hosted SQL probes below roll back their synthetic rows. They need no service-role delete access. `import-draft.test.ts` tests the git rule and the statuses of the plan.
 
 `freeze-level.test.ts` runs the freeze contract on the memory store and on the fake PostgREST: a synthetic full level of 200 invented sheets with a made-up source in every note, an edit that needs a new approval, the freeze, no `basis` or source in any item, and books built from the frozen file, the whole stored snapshot and one book's rows, compared byte for byte with equal records (with the pinned Typst when it is installed). It also refuses a same-revision edit, a review of another revision, every changed snapshot item, a second concurrent version, a false item, manifest or content hash, an item added or changed after the freeze, and a book part changed after its read, and reads a snapshot of more than 1,000 items in pages. It never runs on the live project, because snapshot rows can never be deleted. Probe the live tables only inside one transaction that ends in an error or a rollback, and then count that no `synth-test-*` row is left. `supabase/tests/bank_freeze_hosted.sql` and `supabase/tests/bank_freeze_integrity_hosted.sql` are such probes. The race of a delete in flight while the same key is inserted needs two sessions, so it was checked on a local Postgres with the bank migrations: before `20261127231335` the insert went through at the approved revision with new content, and after it the insert waits for the delete and is refused (`comes back at revision 1`).

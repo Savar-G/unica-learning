@@ -78,12 +78,16 @@ export async function POST(request: Request) {
   if (!store) return new Response("Not configured", { status: 503 });
   // At the deadline the reads are aborted: the request that runs stops, and no further page is read.
   const stop = new AbortController();
+  const started = performance.now();
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const deadline = new Promise<"late">((resolve) => { timer = setTimeout(() => { stop.abort(); resolve("late"); }, READ_DEADLINE_MS); });
+  const deadline = new Promise<"late">((resolve) => { timer = setTimeout(() => { resolve("late"); stop.abort(); }, READ_DEADLINE_MS); });
   const reading = timedBookRead(store, body.snapshotId, body.sheetIds, () => performance.now(), stop.signal);
   reading.catch(() => {}); // an aborted read rejects after the 504 is sent
   const read = await Promise.race([reading, deadline]).finally(() => clearTimeout(timer));
-  if (read === "late") return Response.json({ error: `The read took more than ${READ_DEADLINE_MS / 1000} seconds.` }, { status: 504 });
+  if (read === "late" || performance.now() - started >= READ_DEADLINE_MS) {
+    stop.abort();
+    return Response.json({ error: `The read took more than ${READ_DEADLINE_MS / 1000} seconds.` }, { status: 504 });
+  }
   if (!read.ok) return Response.json({ error: read.problem }, { status: read.httpStatus });
   return Response.json(read.record, { status: read.record.httpStatus });
 }

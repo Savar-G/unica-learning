@@ -36,6 +36,7 @@ function storeWithSnapshot(): MemoryBankStore {
 beforeEach(() => {
   vi.stubEnv("CRON_SECRET", "test-secret");
   vi.stubEnv("VERCEL_ENV", "preview");
+  vi.stubEnv("WORKBOOK_V2_TEST_PUBLISH", "");
   f.store = storeWithSnapshot();
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
@@ -89,6 +90,21 @@ it("refuses a body over 8 KB before it parses it, and answers 504 when the read 
   } finally {
     vi.useRealTimers();
   }
+});
+
+it("answers 504 when the read finishes after the deadline but the timer has not fired", async () => {
+  let now = 0;
+  vi.spyOn(performance, "now").mockImplementation(() => now);
+  const store = storeWithSnapshot();
+  let signal: AbortSignal | undefined;
+  f.store = { ...store, readSnapshotManifest: async (id, stop) => {
+    signal = stop;
+    const rows = await store.readSnapshotManifest(id);
+    now = 10_001;
+    return rows;
+  } };
+  expect((await call(BODY)).status).toBe(504);
+  expect(signal?.aborted).toBe(true);
 });
 
 it("answers 404 for a snapshot that is not there, and 422 for a sheet that the snapshot does not have", async () => {

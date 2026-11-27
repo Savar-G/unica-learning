@@ -3,9 +3,10 @@
 // full level; and the snapshot is written as insert-only items, one per item, with its content only (never `basis`).
 import { ENGINE_VERSION } from "@/lib/workbook-v2/contract";
 import { freezeBank, type FreezeOptions, type SheetCapacity } from "@/lib/workbook-v2/build/freeze-bank";
+import { sha256 } from "@/lib/workbook-v2/hash";
 import type { Renderer } from "@/lib/workbook-v2/renderer";
 import { draftFromRows } from "./draft";
-import { approvalProblems } from "./reviews";
+import { approvalProblems, storyRegionProblem } from "./reviews";
 import { assembleSnapshot, manifestHash, snapshotItems, withDisplayCodes } from "./snapshot-items";
 import type { BankStore, SnapshotMeta } from "./types";
 
@@ -26,7 +27,13 @@ export type FreezeLevelResult =
   | { ok: false; problems: string[] };
 
 /** The name of a version of a level, which is also the id inside its snapshot. */
-export const snapshotName = (levelId: string, version: number): string => `${levelId}-v${version}`;
+export function snapshotName(levelId: string, version: number): string {
+  const name = `${levelId}-v${version}`;
+  if (name.length <= 64) return name;
+  // The hash at the end keeps these names distinct from the short form, which ends in the version.
+  const suffix = `-v${version}-h${sha256(levelId).slice(0, 24)}`;
+  return `${levelId.slice(0, 64 - suffix.length)}${suffix}`;
+}
 
 const nextVersion = (snapshots: readonly SnapshotMeta[]): number => snapshots.reduce((top, s) => Math.max(top, s.version), 0) + 1;
 
@@ -39,6 +46,8 @@ export async function freezeLevel(store: BankStore, levelId: string, { renderer,
   if (!rows.level || rows.version === null) return refuse([`There is no bank level "${levelId}".`]);
   const levelName = rows.level.display_name;
   if (!LEVEL_NAME.test(levelName)) return refuse([`Level "${levelId}" is named "${levelName}", and a level name must be a number from 1 to 99.`]);
+  const regionProblem = storyRegionProblem(rows);
+  if (regionProblem) return refuse([regionProblem]);
   const unapproved = approvalProblems(rows, await store.readReviews(levelId));
   if (unapproved.length > 0) return refuse(unapproved);
 

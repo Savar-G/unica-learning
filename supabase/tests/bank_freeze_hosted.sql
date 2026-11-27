@@ -94,6 +94,24 @@ begin
     v_steps := v_steps || jsonb_build_object('5_tampered_header', case when v_state = 'PT409' and v_msg like '%not the approved working copy%' then 'pass' else 'fail:' || v_state || ' ' || v_msg end);
   end;
 
+  -- Clearing the default region needs an explicit refusal while the story rows remain live.
+  begin
+    update public.bank_levels set default_region = null where id = v_level;
+    begin
+      perform public.bank_freeze_level(jsonb_set(v_freeze, '{expected}', (
+        select to_jsonb(updated_at::text) from public.bank_levels where id = v_level)));
+      v_steps := v_steps || '{"5_missing_story_region":"fail:accepted"}';
+    exception when others then
+      get stacked diagnostics v_state = returned_sqlstate, v_msg = message_text;
+      v_steps := v_steps || jsonb_build_object('5_missing_story_region', case
+        when v_state = 'PT409' and v_msg like '%set a default region or retire its questions, scenarios and region packs%'
+        then 'pass' else 'fail:' || v_state || ' ' || v_msg end);
+    end;
+    raise exception 'restore probe region';
+  exception when raise_exception then
+    if sqlerrm <> 'restore probe region' then raise; end if;
+  end;
+
   -- 6. The exact working copy freezes. This proves the SQL items match the TypeScript items (frozenItems).
   begin
     v_res := public.bank_freeze_level(v_freeze);
@@ -107,11 +125,13 @@ begin
 
   -- 7. The same version again is refused (PT409, never 40001).
   begin
-    perform public.bank_freeze_level(jsonb_set(v_freeze, '{name}', to_jsonb(v_level || '-v1b')));
+    perform public.bank_freeze_level(v_freeze);
     v_steps := v_steps || '{"7_version_taken":"fail:accepted"}';
   exception when others then
-    get stacked diagnostics v_state = returned_sqlstate;
-    v_steps := v_steps || jsonb_build_object('7_version_taken', case when v_state = 'PT409' then 'pass' else 'fail:' || v_state end);
+    get stacked diagnostics v_state = returned_sqlstate, v_msg = message_text;
+    v_steps := v_steps || jsonb_build_object('7_version_taken', case
+      when v_state = 'PT409' and v_msg like '%version 1 is taken or skipped%next version is 2%' then 'pass'
+      else 'fail:' || v_state || ' ' || v_msg end);
   end;
 
   -- 8. No item can be added after the freeze, and no snapshot outside bank_freeze_level (55000).
