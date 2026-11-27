@@ -11,7 +11,7 @@ import { buildBook, planBook, wholeBook } from "@/lib/workbook-v2/build/build-bo
 import { canonicalJson } from "@/lib/workbook-v2/hash";
 import type { Renderer } from "@/lib/workbook-v2/renderer";
 import { writeBook } from "./contract-writer";
-import { allocationOf, bookInput, type SavedInput } from "./input";
+import { allocationOf, bookInput, pagesPerDayOf, type SavedInput } from "./input";
 import type { Allocation, PublishPayload, PublishRequest, PublishedRef, V2File, V2PublishStore, V2Storage } from "./types";
 
 export interface JobDeps {
@@ -88,11 +88,12 @@ export async function publishOnce(store: V2PublishStore, payload: PublishPayload
 
 /**
  * An allocation that a request key or an input hash already has is reused only for the same book: the same child, sheets,
- * region and interest (the ids and tokens are the allocation's), and the same snapshot (its input hash).
+ * pages per day, region and interest (the ids and tokens are the allocation's), and the same snapshot (its input hash).
  */
 function sameBook(request: PublishRequest, a: Allocation): boolean {
+  if (a.childId !== request.childId || a.allocation.pagesPerDay !== pagesPerDayOf(request)) return false;
   const asked = bookInput(request, a.workbookId, a.allocation.qrTokens);
-  if (a.childId !== request.childId || canonicalJson(asked) !== canonicalJson(a.allocation.book)) return false;
+  if (canonicalJson(asked) !== canonicalJson(a.allocation.book)) return false;
   const plan = planBook({ snapshot: request.snapshot, book: a.allocation.book });
   return plan.ok && plan.inputHash === a.inputHash;
 }

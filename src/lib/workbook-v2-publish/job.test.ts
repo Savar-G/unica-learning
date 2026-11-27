@@ -140,6 +140,17 @@ describe("the v2 book job", () => {
     expect(store.tables.books).toHaveLength(1);
   });
 
+  it("refuses a retry that changes the pages per day of the same sheets", async () => {
+    const { store, files } = memory();
+    const sheets = request().sheets.slice(0, 2).map((sheet, i) => ({ ...sheet, startsDay: i === 0, day: 1 }));
+    expect(await publishV2Book(deps(store, files), request({ sheets, pagesPerDay: 2 }))).toMatchObject({ status: "published" });
+    const retry = deps(store, files, { seed: "d" });
+    expect(await publishV2Book(retry, request({ sheets, pagesPerDay: 2 }))).toMatchObject({ status: "existing" });
+    expect(await publishV2Book(retry, request({ sheets, pagesPerDay: 4 }))).toEqual({
+      status: "invalid", problems: ["the request key was used for another book"],
+    });
+  });
+
   it.each([
     ["a child of a family that is not a test family", REAL_CHILD, "not-test-family"],
     ["a child that is not known", "66666666-6666-4666-8666-666666666666", "unknown-child"],
