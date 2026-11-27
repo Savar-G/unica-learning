@@ -1,5 +1,7 @@
 // The pace and the mastery line of a book, as data. The assembler reads only the fields of a config and never asks
 // which level it is for: a difference between levels is a different config (scripts/engine-guard.mjs, engine-level-branch).
+import { FieldReader } from "../bank/fields";
+import { plainCopy } from "../bank/plain";
 import type { ResultConfig } from "../results/sheet-results";
 
 /** The days of a book when a config gives none: Monday to Friday, two weeks. */
@@ -31,17 +33,28 @@ export const WORKBOOK_1_PACES: readonly { names: readonly string[]; config: Leve
 ];
 
 const isWhole = (n: unknown, min: number, max = Number.MAX_SAFE_INTEGER): n is number => typeof n === "number" && Number.isSafeInteger(n) && n >= min && n <= max;
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+const show = (value: unknown): string => {
+  if (typeof value === "bigint") return `${value}n`;
+  if (typeof value === "symbol") return String(value);
+  return JSON.stringify(value) ?? String(value);
+};
 
 /** The config with its default days, or every problem in plain words. */
-export function readLevelConfig(config: unknown): { ok: true; config: ReadLevelConfig } | { ok: false; problems: string[] } {
-  if (!isRecord(config)) return { ok: false, problems: ["The level config must be an object."] };
-  const { pagesPerDay, minutesPerPage, masteryPercent, days = DEFAULT_DAYS } = config;
-  const problems: string[] = [];
-  if (!isWhole(pagesPerDay, 2) || pagesPerDay % 2 !== 0) problems.push(`Pages a day must be an even whole number, 2 or more, not ${JSON.stringify(pagesPerDay)}.`);
-  if (typeof minutesPerPage !== "number" || !Number.isFinite(minutesPerPage) || minutesPerPage <= 0) problems.push(`Minutes a page must be a number more than 0, not ${JSON.stringify(minutesPerPage)}.`);
-  if (!isWhole(masteryPercent, 1, 100)) problems.push(`The mastery percent must be a whole number from 1 to 100, not ${JSON.stringify(masteryPercent)}.`);
-  if (!isWhole(days, 1)) problems.push(`Days must be a whole number, 1 or more, not ${JSON.stringify(days)}.`);
+export function readLevelConfig(raw: unknown): { ok: true; config: ReadLevelConfig } | { ok: false; problems: string[] } {
+  const plain = plainCopy("The pace config", raw);
+  if (!plain.ok) return plain;
+  const r = new FieldReader();
+  const fields = r.object("The pace config", plain.value, ["pagesPerDay", "minutesPerPage", "masteryPercent"], ["days"]);
+  if (!fields) return { ok: false, problems: r.problems };
+  const pagesPerDay = fields.pagesPerDay;
+  const minutesPerPage = fields.minutesPerPage;
+  const masteryPercent = fields.masteryPercent;
+  const days = Object.hasOwn(fields, "days") ? fields.days : DEFAULT_DAYS;
+  const problems = [...r.problems];
+  if (!isWhole(pagesPerDay, 2) || pagesPerDay % 2 !== 0) problems.push(`Pages a day must be an even whole number, 2 or more, not ${show(pagesPerDay)}.`);
+  if (typeof minutesPerPage !== "number" || !Number.isFinite(minutesPerPage) || minutesPerPage <= 0) problems.push(`Minutes a page must be a number more than 0, not ${show(minutesPerPage)}.`);
+  if (!isWhole(masteryPercent, 1, 100)) problems.push(`The mastery percent must be a whole number from 1 to 100, not ${show(masteryPercent)}.`);
+  if (!isWhole(days, 1)) problems.push(`Days must be a whole number, 1 or more, not ${show(days)}.`);
   if (problems.length > 0) return { ok: false, problems };
   return { ok: true, config: { pagesPerDay, minutesPerPage, masteryPercent, days } as ReadLevelConfig };
 }

@@ -1,20 +1,23 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { validateSnapshot, type Snapshot } from "../bank/snapshot";
+import type { BookHistory } from "../build/book-history";
 import { planBook } from "../build/build-book";
 import rawFacts from "../fixtures/snapshot-facts.json";
 import type { BookItem } from "../contract";
 import { canonicalJson } from "../hash";
+import { TEMPLATES } from "../layout/templates";
+import { sheetResult, type ItemMark } from "../results/sheet-results";
 import { DEFAULT_DAYS, readLevelConfig, WORKBOOK_1_PACES, type LevelConfig } from "./level-config";
-import { COVER_PAGES, historyFromBooks, MAX_SHEETS, MAX_TOTAL_PAGES, nextBookSheets } from "./plan-book";
-import { position, type ChildPosition, type IssuedSheet, type ScanReceipt, type SheetResultRecord } from "./position";
+import { COVER_PAGES, historyFromBooks, MAX_SHEETS, MAX_TOTAL_PAGES, nextBookSheets, planNextBook } from "./plan-book";
+import { position, type ChildPosition, type IssuedSheet, type QueueEntry, type ScanReceipt, type SheetResultRecord } from "./position";
 import { coverFactsOf, planWorkbook, workbookSheets, type WorkbookPlan } from "./workbook-plan";
 
 /**
- * An invented Level 3 bank shaped like product spec 16.5: topics 3-7 to 3-15, 10 sheets each, every sheet a copy of the
+ * An invented Level 3 bank shaped like product spec 16.5: topics 3-7 to 3-16, 10 sheets each, every sheet a copy of the
  * facts sheet. The sheet "3-9-4" is sheet 4 of topic 3-9.
  */
-const TOPICS = [7, 8, 9, 10, 11, 12, 13, 14, 15].map((n) => `3-${n}`);
+const TOPICS = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].map((n) => `3-${n}`);
 const FACTS_SHEET = rawFacts.sheets[0];
 const RAW_LEVEL_3 = {
   format: 1, id: "invented-level-3-plan-v1", level: { id: "level-3", name: "3" },
@@ -25,6 +28,26 @@ const bank = validateSnapshot(structuredClone(RAW_LEVEL_3));
 if (!bank.ok) throw new Error(bank.problems.join("\n"));
 const LEVEL_3: Snapshot = bank.snapshot;
 const ITEMS_PER_SHEET = FACTS_SHEET.front.rows.reduce((n, r) => n + r.items, 0) + FACTS_SHEET.back.rows.reduce((n, r) => n + r.items, 0);
+const SYNTHETIC_ITEMS = Array.from({ length: ITEMS_PER_SHEET }, (_, i) => ({ id: `item-${i + 1}` }));
+
+/** Computes a real `SheetResultRecord` through `sheetResult()` so fixtures always match the production mastery thresholds. */
+function scoredResult(
+  bookId: string,
+  sheetId: string,
+  attempt: number,
+  outcome: "mastered" | "repeat" | "unknown",
+  masteryPercent: number,
+): SheetResultRecord {
+  const maxAllowed = ITEMS_PER_SHEET - Math.ceil((ITEMS_PER_SHEET * masteryPercent) / 100);
+  const marks: ItemMark[] = outcome === "mastered"
+    ? SYNTHETIC_ITEMS.map(({ id }) => ({ itemId: id, firstTry: "right" }))
+    : outcome === "repeat"
+      ? SYNTHETIC_ITEMS.map(({ id }, i) => ({ itemId: id, firstTry: i < maxAllowed + 1 ? "wrong" : "right" }))
+      : SYNTHETIC_ITEMS.slice(0, Math.floor(ITEMS_PER_SHEET * 0.5)).map(({ id }) => ({ itemId: id, firstTry: "right" }));
+  const scored = sheetResult(SYNTHETIC_ITEMS, marks, { masteryPercent });
+  if (!scored.ok || scored.result !== outcome) throw new Error(`expected ${outcome}, got ${scored.ok ? scored.result : scored.problems.join("; ")}`);
+  return { bookId, sheetId, attempt, result: scored.result, itemsScored: scored.itemsScored, mistakes: scored.mistakes };
+}
 
 /** The sheets from one topic and sheet to another, both included, in the order of the level: `range("3-7", 9, "3-11", 8)`. */
 const ORDER = [...LEVEL_3.sheets.keys()];
@@ -39,34 +62,52 @@ const tokens = (count: number, tag: string) => Array.from({ length: count }, (_,
 interface History { issued: IssuedSheet[]; receipts: ScanReceipt[]; results: SheetResultRecord[] }
 const empty = (): History => ({ issued: [], receipts: [], results: [] });
 
-function placed(childId: string, history: History, startSheetId?: string): ChildPosition {
-  const outcome = position({ childId, ...(startSheetId ? { startSheetId } : {}) }, history.issued, history.receipts, history.results, LEVEL_3);
+function placed(childId: string, history: History, startSheetId?: string, snapshot: Snapshot = LEVEL_3): ChildPosition {
+  const outcome = position({ childId, ...(startSheetId ? { startSheetId } : {}) }, history.issued, history.receipts, history.results, snapshot);
   if (!outcome.ok) throw new Error(outcome.problems.join("\n"));
   return outcome;
 }
 type Planned = Extract<WorkbookPlan, { ok: true }>;
 /** The plan of a book for a position, with exactly the QR texts that it needs. */
-function planned(where: ChildPosition, levelConfig: LevelConfig, bookId: string): Planned {
+function planned(where: ChildPosition, levelConfig: LevelConfig, bookId: string, options: { snapshot?: Snapshot; history?: BookHistory } = {}): Planned {
+  const snapshot = options.snapshot ?? LEVEL_3;
   const pace = readLevelConfig(levelConfig);
   if (!pace.ok) throw new Error(pace.problems.join("\n"));
   const chosen = nextBookSheets(where, pace.config);
   if (typeof chosen[0] === "string") throw new Error((chosen as string[]).join("\n"));
-  const outcome = planWorkbook({ bookId, childId: where.childId, snapshot: LEVEL_3, position: where, levelConfig, qrTokens: tokens(2 * chosen.length, `${where.childId}-${bookId}`) });
+  const outcome = planWorkbook({
+    bookId, childId: where.childId, snapshot, position: where, levelConfig, qrTokens: tokens(2 * chosen.length, `${where.childId}-${bookId}`),
+    ...(options.history ? { history: options.history } : {}),
+  });
   if (!outcome.ok) throw new Error(outcome.problems.join("\n"));
   return outcome;
 }
 /** The plan of a child's next book from its history. */
-const nextBook = (childId: string, history: History, levelConfig: LevelConfig, bookId: string, startSheetId?: string): Planned => planned(placed(childId, history, startSheetId), levelConfig, bookId);
+const nextBook = (
+  childId: string,
+  history: History,
+  levelConfig: LevelConfig,
+  bookId: string,
+  startSheetId?: string,
+  options: { snapshot?: Snapshot; bookHistory?: BookHistory } = {},
+): Planned => planned(placed(childId, history, startSheetId, options.snapshot), levelConfig, bookId, { snapshot: options.snapshot, history: options.bookHistory });
 
-/** Adds a printed book to a history: its sheets, the scans of some of its days, and results for some of its sheets. */
-function printed(history: History, plan: Planned, bookNumber: number, scannedDays: readonly number[], resultOf: (sheetId: string, attempt: number) => SheetResultRecord["result"] | null): History {
+/** Adds a printed book to a history: its sheets, the scans of some of its days, and scored results for some of its sheets. */
+function printed(
+  history: History,
+  plan: Planned,
+  bookNumber: number,
+  scannedDays: readonly number[],
+  resultOf: (sheetId: string, attempt: number) => SheetResultRecord["result"] | null,
+  masteryPercent = 90,
+): History {
   const bookId = plan.request.bookId;
   const issued = plan.sheets.map((s): IssuedSheet => ({ bookId, bookNumber, sheetId: s.sheetId, attempt: s.attempt, pages: s.pages, reason: s.reason }));
   const scanned = plan.sheets.filter((s) => scannedDays.includes(s.day));
   const receipts = scanned.flatMap((s) => s.pages.map((pageNumber): ScanReceipt => ({ bookId, pageNumber })));
   const results = scanned.flatMap((s): SheetResultRecord[] => {
     const result = resultOf(s.sheetId, s.attempt);
-    return result === null ? [] : [{ bookId, sheetId: s.sheetId, attempt: s.attempt, result, itemsScored: ITEMS_PER_SHEET, mistakes: result === "mastered" ? 0 : 4 }];
+    return result === null ? [] : [scoredResult(bookId, s.sheetId, s.attempt, result, masteryPercent)];
   });
   return { issued: [...history.issued, ...issued], receipts: [...history.receipts, ...receipts], results: [...history.results, ...results] };
 }
@@ -111,19 +152,48 @@ describe("W1-1: a level config is data", () => {
     ["pages a day that are not whole", { pagesPerDay: 2.5, minutesPerPage: 2, masteryPercent: 90 }, /not 2.5/],
     ["0 minutes a page", { pagesPerDay: 10, minutesPerPage: 0, masteryPercent: 90 }, /Minutes a page must be a number more than 0, not 0/],
     ["minutes a page below 0", { pagesPerDay: 10, minutesPerPage: -1, masteryPercent: 90 }, /not -1/],
-    ["minutes a page that are not finite", { pagesPerDay: 10, minutesPerPage: Number.POSITIVE_INFINITY, masteryPercent: 90 }, /Minutes a page/],
+    ["minutes a page that are not finite", { pagesPerDay: 10, minutesPerPage: Number.POSITIVE_INFINITY, masteryPercent: 90 }, /must be a plain value/],
     ["minutes a page as text", { pagesPerDay: 10, minutesPerPage: "2", masteryPercent: 90 }, /not "2"/],
     ["a mastery percent of 0", { pagesPerDay: 10, minutesPerPage: 2, masteryPercent: 0 }, /mastery percent must be a whole number from 1 to 100, not 0/],
     ["a mastery percent over 100", { pagesPerDay: 10, minutesPerPage: 2, masteryPercent: 101 }, /not 101/],
     ["a mastery percent that is not whole", { pagesPerDay: 10, minutesPerPage: 2, masteryPercent: 89.5 }, /not 89.5/],
     ["0 days", { pagesPerDay: 10, minutesPerPage: 2, masteryPercent: 90, days: 0 }, /Days must be a whole number, 1 or more, not 0/],
     ["days that are not whole", { pagesPerDay: 10, minutesPerPage: 2, masteryPercent: 90, days: 1.5 }, /not 1.5/],
+    ["a bigint days value without throwing", { pagesPerDay: 10, minutesPerPage: 2, masteryPercent: 90, days: BigInt(1) }, /must be a plain value/],
+    ["an unknown field", { pagesPerDay: 10, minutesPerPage: 2, masteryPercent: 90, dyas: 1 }, /unknown field "dyas"/],
+    ["inherited config fields", Object.create({ pagesPerDay: 10, minutesPerPage: 2, masteryPercent: 90 }), /must be a plain object/],
     ["no object", null, /must be an object/],
   ])("refuses %s, also in planWorkbook", (_name, config, problem) => {
     const read = readLevelConfig(config);
     expect(read.ok ? [] : read.problems).toEqual([expect.stringMatching(problem)]);
     const outcome = planWorkbook({ bookId: "book-1", childId: "child-1", snapshot: LEVEL_3, position: placed("child-1", empty()), levelConfig: config as LevelConfig, qrTokens: tokens(100, "x") });
     expect(outcome.ok ? [] : outcome.problems).toEqual([expect.stringMatching(problem)]);
+  });
+
+  it("refuses failed positions, malformed queue entries, bigint sizes, and broken template frames without throwing", () => {
+    const failedPos = position({ childId: "bad id" }, [], [], [], LEVEL_3);
+    expect(nextBookSheets(failedPos as unknown as ChildPosition, { pagesPerDay: 2, days: 2 })).toEqual([expect.stringMatching(/child id/)]);
+    const badPosPlan = planWorkbook({ bookId: "book-1", childId: "child-1", snapshot: LEVEL_3, position: failedPos as unknown as ChildPosition, levelConfig: paceOf("3"), qrTokens: tokens(100, "x") });
+    expect(badPosPlan).toEqual({ ok: false, problems: [expect.stringMatching(/child id/)] });
+
+    const badQueue: ChildPosition = { ...placed("child-1", empty()), queue: [{ sheetId: "3-7-1", attempt: 1, reason: "repeat" } as QueueEntry, { sheetId: "3-7-2", attempt: 1, reason: "new" }] };
+    const badQueuePlan = planWorkbook({ bookId: "book-1", childId: "child-1", snapshot: LEVEL_3, position: badQueue, levelConfig: { pagesPerDay: 2, minutesPerPage: 2, masteryPercent: 90, days: 2 }, qrTokens: tokens(4, "q") });
+    expect(badQueuePlan).toEqual({ ok: false, problems: [expect.stringMatching(/attempt 1 cannot have reason "repeat"/)] });
+
+    const bigintPlan = planNextBook({ bookId: "book-1", childId: "child-1", snapshot: LEVEL_3, position: placed("child-1", empty()), pagesPerDay: 2, days: BigInt(1) as unknown as number, qrTokens: tokens(4, "b") });
+    expect(bigintPlan).toEqual({ ok: false, problems: [expect.stringMatching(/not 1n/)] });
+
+    // A template whose front QR box enters the spine zone must be rejected by planNextBook and planWorkbook, matching planBook.
+    const orig = TEMPLATES.get("facts-2x10")!;
+    const brokenTemplate = structuredClone(orig);
+    brokenTemplate.sides.front.frame.qr.x = 0;
+    const brokenTemplates = new Map([...TEMPLATES, ["facts-2x10", brokenTemplate]]);
+    const brokenBank = validateSnapshot(structuredClone(RAW_LEVEL_3), undefined, brokenTemplates);
+    if (!brokenBank.ok) throw new Error(brokenBank.problems.join("\n"));
+    const brokenPos = placed("child-1", empty(), undefined, brokenBank.snapshot);
+    const brokenPlan = planWorkbook({ bookId: "book-1", childId: "child-1", snapshot: brokenBank.snapshot, position: brokenPos, levelConfig: { pagesPerDay: 2, minutesPerPage: 2, masteryPercent: 90, days: 2 }, qrTokens: tokens(4, "sp") });
+    expect(brokenPlan.ok).toBe(false);
+    if (!brokenPlan.ok) expect(brokenPlan.problems.join("\n")).toMatch(/"qr" enters the spine zone/);
   });
 
   it("names every problem of a config at once", () => {
@@ -176,7 +246,7 @@ describe("W1-3: 4 cover pages and 2 a sheet, a multiple of 4, at most 120 pages"
   it.each<[string, Partial<LevelConfig>, string | undefined, RegExp]>([
     ["59 sheets", { pagesPerDay: 2, days: 59 }, undefined, /at most 58 sheets .* asks for 59/],
     ["60 sheets", { pagesPerDay: 12, days: 10 }, undefined, /at most 58 sheets .* asks for 60/],
-    ["an odd count with no sheet left to round up", { pagesPerDay: 6, days: 1 }, "3-15-8", /has 3 sheets, and a book needs an even number of sheets/],
+    ["an odd count with no sheet left to round up", { pagesPerDay: 6, days: 1 }, "3-20-8", /has 3 sheets, and a book needs an even number of sheets/],
   ])("refuses %s", (_name, change, startSheetId, problem) => {
     const outcome = planWorkbook({ bookId: "book-1", childId: "child-1", snapshot: LEVEL_3, position: placed("child-1", empty(), startSheetId), levelConfig: { pagesPerDay: 2, minutesPerPage: 2, masteryPercent: 90, ...change }, qrTokens: tokens(120, "x") });
     expect(outcome.ok ? [] : outcome.problems).toEqual([expect.stringMatching(problem)]);
@@ -263,15 +333,21 @@ describe("W1-5: the sample book of product spec 16.5", () => {
     expect(placed("child-a", history, "3-7-9").assumedPassed.map((s) => s.sheetId)).toEqual(range("3-10", 7, "3-11", 8));
   });
 
-  it("opens Book 5 with a late fail of 3-11 sheet 7, and a stronger child reaches 3-15 two sheets sooner", () => {
+  it("opens Book 5 with a single late fail of 3-11 sheet 7, repeats a weaker child's sheet again, and a stronger child reaches 3-15 two sheets sooner", () => {
     const { history } = childABook3();
     const book4 = nextBook("child-a", history, CHILD_A_PACE, "book-4", "3-7-9");
-    const late: SheetResultRecord = { bookId: "book-3", sheetId: "3-11-7", attempt: 1, result: "repeat", itemsScored: ITEMS_PER_SHEET, mistakes: 5 };
-    const withBook4 = printed({ ...history, results: [...history.results, late] }, book4, 4, DAYS_1_TO_7, failing("3-10-3"));
-    const book5 = nextBook("child-a", withBook4, CHILD_A_PACE, "book-5", "3-7-9");
-    expect(daysOf(book5)[0]).toEqual(["3-10-3#3", "3-11-7#2", "3-15-7", "3-15-8"]);
+    const late = scoredResult("book-3", "3-11-7", 1, "repeat", CHILD_A_PACE.masteryPercent);
+    // Isolated late fail: every scanned sheet of Book 4 is mastered, so 3-11-7#2 opens Book 5 on its own.
+    const isolatedLate = printed({ ...history, results: [...history.results, late] }, book4, 4, DAYS_1_TO_7, allMastered, CHILD_A_PACE.masteryPercent);
+    const book5Isolated = nextBook("child-a", isolatedLate, CHILD_A_PACE, "book-5", "3-7-9");
+    expect(daysOf(book5Isolated)[0]).toEqual(["3-11-7#2", "3-15-7", "3-15-8", "3-15-9"]);
 
-    const strong = printed(empty(), childABook3().book3, 3, DAYS_1_TO_7, allMastered);
+    // Weaker child: 3-10-3 fails a second time in Book 4 alongside the late fail on 3-11-7.
+    const weaker = printed({ ...history, results: [...history.results, late] }, book4, 4, DAYS_1_TO_7, failing("3-10-3"), CHILD_A_PACE.masteryPercent);
+    const book5Weaker = nextBook("child-a", weaker, CHILD_A_PACE, "book-5", "3-7-9");
+    expect(daysOf(book5Weaker)[0]).toEqual(["3-10-3#3", "3-11-7#2", "3-15-7", "3-15-8"]);
+
+    const strong = printed(empty(), childABook3().book3, 3, DAYS_1_TO_7, allMastered, CHILD_A_PACE.masteryPercent);
     const strongBook4 = nextBook("child-a", strong, CHILD_A_PACE, "book-4", "3-7-9");
     expect(strongBook4.sheets.at(-1)?.sheetId).toBe("3-15-8");
   });
@@ -284,66 +360,81 @@ describe("W1-6: the scenarios of product spec 2.3", () => {
     const pace = paceOf("7");
     const book1 = nextBook("child-1", empty(), pace, "book-1");
     expect(book1.sheets.map((s) => s.sheetId)).toEqual(range("3-7", 1, "3-10", 10));
-    const history = printed(empty(), book1, 1, DAYS_1_TO_7, failing("3-9-3"));
+    const history = printed(empty(), book1, 1, DAYS_1_TO_7, failing("3-9-3"), pace.masteryPercent);
     const book2 = nextBook("child-1", history, pace, "book-2");
     expect(daysOf(book2)[0]).toEqual(["3-9-3#2", "3-11-1", "3-11-2", "3-11-3"]);
     expect(book2.sheets.filter((s) => s.attempt > 1).map((s) => s.sheetId)).toEqual(["3-9-3"]);
 
-    const late: SheetResultRecord = { bookId: "book-1", sheetId: "3-10-2", attempt: 1, result: "repeat", itemsScored: ITEMS_PER_SHEET, mistakes: 6 };
-    const after = printed({ ...history, results: [...history.results, late] }, book2, 2, DAYS_1_TO_7, allMastered);
+    const late = scoredResult("book-1", "3-10-2", 1, "repeat", pace.masteryPercent);
+    const after = printed({ ...history, results: [...history.results, late] }, book2, 2, DAYS_1_TO_7, allMastered, pace.masteryPercent);
     const book3 = nextBook("child-1", after, pace, "book-3");
     expect(daysOf(book3)[0]).toEqual(["3-10-2#2", "3-14-10", "3-15-1", "3-15-2"]);
   });
 
-  it("S4: with only Days 1 and 2 scanned, repeats the unknown sheets one time with a team notice, and never a second time", () => {
+  it("S4: with only Days 1 and 2 scanned, repeats both explicit unknown and unmarked sheets one time with a team notice, and never a second time", () => {
     const book1 = nextBook("child-1", empty(), LEVEL_3_PACE, "book-1");
-    const history = printed(empty(), book1, 1, [1, 2], allMastered);
+    // Day 1-2 scanned (10 of 50 sheets = 20% < 50%): first sheet of Day 2 has an explicit "unknown" result (<80% marked), Days 3-10 are unmarked.
+    const explicitUnknown = book1.sheets[5].sheetId;
+    const history = printed(empty(), book1, 1, [1, 2], (sheetId) => (sheetId === explicitUnknown ? "unknown" : "mastered"), LEVEL_3_PACE.masteryPercent);
+    expect(history.results.find((r) => r.sheetId === explicitUnknown)?.result).toBe("unknown");
     const where = placed("child-1", history);
-    expect(where.teamNotices).toHaveLength(40);
+    expect(where.teamNotices).toHaveLength(41);
     const book2 = nextBook("child-1", history, LEVEL_3_PACE, "book-2");
-    expect(book2.teamNotices).toHaveLength(40);
-    expect(book2.sheets.slice(0, 40).map((s) => `${s.sheetId}#${s.attempt} ${s.reason}`)).toEqual(range("3-8", 1, "3-11", 10).map((id) => `${id}#2 unscanned`));
-    expect(book2.sheets.slice(40).map((s) => `${s.sheetId}#${s.attempt}`)).toEqual(range("3-12", 1, "3-12", 10).map((id) => `${id}#1`));
+    expect(book2.teamNotices).toHaveLength(41);
+    expect(book2.sheets[0]).toMatchObject({ sheetId: explicitUnknown, attempt: 2, reason: "unscanned" });
+    expect(book2.sheets.slice(1, 41).map((s) => `${s.sheetId}#${s.attempt} ${s.reason}`)).toEqual(range("3-8", 1, "3-11", 10).map((id) => `${id}#2 unscanned`));
+    expect(book2.sheets.slice(41).map((s) => `${s.sheetId}#${s.attempt}`)).toEqual(range("3-12", 1, "3-12", 9).map((id) => `${id}#1`));
 
-    const again = printed(history, book2, 2, [1, 2], allMastered);
+    // Book 2 also has only Days 1 and 2 scanned, with explicit unknown on attempt 2 of `explicitUnknown`: never repeats a second time.
+    const again = printed(history, book2, 2, [1, 2], (sheetId) => (sheetId === explicitUnknown ? "unknown" : "mastered"), LEVEL_3_PACE.masteryPercent);
     const book3 = nextBook("child-1", again, LEVEL_3_PACE, "book-3");
     expect(book3.sheets.some((s) => s.attempt > 2)).toBe(false);
-    expect(book3.sheets.filter((s) => s.reason === "unscanned").map((s) => s.sheetId)).toEqual(range("3-12", 1, "3-12", 10));
-    expect(book3.teamNotices).toHaveLength(10);
+    expect(book3.sheets.some((s) => s.sheetId === explicitUnknown)).toBe(false);
+    expect(book3.sheets.filter((s) => s.reason === "unscanned").map((s) => s.sheetId)).toEqual(range("3-12", 1, "3-12", 9));
+    expect(book3.teamNotices).toHaveLength(9);
   });
 
-  it("S6: a sheet that fails 3 times keeps coming back with new numbers, with a nudge to Maya after the third fail and nothing printed", () => {
+  it("S6: a sheet that fails 3 times keeps coming back with new numbers via planWorkbook history, with a nudge to Maya after the third fail and nothing printed", () => {
     const pace: LevelConfig = { pagesPerDay: 2, minutesPerPage: 6, masteryPercent: 80, days: 2 };
     let history = empty();
     const books: { request: Planned["request"]; items: BookItem[] }[] = [];
-    const itemsOf = (plan: Planned) => {
-      const built = planBook({ snapshot: RAW_LEVEL_3, book: { ...plan.request, history: historyFromBooks(books.map((b) => ({ record: { bookId: b.request.bookId }, items: b.items }))) } });
-      if (!built.ok) throw new Error(built.problems.join("\n"));
-      expect(JSON.stringify(built.pages)).not.toMatch(/maya/i);
-      return built.items;
-    };
     const nudges: number[] = [];
     for (let n = 1; n <= 4; n++) {
-      const plan = nextBook("child-1", history, pace, `book-${n}`, "3-10-1");
+      const bookHistory = books.length > 0 ? historyFromBooks(books.map((b) => ({ record: { bookId: b.request.bookId }, items: b.items }))) : undefined;
+      const plan = nextBook("child-1", history, pace, `book-${n}`, "3-10-1", { bookHistory });
       expect(plan.sheets[0]).toMatchObject({ sheetId: "3-10-1", attempt: n });
+      if (bookHistory) expect(plan.request.history).toEqual(bookHistory);
       nudges.push(plan.mayaNudges.length);
       if (n === 4) expect(plan.mayaNudges).toEqual([{ sheetId: "3-10-1", failedAttempts: 3 }]);
-      books.push({ request: plan.request, items: itemsOf(plan) });
-      history = printed(history, plan, n, ALL_DAYS, failing("3-10-1"));
+      const built = planBook({ snapshot: RAW_LEVEL_3, book: plan.request });
+      if (!built.ok) throw new Error(built.problems.join("\n"));
+      expect(JSON.stringify(built.pages)).not.toMatch(/maya/i);
+      books.push({ request: plan.request, items: built.items });
+      history = printed(history, plan, n, ALL_DAYS, failing("3-10-1"), pace.masteryPercent);
     }
     expect(nudges).toEqual([0, 0, 0, 1]);
     const forms = books.map((b) => b.items.filter((i) => i.sheetId === "3-10-1").map((i) => canonicalJson(i.question)).join("|"));
     expect(new Set(forms).size).toBe(4);
   });
 
-  it("S7: a child with thin v1 marks starts at the first topic and moves through mastered sheets, one attempt each", () => {
+  it("S7: a child with thin v1 marks starts at topic 6-1 and moves through mastered sheets, one attempt each", () => {
+    const level6Topics = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => `6-${n}`);
+    const rawLevel6 = {
+      format: 1, id: "invented-level-6-plan-v1", level: { id: "level-6", name: "6" },
+      topics: level6Topics.map((code, t) => ({ id: `topic-${t + 1}`, code, title: `Topic ${code}`, sheets: Array.from({ length: 10 }, (_, s) => `${code}-${s + 1}`) })),
+      sheets: level6Topics.flatMap((code, t) => Array.from({ length: 10 }, (_, s) => ({ ...structuredClone(FACTS_SHEET), id: `${code}-${s + 1}`, firstPage: 2 * (10 * t + s) + 1 }))),
+    };
+    const l6 = validateSnapshot(rawLevel6);
+    if (!l6.ok) throw new Error(l6.problems.join("\n"));
+    const order6 = [...l6.snapshot.sheets.keys()];
     const config = paceOf("6");
-    const book1 = nextBook("child-1", empty(), config, "book-1");
-    expect(book1.sheets[0].sheetId).toBe("3-7-1");
-    const history = printed(empty(), book1, 1, ALL_DAYS, allMastered);
-    const book2 = nextBook("child-1", history, config, "book-2");
-    expect(book2.sheets.map((s) => s.sheetId)).toEqual(range("3-12", 1, "3-15", 10));
+    const book1 = nextBook("child-1", empty(), config, "book-1", undefined, { snapshot: l6.snapshot });
+    expect(book1.sheets[0].sheetId).toBe("6-1-1");
+    expect(book1.sheets.map((s) => s.sheetId)).toEqual(order6.slice(0, 50));
+    const history = printed(empty(), book1, 1, ALL_DAYS, allMastered, config.masteryPercent);
+    const book2 = nextBook("child-1", history, config, "book-2", undefined, { snapshot: l6.snapshot });
+    expect(book2.sheets.map((s) => s.sheetId)).toEqual(order6.slice(50, 100));
     expect(book2.sheets.every((s) => s.attempt === 1)).toBe(true);
-    expect(placed("child-1", history).done).toEqual(range("3-7", 1, "3-11", 10));
+    expect(placed("child-1", history, undefined, l6.snapshot).done).toEqual(order6.slice(0, 50));
   });
 });
