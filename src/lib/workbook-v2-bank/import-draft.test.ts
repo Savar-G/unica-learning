@@ -1,7 +1,7 @@
 // The import command's file rule (B1-5) and the import plan's statuses (B1-4).
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { checkDraft } from "./draft";
@@ -25,8 +25,10 @@ describe("assertOutsideGitRepo", () => {
     return path;
   };
 
-  it("accepts a file in a private folder outside every repository", () => {
-    expect(() => assertOutsideGitRepo(file("private", "draft.json"))).not.toThrow();
+  it("accepts a file in a private folder outside every repository, including via a relative path from inside this repo", () => {
+    const outside = file("private", "draft.json");
+    expect(() => assertOutsideGitRepo(outside)).not.toThrow();
+    expect(() => assertOutsideGitRepo(relative(process.cwd(), outside))).not.toThrow();
   });
 
   it("refuses a file in a repository root, in its subfolder, and in a worktree whose .git is a file", () => {

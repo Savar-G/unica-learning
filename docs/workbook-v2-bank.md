@@ -2,7 +2,7 @@
 
 The working copy holds the draft content of each level in Supabase (architecture spec 9.2, UNI-241). The bank import writes a draft file into it, and reads the rows back as the same draft. The freeze (`freezeBank`, see `docs/workbook-v2-engine.md`) turns a draft into a snapshot; snapshots and reviews are UNI-242.
 
-Code: `src/lib/workbook-v2-bank/`. Migrations: `20261127191913_bank_working_copy`, `20261127192640_bank_write_level_refusal`, `20261127195924_bank_working_copy_hardening`, `20261127202034_bank_child_version_trigger`.
+Code: `src/lib/workbook-v2-bank/`. Migrations: `20261127191913_bank_working_copy`, `20261127192640_bank_write_level_refusal`, `20261127195924_bank_working_copy_hardening`, `20261127202034_bank_child_version_trigger`, `20261127203021_bank_write_level_restore_flag`.
 
 ## Import a draft
 

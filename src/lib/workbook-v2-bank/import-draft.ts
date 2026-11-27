@@ -109,17 +109,16 @@ function gitAncestorUnresolved(candidate: string): string | null {
   }
 }
 
-/** Resolves symbolic links step by step in POSIX order (before collapsing `..`), recording every intermediate path traversed. */
+/** Resolves symbolic links step by step in POSIX order (before collapsing `..`), recording every traversed component of `path`. */
 function resolveSymlinksPosix(path: string, visited: string[] = [], links = 0): string {
   const splitParts = (p: string): string[] => p.split(/[\\/]+/).filter((seg) => seg !== "" && seg !== ".");
-  let current = isAbsolute(path) ? parse(path).root : resolveSymlinksPosix(process.cwd(), visited, links);
+  let current = isAbsolute(path) ? parse(path).root : resolveSymlinksPosix(process.cwd(), [], links);
   const queue = splitParts(isAbsolute(path) ? path.slice(current.length) : path);
   let linkCount = links;
   for (let i = 0; i < queue.length; i++) {
     const part = queue[i];
     if (part === "..") {
       current = dirname(current);
-      visited.push(current);
       continue;
     }
     const next = join(current, part);
