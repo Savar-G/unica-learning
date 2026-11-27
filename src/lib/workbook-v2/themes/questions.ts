@@ -4,7 +4,7 @@ import { isPrintable } from "../contract";
 import { FieldReader, isId } from "../bank/fields";
 import { isRecord } from "../shapes/shape";
 import { isPlural, isRegionWord, isScenarioWord, isSingular, PLACEHOLDER } from "./fill";
-import { choiceCount, eachChoice } from "./ranges";
+import { choiceCount, eachChoice, slotRange } from "./ranges";
 import { exprFractions, exprHasSlot, readExpr, solve } from "./solver";
 import type { DefinedQuestion, Phrasing, PhrasingToken, SlotRange } from "./types";
 
@@ -23,8 +23,11 @@ function readSlot(r: FieldReader, at: string, raw: unknown): SlotRange | null {
   const { min, max } = fields;
   if (!isNumber(min, 0) || !isNumber(max, 0) || min > max) r.problem(at, `min and max must be whole numbers from 0 to ${MAX_NUMBER}, with min not more than max`);
   else if (!isNumber(multipleOf, 1)) r.problem(at, "multipleOf must be a whole number, 1 or more");
-  else if (Math.floor(max / multipleOf) * multipleOf < min) r.problem(at, `no number from ${min} to ${max} is a multiple of ${multipleOf}`);
-  else return { min, max, multipleOf };
+  else {
+    const aligned = slotRange({ min, max, multipleOf }, undefined);
+    if (!aligned) r.problem(at, `no number from ${min} to ${max} is a multiple of ${multipleOf}`);
+    else return aligned;
+  }
   return null;
 }
 

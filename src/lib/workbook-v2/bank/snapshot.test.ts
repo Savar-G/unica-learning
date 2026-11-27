@@ -328,6 +328,13 @@ describe("the word problems of a snapshot", () => {
     ["a question of a region that has no pack", (s) => { question(s, "toonie-savings").regions = ["CA", "UK"]; }, /^Question "toonie-savings": there is no region pack "UK"\.$/m],
     ["a row with too few questions for a region", (s) => { rowQuestions(s, "back").splice(3, 1); }, /^Sheet "story-problems-1", back side, row "two-steps": the row asks for 3 different questions and the region "US" has 2 of them\.$/m],
     ["a pack with a coin twice", (s) => { s.regionPacks[1].coins.list[1] = { ...s.regionPacks[1].coins.list[0] }; }, /Region pack "US": the coin id "dollar" is used more than once/],
+    ["a pack with a digit-leading coin id", (s) => { s.regionPacks[1].coins.list[4].id = "1-cent"; }, /Region pack "US", coins, coin 5: id must start with a small letter and use only small letters, digits and dashes/],
+    ["a slot with unaligned multipleOf bounds whose aligned values break the formula", (s) => {
+      const q = question(s, "half-of-them");
+      q.slots.count = { min: 5, max: 9, multipleOf: 2 };
+      q.phrasings.forEach((p) => { p.tokens = p.tokens.filter((t) => !("math" in t)); });
+      Object.assign(q, { solver: { op: "÷", left: { op: "+", left: { slot: "count" }, right: { number: 1 } }, right: { number: 2 } } });
+    }, /Question "half-of-them", solver: with count 6: 7 ÷ 2 is not a whole number/],
     ["a pack with another rounding", (s) => { s.regionPacks[0].coins.rounding = "nearest-dime"; }, /Region pack "CA", coins: rounding must be "none" or "nearest-5-cents"/],
     // T3: every placeholder fills with every scenario and region pack that a question can meet.
     ["a spelling that one region pack does not have", (s) => { Reflect.deleteProperty(s.regionPacks[1].spelling, "colour"); }, /^Question "ribbon-cut", scenario "craft-ribbon", region "US": phrasing "cuts": the region pack "US" has no \[spell\.colour\]\.$/m],
@@ -335,7 +342,8 @@ describe("the word problems of a snapshot", () => {
     ["a unit of the answer that a region pack does not have", (s) => { question(s, "ribbon-cut").unit = "[unit.area]"; }, /^Question "ribbon-cut", scenario "craft-ribbon", region "CA": the region pack "CA" has no \[unit\.area\]\.$/m],
   ])("refuses %s", (_name, change, problem) => expect(storyProblems(change)).toMatch(problem));
 
-  it("passes a question of one region that its own region packs fill", () => {
+  it("passes a question of one region that its own region packs fill, and aligns multipleOf slot bounds before checking the formula", () => {
     expect(storyProblems((s) => { question(s, "nickels-to-pennies").regions = ["US"]; })).toBe("");
+    expect(storyProblems((s) => { question(s, "half-of-them").slots.count = { min: 5, max: 9, multipleOf: 2 }; })).toBe("");
   });
 });

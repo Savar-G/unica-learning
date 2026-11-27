@@ -32,21 +32,30 @@ export function bindStory(ids: readonly string[], bank: StoryBank, { interest, r
 export const interestsOf = (bank: StoryBank): string[] => [...new Set(bank.scenarios.map((s) => s.interest))];
 
 /**
- * The widest forms of a story row across every region pack and compatible scenario: widest slot values and longest answer
- * for each (question, scenario) pair, so a region-specific question or another scenario's longer answer cannot pass fit.
+ * The widest forms of a story row across every eligible region pack, compatible scenario and phrasing: widest slot values
+ * and longest answer for each (question, scenario) pair, reused across every pack and phrasing so none escapes snapshot fit.
  */
 export function storyForms(ids: readonly string[], bank: StoryBank): Item<StoryQuestion>[] {
   const forms: Item<StoryQuestion>[] = [];
   for (const id of ids) {
     const question = bank.questions.get(id);
     if (!question) continue;
-    const pack = [...bank.packs.values()].find((p) => question.regions === null || question.regions.includes(p.id));
-    if (!pack) continue;
+    const packs = [...bank.packs.values()].filter((p) => question.regions === null || question.regions.includes(p.id));
+    if (packs.length === 0) continue;
     for (const scenario of bank.scenarios.filter((s) => s.kind === question.scenarioKind)) {
       const found = rangesOf(question, scenario);
       if (!("ranges" in found)) continue;
-      const bound: BoundQuestion = { question, scenario, pack, ranges: found.ranges };
-      forms.push(storyItem(bound, 0, widestValues(found.ranges)), storyItem(bound, 0, longestAnswer(bound)));
+      const widest = widestValues(found.ranges);
+      const longest = longestAnswer({ question, scenario, pack: packs[0], ranges: found.ranges });
+      for (const pack of packs) {
+        const bound: BoundQuestion = { question, scenario, pack, ranges: found.ranges };
+        for (let i = 0; i < question.phrasings.length; i++) {
+          const wide = storyItem(bound, i, widest);
+          forms.push(wide);
+          const long = storyItem(bound, i, longest);
+          if (long.answer.parts[0].value.length > wide.answer.parts[0].value.length) forms.push(long);
+        }
+      }
     }
   }
   return forms;

@@ -47,6 +47,7 @@ describe("the solver of a defined question", () => {
     ["an unknown operation", { op: "^", left: { number: 2 }, right: { number: 3 } }, /"\^" is no operation: use \+, -, × or ÷/],
     ["a fraction that the fonts cannot print", { op: "×", left: { fraction: [1, 3] }, right: { slot: "a" } }, /the fraction 1\/3 cannot be printed: use 1\/2, 1\/4 or 3\/4/],
     ["a fraction of strings", { op: "×", left: { fraction: ["1", "2"] }, right: { slot: "a" } }, /cannot be printed/],
+    ["a malformed fraction object", { op: "×", left: { fraction: { toString: null, valueOf: null } }, right: { slot: "a" } }, /a fraction must be a pair of whole numbers/],
     ["a fraction outside a multiplication", { op: "+", left: { fraction: [1, 2] }, right: { slot: "a" } }, /a fraction may only be multiplied/],
     ["a fraction alone", { fraction: [1, 2] }, /a fraction may only be multiplied/],
     ["a number that is not whole", { op: "+", left: { number: 2.5 }, right: { slot: "a" } }, /a number must be a whole number from 0 to 1000/],

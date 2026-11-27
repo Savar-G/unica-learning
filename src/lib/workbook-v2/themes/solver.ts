@@ -32,8 +32,10 @@ function readNode(raw: unknown, slots: readonly string[], inProduct: boolean, co
   if (exactKeys(raw, ["fraction"])) {
     const { fraction } = raw;
     const good = Array.isArray(fraction) && fraction.length === 2 && fraction.every((n) => typeof n === "number" && Number.isSafeInteger(n));
-    const key = good ? fraction.join("/") : String(fraction);
-    if (!good || !Object.hasOwn(FRACTIONS, key)) return `the fraction ${key} cannot be printed: use ${Object.keys(FRACTIONS).join(", ").replace(/, (?=[^,]*$)/, " or ")}`;
+    const allowed = Object.keys(FRACTIONS).join(", ").replace(/, (?=[^,]*$)/, " or ");
+    if (!good) return `a fraction must be a pair of whole numbers and cannot be printed: use ${allowed}`;
+    const key = fraction.join("/");
+    if (!Object.hasOwn(FRACTIONS, key)) return `the fraction ${key} cannot be printed: use ${allowed}`;
     const [n, d] = fraction as [number, number];
     return inProduct ? { fraction: [n, d] } : "a fraction may only be multiplied";
   }

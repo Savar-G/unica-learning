@@ -15,6 +15,8 @@ const ROUNDINGS = ["none", "nearest-5-cents"];
 const MAX_WORDS = 40;
 const MAX_CENTS = 10_000;
 const MAX_SLOT_NUMBER = 9999;
+/** Keys of region-pack units, coins and spellings, matching the placeholder grammar (`REGION_WORD`). */
+const PACK_KEY = /^[a-z][a-z0-9-]*$/;
 
 /** A text that a story prints: printable, one space between words, no digit (only slots print numbers) and no bracket. */
 function storyTextProblem(value: unknown): string | null {
@@ -39,7 +41,7 @@ function wordForms(r: FieldReader, place: string, raw: unknown): WordForms | nul
   return one !== null && many !== null ? { one, many } : null;
 }
 
-/** An object of named entries, each read by `read`. The names are ids. */
+/** An object of named entries, each read by `read`. The names start with a small letter and use small letters, digits and dashes. */
 function named<T>(r: FieldReader, place: string, raw: unknown, read: (at: string, value: unknown) => T | null): Record<string, T> | null {
   if (!isRecord(raw)) {
     r.problem(place, "this must be an object");
@@ -47,7 +49,7 @@ function named<T>(r: FieldReader, place: string, raw: unknown, read: (at: string
   }
   const out: Record<string, T> = {};
   for (const [name, value] of Object.entries(raw)) {
-    if (!isId(name)) r.problem(place, `the name "${name}" must use only small letters, digits and dashes`);
+    if (!PACK_KEY.test(name)) r.problem(place, `the name "${name}" must start with a small letter and use only small letters, digits and dashes`);
     const one = read(`${place}, "${name}"`, value);
     if (one !== null) out[name] = one;
   }
@@ -58,7 +60,9 @@ function readCoin(r: FieldReader, place: string, raw: unknown, index: number): C
   const at = `${place}, coin ${index + 1}`;
   const fields = r.object(at, raw, ["id", "one", "many", "cents"]);
   if (!fields) return null;
-  const [id, one, many] = [r.id(at, fields), storyText(r, at, fields, "one"), storyText(r, at, fields, "many")];
+  const id = typeof fields.id === "string" && PACK_KEY.test(fields.id) ? fields.id : null;
+  if (id === null) r.problem(at, "id must start with a small letter and use only small letters, digits and dashes");
+  const [one, many] = [storyText(r, at, fields, "one"), storyText(r, at, fields, "many")];
   const { cents } = fields;
   const goodCents = typeof cents === "number" && Number.isSafeInteger(cents) && cents >= 1 && cents <= MAX_CENTS;
   if (!goodCents) r.problem(at, `cents must be a whole number from 1 to ${MAX_CENTS}`);
