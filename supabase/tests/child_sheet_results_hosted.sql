@@ -57,7 +57,7 @@ begin
   if r->>'status' is distinct from 'written' or (r->>'written')::int is distinct from 1 then raise exception 'first_write %', r; end if;
   r := public.write_child_sheet_results(c, 4, jsonb_set(row_of, '{0,result}', '"mastered"'));
   if r->>'status' is distinct from 'written' or (r->>'stale')::int is distinct from 1 or (r->>'marksVersion')::bigint is distinct from 5 then raise exception 'stale_write_not_skipped %', r; end if;
-  if (select result from public.child_sheet_results where child_id = c) <> 'unknown' then raise exception 'stale_write_clobbered'; end if;
+  if (select result from public.child_sheet_results where child_id = c) is distinct from 'unknown' then raise exception 'stale_write_clobbered'; end if;
   r := public.write_child_sheet_results(c, 6, jsonb_set(jsonb_set(row_of, '{0,result}', '"repeat"'), '{0,mistakes}', '2'));
   if r->>'status' is distinct from 'written' or (r->>'written')::int is distinct from 1 or (select (result, marks_version, mistakes) from public.child_sheet_results where child_id = c) is distinct from ('repeat'::text, 6::bigint, 2) then raise exception 'newer_write_lost %', r; end if;
   begin
