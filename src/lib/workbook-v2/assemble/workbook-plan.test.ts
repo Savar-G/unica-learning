@@ -194,6 +194,17 @@ describe("W1-1: a level config is data", () => {
     const brokenPlan = planWorkbook({ bookId: "book-1", childId: "child-1", snapshot: brokenBank.snapshot, position: brokenPos, levelConfig: { pagesPerDay: 2, minutesPerPage: 2, masteryPercent: 90, days: 2 }, qrTokens: tokens(4, "sp") });
     expect(brokenPlan.ok).toBe(false);
     if (!brokenPlan.ok) expect(brokenPlan.problems.join("\n")).toMatch(/"qr" enters the spine zone/);
+
+    // A template whose question place overlaps the footer must also be rejected before returning a request.
+    const slotTemplate = structuredClone(orig);
+    slotTemplate.sides.front.places[0].slot.y = slotTemplate.sides.front.frame.footer.y - 4;
+    const slotTemplates = new Map([...TEMPLATES, ["facts-2x10", slotTemplate]]);
+    const slotBank = validateSnapshot(structuredClone(RAW_LEVEL_3), undefined, slotTemplates);
+    if (!slotBank.ok) throw new Error(slotBank.problems.join("\n"));
+    const slotPos = placed("child-1", empty(), undefined, slotBank.snapshot);
+    const slotPlan = planWorkbook({ bookId: "book-1", childId: "child-1", snapshot: slotBank.snapshot, position: slotPos, levelConfig: { pagesPerDay: 2, minutesPerPage: 2, masteryPercent: 90, days: 2 }, qrTokens: tokens(4, "sl") });
+    expect(slotPlan.ok).toBe(false);
+    if (!slotPlan.ok) expect(slotPlan.problems.join("\n")).toMatch(/footer|overlaps|margin/i);
   });
 
   it("names every problem of a config at once", () => {
@@ -408,7 +419,18 @@ describe("W1-6: the scenarios of product spec 2.3", () => {
       if (n === 4) expect(plan.mayaNudges).toEqual([{ sheetId: "3-10-1", failedAttempts: 3 }]);
       const built = planBook({ snapshot: RAW_LEVEL_3, book: plan.request });
       if (!built.ok) throw new Error(built.problems.join("\n"));
-      expect(JSON.stringify(built.pages)).not.toMatch(/maya/i);
+      if (n === 4) {
+        // Stripping Maya nudges and team notices from the position yields the exact same printable request and cover facts.
+        const pos = placed("child-1", history, "3-10-1");
+        const quiet = planWorkbook({
+          bookId: `book-${n}`, childId: "child-1", snapshot: LEVEL_3,
+          position: { ...pos, mayaNudges: [], teamNotices: [] },
+          levelConfig: pace, qrTokens: tokens(4, `child-1-book-${n}`), ...(bookHistory ? { history: bookHistory } : {}),
+        });
+        if (!quiet.ok) throw new Error(quiet.problems.join("\n"));
+        expect(plan.request).toEqual(quiet.request);
+        expect(plan.coverFacts).toEqual(quiet.coverFacts);
+      }
       books.push({ request: plan.request, items: built.items });
       history = printed(history, plan, n, ALL_DAYS, failing("3-10-1"), pace.masteryPercent);
     }

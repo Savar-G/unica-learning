@@ -158,7 +158,11 @@ export function planNextBook(input: NextBookInput): NextBook {
   if (Array.isArray(read)) return { ok: false, problems: read };
   const layout = buildPages(read.sheets.map((s) => ({ ...s, items: [], levelName: input.snapshot.level.name })));
   if (!layout.ok) return layout;
-  const layoutProblems = layout.pages.flatMap((page) => checkPageFrame(page));
+  const sheetsById = new Map(read.sheets.map((s) => [s.sheet.id, s.sheet]));
+  const layoutProblems = layout.pages.flatMap((page) => {
+    const places = sheetsById.get(page.sheetId)?.[page.side].template.sides[page.side].places ?? [];
+    return checkPageFrame(page, places.map((p) => p.slot));
+  });
   return layoutProblems.length > 0 ? { ok: false, problems: layoutProblems } : { ok: true, request: plain.value as BookRequestJson, sheets: chosen };
 }
 

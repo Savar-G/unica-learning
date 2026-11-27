@@ -343,16 +343,25 @@ function checkFrameParts(page: PageModel, live: Rect, tell: Tell): void {
   for (const problem of timeLogProblems(page, live)) tell(problem);
 }
 
-/** The frame layout rules of a page (paper, edges, ink, QR, scan marks, heading/instruction/footer, time log, overlaps, ids), without items. */
-export function checkPageFrame(page: PageModel): string[] {
+/**
+ * The frame layout rules of a page (paper, edges, ink, QR, scan marks, heading/instruction/footer, time log, overlaps, ids),
+ * optionally including template slot rectangles so question-place bounds are checked against edges, instruction, footer, and
+ * other frame regions even before items are generated.
+ */
+export function checkPageFrame(page: PageModel, slotRects: readonly Rect[] = []): string[] {
   const problems: string[] = [];
   const tell: Tell = (problem) => {
     const text = `Page ${page.page}: ${problem}.`;
     if (!problems.includes(text)) problems.push(text);
   };
-  checkFrameParts(page, liveArea(page), tell);
-  checkOverlaps(page, new Set(), new Set(), tell);
-  checkIds(page, new Map(), tell);
+  const slots: Region[] = slotRects.map((rect, i) => ({
+    id: `${page.id}/slot-${i + 1}`, role: "slot", rect, item: `${page.id}/${i + 1}`, part: null, ink: [],
+  }));
+  const checked: PageModel = slots.length > 0 ? { ...page, regions: [...page.regions, ...slots] } : page;
+  const known = new Map<string, BookItem>(slots.map((s, i) => [s.item!, { number: i + 1 } as BookItem]));
+  checkFrameParts(checked, liveArea(checked), tell);
+  checkOverlaps(checked, new Set(), new Set(), tell);
+  checkIds(checked, known, tell);
   return problems;
 }
 
