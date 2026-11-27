@@ -30,11 +30,31 @@ export function withExtraQuestions(draft: Rec, count: number, prefix = "extra"):
 
 type Row = Record<string, unknown>;
 
-/** PostgREST's answer to a read: eq filters, order by one column, offset and limit, at most 1000 rows. */
+/** One PostgREST filter: `eq.value` or `in.(a,b)`. */
+function matches(value: unknown, filter: string): boolean {
+  if (filter.startsWith("eq.")) return String(value) === filter.slice(3);
+  if (filter.startsWith("in.(") && filter.endsWith(")")) return filter.slice(4, -1).split(",").map((v) => v.replace(/^"|"$/g, "")).includes(String(value));
+  throw new Error(`filter ${filter} is not modelled`);
+}
+
+/** Orders by each `column.direction` of PostgREST's order, numbers as numbers. */
+function compareBy(order: string): (a: Row, b: Row) => number {
+  const columns = order.split(",").filter(Boolean).map((one) => one.split(".")[0]);
+  return (a, b) => {
+    for (const col of columns) {
+      const [x, y] = [a[col], b[col]];
+      const diff = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y));
+      if (diff !== 0) return diff;
+    }
+    return 0;
+  };
+}
+
+/** PostgREST's answer to a read: eq and in filters, order by columns, offset and limit, at most 1000 rows. */
 function select(rows: Row[], params: URLSearchParams): Row[] {
   const out = rows
-    .filter((r) => [...params].every(([k, v]) => ["select", "order", "limit", "offset"].includes(k) || (v.startsWith("eq.") && String(r[k]) === v.slice(3))))
-    .sort((a, b) => { const col = (params.get("order") ?? "").split(".")[0]; return col ? String(a[col]).localeCompare(String(b[col])) : 0; });
+    .filter((r) => [...params].every(([k, v]) => ["select", "order", "limit", "offset"].includes(k) || matches(r[k], v)))
+    .sort(compareBy(params.get("order") ?? ""));
   const offset = Number(params.get("offset") ?? 0);
   return out.slice(offset, offset + Math.min(Number(params.get("limit") ?? 1000), 1000));
 }
@@ -59,6 +79,8 @@ export function fakeBankSupabase(): FakeBankSupabase {
       bank_levels: rows([...t.levels.values()].map(({ row, version }) => ({ ...row, updated_at: version }))),
       bank_topics: rows(t.topics.values()), bank_sheets: rows(t.sheets.values()), bank_questions: rows(t.questions.values()),
       bank_scenarios: rows(t.scenarios.values()), bank_region_packs: rows(t.regionPacks.values()),
+      bank_reviews: rows(t.reviews), bank_snapshots: rows(t.snapshots.values()),
+      bank_snapshot_items: [...t.snapshotItems].flatMap(([snapshotId, items]) => rows(items.map((item) => ({ snapshot_id: snapshotId, ...item })))),
     };
   };
   const fake: FakeBankSupabase = {
@@ -77,6 +99,18 @@ export function fakeBankSupabase(): FakeBankSupabase {
       const written = await memory.writeLevel(JSON.parse(String(init?.body)).p_write);
       if (written.ok) return json(200, { version: written.version });
       return json(400, { code: written.problem.includes("changed since") ? "PT409" : "23505", message: written.problem });
+    }
+    if (method === "POST" && path === "/rest/v1/rpc/bank_freeze_level") {
+      try {
+        const written = await memory.writeSnapshot(JSON.parse(String(init?.body)).p_freeze);
+        return written.ok ? json(200, { snapshotId: written.snapshotId, version: written.version }) : json(400, { code: "PT409", message: written.problem });
+      } catch (error) {
+        return json(400, { code: "23514", message: error instanceof Error ? error.message : String(error) });
+      }
+    }
+    if (method === "POST" && path === "/rest/v1/bank_reviews") {
+      const row = await memory.addReview(JSON.parse(String(init?.body)));
+      return json(201, new Headers(init?.headers).get("accept") === "application/vnd.pgrst.object+json" ? row : [row]);
     }
     const table = path.replace("/rest/v1/", "");
     const all = tables();

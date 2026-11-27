@@ -1,9 +1,12 @@
 // The working copy in memory, with the rules of bank_write_level: a write names the version it read, a sheet id
-// belongs to one level, and a write is whole or nothing. Rows go in and come out as copies.
+// belongs to one level, and a write is whole or nothing. Rows go in and come out as copies. Reviews, snapshots and
+// snapshot items are insert only, with the rules of bank_freeze_level (memory-snapshots.ts).
+import { randomUUID } from "node:crypto";
 import { draftFromRows } from "./draft";
+import { memorySnapshotStore, type MemorySnapshotTables } from "./memory-snapshots";
 import type { BankStore, LevelRow, LevelRows, LevelWrite, QuestionRow, RegionPackRow, ScenarioRow, SheetRow, TopicRow, WriteResult } from "./types";
 
-export interface MemoryBankTables {
+export interface MemoryBankTables extends MemorySnapshotTables {
   levels: Map<string, { row: LevelRow; version: string }>;
   topics: Map<string, TopicRow>;
   sheets: Map<string, SheetRow>;
@@ -18,8 +21,11 @@ const copy = <T>(value: T): T => structuredClone(value);
 const inLevel = <T extends { level_id: string }>(rows: Map<string, T>, levelId: string): T[] => [...rows.values()].filter((row) => row.level_id === levelId).map(copy);
 const keyOf = (row: { level_id: string; id: string }) => `${row.level_id}/${row.id}`;
 
-export function memoryBankStore(): MemoryBankStore {
-  const tables: MemoryBankTables = { levels: new Map(), topics: new Map(), sheets: new Map(), questions: new Map(), scenarios: new Map(), regionPacks: new Map() };
+export function memoryBankStore({ uuid = randomUUID }: { uuid?: () => string } = {}): MemoryBankStore {
+  const tables: MemoryBankTables = {
+    levels: new Map(), topics: new Map(), sheets: new Map(), questions: new Map(), scenarios: new Map(), regionPacks: new Map(),
+    reviews: [], snapshots: new Map(), snapshotItems: new Map(),
+  };
   let writes = 0;
 
   const readLevel = async (levelId: string): Promise<LevelRows> => {
@@ -51,5 +57,8 @@ export function memoryBankStore(): MemoryBankStore {
     return { ok: true, version };
   };
 
-  return { tables, readLevel, writeLevel, exportLevelDraft: async (levelId) => draftFromRows(await readLevel(levelId)) };
+  return {
+    tables, readLevel, writeLevel, exportLevelDraft: async (levelId) => draftFromRows(await readLevel(levelId)),
+    ...memorySnapshotStore(tables, readLevel, (levelId) => tables.levels.get(levelId)?.version ?? null, uuid),
+  };
 }

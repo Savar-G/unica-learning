@@ -751,6 +751,50 @@ export type Database = {
           },
         ]
       }
+      bank_reviews: {
+        Row: {
+          comment: string | null
+          created_at: string
+          decision: string
+          id: number
+          item_key: string
+          item_kind: string
+          level_id: string
+          reviewer: string
+          revision: number
+        }
+        Insert: {
+          comment?: string | null
+          created_at?: string
+          decision: string
+          id?: never
+          item_key: string
+          item_kind: string
+          level_id: string
+          reviewer: string
+          revision: number
+        }
+        Update: {
+          comment?: string | null
+          created_at?: string
+          decision?: string
+          id?: never
+          item_key?: string
+          item_kind?: string
+          level_id?: string
+          reviewer?: string
+          revision?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_reviews_level_id_fkey"
+            columns: ["level_id"]
+            isOneToOne: false
+            referencedRelation: "bank_levels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bank_scenarios: {
         Row: {
           basis: Json | null
@@ -854,6 +898,88 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "bank_topics"
             referencedColumns: ["level_id", "id"]
+          },
+        ]
+      }
+      bank_snapshot_items: {
+        Row: {
+          content: Json
+          hash: string
+          key: string
+          kind: string
+          position: number
+          snapshot_id: string
+        }
+        Insert: {
+          content: Json
+          hash: string
+          key: string
+          kind: string
+          position: number
+          snapshot_id: string
+        }
+        Update: {
+          content?: Json
+          hash?: string
+          key?: string
+          kind?: string
+          position?: number
+          snapshot_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_snapshot_items_snapshot_id_fkey"
+            columns: ["snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "bank_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bank_snapshots: {
+        Row: {
+          content_hash: string
+          frozen_at: string
+          frozen_by: string
+          id: string
+          item_count: number
+          level_id: string
+          manifest_hash: string
+          min_engine_version: string
+          name: string
+          version: number
+        }
+        Insert: {
+          content_hash: string
+          frozen_at?: string
+          frozen_by: string
+          id?: string
+          item_count: number
+          level_id: string
+          manifest_hash: string
+          min_engine_version: string
+          name: string
+          version: number
+        }
+        Update: {
+          content_hash?: string
+          frozen_at?: string
+          frozen_by?: string
+          id?: string
+          item_count?: number
+          level_id?: string
+          manifest_hash?: string
+          min_engine_version?: string
+          name?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_snapshots_level_id_fkey"
+            columns: ["level_id"]
+            isOneToOne: false
+            referencedRelation: "bank_levels"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -1160,6 +1286,54 @@ export type Database = {
             columns: ["report_id"]
             isOneToOne: false
             referencedRelation: "reports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      child_bank_state: {
+        Row: {
+          child_id: string
+          created_at: string
+          level_id: string
+          level_test_state: string
+          pages_request: string
+          parent_id: string
+          start_sheet_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          child_id: string
+          created_at?: string
+          level_id: string
+          level_test_state?: string
+          pages_request?: string
+          parent_id: string
+          start_sheet_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          child_id?: string
+          created_at?: string
+          level_id?: string
+          level_test_state?: string
+          pages_request?: string
+          parent_id?: string
+          start_sheet_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "child_bank_state_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "child_bank_state_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
             referencedColumns: ["id"]
           },
         ]
@@ -1494,6 +1668,93 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "parents"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      child_sheet_results: {
+        Row: {
+          attempt: number
+          child_id: string
+          created_at: string
+          id: string
+          items_scored: number
+          items_total: number
+          marks_version: number
+          mistakes: number
+          parent_id: string
+          printed_revision: string
+          result: string
+          sheet_id: string
+          updated_at: string
+          workbook_id: string
+        }
+        Insert: {
+          attempt: number
+          child_id: string
+          created_at?: string
+          id?: string
+          items_scored: number
+          items_total: number
+          marks_version: number
+          mistakes: number
+          parent_id: string
+          printed_revision: string
+          result: string
+          sheet_id: string
+          updated_at?: string
+          workbook_id: string
+        }
+        Update: {
+          attempt?: number
+          child_id?: string
+          created_at?: string
+          id?: string
+          items_scored?: number
+          items_total?: number
+          marks_version?: number
+          mistakes?: number
+          parent_id?: string
+          printed_revision?: string
+          result?: string
+          sheet_id?: string
+          updated_at?: string
+          workbook_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "child_sheet_results_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "child_sheet_results_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "child_sheet_results_sheet_fkey"
+            columns: ["workbook_id", "sheet_id", "attempt"]
+            isOneToOne: false
+            referencedRelation: "workbook_sheets"
+            referencedColumns: ["workbook_id", "sheet_id", "attempt"]
+          },
+          {
+            foreignKeyName: "child_sheet_results_workbook_child_fkey"
+            columns: ["workbook_id", "child_id"]
+            isOneToOne: false
+            referencedRelation: "workbooks"
+            referencedColumns: ["id", "child_id"]
+          },
+          {
+            foreignKeyName: "child_sheet_results_workbook_fkey"
+            columns: ["workbook_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "workbooks"
+            referencedColumns: ["id", "parent_id"]
           },
         ]
       }
@@ -10552,6 +10813,15 @@ export type Database = {
         Args: { p_child: string; p_number: number; p_shipping: boolean }
         Returns: undefined
       }
+      bank_freeze_level: { Args: { p_freeze: Json }; Returns: Json }
+      bank_live_items: {
+        Args: { p_level_id: string }
+        Returns: {
+          key: string
+          kind: string
+          revision: number
+        }[]
+      }
       bank_write_level: { Args: { p_write: Json }; Returns: Json }
       beat_workbook_worker: {
         Args: {
@@ -12582,6 +12852,10 @@ export type Database = {
       workbook_run_held: {
         Args: { p_lease: string; p_run: string }
         Returns: boolean
+      }
+      write_child_sheet_results: {
+        Args: { p_child: string; p_marks_version: number; p_results: Json }
+        Returns: Json
       }
       write_workbook: {
         Args: { p_schema_version: number; p_workbook: Json }

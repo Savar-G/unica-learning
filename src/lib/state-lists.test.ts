@@ -24,7 +24,7 @@ import { TOPIC_METHOD_STATUSES } from "@/lib/reference-method/types";
 import { LEARNING_EVENT_ASSISTANCE } from "@/lib/learning-events";
 import { ANSWER_KINDS } from "@/lib/workbook-v2/contract";
 import { TIME_LOG_READING_STATES, WORKBOOK_GENERATORS } from "@/lib/workbook-v2-publish/types";
-import { BANK_ITEM_STATUSES, BANK_LEVEL_STATUSES, BANK_SHEET_KINDS } from "@/lib/workbook-v2-bank/types";
+import { BANK_ITEM_STATUSES, BANK_LEVEL_STATUSES, BANK_SHEET_KINDS, REVIEW_DECISIONS, REVIEW_KINDS, SNAPSHOT_ITEM_KINDS } from "@/lib/workbook-v2-bank/types";
 
 const LISTS: { name: string; list: readonly string[]; table: string; column: string }[] = [
   { name: "CUSTOMER_ACTIVITY_KINDS", list: CUSTOMER_ACTIVITY_KINDS, table: "customer_activity", column: "event" },
@@ -73,6 +73,10 @@ const LISTS: { name: string; list: readonly string[]; table: string; column: str
   { name: "BANK_LEVEL_STATUSES", list: BANK_LEVEL_STATUSES, table: "bank_levels", column: "status" },
   ...(["bank_topics", "bank_sheets", "bank_questions", "bank_scenarios", "bank_region_packs"] as const).map((table) => ({ name: "BANK_ITEM_STATUSES", list: BANK_ITEM_STATUSES, table, column: "status" })),
   { name: "BANK_SHEET_KINDS", list: BANK_SHEET_KINDS, table: "bank_sheets", column: "kind" },
+  // UNI-242: reviews and snapshots of the bank (migration 20261127205833_bank_freeze_snapshots).
+  { name: "REVIEW_KINDS", list: REVIEW_KINDS, table: "bank_reviews", column: "item_kind" },
+  { name: "REVIEW_DECISIONS", list: REVIEW_DECISIONS, table: "bank_reviews", column: "decision" },
+  { name: "SNAPSHOT_ITEM_KINDS", list: SNAPSHOT_ITEM_KINDS, table: "bank_snapshot_items", column: "kind" },
 ];
 
 // Grandfathered enum-like SQL checks not yet wired to an exported TS `as const` list.

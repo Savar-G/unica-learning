@@ -3,6 +3,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/database";
 import { draftFromRows } from "./draft";
+import { supabaseSnapshotStore } from "./supabase-snapshots";
 import type { BankStore, LevelRows, LevelWrite, WriteResult } from "./types";
 
 /** Rows of one read; PostgREST never gives more than 1,000, whatever the range asks. */
@@ -72,5 +73,5 @@ export function supabaseBankStore(db: SupabaseClient<Database>): BankStore {
     return { ok: true, version };
   };
 
-  return { readLevel, writeLevel, exportLevelDraft: async (levelId) => draftFromRows(await readLevel(levelId)) };
+  return { readLevel, writeLevel, exportLevelDraft: async (levelId) => draftFromRows(await readLevel(levelId)), ...supabaseSnapshotStore(db, allPages) };
 }
