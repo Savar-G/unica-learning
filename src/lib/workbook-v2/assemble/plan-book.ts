@@ -14,8 +14,12 @@ import { questionKey } from "../shapes/shape";
 import { STORY_SHAPE_ID, storyShape, type StoryQuestion } from "../shapes/story";
 import type { ChildPosition, QueueEntry } from "./position";
 
-/** The most sheets of a book: 120 pages. */
-export const MAX_SHEETS = 60;
+/** The pages of a cover: front, inside front with the plan, inside back, back. */
+export const COVER_PAGES = 4;
+/** The most pages of a printed book, its cover included (product spec 7.2). */
+export const MAX_TOTAL_PAGES = 120;
+/** The most sheets of a book: 58 sheets are 116 pages, and with the cover 120. */
+export const MAX_SHEETS = (MAX_TOTAL_PAGES - COVER_PAGES) / 2;
 
 export interface BookSheetJson { sheetId: string; attempt: number; qr: { front: string; back: string }; startsDay?: true }
 /** A book request as plain JSON, as `readBookRequest` reads it. */
@@ -62,7 +66,7 @@ function readBookSize({ pagesPerDay, days, sheetsCount }: BookSize): { wanted: n
     return [`The sheets of a book (${sheetsCount}) must be a multiple of ${perDay} (${pagesPerDay} pages a day).`];
   }
   const wanted = sheetsCount ?? perDay * (days as number);
-  if (wanted > MAX_SHEETS) return [`A book has at most ${MAX_SHEETS} sheets (${2 * MAX_SHEETS} pages), and this one asks for ${wanted}.`];
+  if (wanted > MAX_SHEETS) return [`A book has at most ${MAX_SHEETS} sheets (${2 * MAX_SHEETS} pages and ${COVER_PAGES} cover pages, ${MAX_TOTAL_PAGES} in all), and this one asks for ${wanted}.`];
   return { wanted, days: days ?? wanted / perDay };
 }
 
@@ -82,10 +86,13 @@ export function nextBookSheets(position: ChildPosition, size: BookSize): QueueEn
 }
 
 /**
- * Whether a sheet starts a day: the first sheet of each day of `pagesPerDay / 2` sheets. A sheet past the last day (one
- * that makes the count even) belongs to the last day.
+ * The day of a sheet, from 1: each day has `pagesPerDay / 2` sheets. A sheet past the last day (one that makes the count
+ * even) belongs to the last day.
  */
-const startsDay = (index: number, pagesPerDay: number, days: number): boolean => index % (pagesPerDay / 2) === 0 && index / (pagesPerDay / 2) < days;
+export const dayOf = (index: number, pagesPerDay: number, days: number): number => Math.min(Math.floor(index / (pagesPerDay / 2)), days - 1) + 1;
+
+/** Whether a sheet starts a day: the first sheet of its day. */
+const startsDay = (index: number, pagesPerDay: number, days: number): boolean => index === 0 || dayOf(index, pagesPerDay, days) !== dayOf(index - 1, pagesPerDay, days);
 
 /** The request of the next book, which `planBook` accepts, or every problem. */
 export function planNextBook(input: NextBookInput): NextBook {

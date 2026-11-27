@@ -58,9 +58,11 @@ describe("the next book", () => {
   });
 
   it(`has at most ${MAX_SHEETS} sheets, also when an odd count rounds up, and derives day starts from sheetsCount`, () => {
-    expect(nextBookSheets(positionOf(longQueue(100)), { pagesPerDay: 20, days: 6 })).toHaveLength(60);
-    expect(nextBookSheets(positionOf(longQueue(100)), { pagesPerDay: 2, days: 59 })).toHaveLength(60);
-    expect(nextBookSheets(positionOf(longQueue(100)), { pagesPerDay: 20, days: 7 })).toEqual([expect.stringMatching(/at most 60 sheets \(120 pages\), and this one asks for 70/)]);
+    expect(MAX_SHEETS).toBe(58);
+    expect(nextBookSheets(positionOf(longQueue(100)), { pagesPerDay: 2, days: 58 })).toHaveLength(58);
+    expect(nextBookSheets(positionOf(longQueue(100)), { pagesPerDay: 2, days: 57 })).toHaveLength(58);
+    expect(nextBookSheets(positionOf(longQueue(100)), { pagesPerDay: 2, days: 59 })).toEqual([expect.stringMatching(/at most 58 sheets \(116 pages and 4 cover pages, 120 in all\), and this one asks for 59/)]);
+    expect(nextBookSheets(positionOf(longQueue(100)), { pagesPerDay: 20, days: 6 })).toEqual([expect.stringMatching(/asks for 60/)]);
     expect(nextBookSheets(positionOf(longQueue(100)), { pagesPerDay: 2, sheetsCount: 61 })).toEqual([expect.stringMatching(/asks for 61/)]);
     expect(nextBookSheets(positionOf(longQueue(100)), { pagesPerDay: 2, sheetsCount: 6 })).toHaveLength(6);
     const byCount = planNextBook(input({ pagesPerDay: 2, days: undefined, sheetsCount: 4, qrTokens: tokens(8) }));
@@ -106,7 +108,7 @@ describe("the next book", () => {
     expect(problemsOf(planNextBook(input(change)))).toMatch(problem);
   });
 
-  it("always has an even count of at most 60 sheets, in the order of the queue, and never shortens an odd queue", () => {
+  it(`always has an even count of at most ${MAX_SHEETS} sheets, in the order of the queue, and never shortens an odd queue`, () => {
     fc.assert(fc.property(fc.integer({ min: 0, max: 80 }), fc.integer({ min: 1, max: 10 }), fc.integer({ min: 1, max: 12 }), (queued, perDay, days) => {
       const queue = longQueue(queued);
       const sheets = nextBookSheets(positionOf(queue), { pagesPerDay: 2 * perDay, days });
