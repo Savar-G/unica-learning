@@ -133,13 +133,12 @@ function rowKeys(sheetId: string, { side, row, capacity }: RowEntry): Set<string
 }
 
 /**
- * Tests whether `attempts` repeat-free builds are achievable across `groups` (each needing `attempts * g.items` distinct
- * questions) via bipartite max-flow (Hopcroft-Karp). Returns null if achievable, or the Hall-violating subset otherwise.
+ * Tests whether every group `g` can receive `cap[g]` distinct questions via bipartite max-flow (Hopcroft-Karp).
+ * Returns null if achievable, or the Hall-violating subset of groups otherwise.
  */
-function findViolation(groups: readonly KeyGroup[], adj: readonly number[][], keyCount: number, attempts: number): { groups: KeyGroup[]; unionSize: number } | null {
-  if (attempts <= 0) return null;
+function findViolation(groups: readonly KeyGroup[], adj: readonly number[][], keyCount: number, cap: readonly number[]): { groups: KeyGroup[]; unionSize: number } | null {
+  if (cap.every((c) => c <= 0)) return null;
   const n = groups.length;
-  const cap = groups.map((g) => attempts * g.items);
   const matched = new Int32Array(n);
   const owner = new Int32Array(keyCount).fill(-1);
   const dist = new Int32Array(n);
@@ -209,50 +208,75 @@ function connectedComponents(groups: readonly KeyGroup[]): KeyGroup[][] {
   return components;
 }
 
-/** Exact repeat-free capacity and limiting subset of one connected component of groups. */
-function componentCapacity(component: readonly KeyGroup[]): SharedLimit {
-  const keyIndex = new Map<string, number>();
-  const adj = component.map((g) => [...g.keys].map((key) => {
-    const existing = keyIndex.get(key);
-    if (existing !== undefined) return existing;
-    const id = keyIndex.size;
-    keyIndex.set(key, id);
-    return id;
-  }));
+/** Exact repeat-free capacity of one connected component and any multi-row conflicts below UNSEEN_ATTEMPTS. */
+function componentCapacity(component: readonly KeyGroup[]): { attempts: number; conflicts: SharedLimit[] } {
+  const indexOf = (groups: readonly KeyGroup[]) => {
+    const keyIndex = new Map<string, number>();
+    const adj = groups.map((g) => [...g.keys].map((key) => {
+      const existing = keyIndex.get(key);
+      if (existing !== undefined) return existing;
+      const id = keyIndex.size;
+      keyIndex.set(key, id);
+      return id;
+    }));
+    return { adj, keyCount: keyIndex.size };
+  };
+  const conflictOf = (violation: { groups: KeyGroup[]; unionSize: number } | null): SharedLimit | null => {
+    if (!violation) return null;
+    const rows = violation.groups.flatMap((g) => g.entries.map((e) => ({ id: e.row.id, attempts: e.capacity.attemptsWithoutRepeat })));
+    if (rows.length < 2) return null;
+    const items = violation.groups.reduce((sum, g) => sum + g.items, 0);
+    return { rows, items, possible: violation.unionSize, attempts: Math.floor(violation.unionSize / items) };
+  };
+  const { adj, keyCount } = indexOf(component);
   const totalItems = component.reduce((sum, g) => sum + g.items, 0);
   let lo = 0;
-  let hi = Math.min(Math.floor(keyIndex.size / totalItems), ...component.map((g) => Math.floor(g.keys.size / g.items)));
+  let hi = Math.min(Math.floor(keyCount / totalItems), ...component.map((g) => Math.floor(g.keys.size / g.items)));
   while (lo < hi) {
     const mid = Math.floor((lo + hi + 1) / 2);
-    if (findViolation(component, adj, keyIndex.size, mid) === null) lo = mid;
+    if (findViolation(component, adj, keyCount, component.map((g) => mid * g.items)) === null) lo = mid;
     else hi = mid - 1;
   }
-  const violation = findViolation(component, adj, keyIndex.size, lo + 1);
-  const chosen = violation ? violation.groups : component;
-  const rows = chosen.flatMap((g) => g.entries.map((e) => ({ id: e.row.id, attempts: e.capacity.attemptsWithoutRepeat })));
-  const items = chosen.reduce((sum, g) => sum + g.items, 0);
-  const possible = violation ? violation.unionSize : keyIndex.size;
-  return { rows, items, possible, attempts: lo };
+  if (lo >= UNSEEN_ATTEMPTS) return { attempts: lo, conflicts: [] };
+  // First check connected components of groups that can each support UNSEEN_ATTEMPTS on their own so a low-capacity row cannot hide or merge their conflicts.
+  const healthy = component.filter((g) => g.entries.length >= 2 || g.keys.size >= UNSEEN_ATTEMPTS * g.items);
+  const healthyConflicts = connectedComponents(healthy)
+    .map((part) => {
+      const sub = indexOf(part);
+      return conflictOf(findViolation(part, sub.adj, sub.keyCount, part.map((g) => UNSEEN_ATTEMPTS * g.items)));
+    })
+    .filter((c): c is SharedLimit => c !== null);
+  if (healthyConflicts.length > 0) return { attempts: lo, conflicts: healthyConflicts };
+  // Otherwise cap each single-row group at its own pool size so only genuine cross-row conflicts fail matching.
+  const jointCaps = component.map((g) => (g.entries.length === 1 ? Math.min(UNSEEN_ATTEMPTS * g.items, g.keys.size) : UNSEEN_ATTEMPTS * g.items));
+  const joint = conflictOf(findViolation(component, adj, keyCount, jointCaps));
+  return { attempts: lo, conflicts: joint ? [joint] : [] };
 }
 
-/** Shared-question limits across rows of one shape on a sheet, and whether overlap analysis was exact. */
-function shapeSharedCapacity(sheet: SnapshotSheet, entries: readonly RowEntry[]): { limits: SharedLimit[]; exact: boolean } {
-  if (entries.length < 2) return { limits: [], exact: true };
+/** Shared-question capacity and conflicts across rows of one shape on a sheet, and whether overlap analysis was exact. */
+function shapeSharedCapacity(sheet: SnapshotSheet, entries: readonly RowEntry[]): { attempts: number; conflicts: SharedLimit[]; exact: boolean } {
+  let attempts = Math.min(...entries.map((e) => e.capacity.attemptsWithoutRepeat));
+  if (entries.length < 2) return { attempts, conflicts: [], exact: true };
   const byLimits = new Map<string, RowEntry[]>();
   for (const entry of entries) {
     const group = byLimits.get(entry.limitKey) ?? [];
     group.push(entry);
     byLimits.set(entry.limitKey, group);
   }
-  const limits: SharedLimit[] = [];
-  const identicalLimit = (group: readonly RowEntry[]): SharedLimit => {
+  const conflicts: SharedLimit[] = [];
+  const recordIdentical = (group: readonly RowEntry[]) => {
+    if (group.length < 2) return;
     const items = group.reduce((sum, e) => sum + e.row.items, 0);
     const possible = group[0].capacity.possible;
-    return { rows: group.map((e) => ({ id: e.row.id, attempts: e.capacity.attemptsWithoutRepeat })), items, possible, attempts: Math.floor(possible / items) };
+    const groupAttempts = Math.floor(possible / items);
+    if (groupAttempts < attempts) attempts = groupAttempts;
+    if (groupAttempts < UNSEEN_ATTEMPTS) {
+      conflicts.push({ rows: group.map((e) => ({ id: e.row.id, attempts: e.capacity.attemptsWithoutRepeat })), items, possible, attempts: groupAttempts });
+    }
   };
   if (byLimits.size < 2) {
-    for (const group of byLimits.values()) if (group.length >= 2) limits.push(identicalLimit(group));
-    return { limits, exact: true };
+    for (const group of byLimits.values()) recordIdentical(group);
+    return { attempts, conflicts, exact: true };
   }
   const enumerated: KeyGroup[] = [];
   const unenumerated: RowEntry[][] = [];
@@ -261,17 +285,18 @@ function shapeSharedCapacity(sheet: SnapshotSheet, entries: readonly RowEntry[])
     if (keys) enumerated.push({ entries: group, items: group.reduce((sum, e) => sum + e.row.items, 0), keys });
     else {
       unenumerated.push(group);
-      if (group.length >= 2) limits.push(identicalLimit(group));
+      recordIdentical(group);
     }
   }
   for (const component of connectedComponents(enumerated)) {
     if (component.length === 1 && component[0].entries.length < 2) continue;
-    limits.push(componentCapacity(component));
+    const result = componentCapacity(component);
+    if (result.attempts < attempts) attempts = result.attempts;
+    conflicts.push(...result.conflicts);
   }
   const totalItems = entries.reduce((sum, e) => sum + e.row.items, 0);
-  const knownMin = Math.min(...entries.map((e) => e.capacity.attemptsWithoutRepeat), ...limits.map((l) => l.attempts));
-  const exact = unenumerated.every((group) => group[0].capacity.possible >= (knownMin + 1) * totalItems);
-  return { limits, exact };
+  const exact = unenumerated.every((group) => group[0].capacity.possible >= (attempts + 1) * totalItems);
+  return { attempts, conflicts, exact };
 }
 
 /** How many attempts each sheet allows before a row or shared group repeats a question, with warnings under two. */
@@ -293,14 +318,11 @@ export function capacityOf(sheets: ReadonlyMap<string, SnapshotSheet>): SheetCap
     for (const group of byShape.values()) {
       const shared = shapeSharedCapacity(sheet, group);
       if (!shared.exact) exact = false;
-      for (const limit of shared.limits) {
-        if (limit.attempts < attemptsWithoutRepeat) attemptsWithoutRepeat = limit.attempts;
-        const singleMin = Math.min(...limit.rows.map((r) => r.attempts));
-        if (limit.rows.length >= 2 && limit.attempts < UNSEEN_ATTEMPTS && limit.attempts < singleMin) {
-          const names = limit.rows.map((r) => `"${r.id}"`).join(", ");
-          const { possible, items, attempts } = limit;
-          warnings.push(`Sheet "${sheet.id}", rows ${names}: together their limits allow ${possible} ${possible === 1 ? "question" : "questions"} for ${items} ${items === 1 ? "place" : "places"}, so ${attempts === 0 ? "one attempt of the sheet repeats a question" : "the next attempt of the sheet repeats questions"} across these rows.`);
-        }
+      if (shared.attempts < attemptsWithoutRepeat) attemptsWithoutRepeat = shared.attempts;
+      for (const conflict of shared.conflicts) {
+        const names = conflict.rows.map((r) => `"${r.id}"`).join(", ");
+        const { possible, items, attempts } = conflict;
+        warnings.push(`Sheet "${sheet.id}", rows ${names}: together their limits allow ${possible} ${possible === 1 ? "question" : "questions"} for ${items} ${items === 1 ? "place" : "places"}, so ${attempts === 0 ? "one attempt of the sheet repeats a question" : "the next attempt of the sheet repeats questions"} across these rows.`);
       }
     }
     return { sheet: sheet.id, attemptsWithoutRepeat, exact, rows, warnings };

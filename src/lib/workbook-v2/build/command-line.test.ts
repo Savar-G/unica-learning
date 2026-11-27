@@ -133,7 +133,7 @@ describe.skipIf(skipTypstTests()).concurrent("the freeze command, with the real 
     mkdirSync(join(folder, "frozen"));
     const { code, output } = await freeze(["--draft", draft, "--out", out]);
     expect(code).toBe(0);
-    expect(output).toMatch(/^Frozen 1 sheets and 2 rows in \d+\.\d s: .*small\.json, SHA-256 [0-9a-f]{64}\.\nSheet "long-counts": (?:at most )?\d+ attempts before a row repeats a question(?: \(different limits of a shape with no list were too large to compare for overlap\))?\.\n$/);
+    expect(output).toMatch(/^Frozen 1 sheets and 2 rows in \d+\.\d s: .*small\.json, SHA-256 [0-9a-f]{64}\.\nSheet "long-counts": \d+ attempts before a row repeats a question\.\n$/);
     const text = readFileSync(out, "utf8");
     expect(text).not.toContain("basis");
     expect(text).not.toContain("made-up-source-cli");

@@ -579,6 +579,26 @@ describe("the freeze of a draft", () => {
     if (!hugeBank.ok) throw new Error(hugeBank.problems.join("\n"));
     const [hugeCap] = capacityOf(hugeBank.snapshot.sheets);
     expect(hugeCap.exact).toBe(false);
+
+    // An overlapping row with its own warning (A: 3 places from 2..6, 1 attempt alone) must not hide a shared conflict between B and C (1 place each from 1..2).
+    const hidden = structuredClone(factsSnapshot);
+    hidden.sheets[0].front.rows = [
+      { id: "b", shape: "fact.mul", items: 1, limits: { tables: [3], second: { min: 1, max: 2 }, result: { min: 0, max: 100 }, order: "mixed" } },
+      { id: "c", shape: "fact.mul", items: 1, limits: { tables: [3], second: { min: 1, max: 2 }, result: { min: 0, max: 100 }, order: "mixed" } },
+    ];
+    hidden.sheets[0].back.rows = [
+      { id: "a", shape: "fact.mul", items: 3, limits: { tables: [3], second: { min: 2, max: 6 }, result: { min: 0, max: 100 }, order: "mixed" } },
+    ];
+    hidden.topics = [{ ...hidden.topics[0], sheets: [hidden.sheets[0].id] }];
+    hidden.sheets = [hidden.sheets[0]];
+    const hiddenBank = validateSnapshot(hidden);
+    if (!hiddenBank.ok) throw new Error(hiddenBank.problems.join("\n"));
+    const [hiddenCap] = capacityOf(hiddenBank.snapshot.sheets);
+    expect(hiddenCap.attemptsWithoutRepeat).toBe(1);
+    expect(hiddenCap.warnings).toEqual([
+      'Sheet "times-facts", back side, row "a": its limits allow 5 questions for 3 places, so the next attempt of the sheet repeats questions of this row.',
+      'Sheet "times-facts", rows "b", "c": together their limits allow 2 questions for 2 places, so the next attempt of the sheet repeats questions across these rows.',
+    ]);
   });
 
   it("ignores inherited properties on Object.prototype when copying draft content", async () => {
