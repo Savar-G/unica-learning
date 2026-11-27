@@ -247,8 +247,11 @@ const boxInside = (b: QuestionBox, image: PageImage) =>
 const stores = (check: PackageCheck): check is Extract<PackageCheck, { status: "checked" | "not-checked" }> =>
   check.status === "checked" || check.status === "not-checked";
 
-/** What is wrong with a workbook to write, or null. The store checks the child, the family folder and conflicts. */
-export function workbookProblem(w: WorkbookInput): string | null {
+/**
+ * What is wrong with a workbook to write, or null. The store checks the child, the family folder and conflicts.
+ * `maxQuestions`: a v1 book has at most 1000; a v2 book is checked with its own cap (src/lib/workbook-v2-publish).
+ */
+export function workbookProblem(w: WorkbookInput, { maxQuestions = MAX_QUESTIONS }: { maxQuestions?: number } = {}): string | null {
   if (!isUuid(w.id)) return "the workbook id is not a UUID";
   if (!isUuid(w.childId)) return "the child id is not a UUID";
   if (!isWhole(w.number, 1, 1000)) return "the workbook number is not from 1 to 1000";
@@ -262,9 +265,8 @@ export function workbookProblem(w: WorkbookInput): string | null {
   if (w.profileBuild !== null && !isText(w.profileBuild, 100)) return "the profile build is not text of up to 100 characters";
   if (!Array.isArray(w.pages) || w.pages.length === 0) return "the workbook has no pages";
   if (w.pages.length > 500) return "the workbook has more than 500 pages";
-  // The store reads a workbook's questions in one request, and PostgREST stops a response at 1000 rows.
-  if (w.pages.reduce((n, p) => n + (Array.isArray(p.questions) ? p.questions.length : 0), 0) > MAX_QUESTIONS) {
-    return `the workbook has more than ${MAX_QUESTIONS} questions`;
+  if (w.pages.reduce((n, p) => n + (Array.isArray(p.questions) ? p.questions.length : 0), 0) > maxQuestions) {
+    return `the workbook has more than ${maxQuestions} questions`;
   }
 
   const pageNumbers = new Set<number>();

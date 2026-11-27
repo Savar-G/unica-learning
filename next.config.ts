@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs/config";
+import { workbookV2TraceFiles } from "./src/lib/workbook-v2/render/vercel";
 
 const POSTHOG = process.env.NEXT_PUBLIC_POSTHOG_INGEST ?? "https://us.i.posthog.com";
 const POSTHOG_ASSETS = POSTHOG.replace(".i.posthog.com", "-assets.i.posthog.com");
@@ -37,7 +38,11 @@ const nextConfig: NextConfig = {
     "./node_modules/@sparticuz/chromium/bin/**", "./src/ds/fonts/Geist.woff2", "./src/ds/fonts/GeistMono.woff2",
     "./THIRD_PARTY_NOTICES.md", "./node_modules/@sparticuz/chromium/LICENSE", "./node_modules/qrcode/license",
     "./node_modules/jsqr/LICENSE", "./node_modules/sharp/LICENSE",
-  ]])),
+  ]]).concat([
+    // The v2 book job (UNI-141) draws with the pinned Typst that `npm run typst:stage` puts in .workbook-v2/ at build
+    // time (vercel.json buildCommand), with its drawing file and fonts. No other route gets Typst.
+    ["/api/workbook-v2-publish", [...workbookV2TraceFiles()]],
+  ])),
   // Pages whose address can hold an id or a token (a Stripe session, a report id, a sign-in or unsubscribe token) send
   // only the origin as the referrer, so the next page, and any tag on it, never sees the full address (D-126).
   async headers() {

@@ -2077,17 +2077,21 @@ export type Database = {
         Row: {
           assessment_id: string | null
           assessment_question_id: string | null
+          assistance: string | null
           child_id: string
           created_at: string
           evidence_id: string | null
           evidence_kind: string | null
+          generated_question: string | null
           hints: number
           id: string
           idempotency_key: string
           mistake: string | null
+          observations: Json | null
           occurred_at: string
           parent_id: string
           question_source: string
+          related_event_id: string | null
           result: string
           skill_standard: string
           skills: string[]
@@ -2101,17 +2105,21 @@ export type Database = {
         Insert: {
           assessment_id?: string | null
           assessment_question_id?: string | null
+          assistance?: string | null
           child_id: string
           created_at?: string
           evidence_id?: string | null
           evidence_kind?: string | null
+          generated_question?: string | null
           hints?: number
           id?: string
           idempotency_key: string
           mistake?: string | null
+          observations?: Json | null
           occurred_at: string
           parent_id: string
           question_source: string
+          related_event_id?: string | null
           result: string
           skill_standard: string
           skills?: string[]
@@ -2125,17 +2133,21 @@ export type Database = {
         Update: {
           assessment_id?: string | null
           assessment_question_id?: string | null
+          assistance?: string | null
           child_id?: string
           created_at?: string
           evidence_id?: string | null
           evidence_kind?: string | null
+          generated_question?: string | null
           hints?: number
           id?: string
           idempotency_key?: string
           mistake?: string | null
+          observations?: Json | null
           occurred_at?: string
           parent_id?: string
           question_source?: string
+          related_event_id?: string | null
           result?: string
           skill_standard?: string
           skills?: string[]
@@ -2174,6 +2186,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "parents"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "learning_events_related_event_fkey"
+            columns: ["related_event_id", "child_id"]
+            isOneToOne: false
+            referencedRelation: "learning_events"
+            referencedColumns: ["id", "child_id"]
           },
           {
             foreignKeyName: "learning_events_workbook_fkey"
@@ -5598,6 +5617,271 @@ export type Database = {
           },
         ]
       }
+      social_accounts: {
+        Row: {
+          account_id: string
+          name: string
+          platform: string
+          read_at: string
+        }
+        Insert: {
+          account_id: string
+          name: string
+          platform: string
+          read_at: string
+        }
+        Update: {
+          account_id?: string
+          name?: string
+          platform?: string
+          read_at?: string
+        }
+        Relationships: []
+      }
+      social_audience_snapshots: {
+        Row: {
+          dimension: string
+          label: string
+          platform: string
+          read_at: string
+          unit: string
+          value: number
+        }
+        Insert: {
+          dimension: string
+          label: string
+          platform: string
+          read_at: string
+          unit: string
+          value: number
+        }
+        Update: {
+          dimension?: string
+          label?: string
+          platform?: string
+          read_at?: string
+          unit?: string
+          value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_audience_snapshots_platform_fkey"
+            columns: ["platform"]
+            isOneToOne: false
+            referencedRelation: "social_accounts"
+            referencedColumns: ["platform"]
+          },
+        ]
+      }
+      social_daily_snapshots: {
+        Row: {
+          day: string
+          followers: number | null
+          followers_gained: number | null
+          interactions: number | null
+          link_clicks: number | null
+          platform: string
+          profile_visits: number | null
+          raw: Json
+          reach: number | null
+          read_at: string
+          views: number | null
+        }
+        Insert: {
+          day: string
+          followers?: number | null
+          followers_gained?: number | null
+          interactions?: number | null
+          link_clicks?: number | null
+          platform: string
+          profile_visits?: number | null
+          raw: Json
+          reach?: number | null
+          read_at: string
+          views?: number | null
+        }
+        Update: {
+          day?: string
+          followers?: number | null
+          followers_gained?: number | null
+          interactions?: number | null
+          link_clicks?: number | null
+          platform?: string
+          profile_visits?: number | null
+          raw?: Json
+          reach?: number | null
+          read_at?: string
+          views?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_daily_snapshots_platform_fkey"
+            columns: ["platform"]
+            isOneToOne: false
+            referencedRelation: "social_accounts"
+            referencedColumns: ["platform"]
+          },
+        ]
+      }
+      social_post_snapshots: {
+        Row: {
+          comments: number | null
+          follows: number | null
+          likes: number | null
+          platform: string
+          post_id: string
+          raw: Json
+          reach: number | null
+          read_at: string
+          saves: number | null
+          shares: number | null
+          views: number | null
+          watch_percent: number | null
+          watch_seconds: number | null
+        }
+        Insert: {
+          comments?: number | null
+          follows?: number | null
+          likes?: number | null
+          platform: string
+          post_id: string
+          raw: Json
+          reach?: number | null
+          read_at: string
+          saves?: number | null
+          shares?: number | null
+          views?: number | null
+          watch_percent?: number | null
+          watch_seconds?: number | null
+        }
+        Update: {
+          comments?: number | null
+          follows?: number | null
+          likes?: number | null
+          platform?: string
+          post_id?: string
+          raw?: Json
+          reach?: number | null
+          read_at?: string
+          saves?: number | null
+          shares?: number | null
+          views?: number | null
+          watch_percent?: number | null
+          watch_seconds?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_post_snapshots_platform_post_id_fkey"
+            columns: ["platform", "post_id"]
+            isOneToOne: false
+            referencedRelation: "social_posts"
+            referencedColumns: ["platform", "post_id"]
+          },
+        ]
+      }
+      social_posts: {
+        Row: {
+          caption: string
+          format: string
+          permalink: string
+          platform: string
+          post_id: string
+          published_at: string
+          utm_campaign: string | null
+          utm_content: string | null
+        }
+        Insert: {
+          caption: string
+          format: string
+          permalink: string
+          platform: string
+          post_id: string
+          published_at: string
+          utm_campaign?: string | null
+          utm_content?: string | null
+        }
+        Update: {
+          caption?: string
+          format?: string
+          permalink?: string
+          platform?: string
+          post_id?: string
+          published_at?: string
+          utm_campaign?: string | null
+          utm_content?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_posts_platform_fkey"
+            columns: ["platform"]
+            isOneToOne: false
+            referencedRelation: "social_accounts"
+            referencedColumns: ["platform"]
+          },
+        ]
+      }
+      social_refresh_results: {
+        Row: {
+          message: string | null
+          platform: string
+          started_at: string
+          status: string
+        }
+        Insert: {
+          message?: string | null
+          platform: string
+          started_at: string
+          status: string
+        }
+        Update: {
+          message?: string | null
+          platform?: string
+          started_at?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_refresh_results_started_at_fkey"
+            columns: ["started_at"]
+            isOneToOne: false
+            referencedRelation: "social_refreshes"
+            referencedColumns: ["started_at"]
+          },
+        ]
+      }
+      social_refreshes: {
+        Row: {
+          started_at: string
+        }
+        Insert: {
+          started_at: string
+        }
+        Update: {
+          started_at?: string
+        }
+        Relationships: []
+      }
+      social_tiktok_tokens: {
+        Row: {
+          access_expires_at: string
+          access_token: string
+          business_id: string
+          refresh_token: string
+        }
+        Insert: {
+          access_expires_at: string
+          access_token: string
+          business_id: string
+          refresh_token: string
+        }
+        Update: {
+          access_expires_at?: string
+          access_token?: string
+          business_id?: string
+          refresh_token?: string
+        }
+        Relationships: []
+      }
       team_digest_days: {
         Row: {
           claimed_at: string
@@ -6887,6 +7171,134 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "parents"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      workbook_item_answers: {
+        Row: {
+          accepted_forms: Json
+          answer_kind: string
+          answer_value: string
+          attempt: number
+          child_id: string
+          created_at: string
+          difficulty: number
+          engine_version: string
+          id: string
+          item_hash: string
+          item_id: string
+          page_id: string
+          page_number: number
+          params: Json
+          parent_id: string
+          parts: Json
+          phrasing_id: string | null
+          printed_revision: string
+          prompt: string
+          question_id: string | null
+          question_number: number
+          row_id: string
+          scenario_id: string | null
+          shape: string
+          shape_version: number
+          sheet_id: string
+          snapshot_id: string
+          unit: string | null
+          workbook_id: string
+          worked_steps: Json
+        }
+        Insert: {
+          accepted_forms?: Json
+          answer_kind: string
+          answer_value: string
+          attempt: number
+          child_id: string
+          created_at?: string
+          difficulty: number
+          engine_version: string
+          id?: string
+          item_hash: string
+          item_id: string
+          page_id: string
+          page_number: number
+          params: Json
+          parent_id: string
+          parts: Json
+          phrasing_id?: string | null
+          printed_revision: string
+          prompt: string
+          question_id?: string | null
+          question_number: number
+          row_id: string
+          scenario_id?: string | null
+          shape: string
+          shape_version: number
+          sheet_id: string
+          snapshot_id: string
+          unit?: string | null
+          workbook_id: string
+          worked_steps: Json
+        }
+        Update: {
+          accepted_forms?: Json
+          answer_kind?: string
+          answer_value?: string
+          attempt?: number
+          child_id?: string
+          created_at?: string
+          difficulty?: number
+          engine_version?: string
+          id?: string
+          item_hash?: string
+          item_id?: string
+          page_id?: string
+          page_number?: number
+          params?: Json
+          parent_id?: string
+          parts?: Json
+          phrasing_id?: string | null
+          printed_revision?: string
+          prompt?: string
+          question_id?: string | null
+          question_number?: number
+          row_id?: string
+          scenario_id?: string | null
+          shape?: string
+          shape_version?: number
+          sheet_id?: string
+          snapshot_id?: string
+          unit?: string | null
+          workbook_id?: string
+          worked_steps?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_item_answers_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_item_answers_page_fkey"
+            columns: ["page_id", "workbook_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_pages"
+            referencedColumns: ["id", "workbook_id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_item_answers_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_item_answers_workbook_child_fkey"
+            columns: ["workbook_id", "child_id"]
+            isOneToOne: false
+            referencedRelation: "workbooks"
+            referencedColumns: ["id", "child_id"]
           },
         ]
       }
@@ -8576,6 +8988,211 @@ export type Database = {
           },
         ]
       }
+      workbook_sheets: {
+        Row: {
+          attempt: number
+          back_page_number: number
+          child_id: string
+          created_at: string
+          day: number
+          front_page_number: number
+          id: string
+          parent_id: string
+          sheet_id: string
+          snapshot_id: string
+          starts_day: boolean
+          workbook_id: string
+        }
+        Insert: {
+          attempt: number
+          back_page_number: number
+          child_id: string
+          created_at?: string
+          day: number
+          front_page_number: number
+          id?: string
+          parent_id: string
+          sheet_id: string
+          snapshot_id: string
+          starts_day: boolean
+          workbook_id: string
+        }
+        Update: {
+          attempt?: number
+          back_page_number?: number
+          child_id?: string
+          created_at?: string
+          day?: number
+          front_page_number?: number
+          id?: string
+          parent_id?: string
+          sheet_id?: string
+          snapshot_id?: string
+          starts_day?: boolean
+          workbook_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_sheets_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_sheets_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_sheets_workbook_child_fkey"
+            columns: ["workbook_id", "child_id"]
+            isOneToOne: false
+            referencedRelation: "workbooks"
+            referencedColumns: ["id", "child_id"]
+          },
+          {
+            foreignKeyName: "workbook_sheets_workbook_fkey"
+            columns: ["workbook_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "workbooks"
+            referencedColumns: ["id", "parent_id"]
+          },
+        ]
+      }
+      workbook_time_logs: {
+        Row: {
+          child_id: string
+          created_at: string
+          day: number
+          end_time: string | null
+          first_sheet_id: string
+          id: string
+          minutes: number | null
+          page_id: string
+          parent_id: string
+          reading_state: string
+          start_time: string | null
+          workbook_id: string
+        }
+        Insert: {
+          child_id: string
+          created_at?: string
+          day: number
+          end_time?: string | null
+          first_sheet_id: string
+          id?: string
+          minutes?: number | null
+          page_id: string
+          parent_id: string
+          reading_state?: string
+          start_time?: string | null
+          workbook_id: string
+        }
+        Update: {
+          child_id?: string
+          created_at?: string
+          day?: number
+          end_time?: string | null
+          first_sheet_id?: string
+          id?: string
+          minutes?: number | null
+          page_id?: string
+          parent_id?: string
+          reading_state?: string
+          start_time?: string | null
+          workbook_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_time_logs_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_time_logs_page_fkey"
+            columns: ["page_id", "workbook_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_pages"
+            referencedColumns: ["id", "workbook_id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_time_logs_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_time_logs_workbook_child_fkey"
+            columns: ["workbook_id", "child_id"]
+            isOneToOne: false
+            referencedRelation: "workbooks"
+            referencedColumns: ["id", "child_id"]
+          },
+        ]
+      }
+      workbook_v2_allocations: {
+        Row: {
+          allocated_at: string
+          allocation: Json
+          child_id: string
+          created_at: string
+          id: string
+          input_hash: string
+          input_path: string
+          parent_id: string
+          request_key: string
+          workbook_id: string
+          workbook_number: number
+        }
+        Insert: {
+          allocated_at: string
+          allocation: Json
+          child_id: string
+          created_at?: string
+          id?: string
+          input_hash: string
+          input_path: string
+          parent_id: string
+          request_key: string
+          workbook_id: string
+          workbook_number: number
+        }
+        Update: {
+          allocated_at?: string
+          allocation?: Json
+          child_id?: string
+          created_at?: string
+          id?: string
+          input_hash?: string
+          input_path?: string
+          parent_id?: string
+          request_key?: string
+          workbook_id?: string
+          workbook_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_v2_allocations_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_v2_allocations_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workbook_workers: {
         Row: {
           build: string | null
@@ -8617,11 +9234,19 @@ export type Database = {
       workbooks: {
         Row: {
           approved_at: string | null
+          bank_snapshot_hash: string | null
+          bank_snapshot_id: string | null
           child_id: string
           created_at: string
+          engine_version: string | null
+          font_hashes: Json | null
+          generator: string
           id: string
+          input_hash: string | null
+          input_path: string | null
           levels: number[]
           number: number
+          pages_per_day: number | null
           parent_id: string
           pdf_path: string | null
           pdf_sha256: string | null
@@ -8629,16 +9254,25 @@ export type Database = {
           printed_at: string | null
           printed_revision: string | null
           profile_build: string | null
+          renderer_version: string | null
           shipped_at: string | null
           status: string
         }
         Insert: {
           approved_at?: string | null
+          bank_snapshot_hash?: string | null
+          bank_snapshot_id?: string | null
           child_id: string
           created_at?: string
+          engine_version?: string | null
+          font_hashes?: Json | null
+          generator?: string
           id: string
+          input_hash?: string | null
+          input_path?: string | null
           levels: number[]
           number: number
+          pages_per_day?: number | null
           parent_id: string
           pdf_path?: string | null
           pdf_sha256?: string | null
@@ -8646,16 +9280,25 @@ export type Database = {
           printed_at?: string | null
           printed_revision?: string | null
           profile_build?: string | null
+          renderer_version?: string | null
           shipped_at?: string | null
           status?: string
         }
         Update: {
           approved_at?: string | null
+          bank_snapshot_hash?: string | null
+          bank_snapshot_id?: string | null
           child_id?: string
           created_at?: string
+          engine_version?: string | null
+          font_hashes?: Json | null
+          generator?: string
           id?: string
+          input_hash?: string | null
+          input_path?: string | null
           levels?: number[]
           number?: number
+          pages_per_day?: number | null
           parent_id?: string
           pdf_path?: string | null
           pdf_sha256?: string | null
@@ -8663,6 +9306,7 @@ export type Database = {
           printed_at?: string | null
           printed_revision?: string | null
           profile_build?: string | null
+          renderer_version?: string | null
           shipped_at?: string | null
           status?: string
         }
@@ -8709,6 +9353,75 @@ export type Database = {
         }
         Relationships: []
       }
+      social_latest_audience: {
+        Row: {
+          dimension: string | null
+          label: string | null
+          platform: string | null
+          read_at: string | null
+          unit: string | null
+          value: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_audience_snapshots_platform_fkey"
+            columns: ["platform"]
+            isOneToOne: false
+            referencedRelation: "social_accounts"
+            referencedColumns: ["platform"]
+          },
+        ]
+      }
+      social_latest_days: {
+        Row: {
+          day: string | null
+          followers: number | null
+          followers_gained: number | null
+          interactions: number | null
+          link_clicks: number | null
+          platform: string | null
+          profile_visits: number | null
+          raw: Json | null
+          reach: number | null
+          read_at: string | null
+          views: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_daily_snapshots_platform_fkey"
+            columns: ["platform"]
+            isOneToOne: false
+            referencedRelation: "social_accounts"
+            referencedColumns: ["platform"]
+          },
+        ]
+      }
+      social_post_milestone_reads: {
+        Row: {
+          comments: number | null
+          follows: number | null
+          likes: number | null
+          platform: string | null
+          post_id: string | null
+          raw: Json | null
+          reach: number | null
+          read_at: string | null
+          saves: number | null
+          shares: number | null
+          views: number | null
+          watch_percent: number | null
+          watch_seconds: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_post_snapshots_platform_post_id_fkey"
+            columns: ["platform", "post_id"]
+            isOneToOne: false
+            referencedRelation: "social_posts"
+            referencedColumns: ["platform", "post_id"]
+          },
+        ]
+      }
     }
     Functions: {
       _admit_workbook_scan_receipt: {
@@ -8723,11 +9436,19 @@ export type Database = {
         Args: { p_book: string }
         Returns: {
           approved_at: string | null
+          bank_snapshot_hash: string | null
+          bank_snapshot_id: string | null
           child_id: string
           created_at: string
+          engine_version: string | null
+          font_hashes: Json | null
+          generator: string
           id: string
+          input_hash: string | null
+          input_path: string | null
           levels: number[]
           number: number
+          pages_per_day: number | null
           parent_id: string
           pdf_path: string | null
           pdf_sha256: string | null
@@ -8735,6 +9456,7 @@ export type Database = {
           printed_at: string | null
           printed_revision: string | null
           profile_build: string | null
+          renderer_version: string | null
           shipped_at: string | null
           status: string
         }
@@ -9075,11 +9797,19 @@ export type Database = {
         Args: never
         Returns: {
           approved_at: string | null
+          bank_snapshot_hash: string | null
+          bank_snapshot_id: string | null
           child_id: string
           created_at: string
+          engine_version: string | null
+          font_hashes: Json | null
+          generator: string
           id: string
+          input_hash: string | null
+          input_path: string | null
           levels: number[]
           number: number
+          pages_per_day: number | null
           parent_id: string
           pdf_path: string | null
           pdf_sha256: string | null
@@ -9087,6 +9817,7 @@ export type Database = {
           printed_at: string | null
           printed_revision: string | null
           profile_build: string | null
+          renderer_version: string | null
           shipped_at: string | null
           status: string
         }[]
@@ -9231,6 +9962,30 @@ export type Database = {
       admin_site_traffic: {
         Args: { p_days?: number; p_with_tests?: boolean }
         Returns: Json
+      }
+      admin_social_attribution: {
+        Args: { p_day: string }
+        Returns: {
+          cards: number
+          checks: number
+          platform: string
+          post_id: string
+          signups: number
+          visits: number
+          week_cards: number
+          week_checks: number
+          week_signups: number
+          week_visits: number
+        }[]
+      }
+      admin_social_email: {
+        Args: { p_day: string }
+        Returns: {
+          clicks: number
+          delivered: number
+          failed: number
+          sent: number
+        }[]
       }
       admin_team_ids: { Args: never; Returns: string[] }
       admin_team_names: {
@@ -9442,6 +10197,7 @@ export type Database = {
       }
       ai_history_row_line: { Args: { j: Json }; Returns: string }
       ai_history_valid_row: { Args: { j: Json }; Returns: boolean }
+      allocate_v2_workbook: { Args: { p_allocation: Json }; Returns: Json }
       append_maya_call_connection: {
         Args: { p_call: string; p_kind: string; p_revision: number }
         Returns: string
@@ -9869,6 +10625,7 @@ export type Database = {
         }
         Returns: string
       }
+      claim_social_refresh: { Args: { p_started_at: string }; Returns: boolean }
       claim_workbook_edit: {
         Args: { p_id: string; p_lease: string; p_runner: string }
         Returns: boolean
@@ -10597,6 +11354,10 @@ export type Database = {
         Args: { p_id: string; p_parent: string }
         Returns: boolean
       }
+      pin_workbook_run_draft_key: {
+        Args: { p_by: string; p_by_email: string; p_key: string; p_run: string }
+        Returns: Json
+      }
       ping: { Args: never; Returns: number }
       plan_control_context: {
         Args: { p_card: string; p_parent: string }
@@ -10644,6 +11405,7 @@ export type Database = {
         }
         Returns: Json
       }
+      publish_v2_workbook: { Args: { p_payload: Json }; Returns: Json }
       purge_customer_activity: { Args: never; Returns: number }
       queue_workbook_edit: {
         Args: {
@@ -11181,6 +11943,19 @@ export type Database = {
       save_next_book_snapshot: {
         Args: { p_data: Json; p_hash: string; p_id: string }
         Returns: Json
+      }
+      save_social_pull: {
+        Args: {
+          p_account_id: string
+          p_audience: Json
+          p_days: Json
+          p_name: string
+          p_platform: string
+          p_post_reads: Json
+          p_posts: Json
+          p_read_at: string
+        }
+        Returns: undefined
       }
       save_workbook_comment: {
         Args: {

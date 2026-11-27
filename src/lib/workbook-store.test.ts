@@ -114,16 +114,21 @@ function saveRendering(tables: Tables, r: WorkbookRendering): unknown {
   return { status: "written", workbookId: r.workbookId };
 }
 
-/** Applies a GET's eq filters, order and limit to a table, the way PostgREST does. */
+/** The most rows PostgREST gives in one response (the project's max rows): a longer read is cut with no error. */
+const MAX_ROWS = 1000;
+
+/** Applies a GET's eq filters, order, offset and limit to a table, the way PostgREST does, at most MAX_ROWS rows. */
 function select(rows: Row[], params: URLSearchParams): Row[] {
-  let out = rows.filter((r) => [...params].every(([k, v]) => ["select", "order", "limit"].includes(k) || (v.startsWith("eq.") && String(r[k]) === v.slice(3))));
+  let out = rows.filter((r) => [...params].every(([k, v]) => ["select", "order", "limit", "offset"].includes(k) || (v.startsWith("eq.") && String(r[k]) === v.slice(3))));
   const order = params.get("order");
   if (order) {
-    const [col, dir] = order.split(".");
-    out = [...out].sort((a, b) => (Number(a[col]) - Number(b[col])) * (dir === "desc" ? -1 : 1));
+    const keys = order.split(",").map((o) => o.split("."));
+    const compare = (a: unknown, b: unknown) => (typeof a === "number" && typeof b === "number" ? a - b : String(a).localeCompare(String(b)));
+    out = [...out].sort((a, b) => keys.reduce((d, [col, dir]) => d || compare(a[col], b[col]) * (dir === "desc" ? -1 : 1), 0));
   }
-  const limit = params.get("limit");
-  return (limit ? out.slice(0, Number(limit)) : out).map((r) => JSON.parse(JSON.stringify(r)));
+  const offset = Number(params.get("offset") ?? 0);
+  const limit = Math.min(Number(params.get("limit") ?? MAX_ROWS), MAX_ROWS);
+  return out.slice(offset, offset + limit).map((r) => JSON.parse(JSON.stringify(r)));
 }
 
 function supabase(tables: Tables = { workbooks: [], workbook_pages: [], workbook_questions: [] }) {
@@ -490,6 +495,37 @@ describe("the Supabase workbook store reading a stored print contract (#536)", (
     expect(read?.questions[0].regions).toBeNull();
     expect(read?.questions[0].teaching).toBeNull();
     expect(read?.questions[0].content.status).toBe("found");
+  });
+});
+
+describe("the Supabase workbook store reading a book of more than 1000 questions (UNI-141)", () => {
+  // A v2 book holds about 2,000 questions; PostgREST cuts a response at 1000 rows with no error, so every read pages.
+  async function bigBook() {
+    const { store, tables } = supabase();
+    await store.write(sample());
+    const [first] = tables.workbook_questions;
+    const pageIds = tables.workbook_pages.filter((p) => p.workbook_id === WORKBOOK).map((p) => p.id as string);
+    tables.workbook_questions = Array.from({ length: 2012 }, (_, i) => {
+      const page = pageIds[i % 3];
+      const number = Math.floor(i / 3) + 1;
+      const pageNumber = (tables.workbook_pages.find((p) => p.id === page)!.page_number as number);
+      return { ...first, id: uuid(), page_id: page, question_number: number, question_key: `q-${i}`,
+        package: { ...(first.package as object), id: `q-${i}`, ref: { source: "workbook", workbookId: WORKBOOK, page: pageNumber, question: number } } };
+    });
+    return store;
+  }
+
+  it("reads all 2,012 questions of a workbook over three responses", async () => {
+    const book = await (await bigBook()).workbook(WORKBOOK);
+    expect(book?.pages.map((p) => p.questions.length)).toEqual([671, 671, 670]);
+    expect(book?.pages.flatMap((p) => p.questions).length).toBe(2012);
+    expect(book?.pages[0].questions.map((q) => q.number)).toEqual(Array.from({ length: 671 }, (_, i) => i + 1));
+    expect(book?.pages.every((p) => p.questions.every((q) => q.content.status === "found"))).toBe(true);
+  });
+
+  it("counts all 2,012 questions in the page index", async () => {
+    const index = await (await bigBook()).pageIndex(WORKBOOK);
+    expect(index.map((p) => p.questions)).toEqual([671, 671, 670]);
   });
 });
 

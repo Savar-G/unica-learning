@@ -14,7 +14,7 @@ function family() {
     children: [{ id: CHILD, parent_id: PARENT, first_name: "Leah" }, { id: FOREIGN, parent_id: FOREIGN, first_name: "Another family" }],
     workbooks: [{ id: BOOK, parent_id: PARENT, child_id: CHILD, number: 1, status: "shipped", created_at: "2026-10-01", approved_at: null, printed_at: null, shipped_at: "2026-11-01", levels: [10], pdf_path: "PRIVATE PDF", profile_build: null, printed_revision: null, pdf_sha256: null, print_manifest: null }],
     workbook_pages: sample.pages.map(p => ({ id: `page-${p.number}`, workbook_id: BOOK, page_number: p.number, day_label: p.dayLabel, page_type: p.type, image_path: p.image?.path ?? null, image_width: p.image?.width ?? null, image_height: p.image?.height ?? null, qr_token: p.qrToken, print_contract: null })),
-    workbook_questions: sample.pages.flatMap(p => p.questions.map(q => ({ page_id: `page-${p.number}`, workbook_id: BOOK, question_number: q.number, schema_version: 2, package: q.package, box_x: q.box.x, box_y: q.box.y, box_width: q.box.width, box_height: q.box.height, regions: null, teaching: null }))),
+    workbook_questions: sample.pages.flatMap(p => p.questions.map(q => ({ id: `question-${p.number}-${q.number}`, page_id: `page-${p.number}`, workbook_id: BOOK, question_number: q.number, schema_version: 2, package: q.package, box_x: q.box.x, box_y: q.box.y, box_width: q.box.width, box_height: q.box.height, regions: null, teaching: null }))),
     workbook_delivery_receipts: [{ workbook_id: BOOK, parent_id: PARENT, child_id: CHILD, number: 1, delivered_at: "2026-11-03T20:00:00Z", recorded_at: "2026-11-03T21:00:00Z", local_time: "2026-11-03T13:00", time_zone: "America/Vancouver", zone_override: true, actor_id: PARENT, audit_id: 1 }],
     workbook_delivery_corrections: [],
   };
@@ -22,15 +22,15 @@ function family() {
   const db = {
     from(table: string) {
       reads.push(table);
-      const filters: Array<[string, unknown]> = []; let order: { column: string; ascending: boolean } | null = null, limit = Infinity;
+      const filters: Array<[string, unknown]> = []; let order: { column: string; ascending: boolean } | null = null, limit = Infinity, offset = 0;
       const execute = () => {
         const values = (rows[table] ?? []).filter(row => filters.every(([key, value]) => row[key] === value));
         if (order) { const by = order; values.sort((a, b) => ((a[by.column] as number) > (b[by.column] as number) ? 1 : -1) * (by.ascending ? 1 : -1)); }
-        return { data: values.slice(0, limit), error: null };
+        return { data: values.slice(offset, offset + limit), error: null };
       };
       const query = { select: () => query, eq: (key: string, value: unknown) => { filters.push([key, value]); return query; },
         order: (column: string, options?: { ascending?: boolean }) => { order = { column, ascending: options?.ascending ?? true }; return query; },
-        limit: (n: number) => { limit = n; return query; }, maybeSingle: async () => ({ ...execute(), data: execute().data[0] ?? null }),
+        limit: (n: number) => { limit = n; return query; }, range: (from: number, to: number) => { offset = from; limit = to - from + 1; return query; }, maybeSingle: async () => ({ ...execute(), data: execute().data[0] ?? null }),
         then: (resolve: (result: ReturnType<typeof execute>) => unknown) => Promise.resolve(execute()).then(resolve),
       };
       return query;
