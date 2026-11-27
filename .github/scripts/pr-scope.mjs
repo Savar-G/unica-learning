@@ -17,6 +17,7 @@ export const DYNAMIC_READ_RULES = [
   { match: (f) => /^docs\/workbook-gate-set.*\.json$/.test(f), tests: ["src/lib/workbook-gates.test.ts"] },
   { match: (f) => f.startsWith(".design/research/"), tests: ["src/lib/assessment/bank-coverage.test.ts", "src/lib/assessment/skill-map.test.ts"] },
   { match: (f) => f === ".design/workbooks/samples/curriculum-skeleton.xlsx", tests: ["src/lib/workbook-curriculum/step-source.test.ts"] },
+  { match: (f) => /^src\/lib\/workbook-v2-publish\/bug-fixtures\/.*\.json$/.test(f), tests: ["src/lib/workbook-v2-publish/bug-fixture.test.ts"] },
 ];
 
 const ALWAYS_FULL_PATTERNS = [
@@ -113,7 +114,7 @@ export function classifyScope({ eventName, changedFiles }) {
   const runFamilyZones = files.some((f) => FAMILY_ZONES_PATTERN.test(f));
   const runVoiceWorker = files.some((f) => VOICE_WORKER_PATTERN.test(f));
   const runLintAndTypes = files.some((f) => CODE_LINT_PATTERN.test(f));
-  const runEngine = files.some((f) => f.startsWith(ENGINE_PREFIX));
+  const runEngine = files.some((f) => f.startsWith(ENGINE_PREFIX) || f.startsWith("src/lib/workbook-v2-publish/bug-fixtures/"));
   const hasSrcChanges = files.some((f) => f.startsWith("src/"));
   const hasWorkerOnly = files.some((f) => f.startsWith("worker/"));
 

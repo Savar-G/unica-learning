@@ -196,8 +196,36 @@ function acceptance(change: Omit<PageChange, "accepted" | "refused">, book: stri
   return { accepted: null, refused };
 }
 
+/** Verifies that any full-baseline models and images match their manifest record before comparing or checking approvals. */
+export function assertExpectedConsistent(expected: ExpectedBook): void {
+  const { record, models, images } = expected;
+  if (models !== undefined) {
+    if (models.length !== record.pages.length) {
+      throw new Error(`The full baseline for ${record.book} has ${models.length} page models, and its manifest lists ${record.pages.length}.`);
+    }
+    for (let i = 0; i < record.pages.length; i++) {
+      const actual = modelSha256(models[i]);
+      if (actual !== record.pages[i].modelSha256) {
+        throw new Error(`The full baseline for ${record.book} page ${i + 1} model hash (${actual}) does not match its manifest (${record.pages[i].modelSha256}).`);
+      }
+    }
+  }
+  if (images !== undefined) {
+    if (images.length !== record.pages.length) {
+      throw new Error(`The full baseline for ${record.book} has ${images.length} page images, and its manifest lists ${record.pages.length}.`);
+    }
+    for (let i = 0; i < record.pages.length; i++) {
+      const actual = imageSha256(images[i]);
+      if (actual !== record.pages[i].imageSha256) {
+        throw new Error(`The full baseline for ${record.book} page ${i + 1} image hash (${actual}) does not match its manifest (${record.pages[i].imageSha256}).`);
+      }
+    }
+  }
+}
+
 /** The changed pages of a book, each accepted or not. The check passes when every changed page is accepted. */
 export function compareGoldenBook(expected: ExpectedBook, actual: GoldenBuild, accepted: readonly AcceptedChange[] = []): GoldenComparison {
+  assertExpectedConsistent(expected);
   const { record } = expected;
   const changes: PageChange[] = [];
   for (let i = 0; i < Math.max(record.pages.length, actual.pages.length); i++) {

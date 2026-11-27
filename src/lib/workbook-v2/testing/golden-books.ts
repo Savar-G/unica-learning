@@ -51,9 +51,10 @@ function nextRequest(snapshot: Snapshot, childId: string, book: number, where: C
   return next.request;
 }
 
-/** Invented first tries: every question right, or for the weak child's second sheet one question in two wrong. */
-function marksOf(items: readonly BookItem[], fail: boolean): ItemMark[] {
-  return items.map((item, i) => ({ itemId: item.id, firstTry: fail && i % 2 === 0 ? "wrong" : "right" }));
+/** Invented first tries: every question right, or just below `masteryPercent` so a weak sheet always fails at any setting (1–100). */
+function marksOf(items: readonly BookItem[], fail: boolean, masteryPercent: number): ItemMark[] {
+  const maxRight = fail ? Math.max(0, Math.ceil((items.length * masteryPercent) / 100) - 1) : items.length;
+  return items.map((item, i) => ({ itemId: item.id, firstTry: i < maxRight ? "right" : "wrong" }));
 }
 
 /** The input of a golden book: plain JSON for `planBook` and `buildBook`, the same each time. Needs no typesetter. */
@@ -75,14 +76,18 @@ export function goldenInput(level: GoldenLevel, child: GoldenChild): BuildInput 
   const receipts = one.pages.map((p) => ({ bookId, pageNumber: p.page }));
   const results = sheetIds.map((sheetId, i): SheetResultRecord => {
     const items = one.items.filter((item) => item.sheetId === sheetId);
-    const outcome = sheetResult(items, marksOf(items, child === "weak" && i === 1), { masteryPercent: level.masteryPercent });
+    const outcome = sheetResult(items, marksOf(items, child === "weak" && i === 1, level.masteryPercent), { masteryPercent: level.masteryPercent });
     if (!outcome.ok) throw new Error(outcome.problems.join("\n"));
     return { bookId, sheetId, attempt: 1, result: outcome.result, itemsScored: outcome.itemsScored, mistakes: outcome.mistakes };
   });
   const where = position({ childId }, issued, receipts, results, snapshot);
   if (!where.ok) throw new Error(where.problems.join("\n"));
   const history = historyFromBooks([{ record: { bookId }, items: one.items }]);
-  return { snapshot: level.snapshot, book: nextRequest(snapshot, childId, 2, where, history) };
+  const book = nextRequest(snapshot, childId, 2, where, history);
+  if (child === "weak" && book.sheets[0]?.attempt !== 2) {
+    throw new Error(`The weak golden book for ${snapshot.id} at mastery ${level.masteryPercent}% must start with attempt 2, got attempt ${String(book.sheets[0]?.attempt ?? "none")}.`);
+  }
+  return { snapshot: level.snapshot, book };
 }
 
 export function buildGoldenBook(level: GoldenLevel, child: GoldenChild, renderer: Renderer): Promise<BuildResult> {

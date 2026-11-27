@@ -8,16 +8,18 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PageModel } from "../contract";
 import factsSnapshot from "../fixtures/snapshot-facts.json";
 import { sha256 } from "../hash";
+import { PINS } from "../render/pins";
+import { openRenderer } from "../render/typst";
 import { fakeRenderer } from "./fake-renderer";
-import { gitRepoOf, refuseInsideGit, resolvedPath } from "./git-repo";
+import { gitRepoOf, pathsOverlap, refuseInsideGit, resolvedPath } from "./git-repo";
 import {
   compareGoldenBook, differenceImage, goldenRecord, goldenReport, imageSha256, modelSha256, pixelDifference, readAccepted,
   type AcceptedChange, type ExpectedBook, type GoldenBuild,
 } from "./golden";
 import { buildGoldenBooks, GOLDEN_CHILDREN, goldenBookName, goldenInput, levelId, SYNTHETIC_LEVELS } from "./golden-books";
-import { acceptedFile, committedBaselineFile, GOLDEN_DIR, readAcceptedFile, readBaselineFile, writeDifferenceImages, writeFullBaseline } from "./golden-files";
+import { acceptedFile, committedBaselineFile, GOLDEN_DIR, readAcceptedFile, readBaselineFile, readFullBaseline, writeDifferenceImages, writeFullBaseline } from "./golden-files";
 import { drawPage, toColourPng, toPng } from "./raster";
-import { skipTypstTests } from "./typst";
+import { skipTypstTests, testAssets } from "./typst";
 
 let folder = "";
 let builds: GoldenBuild[] = [];
@@ -62,15 +64,12 @@ describe("the golden books of the synthetic levels", () => {
     }
   });
 
-  it("match the committed baselines with the committed accepted list, so CI fails on a changed page that is not accepted", () => {
-    const accepted = readAcceptedFile(acceptedFile(process.cwd()));
-    for (const level of SYNTHETIC_LEVELS) {
-      const baseline = readBaselineFile(committedBaselineFile(process.cwd(), levelId(level)));
-      expect(baseline.renderer).toBe("fake");
-      expect(baseline.books.map((b) => b.book)).toEqual(GOLDEN_CHILDREN.map((child) => goldenBookName(levelId(level), child)));
-      for (const record of baseline.books) {
-        const comparison = compareGoldenBook({ record }, bookOf(record.book), accepted);
-        expect(comparison.ok, goldenReport([comparison])).toBe(true);
+  it("makes the weak child repeat (attempt 2) at every supported mastery percent, including 1, 50, 90 and 100", () => {
+    for (const masteryPercent of [1, 50, 90, 100]) {
+      for (const level of SYNTHETIC_LEVELS) {
+        const input = goldenInput({ snapshot: level.snapshot, masteryPercent }, "weak");
+        const book = input.book as { sheets: { attempt: number }[] };
+        expect(book.sheets[0].attempt, `${levelId(level)} at ${masteryPercent}%`).toBe(2);
       }
     }
   });
@@ -78,6 +77,46 @@ describe("the golden books of the synthetic levels", () => {
   it("are the same each time they are built", async () => {
     const again = await buildGoldenBooks(SYNTHETIC_LEVELS, fakeRenderer());
     expect(again.map(goldenRecord)).toEqual(builds.map(goldenRecord));
+  });
+});
+
+// G1 & G3 with real printed pixels: committed synthetic baselines use pinned Typst so visible heading/font/template changes require Cedric.
+describe.skipIf(skipTypstTests())("the committed Typst golden baselines", () => {
+  it("match pinned Typst output with the committed accepted list, and require cedric for a visible heading change", async () => {
+    const renderer = await openRenderer(testAssets());
+    const expectedLabel = `typst@${PINS.version}`;
+    const typstBuilds = await buildGoldenBooks(SYNTHETIC_LEVELS, renderer);
+    const byName = new Map(typstBuilds.map((b) => [b.book, b]));
+    const accepted = readAcceptedFile(acceptedFile(process.cwd()));
+    for (const level of SYNTHETIC_LEVELS) {
+      const baseline = readBaselineFile(committedBaselineFile(process.cwd(), levelId(level)));
+      expect(baseline.renderer).toBe(expectedLabel);
+      expect(baseline.books.map((b) => b.book)).toEqual(GOLDEN_CHILDREN.map((child) => goldenBookName(levelId(level), child)));
+      for (const record of baseline.books) {
+        const comparison = compareGoldenBook({ record }, byName.get(record.book)!, accepted);
+        expect(comparison.ok, goldenReport([comparison])).toBe(true);
+      }
+    }
+    // Changing a heading in real Typst changes printed pixels, so savar is refused and cedric is required.
+    const baseBook = byName.get(goldenBookName(FACTS, "strong"))!;
+    const editedModel = structuredClone(baseBook.pages[0].model);
+    editedModel.topicTitle = "Changed Heading";
+    for (const region of editedModel.regions) {
+      if (region.role !== "heading") continue;
+      for (const ink of region.ink) if (ink.kind === "text") ink.text = "Changed Heading";
+    }
+    const rendered = await renderer.render([editedModel]);
+    const mutated: GoldenBuild = { ...baseBook, pages: baseBook.pages.map((p, i) => (i === 0 ? { model: editedModel, image: rendered.images[0] } : p)) };
+    const savarEntry: AcceptedChange = {
+      book: mutated.book, page: 1, approver: "savar", reason: "heading text",
+      modelSha256: modelSha256(mutated.pages[0].model), imageSha256: imageSha256(mutated.pages[0].image),
+    };
+    const bySavar = compareGoldenBook({ record: goldenRecord(baseBook) }, mutated, [savarEntry]);
+    expect(bySavar.ok).toBe(false);
+    expect(bySavar.changes[0].childVisible).toBe(true);
+    expect(bySavar.changes[0].refused.join("\n")).toMatch(/accepted by cedric/);
+    const byCedric = compareGoldenBook({ record: goldenRecord(baseBook) }, mutated, [{ ...savarEntry, approver: "cedric" }]);
+    expect(byCedric.ok).toBe(true);
   });
 });
 
@@ -153,6 +192,21 @@ describe("a golden comparison", () => {
       };
       expect(result).toEqual({ kind: "pixels", changed: points.length, maxDelta: points.length === 0 ? 0 : Math.max(...points.map((p) => 255 - p.v)), box });
     }), { numRuns: 100 });
+  });
+
+  it("refuses a full baseline whose page PNG or model disagrees with its manifest", () => {
+    const stalePng = full(strong());
+    stalePng.images = stalePng.images!.map((img, i) => (i === 0 ? withPixel(strong().pages[0].model, 4, 4) : img));
+    expect(() => compareGoldenBook(stalePng, strong())).toThrow(/image hash.*does not match its manifest/);
+
+    const staleModel = full(strong());
+    staleModel.models = staleModel.models!.map((m, i) => (i === 0 ? { ...m, topicTitle: "Tampered" } : m));
+    expect(() => compareGoldenBook(staleModel, strong())).toThrow(/model hash.*does not match its manifest/);
+
+    const base = join(mkdtempSync(join(folder, "stale-")), "baseline");
+    writeFullBaseline(base, "fake", [strong()]);
+    writeFileSync(join(base, `${FACTS}__strong`, "page-1.png"), withPixel(strong().pages[0].model, 8, 8));
+    expect(() => readFullBaseline(base)).toThrow(/image hash.*does not match its manifest/);
   });
 
   it("draws a difference image with each changed pixel black", () => {
@@ -293,6 +347,33 @@ describe("the git repository guard", () => {
     expect(() => writeFullBaseline(join(repo, "inside", "golden"), "fake", builds)).toThrow(/Refused/);
     expect(() => writeDifferenceImages(join(repo, "inside", "diff"), [], new Map(), builds)).toThrow(/Refused/);
     expect(allFiles(join(repo, "inside"))).toEqual([]);
+  });
+
+  it("resolves symlinks before '..' and refuses a symlinked book folder inside an otherwise-outside output folder", () => {
+    const { repo, outside } = places();
+    const out = join(outside, "trapped-out");
+    mkdirSync(out, { recursive: true });
+    symlinkSync(join(repo, "inside"), join(out, `${FACTS}__strong`));
+    expect(() => writeFullBaseline(out, "fake", builds)).toThrow(/Refused: .* is inside the git repository/);
+    expect(allFiles(join(repo, "inside"))).toEqual([]);
+
+    // Symlink before `..`: `outside/hop/..` (un-normalized!) follows `hop -> repo/inside`, then `..` lands in `repo` (NOT `outside`).
+    symlinkSync(join(repo, "inside"), join(outside, "hop"));
+    const hopParent = `${outside}/hop/..`;
+    expect(resolvedPath(hopParent)).toBe(resolvedPath(repo));
+    expect(gitRepoOf(hopParent)).not.toBeNull();
+    expect(pathsOverlap(out, join(out, "sub"))).toBe(true);
+  });
+
+  it("refuses overlapping --out and --baseline folders before overwriting anything", async () => {
+    const { outside } = places();
+    const privateSnapshot = join(outside, "level.json");
+    writeFileSync(privateSnapshot, JSON.stringify(factsSnapshot));
+    const base = join(outside, "same-dir");
+    expect((await run(["--snapshot", privateSnapshot, "--out", base, "--renderer", "fake"])).code).toBe(0);
+    const overlap = await run(["--snapshot", privateSnapshot, "--out", base, "--baseline", base, "--renderer", "fake"]);
+    expect(overlap.code).toBe(1);
+    expect(overlap.stderr).toMatch(/Refused: --out .* and --baseline .* overlap/);
   });
 
   it("refuses a real-level snapshot or output inside a repository, also through a link or a worktree, and writes nothing", async () => {

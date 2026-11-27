@@ -3,14 +3,26 @@
 // bug-fixture.test.ts runs; it is written only when it fails today, so it reproduces the bug. A real family's book never
 // goes into a git repository: inside one, the input must prove that it is invented (an invented snapshot, invented book
 // and child ids, and no id or email of a person anywhere in it), or nothing is written.
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildBook } from "@/lib/workbook-v2/build/build-book";
+import { tokenText } from "@/lib/workbook-v2/contract";
 import type { Renderer } from "@/lib/workbook-v2/renderer";
-import { gitRepoOf } from "@/lib/workbook-v2/testing/git-repo";
-import { readSavedInput, replayBook, type ReplayExpected } from "./replay";
+import { gitRepoOf, resolvedPath } from "@/lib/workbook-v2/testing/git-repo";
+import { readReplayExpected, readSavedInput, replayBook, type ReplayExpected } from "./replay";
 
 export const BUG_FIXTURES_DIR = "src/lib/workbook-v2-publish/bug-fixtures";
+
+/** The known synthetic snapshot ids of the workbook engine's invented levels. */
+export const KNOWN_SYNTHETIC_SNAPSHOT_IDS: ReadonlySet<string> = new Set([
+  "invented-level-3-v1",
+  "invented-level-3-wide-v1",
+  "invented-level-2-v1",
+  "invented-division-v1",
+  "invented-level-2-facts-v1",
+  "invented-level-3-topic-20-v1",
+  "invented-level-2-places-v1",
+]);
 
 /** What must be true once the bug is fixed. `page` is the page in the book, from 1. */
 export type BugExpectation =
@@ -33,7 +45,10 @@ export interface BugFixtureRequest extends Omit<BugFixture, "format" | "input"> 
 
 const NAME = /^[a-z][a-z0-9-]{2,63}$/;
 /** The ids that tests invent. A real child, book or workbook id is a UUID and never matches. */
-const SYNTHETIC_ID = /^(example|golden|invented|synthetic|fixture)-[A-Za-z0-9-]*$/;
+const SYNTHETIC_ID = /^(example|golden|invented|synthetic|fixture)-[A-Za-z0-9-]+$/;
+/** Synthetic page links always use an invented token prefix so a scrubbed replay can never retain a live page link. */
+const SYNTHETIC_QR_URL = /^https:\/\/unicalearning\.com\/tutor\/p\/(example|golden|invented|synthetic|fixture)-[A-Za-z0-9-]+$/;
+const TUTOR_LINK = /https?:\/\/[^\s"']*\/tutor\/p\/([^\s"'/?#]+)/gi;
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 const EMAIL = /[^\s@"]+@[^\s@"]+\.[a-z]{2,}/i;
 
@@ -52,13 +67,21 @@ function textsOf(value: unknown, out: string[] = []): string[] {
   return out;
 }
 
-/** Why the input does not prove that it is invented; none when it does. */
-export function syntheticProblems(input: unknown, expected?: ReplayExpected): string[] {
+/**
+ * Why a fixture (or input + expected) does not prove that it is invented; none when it does.
+ * Accepts either a full `BugFixture` (validating `failure`, `expect`, `input`, and `expected`) or raw `(input, expected)`.
+ */
+export function syntheticProblems(inputOrFixture: unknown, expected?: ReplayExpected): string[] {
+  const isFull = isObject(inputOrFixture) && inputOrFixture.format === 1 && "input" in inputOrFixture && "expect" in inputOrFixture;
+  const input = isFull ? inputOrFixture.input : inputOrFixture;
+  const payload = isFull ? inputOrFixture : [input, expected ?? null];
   const problems: string[] = [];
   const snapshot = isObject(input) ? input.snapshot : undefined;
   const book = isObject(input) ? input.book : undefined;
   const id = isObject(snapshot) ? snapshot.id : undefined;
-  if (typeof id !== "string" || !id.startsWith("invented-")) problems.push(`the snapshot ${JSON.stringify(id ?? null)} is not an invented snapshot (its id must start with "invented-")`);
+  if (typeof id !== "string" || !KNOWN_SYNTHETIC_SNAPSHOT_IDS.has(id)) {
+    problems.push(`the snapshot ${JSON.stringify(id ?? null)} is not a known invented snapshot`);
+  }
   for (const name of ["bookId", "childId"]) {
     const value = isObject(book) ? book[name] : undefined;
     if (typeof value !== "string" || !SYNTHETIC_ID.test(value)) problems.push(`the ${name} ${JSON.stringify(value ?? null)} is not an invented id`);
@@ -68,14 +91,35 @@ export function syntheticProblems(input: unknown, expected?: ReplayExpected): st
     const value = isObject(earlier) ? earlier.bookId : undefined;
     if (typeof value !== "string" || !SYNTHETIC_ID.test(value)) problems.push(`the history names the book ${JSON.stringify(value ?? null)}, which is not an invented id`);
   }
-  const texts = textsOf([input, expected ?? null]);
-  if (texts.some((t) => UUID.test(t))) problems.push("the input holds a UUID, which may be the id of a real family, child or book");
-  if (texts.some((t) => EMAIL.test(t))) problems.push("the input holds an email address");
+  const sheets = isObject(book) && Array.isArray(book.sheets) ? book.sheets : [];
+  for (const [i, sheet] of sheets.entries()) {
+    const qr = isObject(sheet) && isObject(sheet.qr) ? sheet.qr : undefined;
+    for (const side of ["front", "back"] as const) {
+      const value = qr?.[side];
+      if (typeof value !== "string" || !SYNTHETIC_QR_URL.test(value)) {
+        problems.push(`sheet ${i + 1} ${side} QR ${JSON.stringify(value ?? null)} is not an invented page link`);
+      }
+    }
+  }
+  const texts = textsOf(payload);
+  if (texts.some((t) => UUID.test(t))) problems.push("the fixture holds a UUID, which may be the id of a real family, child or book");
+  if (texts.some((t) => EMAIL.test(t))) problems.push("the fixture holds an email address");
+  for (const text of texts) {
+    for (const match of text.matchAll(TUTOR_LINK)) {
+      if (!SYNTHETIC_ID.test(match[1])) {
+        problems.push(`the fixture holds a non-synthetic page link token ${JSON.stringify(match[1])}`);
+        break;
+      }
+    }
+  }
   return problems;
 }
 
-const pageTexts = (built: Extract<Awaited<ReturnType<typeof buildBook>>, { status: "built" }>, page: number): string =>
-  (built.pages[page - 1]?.model.regions ?? []).flatMap((r) => r.ink.flatMap((ink) => (ink.kind === "text" ? [ink.text] : []))).join("\n");
+/** Extracts every printed string on a page, including both single-line `text` ink and word-problem `flow` ink. */
+export const pageTexts = (built: Extract<Awaited<ReturnType<typeof buildBook>>, { status: "built" }>, page: number): string =>
+  (built.pages[page - 1]?.model.regions ?? [])
+    .flatMap((r) => r.ink.flatMap((ink) => (ink.kind === "text" ? [ink.text] : ink.kind === "flow" ? [ink.tokens.map(tokenText).join(" ")] : [])))
+    .join("\n");
 
 /** Runs a fixture: `ok` when what it expects is true (the bug is fixed), with what happened in words. */
 export async function runBugFixture(fixture: BugFixture, renderer: Renderer): Promise<{ ok: boolean; actual: string }> {
@@ -110,20 +154,55 @@ function readExpectation(raw: unknown): BugExpectation | string {
 
 /** A fixture of a file, or why it is not one. */
 export function readBugFixture(raw: unknown): BugFixture | string {
-  if (!isObject(raw) || raw.format !== 1 || typeof raw.name !== "string" || !NAME.test(raw.name) || typeof raw.failure !== "string") return "the bug fixture is not of format 1 with a name and a failure";
+  if (!isObject(raw) || raw.format !== 1 || typeof raw.name !== "string" || !NAME.test(raw.name) || typeof raw.failure !== "string" || raw.failure.trim() === "") {
+    return "the bug fixture is not of format 1 with a name and a failure";
+  }
   if (raw.renderer !== "fake" && raw.renderer !== "typst") return "the renderer of a bug fixture must be fake or typst";
   const input = readSavedInput(raw.input);
   if (typeof input === "string") return input;
   const expect = readExpectation(raw.expect);
   if (typeof expect === "string") return expect;
-  if (expect.kind === "replays" && !isObject(raw.expected)) return "a fixture that expects a replay needs the expected replay";
-  return { ...(raw as unknown as BugFixture), expect };
+  let expected: ReplayExpected | undefined;
+  if (raw.expected !== undefined) {
+    const parsed = readReplayExpected(raw.expected);
+    if (typeof parsed === "string") return parsed;
+    expected = parsed;
+  }
+  if (expect.kind === "replays" && expected === undefined) return "a fixture that expects a replay needs the expected replay";
+  return {
+    format: 1,
+    name: raw.name,
+    failure: raw.failure,
+    renderer: raw.renderer,
+    input: { format: 1, snapshot: input.snapshot, book: input.book },
+    ...(expected ? { expected } : {}),
+    expect,
+  };
+}
+
+/** Writes a complete fixture file into a sibling staging folder and links it exclusively, leaving no partial file on failure. */
+function publishFixtureAtomic(dir: string, file: string, text: string): void {
+  mkdirSync(dir, { recursive: true });
+  const staging = mkdtempSync(join(dir, ".workbook-v2-fixture-"));
+  try {
+    const staged = join(staging, "fixture.json");
+    writeFileSync(staged, text, { flag: "wx" });
+    try {
+      linkSync(staged, file);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "EEXIST") throw new Error(`${file} exists: choose another name.`);
+      throw error;
+    }
+  } finally {
+    rmSync(staging, { recursive: true, force: true });
+  }
 }
 
 /**
  * Writes the fixture of a bug as `<outDir>/<name>.json`, or stops with nothing written: when the input is not a book input,
  * when the fixture passes today (it does not reproduce the bug), when the file exists, or when the folder is in a git
- * repository and the input does not prove that it is invented.
+ * repository and the full fixture payload does not prove that it is invented.
  */
 export async function createBugFixture(request: BugFixtureRequest, renderer: Renderer): Promise<{ file: string; actual: string }> {
   if (!NAME.test(request.name)) throw new Error(`The fixture name ${JSON.stringify(request.name)} must be 3 to 64 small letters, digits and dashes, starting with a letter.`);
@@ -131,22 +210,22 @@ export async function createBugFixture(request: BugFixtureRequest, renderer: Ren
   const raw = isObject(request.input) ? request.input : {};
   const input = readSavedInput({ format: 1, snapshot: raw.snapshot, book: raw.book });
   if (typeof input === "string") throw new Error(`The input is not a book input: ${input}.`);
-  const repo = gitRepoOf(request.outDir);
-  const privacy = syntheticProblems(input, request.expected);
-  if (repo !== null && privacy.length > 0) {
-    throw new Error([`Refused: ${request.outDir} is inside the git repository ${repo}, and the input may be a real family's book:`, ...privacy.map((p) => `- ${p}`), "Write the fixture to a folder outside every git repository, or use an invented book."].join("\n"));
-  }
-  const file = join(request.outDir, `${request.name}.json`);
-  if (existsSync(file)) throw new Error(`${file} exists: choose another name.`);
+  const safeOutDir = resolvedPath(request.outDir);
+  const safeFile = resolvedPath(join(safeOutDir, `${request.name}.json`));
   const fixture: BugFixture = {
     format: 1, name: request.name, failure: request.failure, renderer: request.renderer,
     input: { format: 1, snapshot: input.snapshot, book: input.book }, ...(request.expected ? { expected: request.expected } : {}), expect: request.expect,
   };
   const checked = readBugFixture(JSON.parse(JSON.stringify(fixture)));
   if (typeof checked === "string") throw new Error(`The fixture is not valid: ${checked}.`);
+  const repo = gitRepoOf(request.outDir) ?? gitRepoOf(safeFile);
+  const privacy = syntheticProblems(checked);
+  if (repo !== null && privacy.length > 0) {
+    throw new Error([`Refused: ${request.outDir} is inside the git repository ${repo}, and the fixture may contain real family data:`, ...privacy.map((p) => `- ${p}`), "Write the fixture to a folder outside every git repository, or use an invented book."].join("\n"));
+  }
+  if (existsSync(safeFile)) throw new Error(`${safeFile} exists: choose another name.`);
   const run = await runBugFixture(checked, renderer);
   if (run.ok) throw new Error(`The fixture passes today (${run.actual}), so it does not reproduce the bug. Nothing was written.`);
-  mkdirSync(request.outDir, { recursive: true });
-  writeFileSync(file, `${JSON.stringify(fixture, null, 2)}\n`, { flag: "wx" });
-  return { file, actual: run.actual };
+  publishFixtureAtomic(safeOutDir, safeFile, `${JSON.stringify(checked, null, 2)}\n`);
+  return { file: safeFile, actual: run.actual };
 }

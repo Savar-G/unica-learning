@@ -37,12 +37,52 @@ export type ReplayResult =
   | { ok: true; pdfSha256: string; pages: number; buildMs: number }
   | { ok: false; differences: string[]; firstDifference: FirstDifference };
 
-const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+const isPlainObject = (v: unknown): v is Record<string, unknown> => {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return false;
+  const proto = Object.getPrototypeOf(v);
+  return proto === Object.prototype || proto === null;
+};
 
 /** The saved input of a book, or why it is not one. */
 export function readSavedInput(raw: unknown): SavedInput | string {
-  if (!isObject(raw) || raw.format !== 1 || !isObject(raw.book) || raw.snapshot === undefined) return "the saved input is not a v2 book input of format 1";
+  if (!isPlainObject(raw) || raw.format !== 1 || !isPlainObject(raw.book) || raw.snapshot === undefined) return "the saved input is not a v2 book input of format 1";
   return raw as unknown as SavedInput;
+}
+
+const isNonEmptyString = (v: unknown): v is string => typeof v === "string" && v !== "";
+
+/** Validates an expected replay record before comparison, returning either the normalized record or a reason it is invalid. */
+export function readReplayExpected(raw: unknown): ReplayExpected | string {
+  if (!isPlainObject(raw)) return "the expected replay must be an object";
+  if (!isNonEmptyString(raw.inputHash)) return "the expected replay needs a non-empty inputHash";
+  if (!isNonEmptyString(raw.engineVersion)) return "the expected replay needs a non-empty engineVersion";
+  if (!isNonEmptyString(raw.rendererVersion)) return "the expected replay needs a non-empty rendererVersion";
+  if (!isPlainObject(raw.fontHashes) || !Object.values(raw.fontHashes).every(isNonEmptyString)) return "the expected replay needs fontHashes as a map of strings";
+  if (!isNonEmptyString(raw.pdfSha256)) return "the expected replay needs a non-empty pdfSha256";
+  if (!Array.isArray(raw.pageSha256s) || raw.pageSha256s.length === 0 || !raw.pageSha256s.every(isNonEmptyString)) {
+    return "the expected replay needs pageSha256s as a non-empty list of hashes";
+  }
+  if (raw.expectedSnapshotHash !== undefined && !isNonEmptyString(raw.expectedSnapshotHash)) {
+    return "expectedSnapshotHash must be a non-empty string when present";
+  }
+  if (raw.pageModelSha256s !== undefined) {
+    if (!Array.isArray(raw.pageModelSha256s) || !raw.pageModelSha256s.every(isNonEmptyString)) {
+      return "pageModelSha256s must be a list of hashes when present";
+    }
+    if (raw.pageModelSha256s.length !== raw.pageSha256s.length) {
+      return `pageModelSha256s has ${raw.pageModelSha256s.length} entries, and pageSha256s has ${raw.pageSha256s.length}`;
+    }
+  }
+  return {
+    inputHash: raw.inputHash,
+    engineVersion: raw.engineVersion,
+    rendererVersion: raw.rendererVersion,
+    fontHashes: { ...(raw.fontHashes as Record<string, string>) },
+    pdfSha256: raw.pdfSha256,
+    pageSha256s: [...raw.pageSha256s],
+    ...(raw.expectedSnapshotHash !== undefined ? { expectedSnapshotHash: raw.expectedSnapshotHash } : {}),
+    ...(raw.pageModelSha256s !== undefined ? { pageModelSha256s: [...raw.pageModelSha256s] } : {}),
+  };
 }
 
 /** Each part of what made the book that this computer does not have, as a cause with words, in causal order. */
@@ -70,9 +110,11 @@ const differ = (first: FirstDifference, differences: string[] = [first.message])
 const firstOf = (causes: readonly FirstDifference[]): FirstDifference =>
   causes.reduce((first, c) => (REPLAY_CAUSES.indexOf(c.kind) < REPLAY_CAUSES.indexOf(first.kind) ? c : first));
 
-export async function replayBook(raw: unknown, expected: ReplayExpected, renderer: Renderer, clock: () => number = () => 0): Promise<ReplayResult> {
+export async function replayBook(raw: unknown, rawExpected: ReplayExpected, renderer: Renderer, clock: () => number = () => 0): Promise<ReplayResult> {
   const saved = readSavedInput(raw);
   if (typeof saved === "string") return differ({ kind: "input-format", message: saved });
+  const expected = readReplayExpected(rawExpected);
+  if (typeof expected === "string") return differ({ kind: "input-format", message: expected });
   const plan = planBook({ snapshot: saved.snapshot, book: saved.book });
   if (!plan.ok) return differ({ kind: "plan", message: "the saved input does not plan a book" }, ["the saved input does not plan a book:", ...plan.problems]);
   const causes: FirstDifference[] = [];

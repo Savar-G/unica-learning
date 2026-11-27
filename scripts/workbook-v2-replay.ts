@@ -18,7 +18,7 @@ import { ENGINE_VERSION } from "@/lib/workbook-v2/contract";
 import type { Renderer } from "@/lib/workbook-v2/renderer";
 import { openRenderer, projectAssets } from "@/lib/workbook-v2/render/typst";
 import { fontHashes, rendererVersion } from "@/lib/workbook-v2-publish/contract-writer";
-import { readSavedInput, replayBook, type FirstDifference, type ReplayExpected } from "@/lib/workbook-v2-publish/replay";
+import { readReplayExpected, readSavedInput, replayBook, type FirstDifference, type ReplayExpected } from "@/lib/workbook-v2-publish/replay";
 import { storedReplayBundle } from "./workbook-v2-stored-book";
 
 const USAGE = "Usage: npm run workbook:v2:replay -- --workbook UUID | --bundle FOLDER | --input-file FILE --expected-pdf-sha256 HEX --expected-page-sha256s FILE [--expected-input-hash HEX] [--expected-snapshot-hash HEX]";
@@ -50,9 +50,9 @@ async function fromFiles(values: Record<string, string | undefined>, renderer: R
   };
 }
 
-/** What to do next for the first cause. A Typst of another version is kept in private storage with its SHA-256 (Savar, 2026-11-24). */
+/** What to do next for the first cause. Archived Typst binaries and their pins live in private storage and `src/lib/workbook-v2/render/pins.ts`. */
 const NEXT_STEP: Partial<Record<FirstDifference["kind"], string>> = {
-  renderer: "Fetch the Typst program of that version from the private archive (its SHA-256 is in the book record), install it, and replay again.",
+  renderer: "Fetch the Typst program of that version from the private archive (check out the matching commit's src/lib/workbook-v2/render/pins.ts for its pinned SHA-256), install it, and replay again.",
   engine: "Check out the commit of that engine version and replay again.",
   font: "Check out the commit whose fonts and page.typ have these hashes and replay again.",
   snapshot: "The saved input holds another snapshot than the book was made from: the stored input changed.",
@@ -61,6 +61,13 @@ const NEXT_STEP: Partial<Record<FirstDifference["kind"], string>> = {
 function firstDifferenceText(first: FirstDifference): string {
   const next = NEXT_STEP[first.kind];
   return [`First difference (${first.kind}): ${first.message}`, ...(next ? [`Next: ${next}`] : [])].join("\n");
+}
+
+async function fromBundle(dir: string): Promise<{ saved: unknown; expected: ReplayExpected }> {
+  const saved = await readJson(join(dir, "input.json"));
+  const expected = readReplayExpected(await readJson(join(dir, "expected.json")));
+  if (typeof expected === "string") throw new Error(`${join(dir, "expected.json")}: ${expected}.`);
+  return { saved, expected };
 }
 
 async function main(): Promise<void> {
@@ -77,7 +84,7 @@ async function main(): Promise<void> {
   const source = values.workbook !== undefined
     ? (isUuid(values.workbook) ? await storedReplayBundle(values.workbook) : (() => { throw new Error(USAGE); })())
     : values.bundle !== undefined
-      ? { saved: await readJson(join(values.bundle, "input.json")), expected: (await readJson(join(values.bundle, "expected.json"))) as ReplayExpected }
+      ? await fromBundle(values.bundle)
       : await fromFiles(values, renderer);
   const started = performance.now();
   const result = await replayBook(source.saved, source.expected, renderer, () => performance.now());

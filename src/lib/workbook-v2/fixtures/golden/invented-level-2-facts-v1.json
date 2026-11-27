@@ -1,11 +1,11 @@
 {
   "format": 1,
-  "renderer": "fake",
+  "renderer": "typst@0.15.1",
   "books": [
     {
       "book": "invented-level-2-facts-v1/strong",
       "inputHash": "fbcde1684fd15250cd278f43e44af397bea8c7add484f8a1baa8268ccce24398",
-      "pdfSha256": "4609540e0c5f1e0929da4f163157d868853ac87dcdb040303c0a30b50fb574b3",
+      "pdfSha256": "ccebc3cd1e065e8d894c809179da3727c237ecd10a8ccabad02e39ca4f657797",
       "pages": [
         {
           "page": 1,
@@ -14,7 +14,7 @@
           "attempt": 1,
           "side": "front",
           "modelSha256": "aafa7ebbbf009aadc5f517c70685ad414c805bf2390c6c207493c9b242ca7781",
-          "imageSha256": "81b99dc2d4dccf5a82571c50b68f7c6daa963454eca0cd88be9f6c0b678461a8",
+          "imageSha256": "f166c1053cc090d97a9a96d7ff63322b1992ecb6a7b568669a7e97f9f305f483",
           "outline": {
             "id": "14f6d33226f3deb5",
             "sheetId": "7ea722214dfa81d9",
@@ -54,7 +54,7 @@
           "attempt": 1,
           "side": "back",
           "modelSha256": "4e27cf364452599a1f016f721b88b1f2a4b3d146e2d12a7bfc0609463bdec40a",
-          "imageSha256": "bf8c70a1ede4f36375b1051e2eb7dc9b7826b158394f94a4a8581a4333843f48",
+          "imageSha256": "c923913b995d9035003e67c1b2efdffb5c3f8d77840fdeecec03c3f2adfa7e96",
           "outline": {
             "id": "b4b25919173f2d1b",
             "sheetId": "7ea722214dfa81d9",
@@ -93,7 +93,7 @@
           "attempt": 1,
           "side": "front",
           "modelSha256": "2f30debfd62ba61815467e526493bdd6ca853a66060ea3c1d1f1abdd5c4a45b7",
-          "imageSha256": "2c4cc52091679989e49d6436186db521e24c006578534e0de2674face68f4494",
+          "imageSha256": "902119ebb26a4cef3deb98210329fb1686ea1f8d3b79ffeb45ca14db40000cd8",
           "outline": {
             "id": "51f29ecaeb9201a1",
             "sheetId": "566eea3dad03049f",
@@ -132,7 +132,7 @@
           "attempt": 1,
           "side": "back",
           "modelSha256": "f8c95109fed47fa10ad35a48d585c15e9b5ebeda04721fc9cdb4bd47d55426c9",
-          "imageSha256": "5c88249038478e429f6ea321b32b775a7cc03c90c57c2491c3f8c4aa6871933b",
+          "imageSha256": "41215e0355f04826d8ba378f9dbfb3b0bf37dc07de373406f93ac859c1c86681",
           "outline": {
             "id": "e815bb3d4f6e93b8",
             "sheetId": "566eea3dad03049f",
@@ -163,7 +163,7 @@
     {
       "book": "invented-level-2-facts-v1/weak",
       "inputHash": "70ca266c1f843ae1516d8817763319872b3acf0a7b703464a0378c19fa1fdd7b",
-      "pdfSha256": "1c2d39e9f4808be1ca1b92922fd4aa74c385f6f96b45a5ebcfe6ea36ee8fee61",
+      "pdfSha256": "6656e0c2cbf1b98e3289df4c55f4117d174d296c9bc6d3b77c3802cc1c368111",
       "pages": [
         {
           "page": 1,
@@ -172,7 +172,7 @@
           "attempt": 2,
           "side": "front",
           "modelSha256": "65e19a7b812ce96359be91f20ee0d7c1b905b3eed97a474d945cb74480bb5058",
-          "imageSha256": "3ba1231524eed46e408bb5ca17009b693c75f322b85ca4305977e728ae2b5182",
+          "imageSha256": "13655b5e6cc5b6effd7114caab950aa48c687b340d440a74e16041f5366df342",
           "outline": {
             "id": "97ce558560b14d25",
             "sheetId": "65921d97f88ce5a7",
@@ -222,7 +222,7 @@
           "attempt": 2,
           "side": "back",
           "modelSha256": "ef9a62b6e00608647e816240f0e11210e5ce03940f709ff59e8d26abe58d5451",
-          "imageSha256": "a8b3265956dbe1b7358c524638510fd0c0472d96aeb0cbcb59bafc4010dcfc75",
+          "imageSha256": "c4a4b07485b19025e2223756a8979e0982f4387b0ab3619325b5ce0c84cf18e3",
           "outline": {
             "id": "f422c365c0c770b2",
             "sheetId": "65921d97f88ce5a7",
@@ -271,7 +271,7 @@
           "attempt": 1,
           "side": "front",
           "modelSha256": "1909696a9103b195eb4ee7bfe4a270b42e1bc761bdde4d882760d4ec7c9cae49",
-          "imageSha256": "e1e1f460addb6f6f14c6ec5cf1ee69bef12a55717801830f81ef73cd7e5a1502",
+          "imageSha256": "51630ad42e5a4746a9ef2993cc936853adf409059852d88715bf02c8a3d5809e",
           "outline": {
             "id": "14f6d33226f3deb5",
             "sheetId": "7ea722214dfa81d9",
@@ -310,7 +310,7 @@
           "attempt": 1,
           "side": "back",
           "modelSha256": "4a0c6e89aeb345d9bd4960fbc2df89a2f8eea73983cadb3643ac1f35f45c825b",
-          "imageSha256": "6f23249f1a5c731fb7f21488e07171812e4a47f6b8783383fb82f34dd5709abf",
+          "imageSha256": "f802270983e3f6207d7ed748ddfa853301c07912017ffa1645410f218f3cf2e5",
           "outline": {
             "id": "b4b25919173f2d1b",
             "sheetId": "7ea722214dfa81d9",

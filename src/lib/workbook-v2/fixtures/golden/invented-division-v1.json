@@ -1,11 +1,11 @@
 {
   "format": 1,
-  "renderer": "fake",
+  "renderer": "typst@0.15.1",
   "books": [
     {
       "book": "invented-division-v1/strong",
       "inputHash": "19af53d651773b6da6ef8c1403b381ae4e8f734d17637879f2539732fb44d886",
-      "pdfSha256": "315bea3990e3e47fcc3520d1223352744e5e27db7ce621f7b2a072ccc4dfeab6",
+      "pdfSha256": "a28ee5c0e227dca47910fbbb7beff17c18cd5c91b8317bc9a6c60d1c4e376ab3",
       "pages": [
         {
           "page": 1,
@@ -14,7 +14,7 @@
           "attempt": 1,
           "side": "front",
           "modelSha256": "71115b6228b7ed7e1e75ef255d7b70443fc0c04c0189758664e7b972e2052d0c",
-          "imageSha256": "7731f84d56db059d019d7accc4dbde0e5a79f1d7a59f47fcd2802b52dc47c5d9",
+          "imageSha256": "e5b6bcc942627dd17d882d1b9e7f4bc16f0de470cddbda57259e7439bdc78ca3",
           "outline": {
             "id": "2c79cd392a8fdaf7",
             "sheetId": "f0e9d19ce673bc45",
@@ -54,7 +54,7 @@
           "attempt": 1,
           "side": "back",
           "modelSha256": "511609cc99f5b76c264653e5d80413e2eeb9bbc8e8083083c592c9629e0bdbd4",
-          "imageSha256": "e9e29911cd32a7d8099ac07fbac1446248d7285b0e40989db8de6cea9c4bbdc4",
+          "imageSha256": "afd94969f96daca5c54d218c5ae85441210b5e2669d6572f34dee3e7e4efd9e8",
           "outline": {
             "id": "926c6310ba10266e",
             "sheetId": "f0e9d19ce673bc45",
@@ -93,7 +93,7 @@
           "attempt": 1,
           "side": "front",
           "modelSha256": "26615ddf3bc54a3ddb048096eaa4536975ad09792766a1b67177875a01b0874a",
-          "imageSha256": "814b00f316a3617388a31665110747d3f83175b85b2abfc7c45a297c4d82b9ee",
+          "imageSha256": "503be33f6d167ba2dacedc3c15c14e3f3e3ccb181b584a8b1faf43380d4ef7d0",
           "outline": {
             "id": "2f33eb4ab2e50b1d",
             "sheetId": "7ca565e439b6cadc",
@@ -126,7 +126,7 @@
           "attempt": 1,
           "side": "back",
           "modelSha256": "78c39a5cb17d750e2613a5ab57c683805086e24b2a4cbaedc3792b7614ad5e63",
-          "imageSha256": "346c5b190aeaeebca951895210257b91fb5f745ffc833712cb58e352edc8a073",
+          "imageSha256": "856d89bd5f47a6824ac0e260c33b2e78fc498407eff5aee4b13ec3c092689618",
           "outline": {
             "id": "95b225c31f710d10",
             "sheetId": "7ca565e439b6cadc",
@@ -165,7 +165,7 @@
     {
       "book": "invented-division-v1/weak",
       "inputHash": "ed49b85f48402a8e492a1ef59e8c6a3cf7b0447a25f2c4649cf361865a7ca22d",
-      "pdfSha256": "a3384c69b123d1bb0bda3a713b727240187574357d658083dfa5d22360bd5dee",
+      "pdfSha256": "1524dd517e2160a4f6b2becdcec22f95f752d5f955c42d173ffb3d6a485e36ee",
       "pages": [
         {
           "page": 1,
@@ -174,7 +174,7 @@
           "attempt": 2,
           "side": "front",
           "modelSha256": "afe7bb14bd09f88be9b807f4311d0cf80553f0dc20c36bbb35531bf9ae4de247",
-          "imageSha256": "95707f0d96e5db24c3551e2d15939bd4213da05390a8b5852229421b281fbdf8",
+          "imageSha256": "7129e7495d7ddba49ce96f5387ac996c47b48e0bbcf8718111099e727799741f",
           "outline": {
             "id": "96ecff6f6c29b182",
             "sheetId": "2ae3de31a294d127",
@@ -216,7 +216,7 @@
           "attempt": 2,
           "side": "back",
           "modelSha256": "02b6c7e7ffe738690f32839131ce43efeb68b43d2bafbc20b9a609312fb602cc",
-          "imageSha256": "f3f0c132300e933d0df1ff518651270de2062077c4e3835ace5dbdceb2e9951c",
+          "imageSha256": "ea34bc2c3b63a6dfff703bb30550e0735f9c4f8b2e346dfe1a5075f39ea736cd",
           "outline": {
             "id": "b01d44a78be5bf54",
             "sheetId": "2ae3de31a294d127",
@@ -249,7 +249,7 @@
           "attempt": 1,
           "side": "front",
           "modelSha256": "d671e3ede6c74af9dd0d78ce3e731d09a910cd772b1b1987bde6d40f2ae68f6c",
-          "imageSha256": "834053961365fbbf88d36a7d426efcadee4378ad0ee7d4cde6c1fc5416fa19d2",
+          "imageSha256": "efa257103da96c590bfb9bb1f725360ea38736a67bc96c076c5f6ea3a4f9ac52",
           "outline": {
             "id": "2c79cd392a8fdaf7",
             "sheetId": "f0e9d19ce673bc45",
@@ -288,7 +288,7 @@
           "attempt": 1,
           "side": "back",
           "modelSha256": "48158b3feeca046bdde4d62f1739f6034712b453002f850b5aa88e1aed064a36",
-          "imageSha256": "feccae06a169b110c326d0d7beb79348fd8330bfcaec8c314c0250910c0ea51a",
+          "imageSha256": "dddbab3b5826711d37992edacd7f9650f5e4f19abafd308264dbd2a7e8ee7920",
           "outline": {
             "id": "926c6310ba10266e",
             "sheetId": "f0e9d19ce673bc45",

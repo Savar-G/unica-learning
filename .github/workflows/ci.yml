@@ -63,6 +63,10 @@ jobs:
         env:
           EVENT_BEFORE: ${{ github.event.before }}
         run: node scripts/shape-fingerprint-base.mjs
+      - name: Golden baselines match base or accepted changes
+        env:
+          EVENT_BEFORE: ${{ github.event.before }}
+        run: node scripts/golden-baseline-base.mjs
 
   # Full 8-shard unit suite (runs on main pushes, workflow_dispatch, and high-blast-radius PRs).
   # Shard 1 is pinned to hold src/lib/workbook-book1-recovery.test.ts (#472), which loads pinned planners from Git
@@ -186,6 +190,11 @@ jobs:
           TEST_OUTCOME: ${{ steps.engine_tests.outcome }}
         run: node .github/scripts/engine-summary.mjs
         timeout-minutes: 1
+      - name: Committed bug fixtures (with pinned Typst)
+        env:
+          WORKBOOK_V2_REQUIRE_TYPST: '1'
+        run: npx vitest run src/lib/workbook-v2-publish/bug-fixture.test.ts
+        timeout-minutes: 3
 
   maya-behaviour:
     name: Maya behaviour and word limits
@@ -326,7 +335,7 @@ jobs:
         run: node scripts/build-retention-worker.mjs && node --conditions=react-server .retention/worker.mjs --help
         timeout-minutes: 2
       - name: CI tooling self-tests
-        run: node --test .github/scripts/blog-publish.test.mjs .github/scripts/unit-shards.test.mjs .github/scripts/pr-scope.test.mjs .github/scripts/engine-ci.test.mjs scripts/ci-audit.test.mjs scripts/pre-push-check.test.mjs scripts/repo-guard.test.mjs scripts/shape-fingerprint-base.test.mjs
+        run: node --test .github/scripts/blog-publish.test.mjs .github/scripts/unit-shards.test.mjs .github/scripts/pr-scope.test.mjs .github/scripts/engine-ci.test.mjs scripts/ci-audit.test.mjs scripts/pre-push-check.test.mjs scripts/repo-guard.test.mjs scripts/shape-fingerprint-base.test.mjs scripts/golden-baseline-base.test.mjs
         timeout-minutes: 2
 
   # The root tsconfig.json excludes worker/, so the Maya voice worker's own type check and tests run here.

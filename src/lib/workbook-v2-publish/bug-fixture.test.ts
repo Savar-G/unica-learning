@@ -13,7 +13,9 @@ import { fakeRenderer } from "@/lib/workbook-v2/testing/fake-renderer";
 import { goldenInput, SYNTHETIC_LEVELS } from "@/lib/workbook-v2/testing/golden-books";
 import { skipTypstTests, testAssets } from "@/lib/workbook-v2/testing/typst";
 import { BUG_FIXTURES_DIR, createBugFixture, readBugFixture, runBugFixture, syntheticProblems, type BugFixtureRequest } from "./bug-fixture";
+import { FULL_BOOK_SNAPSHOT } from "./full-book";
 import { fontHashes, rendererVersion } from "./contract-writer";
+import { SMALL_PLAN } from "./publish.fixtures";
 import type { ReplayExpected } from "./replay";
 
 let folder = "";
@@ -89,6 +91,36 @@ describe("a bug fixture", () => {
     await expect(createBugFixture(request(fixtures, { name: "replay-good", expect: { kind: "replays" }, expected: good }), fakeRenderer())).rejects.toThrow(/passes today/);
   });
 
+  it("extracts word-problem flow text for both page-text and no-page-text expectations", async () => {
+    const storySheet = SMALL_PLAN[0];
+    const storyInput = {
+      snapshot: FULL_BOOK_SNAPSHOT,
+      book: {
+        bookId: "fixture-story-book",
+        childId: "fixture-story-child",
+        region: "US",
+        sheets: [{
+          sheetId: storySheet.sheetId,
+          attempt: 1,
+          startsDay: true,
+          qr: { front: "https://unicalearning.com/tutor/p/fixture-story-1", back: "https://unicalearning.com/tutor/p/fixture-story-2" },
+        }],
+      },
+    };
+    const baseFixture = {
+      format: 1 as const,
+      name: "story-flow-text",
+      failure: "Word problem text must appear on page 1.",
+      renderer: "fake" as const,
+      input: { format: 1 as const, ...storyInput },
+    };
+    const present = await runBugFixture({ ...baseFixture, expect: { kind: "page-text", page: 1, text: "There", present: true } }, fakeRenderer());
+    expect(present.ok, present.actual).toBe(true);
+    const absent = await runBugFixture({ ...baseFixture, expect: { kind: "page-text", page: 1, text: "There", present: false } }, fakeRenderer());
+    expect(absent.ok).toBe(false);
+    expect(absent.actual).toBe("page 1 prints \"There\"");
+  });
+
   it("writes nothing when the fixture passes today, when the file exists, or for a bad name or input", async () => {
     const { fixtures } = places();
     await expect(createBugFixture(request(fixtures, { expect: { kind: "builds" } }), fakeRenderer())).rejects.toThrow(/passes today \(the book builds\), so it does not reproduce the bug\. Nothing was written\./);
@@ -106,17 +138,32 @@ describe("a bug fixture", () => {
 describe("the privacy guard of a bug fixture", () => {
   const withHistoryUuid = () => { const i = invented(); i.book.history.books[0].bookId = "4b1f2c3d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"; return i; };
   const realSnapshot = () => { const i = invented(); i.snapshot.id = "level-3-v4"; return i; };
+  const unknownInventedSnapshot = () => { const i = invented(); i.snapshot.id = "invented-scrubbed-real-v1"; return i; };
   const withEmail = () => { const i = invented(); (i.book as Record<string, unknown>).note = "parent@example.com"; return i; };
+  const withProductionQr = () => {
+    const i = invented() as ReturnType<typeof invented> & { book: { sheets: { qr: { front: string; back: string } }[] } };
+    i.book.sheets[0].qr.front = "https://unicalearning.com/tutor/p/aB3dE6fG9hI2jK5lM8nO1pQ";
+    return i;
+  };
 
   it.each([
     ["a UUID child id", realLooking, /the childId "4b1f2c3d-.*" is not an invented id/],
-    ["a snapshot that is not invented", realSnapshot, /the snapshot "level-3-v4" is not an invented snapshot/],
+    ["a snapshot that is not invented", realSnapshot, /the snapshot "level-3-v4" is not a known invented snapshot/],
+    ["an unknown invented snapshot id", unknownInventedSnapshot, /is not a known invented snapshot/],
     ["a UUID in the history", withHistoryUuid, /the history names the book "4b1f2c3d-.*", which is not an invented id/],
+    ["a production-shaped QR token", withProductionQr, /is not an invented page link/],
     ["an email address", withEmail, /holds an email address/],
   ])("refuses %s inside a git repository and writes nothing", async (_case, input, why) => {
     const { repo, fixtures } = places();
     await expect(createBugFixture(request(fixtures, { input: input() }), fakeRenderer())).rejects.toThrow(why);
     await expect(createBugFixture(request(fixtures, { input: input() }), fakeRenderer())).rejects.toThrow(/^Refused: .* is inside the git repository/);
+    expect(allFiles(repo)).toEqual([".git", "fixtures"]);
+  });
+
+  it("refuses PII placed in failure or expect fields when writing inside a git repository", async () => {
+    const { repo, fixtures } = places();
+    await expect(createBugFixture(request(fixtures, { failure: "Bug reported by mom@example.com" }), fakeRenderer())).rejects.toThrow(/holds an email address/);
+    await expect(createBugFixture(request(fixtures, { expect: { kind: "page-text", page: 1, text: "https://unicalearning.com/tutor/p/prodTok12345", present: true } }), fakeRenderer())).rejects.toThrow(/non-synthetic page link token/);
     expect(allFiles(repo)).toEqual([".git", "fixtures"]);
   });
 
@@ -139,7 +186,7 @@ describe("the privacy guard of a bug fixture", () => {
     expect(syntheticProblems(invented())).toEqual([]);
     expect(syntheticProblems(realLooking()).length).toBeGreaterThan(0);
     expect(syntheticProblems(invented(), { inputHash: "x", engineVersion: "e", rendererVersion: "r", fontHashes: {}, pdfSha256: "p", pageSha256s: ["4b1f2c3d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"] })).toEqual([
-      "the input holds a UUID, which may be the id of a real family, child or book",
+      "the fixture holds a UUID, which may be the id of a real family, child or book",
     ]);
   });
 });
@@ -168,6 +215,7 @@ describe("the fixture command", () => {
     writeFileSync(real, JSON.stringify(realLooking()));
     const made = await run(["--name", "no-level-nine", "--failure", "The footer misses the level.", "--expect", "page-text=1:Level Nine", "--input", good, "--out", fixtures]);
     expect(made.output).toMatch(/Wrote .*no-level-nine\.json\. It fails today: page 1 does not print "Level Nine"\./);
+    expect(made.output).toContain("WORKBOOK_V2_FIXTURE=");
     expect(made.code).toBe(0);
     const refused = await run(["--name", "real-book", "--failure", "x", "--expect", "page-text=1:Level Nine", "--input", real, "--out", fixtures]);
     expect(refused.code).toBe(1);
@@ -176,34 +224,61 @@ describe("the fixture command", () => {
   });
 });
 
+async function openFixtureRenderer(name: "fake" | "typst", cache: { typst: Renderer | null }): Promise<Renderer | null> {
+  if (name === "fake") return fakeRenderer();
+  const requireTypst = process.env.WORKBOOK_V2_REQUIRE_TYPST === "1";
+  const hasTypst = existsSync(testAssets().program);
+  if (!hasTypst) {
+    if (requireTypst) throw new Error("Pinned Typst is required to run Typst bug fixtures (run npm run typst:install).");
+    if (!skipTypstTests()) return null;
+    return null;
+  }
+  return (cache.typst ??= await openRenderer(testAssets()));
+}
+
 // The committed fixtures: each one fails until its bug is fixed, and each one is invented.
 const committed = existsSync(join(process.cwd(), BUG_FIXTURES_DIR))
   ? readdirSync(join(process.cwd(), BUG_FIXTURES_DIR)).filter((f) => f.endsWith(".json")).sort()
   : [];
 describe.skipIf(committed.length === 0)("the committed bug fixtures", () => {
-  let typst: Renderer | null = null;
-  const rendererOf = async (name: "fake" | "typst"): Promise<Renderer | null> => {
-    if (name === "fake") return fakeRenderer();
-    if (skipTypstTests()) return null;
-    return (typst ??= await openRenderer(testAssets()));
-  };
+  const cache: { typst: Renderer | null } = { typst: null };
   it.each(committed)("%s passes and is invented", async (file) => {
     const fixture = readBugFixture(JSON.parse(readFileSync(join(process.cwd(), BUG_FIXTURES_DIR, file), "utf8")));
     if (typeof fixture === "string") throw new Error(`${file}: ${fixture}`);
-    expect(syntheticProblems(fixture.input, fixture.expected)).toEqual([]);
-    const renderer = await rendererOf(fixture.renderer);
+    expect(syntheticProblems(fixture)).toEqual([]);
+    const renderer = await openFixtureRenderer(fixture.renderer, cache);
     if (!renderer) return;
     const result = await runBugFixture(fixture, renderer);
     expect(result.ok, `${fixture.name}: ${fixture.failure} Today: ${result.actual}`).toBe(true);
   });
 });
 
+// Explicit private fixture outside the default folder, run via WORKBOOK_V2_FIXTURE=<path>.
+const privateFixture = process.env.WORKBOOK_V2_FIXTURE;
+describe.skipIf(!privateFixture)("the selected private bug fixture", () => {
+  const cache: { typst: Renderer | null } = { typst: null };
+  it("passes its expectation", async () => {
+    const fixture = readBugFixture(JSON.parse(readFileSync(privateFixture!, "utf8")));
+    if (typeof fixture === "string") throw new Error(`${privateFixture}: ${fixture}`);
+    const renderer = await openFixtureRenderer(fixture.renderer, cache);
+    if (!renderer) throw new Error("Pinned Typst is required to run this Typst fixture (run npm run typst:install).");
+    const result = await runBugFixture(fixture, renderer);
+    expect(result.ok, `${fixture.name}: ${fixture.failure} Today: ${result.actual}`).toBe(true);
+  });
+});
+
 describe("a bug fixture of a file", () => {
-  it("is refused when it is not complete", () => {
+  it("is refused when it is not complete or has invalid expected replay data", () => {
     expect(readBugFixture({})).toMatch(/not of format 1/);
     expect(readBugFixture({ format: 1, name: "abc", failure: "x", renderer: "other" })).toMatch(/fake or typst/);
     const base = { format: 1, name: "abc", failure: "x", renderer: "fake", input: { format: 1, ...invented() } };
     expect(readBugFixture({ ...base, expect: { kind: "replays" } })).toMatch(/needs the expected replay/);
+    expect(readBugFixture({ ...base, expect: { kind: "replays" }, expected: { inputHash: "x" } })).toMatch(/engineVersion/);
+    expect(readBugFixture({
+      ...base,
+      expect: { kind: "replays" },
+      expected: { inputHash: "x", engineVersion: "e", rendererVersion: "r", fontHashes: {}, pdfSha256: "p", pageSha256s: ["a", "b"], pageModelSha256s: [] },
+    })).toMatch(/pageModelSha256s has 0 entries, and pageSha256s has 2/);
     expect(readBugFixture({ ...base, expect: { kind: "page-text", page: 0, text: "x", present: true } })).toMatch(/expectation must be/);
     expect(typeof readBugFixture({ ...base, expect: { kind: "builds" } })).toBe("object");
     expect(planBook({ snapshot: base.input.snapshot, book: base.input.book }).ok).toBe(true);

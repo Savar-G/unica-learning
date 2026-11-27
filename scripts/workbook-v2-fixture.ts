@@ -18,12 +18,18 @@ import type { Renderer } from "@/lib/workbook-v2/renderer";
 import { openRenderer, projectAssets } from "@/lib/workbook-v2/render/typst";
 import { fakeRenderer } from "@/lib/workbook-v2/testing/fake-renderer";
 import { BUG_FIXTURES_DIR, createBugFixture, type BugExpectation } from "@/lib/workbook-v2-publish/bug-fixture";
-import type { ReplayExpected } from "@/lib/workbook-v2-publish/replay";
+import { readReplayExpected, type ReplayExpected } from "@/lib/workbook-v2-publish/replay";
+import { resolvedPath } from "@/lib/workbook-v2/testing/git-repo";
 import { storedReplayBundle } from "./workbook-v2-stored-book";
 
 const USAGE = "Usage: npm run workbook:v2:fixture -- --name NAME --failure TEXT --expect builds|replays|refused=TEXT|page-text=N:TEXT|no-page-text=N:TEXT (--input FILE [--expected FILE] | --bundle FOLDER | --workbook UUID) [--out FOLDER] [--renderer fake|typst]";
 
 const readJson = async (file: string): Promise<unknown> => JSON.parse(await readFile(file, "utf8")) as unknown;
+const parseExpected = (raw: unknown, file: string): ReplayExpected => {
+  const checked = readReplayExpected(raw);
+  if (typeof checked === "string") throw new Error(`${file}: ${checked}.`);
+  return checked;
+};
 
 function expectation(text: string): BugExpectation {
   if (text === "builds" || text === "replays") return { kind: text };
@@ -42,8 +48,14 @@ async function source(values: Record<string, string | undefined>): Promise<{ inp
     const { saved, expected } = await storedReplayBundle(values.workbook);
     return { input: saved, expected };
   }
-  if (values.bundle !== undefined) return { input: await readJson(join(values.bundle, "input.json")), expected: (await readJson(join(values.bundle, "expected.json"))) as ReplayExpected };
-  return { input: await readJson(values.input!), ...(values.expected === undefined ? {} : { expected: (await readJson(values.expected)) as ReplayExpected }) };
+  if (values.bundle !== undefined) {
+    const expectedFile = join(values.bundle, "expected.json");
+    return { input: await readJson(join(values.bundle, "input.json")), expected: parseExpected(await readJson(expectedFile), expectedFile) };
+  }
+  return {
+    input: await readJson(values.input!),
+    ...(values.expected === undefined ? {} : { expected: parseExpected(await readJson(values.expected), values.expected) }),
+  };
 }
 
 async function rendererOf(name: string): Promise<Renderer> {
@@ -65,12 +77,17 @@ async function main(): Promise<void> {
   const { input, expected } = await source(values);
   const rendererName = values.renderer ?? (expect.kind === "replays" ? "typst" : "fake");
   if (rendererName !== "fake" && rendererName !== "typst") throw new Error(USAGE);
-  const outDir = values.out ?? join(process.cwd(), BUG_FIXTURES_DIR);
+  const defaultOutDir = join(process.cwd(), BUG_FIXTURES_DIR);
+  const outDir = values.out ?? defaultOutDir;
   const { file, actual } = await createBugFixture(
     { name: values.name, failure: values.failure, expect, input, ...(expected ? { expected } : {}), renderer: rendererName, outDir },
     await rendererOf(rendererName),
   );
-  console.log(`Wrote ${file}. It fails today: ${actual}. Run: npx vitest run src/lib/workbook-v2-publish/bug-fixture.test.ts -t "${values.name}"`);
+  const inDefault = resolvedPath(outDir) === resolvedPath(defaultOutDir);
+  const command = inDefault
+    ? `npx vitest run src/lib/workbook-v2-publish/bug-fixture.test.ts -t "${values.name}"`
+    : `WORKBOOK_V2_FIXTURE=${JSON.stringify(file)} npx vitest run src/lib/workbook-v2-publish/bug-fixture.test.ts`;
+  console.log(`Wrote ${file}. It fails today: ${actual}. Run: ${command}`);
 }
 
 await main();

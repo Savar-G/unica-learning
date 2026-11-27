@@ -131,4 +131,13 @@ describe("the first difference of a replay", () => {
     const result = await replayBook(otherSnapshot(), { ...expected, expectedSnapshotHash: snapshotHash() }, fakeRenderer());
     expect(!result.ok && result.differences).toEqual([expect.stringMatching(/^the snapshot differs: the book has [0-9a-f]{64}, the saved input gives [0-9a-f]{64} \(another-snapshot\)$/), expect.stringMatching(/^the input hash differs/)]);
   });
+
+  it("refuses malformed expected replay data (missing pageSha256s or mismatched pageModelSha256s length) without throwing", async () => {
+    const emptyModels = await replayBook(saved, { ...expected, pageModelSha256s: [] }, fakeRenderer());
+    expect(emptyModels).toMatchObject({ ok: false, firstDifference: { kind: "input-format", message: expect.stringMatching(/pageModelSha256s has 0 entries/) } });
+    const extraModel = await replayBook(saved, { ...expected, pageModelSha256s: [...(await modelHashes()), zero] }, fakeRenderer());
+    expect(extraModel).toMatchObject({ ok: false, firstDifference: { kind: "input-format", message: expect.stringMatching(/pageModelSha256s has 9 entries/) } });
+    const missingPages = await replayBook(saved, { ...expected, pageSha256s: undefined as unknown as string[] }, fakeRenderer());
+    expect(missingPages).toMatchObject({ ok: false, firstDifference: { kind: "input-format", message: expect.stringMatching(/pageSha256s/) } });
+  });
 });
