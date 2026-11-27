@@ -1,3 +1,4 @@
+import { EMPTY_INSTRUCTIONS } from "@/lib/workbook-instructions";
 import { expect, it } from "vitest";
 import { fakeAiClient } from "./ai-client-fake";
 import { fakeWorkbookItems } from "./workbook-ai-fake";
@@ -9,9 +10,9 @@ import { keySolver } from "./workbook-solve-check";
 import type { GeneratedPage, StoredCall, GenerateDeps } from "./workbook-generator";
 import { planNextWorkbook } from "./workbook-placement";
 
-it("names both true/false and Spot the error's yes/no in a first-customer page instruction", async () => {
+it("names both true/false and Spot the error's yes/no in a U16 page instruction", async () => {
   const curriculum = curriculumFor("bc")!;
-  const placed = planNextWorkbook({ curriculum, grade: 4, profile: firstCustomerProfile(), workbooks: [], number: 1 });
+  const placed = planNextWorkbook({ curriculum, grade: 4, profile: firstCustomerProfile(), workbooks: [], number: 1, instructions: { ...EMPTY_INSTRUCTIONS, startLevel: "U16" } });
   if (!placed.ok) throw new Error(placed.reason);
   const day = placed.plan.days[0];
   let tokens = 0;

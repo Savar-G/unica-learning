@@ -19,6 +19,8 @@ import type { PlacementInput } from "@/lib/workbook-placement";
 export interface WorkbookWhy {
   inputs: { label: string; value: string; reliability: string; status: string; reason: string }[];
   start: string;
+  measuredLevel?: number | null;
+  startingPoint?: string;
   pages: { label: string; choices: string[] }[];
   warnings: string[];
 }
@@ -61,13 +63,13 @@ const LABELS: Record<SignalId, string> = {
   S20: "AI notes from later learning", S21: "Report recommendation", S22: "Test length and device",
 };
 const REASONS: Record<SignalId, string> = {
-  S1: "Only topics at or below the school grade can count as weaknesses.",
+  S1: "Weak topics must be within both the school grade and the measured level, when available.",
   S2: "The working level and the checks for help and rushing set the starting level.",
   S3: "The book cannot start above the level the test measured.",
   S4: "The area results can support a parent's request for harder work.",
   S5: "A secure topic skips first-book teaching only when the evidence is clear.",
   S6: "Weak topics shape the teaching order, support and review.",
-  S7: "Only known mistakes at or below the school grade can guide practice. Typed answers are excluded.",
+  S7: "Only known mistakes within the same bounds as weaknesses can guide practice. Typed answers are excluded.",
   S8: "Later learning adds to the topic results without counting the test twice.",
   S9: "Accuracy and speed guide the choice of warm-up facts.",
   S10: "Topics with no test result keep their short checks.",
@@ -85,8 +87,8 @@ const REASONS: Record<SignalId, string> = {
   S22: "Test length and device are for review here. They do not change the plan.",
 };
 const UNUSED: Partial<Record<SignalId, string>> = {
-  S3: "The test did not reach its highest level.", S6: "No topic at or below school grade is weak.",
-  S7: "No known mistake at or below school grade can guide practice.", S8: "No later answers count beyond the test.",
+  S3: "The test did not reach its highest level.", S6: "No weak topic was found within the levels considered.",
+  S7: "No recorded mistake within the levels considered can guide practice.", S8: "No later answers count beyond the test.",
   S10: "The test left no topics marked for an extra check.", S11: "No rushing was found. Pace alone does not change the book.",
   S12: "No drop was measured near the end of the test.", S13: "Fewer than three questions were read aloud.",
   S19: "No suggested topic can choose between equal allowed topics in this plan.",
@@ -114,9 +116,9 @@ function values(s: BookSignals): Record<SignalId, string> {
     S2: s.working ? `${grade(s.working.working)}; ${s.working.confidence === "normal" ? "normal confidence" : "low confidence"}` : "No measured working level",
     S3: s.working?.atCeiling ? "The test could not measure a higher level" : "The test did not reach its highest level",
     S4: list(s.strands.map(a => `${({ number: "Number", fractions: "Fractions", algebra: "Patterns", shapes: "Shapes" })[a.strand]}: ${a.correct} of ${a.total} correct, ${grade(a.level)}`)),
-    S5: `${s.secure.length} secure; ${s.weak.length} weak at or below school grade. Secure topics: ${topics(s.secure)}`,
+    S5: `${s.secure.length} secure; ${s.weak.length} weak within the levels considered. Secure topics: ${topics(s.secure)}`,
     S6: topics(s.weak),
-    S7: list(s.mistakes.map(m => `${topic(m.standard)}: ${list(m.misconceptions.map(id => Object.entries(MISCONCEPTIONS).find(([key]) => key === id)?.[1].description ?? "Mistake not identified"))}; ${m.wrong} wrong, ${m.withHelp} with help, ${m.blank} blank, ${m.hints} hints`), "No known mistakes at or below school grade"),
+    S7: list(s.mistakes.map(m => `${topic(m.standard)}: ${list(m.misconceptions.map(id => Object.entries(MISCONCEPTIONS).find(([key]) => key === id)?.[1].description ?? "Mistake not identified"))}; ${m.wrong} wrong, ${m.withHelp} with help, ${m.blank} blank, ${m.hints} hints`), "No known mistakes within the levels considered"),
     S8: s.events ? `${s.events.counted} later answers counted; ${s.events.inAssessmentProfile} answers already in the test excluded` : "No later learning recorded",
     S9: list(s.facts.filter(f => f.source !== "none").map(f => `${FAMILIES[f.family]}: ${f.state === "known" ? "accurate and quick" : f.state === "needs-practice" ? "needs practice" : "not enough evidence"}${f.result ? `, ${f.result.correct} of ${f.result.answered} correct` : ""}${f.source === "section" ? " (whole-section result)" : ""}`), "No facts measured"),
     S10: `Untested: ${topicList(s.unknowns?.untested ?? [])}. Check next: ${topicList(s.unknowns?.checkNext ?? [])}`,
@@ -141,6 +143,9 @@ export function workbookWhy(plan: WorkbookPlan, fallback?: BookSignals, placemen
   if (!s) return null;
   const start = plan.personal?.start ?? placement;
   const v = values(s);
+  if (start && "startingPoint" in start && s.behaviour && s.working && s.working.working > s.grade) {
+    v.S11 = s.behaviour.leftOut > 0 ? "Fast wrong answers in a rush run" : "No fast wrong answers in a rush run";
+  }
   const inputs = s.trace.map(t => ({
     label: LABELS[t.id], value: t.status === "missing" ? "Not recorded" : v[t.id], reliability: reliability(t.reliability),
     status: t.status === "missing" ? "Missing" : t.status === "used" ? "Used" : "Not used",
@@ -159,12 +164,12 @@ export function workbookWhy(plan: WorkbookPlan, fallback?: BookSignals, placemen
     P2: "A start above school grade needs a clear working level, normal confidence, no likely help and no rushing.",
     P3: "Start at the lowest clearly weak topic because there are several clear gaps or a gap of at least two grades.",
     P4: "Start at the working level. Teach the lower weak topic alongside it for two books.",
-    P5: `The measured working level is ${s.working ? grade(s.working.working) : "unavailable"}.${s.weak.length === 0 ? " No topic at or below school grade is weak." : " Early gaps below it do not lower the start."}`,
+    P5: `The measured working level is ${s.working ? grade(s.working.working) : "unavailable"}.${s.weak.length === 0 ? " No weak topic was found within the levels considered." : " Early gaps below it do not lower the start."}`,
     P9: "Kindergarten starts at the first level.",
     I1: "A team instruction sets this level. Weak topics below it get review checks instead of a lower start.",
   };
   const asked = plan.instructions?.instructions;
-  const pages: WorkbookWhy["pages"] = [{ label: "Cover", choices: [`${s.working && s.working.working > s.grade && s.adjustments.trustedAboveGrade ? "Move ahead" : plan.units.support || s.clearlyWeak.length ? "Build weak topics step by step" : "Work at the measured level"} with taught topics ${topicList([...new Set(plan.newSteps.map(step => step.unit))])}. The cover wording is added when the book is made.`] }];
+  const pages: WorkbookWhy["pages"] = [{ label: "Cover", choices: [`${s.working && s.working.working > s.grade && s.adjustments.trustedAboveGrade ? "Move ahead" : plan.units.support || s.clearlyWeak.length ? "Build weak topics step by step" : "Practice at the starting point"} with taught topics ${topicList([...new Set(plan.newSteps.map(step => step.unit))])}. The cover wording is added when the book is made.`] }];
   for (const day of plan.days) for (const page of day.pages) {
     const choices: string[] = [];
     const taught = [...new Set(page.parts.flatMap(p => p.step ? [p.step.unit] : []))];
@@ -187,11 +192,21 @@ export function workbookWhy(plan: WorkbookPlan, fallback?: BookSignals, placemen
       if (part.templateDifficulty === "hard") choices.push("Challenge uses the hardest allowed questions from the first day.");
       if (part.extra) choices.push("This block is Extra to reduce the required time.");
       if (part.preferStandards?.length) choices.push(`Review or Challenge prefers secure topics ${topicList(part.preferStandards)}. AI can choose only between equal allowed topics.`);
-      if (plan.units.support && part.step?.unit === plan.units.support) choices.push(`Teach lower topic ${topic(plan.units.support)} alongside the working level.`);
+      if (plan.units.support && part.step?.unit === plan.units.support) choices.push(`Teach lower topic ${topic(plan.units.support)} alongside the starting point.`);
     }
     if (page.weakPractice && asked?.teachMore.includes(page.weakPractice)) choices.push(`Extra practice page on ${topic(page.weakPractice)}: the team asked to teach more of it.`);
     if (day.time && (s.parent.weeklyTime || s.behaviour?.lateDrop || page.parts.some(p => p.extra))) choices.push(`Required time for the day: ${day.time.required} minutes; target: ${day.time.target} minutes. This is a planning estimate.`);
     pages.push({ label: `Day ${day.day}, page ${page.number}`, choices: [...new Set(choices.length ? choices : ["Same as a standard book"])] });
   }
-  return { inputs, start: `Start at U${plan.level}. ${start ? startReasons[start.rule] ?? "The saved placement sets this level." : "No starting-level reason was saved."}${start?.rules.includes("P7") ? " The test reached its highest measured level. Keep this start and add harder work." : ""}`, pages, warnings };
+  const current = start && "startingPoint" in start ? start : null;
+  const reason = current?.rule === "I1" ? startReasons.I1
+    : current?.reason ?? (start ? startReasons[start.rule] : "No starting-point reason was saved.");
+  return {
+    inputs,
+    measuredLevel: current ? current.measuredLevel : s.working?.working ?? null,
+    startingPoint: current?.startingPoint ?? `U${plan.level}`,
+    start: `${reason}${start?.rules.includes("P7") ? " The test reached its highest measured level. Keep this start and add harder work." : ""}`,
+    pages,
+    warnings,
+  };
 }

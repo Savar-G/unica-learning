@@ -116,6 +116,65 @@ describe("Unica Challenge templates", () => {
       }
     }
   });
+  it("checks the proposed U17 Challenge answers independently across 200 seeds", () => {
+    const steps = HOUSE_TEMPLATES.filter(h => /^(5\.6-(multiply-2-digit|divide-remainder)|5\.3-(equivalent-fractions|same-amount)|5\.11-evaluate-expression)$/.test(h.skill));
+    expect(steps).toHaveLength(9);
+    for (const h of steps) {
+      const step = c.skillSteps(h.skill)![h.step - 1];
+      for (const [index, template] of h.templates.entries()) {
+        const prepared = prepareTemplate(step, template, c.contexts);
+        for (let seed = 1; seed <= 200; seed++) {
+          const { text, answer, values } = prepared.fill(seededRandom(seed));
+          const [a, b, n, d, e] = [values.a, values.b, values.n, values.d, values.e].map(Number);
+          let expected: number | undefined;
+          switch (h.skill) {
+            case "5.6-multiply-2-digit": {
+              const product = a * b;
+              const c = Number(values.c);
+              if (h.step === 1) expected = product - (index === 0 ? c : Number(values.p));
+              if (h.step === 2) expected = index === 0 ? product - c * b : index === 1 ? a * (b % 10) : product - c;
+              if (h.step === 3) expected = index === 0 ? product - a * c : index === 1 ? a * (b % 10) : product + e;
+              break;
+            }
+            case "5.6-divide-remainder": {
+              const quotient = Math.floor(n / b);
+              const remainder = n % b;
+              expect(remainder).toBeGreaterThan(0);
+              if (h.step === 2) expect(Math.floor(quotient / 10) % 10).toBe(0);
+              expected = index === 0 ? quotient - remainder : h.step === 1
+                ? index === 1 ? quotient : b - remainder
+                : index === 1 ? remainder : Math.ceil(n / b);
+              break;
+            }
+            case "5.3-equivalent-fractions": {
+              if (h.step === 1) {
+                const equivalent = a * e / d;
+                expect(Number.isInteger(equivalent)).toBe(true);
+                expected = index === 0 ? equivalent + a : index === 1 ? equivalent : e - equivalent;
+              } else if (index === 1) {
+                expected = Number(values.m) / a * d;
+              } else {
+                const equivalent = a * e / d;
+                expect(Number.isInteger(equivalent)).toBe(true);
+                expected = index === 0 ? equivalent - a : 2 * equivalent;
+              }
+              break;
+            }
+            case "5.3-same-amount":
+              expected = index === 0 ? e / d : a * e / d;
+              if (index === 0) expect(Number(values.m) / a).toBe(expected);
+              break;
+            case "5.11-evaluate-expression": {
+              const sum = n + a, difference = b - n;
+              expected = index === 0 ? sum - difference : index === 1 ? sum + difference : a - difference;
+              break;
+            }
+          }
+          expect(Number(answer), text).toBe(expected);
+        }
+      }
+    }
+  });
   it("checks U19 Challenge keys independently across 200 seeds", () => {
     const prime = (n: number) => n >= 2 && !Array.from({ length: Math.max(0, Math.floor(Math.sqrt(n)) - 1) }, (_, i) => i + 2).some(d => n % d === 0);
     for (const h of HOUSE_TEMPLATES.filter(h => ["6.13-classify-angles", "6.4-prime-composite", "6.4-divisibility", "6.4-lcm"].includes(h.skill))) {

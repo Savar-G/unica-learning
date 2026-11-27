@@ -45,11 +45,11 @@ beforeEach(() => {
   f.requireAdmin.mockResolvedValue(admin());
 });
 
-it("runs the public preview loader using only reads and returns U16 with the report check", async () => {
+it("runs the public preview loader using only reads and returns U17 with the report check", async () => {
   const detail = await loadPreviewPlan(admin(), id);
   expect(detail?.preview.ok).toBe(true);
   if (!detail?.preview.ok) return;
-  expect(detail.preview.plan.level).toBe(16);
+  expect(detail.preview.plan.level).toBe(17);
   expect(detail.preview.why.inputs.find(i => i.label === "Report recommendation")).toMatchObject({ status: "Used", value: "Move ahead" });
   expect(reads).toEqual(["admin_assessments", "child_profiles", "workbook_instructions", "admin_reports", "learner_profiles"]);
   expect(detail.preview.plan.instructions).toBeUndefined();
@@ -119,8 +119,8 @@ it.each(["row schema", "JSON schema", "derived version", "facts"])("rebuilds the
   expect(f.inputs).toHaveBeenCalledOnce();
   expect(detail?.preview.ok).toBe(true);
   if (detail?.preview.ok) {
-    expect(detail.preview.plan.level).toBe(16);
-    expect(detail.preview.plan.personal?.working?.working).toBe(5);
+    expect(detail.preview.plan.level).toBe(17);
+    expect(detail.preview.why).toMatchObject({ measuredLevel: 5, startingPoint: "U17" });
     expect(detail.preview.plan.personal?.soft.sources?.test.suggested).toEqual([]);
     expect(detail.preview.why.warnings).toContain("This preview rebuilt older test facts without AI. A real run can add new AI notes after it rebuilds those facts.");
   }
@@ -138,4 +138,6 @@ it("plans the preview with the child's saved book instructions and shows what ea
   const html = renderToStaticMarkup(page);
   expect(html).toContain("Book instructions used");
   expect(html).toContain("Applied");
+  expect(html).toContain("<strong>Measured level</strong> Grade 5");
+  expect(html).toContain("<strong>Starting point</strong> U19");
 });

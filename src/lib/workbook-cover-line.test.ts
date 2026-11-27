@@ -1,3 +1,4 @@
+import { EMPTY_INSTRUCTIONS } from "@/lib/workbook-instructions";
 import { describe, expect, it } from "vitest";
 import { bookPageContent } from "@/lib/workbook-book";
 import { coverLineProblem, workbookCoverLine } from "@/lib/workbook-cover-line";
@@ -7,34 +8,41 @@ import { planWorkbook, type WorkbookPlan } from "@/lib/workbook-plan";
 import { bookPersona, firstCustomerProfile, sampleChild, samplePlanInput, type BookPersona } from "@/lib/workbook-sample-profiles";
 
 const BC = curriculumFor("bc")!;
-function plan(profile = firstCustomerProfile()) {
-  const result = planNextWorkbook({ curriculum: BC, grade: 4, profile, workbooks: [], number: 1 });
+function plan(profile = firstCustomerProfile(), startLevel?: string) {
+  const result = planNextWorkbook({ curriculum: BC, grade: 4, profile, workbooks: [], number: 1,
+    instructions: startLevel ? { ...EMPTY_INSTRUCTIONS, startLevel } : undefined });
   if (!result.ok) throw new Error(result.reason);
   return result.plan;
 }
 const cover = (plan: WorkbookPlan, child = "I.J.", workbook = 1) => bookPageContent({ curriculum: BC, plan, child, workbook, type: "cover", number: 1 });
 
 describe("the personal cover sentence", () => {
-  it("keeps the first customer's approved first sentence, changing only its number phrases", () => {
-    const draft = "I.J. did very well on every part of the assessment, so this book moves ahead to numbers to a million, multiplying by tens and pattern rules.";
-    const expected = draft.replace("numbers to a million", "larger numbers").replace("multiplying by tens", "multiplication");
+  it("describes a strong assessment result and names the starting point", () => {
+    const expected = "I.J. did very well on every part of the assessment, so this book uses multiplying and dividing, equivalent fractions and solving equations as a starting point.";
     expect(workbookCoverLine(plan(), "I.J.", 1)).toBe(expected);
     expect(cover(plan())).toMatchObject({ madeFrom: "assessment", sentence: expected });
     expect(expected).not.toContain("Warm-ups");
     expect(firstCustomerProfile().assessment!.profile.facts).toMatchObject({ answered: 19, correct: 19, accuracy: "secure", speed: "quick" });
   });
 
+  it("keeps the cover wording for a plan saved before the starting-point rule", () => {
+    const p: WorkbookPlan = plan(firstCustomerProfile(), "U16");
+    const start = p.personal!.start!;
+    p.personal!.start = { rule: "P5", reason: start.reason, home: start.home, rules: start.rules, support: start.support, level: "U16" };
+    expect(workbookCoverLine(p, "I.J.", 1)).toBe("I.J. did very well on every part of the assessment, so this book moves ahead to larger numbers, multiplication and pattern rules.");
+  });
+
   it.each(["accuracy", "speed"] as const)("does not praise every part when fact %s needs practice", field => {
     const profile = firstCustomerProfile();
     profile.assessment!.profile.facts![field] = "needs-practice";
     if (field === "accuracy") profile.assessment!.profile.facts!.correct = 2;
-    expect(cover(plan(profile))).toMatchObject({ sentence: "This book works on larger numbers, multiplication and pattern rules, at the level I.J. showed on the assessment." });
+    expect(cover(plan(profile))).toMatchObject({ sentence: "This book gives I.J. a starting point in multiplying and dividing, equivalent fractions and solving equations." });
   });
 
   it("does not praise every part when the facts round is missing", () => {
     const profile = firstCustomerProfile();
     profile.assessment!.profile.facts = null;
-    expect(cover(plan(profile))).toMatchObject({ sentence: "This book works on larger numbers, multiplication and pattern rules, at the level I.J. showed on the assessment." });
+    expect(cover(plan(profile))).toMatchObject({ sentence: "This book gives I.J. a starting point in multiplying and dividing, equivalent fractions and solving equations." });
   });
 
   it.each(["accuracy", "speed", "medianMs"] as const)("does not praise every part when fact %s is missing", field => {
@@ -76,10 +84,10 @@ describe("the personal cover sentence", () => {
   });
 
   it.each<[BookPersona, string]>([
-    ["ahead", "A.B. did very well on every part of the assessment, so this book moves ahead to larger numbers, multiplication and pattern rules."],
-    ["catch-up", "This book starts with larger numbers, step by step, then moves on to growing patterns."],
-    ["on-level", "This book works on larger numbers and pattern tables, at the level E.F. showed on the assessment."],
-    ["rushed", "This book gives G.H. practice with larger numbers and pattern tables, step by step."],
+    ["ahead", "A.B. did very well on every part of the assessment, so this book uses multiplying and dividing, equivalent fractions and solving equations as a starting point."],
+    ["catch-up", "This book gives C.D. a starting point in multiplying and dividing, missing numbers and pattern rules."],
+    ["on-level", "This book gives E.F. a starting point in comparing fractions and multiplying and dividing."],
+    ["rushed", "This book gives G.H. a starting point in larger numbers and pattern tables."],
   ])("prints %s's own true sentence", (persona, sentence) => {
     const { profile, initials } = bookPersona(persona);
     expect(cover(plan(profile), initials)).toMatchObject({ sentence });
@@ -91,10 +99,10 @@ describe("the personal cover sentence", () => {
 
   it("uses only topics with taught steps, in their teaching order", () => {
     const p = plan();
-    p.newSteps = p.newSteps.filter(s => s.unit !== "5.9");
-    expect(workbookCoverLine(p, "I.J.", 1)).toBe("I.J. did very well on every part of the assessment, so this book moves ahead to larger numbers and pattern rules.");
-    p.newSteps = [...p.newSteps.filter(s => s.unit === "5.10"), ...p.newSteps.filter(s => s.unit !== "5.10")];
-    expect(workbookCoverLine(p, "I.J.", 1)).toContain("pattern rules and larger numbers.");
+    p.newSteps = p.newSteps.filter(s => s.unit !== "5.3");
+    expect(workbookCoverLine(p, "I.J.", 1)).toBe("I.J. did very well on every part of the assessment, so this book uses multiplying and dividing and solving equations as a starting point.");
+    p.newSteps = [...p.newSteps.filter(s => s.unit === "5.11"), ...p.newSteps.filter(s => s.unit !== "5.11")];
+    expect(workbookCoverLine(p, "I.J.", 1)).toContain("solving equations and multiplying and dividing as a starting point.");
   });
 
   it("does not praise every area when an area is weak or unmeasured", () => {
@@ -110,13 +118,13 @@ describe("the personal cover sentence", () => {
 
   it("never claims a trusted working level with rushing, likely help or low confidence", () => {
     for (const change of [
-      (p: WorkbookPlan) => { p.personal!.behaviour!.rushRuns = 1; },
+      (p: WorkbookPlan) => { p.personal!.behaviour!.leftOut = 1; },
       (p: WorkbookPlan) => { p.personal!.behaviour!.helpLikely = true; },
       (p: WorkbookPlan) => { p.personal!.working!.confidence = "low"; },
     ]) {
       const p = plan();
       change(p);
-      expect(workbookCoverLine(p, "I.J.", 1)).toBe("This book gives I.J. practice with larger numbers, multiplication and pattern rules, step by step.");
+      expect(workbookCoverLine(p, "I.J.", 1)).toBe("This book gives I.J. a starting point in multiplying and dividing, equivalent fractions and solving equations.");
     }
   });
 

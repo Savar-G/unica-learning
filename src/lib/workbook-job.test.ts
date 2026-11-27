@@ -1129,7 +1129,7 @@ it("finishes a personalized run whose stored plan comes back in jsonb key order 
   const id = await started(s);
   expect(await runWorkbookJob(id, s.deps)).toBe("done");
   expect((await s.runs.run(id))!.error).toBeNull();
-  expect((await s.runs.frame(id))?.plan.level).toBe(16);
+  expect((await s.runs.frame(id))?.plan.level).toBe(17);
 }, 180_000);
 
 it("plans from the child's book instructions once, and a resume keeps the set the run started with", async () => {

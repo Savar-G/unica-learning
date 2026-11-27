@@ -1,0 +1,11 @@
+{
+  "round": "1174-workbook-start",
+  "issue": 1174,
+  "baseline": "97963a33",
+  "browser": "Aside CLI (u0) against npm run dev",
+  "data": "Invented example using the real planner, admin preview component and workbook cover template in a temporary local route. The refreshed admin after image shows a Grade 4 result with one missed question. No authenticated admin session or family records were used.",
+  "screenshots": [
+    { "surface": "Admin plan preview", "before": "admin-preview-before.png", "after": "admin-preview-after.png" },
+    { "surface": "Workbook 1 cover", "before": "cover-before.png", "after": "cover-after.png" }
+  ]
+}
