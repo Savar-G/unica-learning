@@ -1,8 +1,9 @@
 // The in-memory reader of the cost per child (child-unit-cost.ts), for tests. It sums raw rows inside each family's month
 // the way admin_child_unit_cost does, without the older-ledger history.
 import type { BudgetLine, CostFamily, CostSums, FamilyBounds, UnitCostReader } from "@/lib/child-unit-cost";
+import type { AiProviderKind } from "@/lib/ai-usage";
 
-export interface MemoryAiCall { parentId: string; childId: string | null; at: string; provider: "openrouter" | "anthropic" | "subscription"; costUsd: number | null; calls?: number }
+export interface MemoryAiCall { parentId: string; childId: string | null; at: string; provider: AiProviderKind; costUsd: number | null; calls?: number }
 export interface MemoryMayaRow { parentId: string; childId: string | null; at: string; what: "model" | "review" | "speech_to_text" | "voice"; costMicros: number }
 export interface MemoryShipped { parentId: string; childId: string; at: string }
 export interface MemoryBudget { name: string; date: string; cents: number }

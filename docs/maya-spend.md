@@ -12,7 +12,7 @@ Decisions D-290 and D-291. Savar decided the amount: CAD 10 per child per week (
 | Speech-to-text | USD 0.01 a minute | `MAYA_STT_USD_PER_MINUTE` |
 | Maya's voice | USD 0.03 per 1,000 characters | `MAYA_VOICE_USD_PER_1K_CHARS` |
 
-OpenRouter reports each attempt's cost in US dollars. The ledger turns it into CAD with the one configured rate, and keeps whole micro-units of CAD (1 CAD = 1,000,000). The rate is not looked up: change `MAYA_USD_TO_CAD` in Vercel and in the voice worker's settings when the dollar moves. The speech-to-text and voice rates are estimates, because the voice providers report no cost per call; set them from the providers' price pages.
+OpenRouter reports each attempt's cost in US dollars. When Maya uses LiveKit Inference (D-349), the gateway reports token counts. `src/lib/ai-livekit-inference.ts` uses LiveKit's Scale prices to estimate the cost before the ledger reads it. The AI usage rows show provider `livekit` and mark the cost as an estimate when the required counts and rates are available. The ledger converts the cost to CAD at the configured rate and keeps whole micro-units of CAD (1 CAD = 1,000,000). Change `MAYA_USD_TO_CAD` on Vercel and in the voice worker when the rate changes. The speech providers report no cost per call. Set the speech-to-text and voice rates from the providers' price pages.
 
 The week is the family's week: Monday 00:00 to Monday 00:00 in the family's time zone (`src/lib/family-time.ts`). The month is the calendar month in Pacific time.
 

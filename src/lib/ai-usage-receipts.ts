@@ -1,5 +1,5 @@
 // Only receipts emitted by the recorder are eligible for replay. There is no reconstruction from account totals.
-import { AI_FEATURES, usageRow, type AiUsageRow } from "@/lib/ai-usage";
+import { AI_FEATURES, AI_PROVIDERS, usageRow, type AiUsageRow } from "@/lib/ai-usage";
 import { AI_KEY_ALIASES, AI_USAGE_CONTEXTS } from "@/lib/ai-usage-context";
 
 export function parseUsageReceipt(raw: unknown): AiUsageRow {
@@ -13,7 +13,7 @@ export function parseUsageReceipt(raw: unknown): AiUsageRow {
     (r.parent_id !== null && !uuid.test(r.parent_id)) || (r.child_id !== null && (!uuid.test(r.child_id) || r.parent_id === null)) ||
     (r.generation_id !== null && !bounded(r.generation_id, 200)) ||
     ((r.source_kind === null) !== (r.source_id === null)) || (r.source_kind !== null && (!bounded(r.source_kind, 60) || !bounded(r.source_id, 200))) ||
-    !AI_FEATURES.includes(r.feature) || !["openrouter", "anthropic", "subscription"].includes(r.provider) ||
+    !AI_FEATURES.includes(r.feature) || !AI_PROVIDERS.includes(r.provider) ||
     !AI_USAGE_CONTEXTS.includes(r.usage_context) || !AI_KEY_ALIASES.includes(r.key_alias) ||
     !["provider", "estimate", "unknown"].includes(r.cost_basis) ||
     (r.key_id !== null && !/^[a-f0-9]{64}$/.test(r.key_id)) ||
