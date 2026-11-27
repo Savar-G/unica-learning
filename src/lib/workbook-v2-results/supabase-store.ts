@@ -14,7 +14,7 @@ export const BOOK_PAGE_ROWS = 1000;
 type Page<T> = PromiseLike<{ data: T[] | null; error: { message: string } | null }>;
 
 /** Keyset pagination over a strictly ascending cursor key so concurrent inserts cannot shift page offsets. */
-async function allKeysetPages<T, K>(what: string, keyOf: (row: T) => K, page: (after: K | null) => Page<T>): Promise<T[]> {
+async function allKeysetPages<T, K>(what: string, page: (after: K | null) => Page<T>, keyOf: (row: T) => K): Promise<T[]> {
   const rows: T[] = [];
   let after: K | null = null;
   for (;;) {
@@ -44,11 +44,11 @@ export function writeAnswer(data: unknown): WriteResultsOutcome {
 }
 
 export function supabaseBookStore(db: SupabaseClient<Database>): BookStore {
-  const books = async (childId: string) => (await allKeysetPages("books", (r) => r.number, (after) => {
+  const books = async (childId: string) => (await allKeysetPages("books", (after: number | null) => {
     const q = db.from("workbooks").select("id, parent_id, number, printed_revision, levels")
       .eq("child_id", childId).eq("generator", "v2").order("number", { ascending: true }).limit(BOOK_PAGE_ROWS);
     return after === null ? q : q.gt("number", after);
-  })).map((b) => ({ workbookId: b.id, parentId: b.parent_id, number: b.number, printedRevision: b.printed_revision, levels: b.levels }));
+  }, (r) => r.number)).map((b) => ({ workbookId: b.id, parentId: b.parent_id, number: b.number, printedRevision: b.printed_revision, levels: b.levels }));
 
   return {
     books,
@@ -57,12 +57,12 @@ export function supabaseBookStore(db: SupabaseClient<Database>): BookStore {
       const own = await books(childId);
       if (own.length === 0) return [];
       const ids = own.map((b) => b.workbookId);
-      return (await allKeysetPages("sheets", (r) => r.id, (after) => {
+      return (await allKeysetPages("sheets", (after: string | null) => {
         const q = db.from("workbook_sheets")
           .select("id, workbook_id, sheet_id, attempt, front_page_number, back_page_number, queue_reason")
           .eq("child_id", childId).in("workbook_id", ids).order("id", { ascending: true }).limit(BOOK_PAGE_ROWS);
         return after === null ? q : q.gt("id", after);
-      })).map((s) => ({
+      }, (r) => r.id)).map((s) => ({
         workbookId: s.workbook_id, sheetId: s.sheet_id, attempt: s.attempt, frontPage: s.front_page_number, backPage: s.back_page_number,
         reason: s.queue_reason === null ? null : oneOf<QueueReason>(QUEUE_REASONS, s.queue_reason, "queue reason"),
       }));
@@ -73,12 +73,12 @@ export function supabaseBookStore(db: SupabaseClient<Database>): BookStore {
       if (own.length === 0) return [];
       const revisionOf = new Map(own.map((b) => [b.workbookId, b.printedRevision]));
       const ids = [...revisionOf.keys()];
-      return (await allKeysetPages("items", (r) => r.id, (after) => {
+      return (await allKeysetPages("items", (after: string | null) => {
         const q = db.from("workbook_item_answers")
           .select("id, workbook_id, printed_revision, item_id, sheet_id, attempt")
           .eq("child_id", childId).in("workbook_id", ids).order("id", { ascending: true }).limit(BOOK_PAGE_ROWS);
         return after === null ? q : q.gt("id", after);
-      })).flatMap((i) => (revisionOf.get(i.workbook_id) === i.printed_revision
+      }, (r) => r.id)).flatMap((i) => (revisionOf.get(i.workbook_id) === i.printed_revision
         ? [{ workbookId: i.workbook_id, printedRevision: i.printed_revision, itemId: i.item_id, sheetId: i.sheet_id, attempt: i.attempt }]
         : []));
     },
@@ -89,17 +89,17 @@ export function supabaseBookStore(db: SupabaseClient<Database>): BookStore {
       const revisionOf = new Map(own.map((b) => [b.workbookId, b.printedRevision]));
       const ids = [...revisionOf.keys()];
       const [receipts, pages] = await Promise.all([
-        allKeysetPages("receipts", (r) => r.id, (after) => {
+        allKeysetPages("receipts", (after: string | null) => {
           const q = db.from("workbook_scan_receipts")
             .select("id, workbook_id, page_id, printed_revision")
             .eq("child_id", childId).eq("status", "accepted").in("workbook_id", ids).order("id", { ascending: true }).limit(BOOK_PAGE_ROWS);
           return after === null ? q : q.gt("id", after);
-        }),
-        allKeysetPages("pages", (r) => r.id, (after) => {
+        }, (r) => r.id),
+        allKeysetPages("pages", (after: string | null) => {
           const q = db.from("workbook_pages").select("id, page_number")
             .in("workbook_id", ids).order("id", { ascending: true }).limit(BOOK_PAGE_ROWS);
           return after === null ? q : q.gt("id", after);
-        }),
+        }, (r) => r.id),
       ]);
       const numberOf = new Map(pages.map((p) => [p.id, p.page_number]));
       return receipts.flatMap((r) => {
@@ -113,12 +113,12 @@ export function supabaseBookStore(db: SupabaseClient<Database>): BookStore {
       if (own.length === 0) return [];
       const revisionOf = new Map(own.map((b) => [b.workbookId, b.printedRevision]));
       const ids = [...revisionOf.keys()];
-      return (await allKeysetPages("results", (r) => r.id, (after) => {
+      return (await allKeysetPages("results", (after: string | null) => {
         const q = db.from("child_sheet_results")
           .select("id, workbook_id, printed_revision, sheet_id, attempt, items_total, items_scored, mistakes, result, marks_version")
           .eq("child_id", childId).in("workbook_id", ids).order("id", { ascending: true }).limit(BOOK_PAGE_ROWS);
         return after === null ? q : q.gt("id", after);
-      })).flatMap((r) => (revisionOf.get(r.workbook_id) === r.printed_revision
+      }, (r) => r.id)).flatMap((r) => (revisionOf.get(r.workbook_id) === r.printed_revision
         ? [{
           workbookId: r.workbook_id, printedRevision: r.printed_revision, sheetId: r.sheet_id, attempt: r.attempt, itemsTotal: r.items_total,
           itemsScored: r.items_scored, mistakes: r.mistakes, result: oneOf<SheetResultKind>(SHEET_RESULTS, r.result, "result"), marksVersion: r.marks_version,
