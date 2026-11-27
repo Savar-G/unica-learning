@@ -1,6 +1,6 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import type { Answer, BookItem, ColumnFace, Ink, PageModel, Region } from "../contract";
+import { answerLine, type Answer, type BookItem, type ColumnFace, type Ink, type PageModel, type Region } from "../contract";
 import { SHAPES, shapeLibrary, type Shape, type ShapeLibrary } from "../shapes";
 import { wholeNumber } from "../shapes/shape";
 import { bookOf, divisionBook, factsBook, goodBook, inventedBook, stackOf, type GoodBook } from "../testing/sample";
@@ -149,7 +149,7 @@ describe("an answer that has no good form, in both computations", () => {
     ["a name with a number 0", ([first, ...more]) => [{ ...first, name: "blank-0" }, ...more], /the name "blank-0", which is not known/],
     ["two parts with one name", (parts) => parts.map((p) => ({ ...p, name: "blank-1" })), /has two parts with the name "blank-1"/],
     ["another kind", ([first, ...more]) => [{ ...first, kind: "fraction" }, ...more], /has a part of the kind "fraction", which is not "whole-number"/],
-    ["a field more", ([first, ...more]) => [{ ...first, unit: "cm" }, ...more], /has a part that is not a name, a kind and a value/],
+    ["a field more", ([first, ...more]) => [{ ...first, note: "cm" }, ...more], /has a part that is not a name, a kind and a value/],
     ["a part that is nothing", ([, ...more]) => [null, ...more], /has a part that is not a name, a kind and a value/],
     ["no part", () => [], /has no part/],
   ])("%s is a problem of the first and of the second one", (_name, change, problem) => {
@@ -177,6 +177,31 @@ describe("an answer of digits, one for each place", () => {
   it("is no whole number, and a whole number is no digit", () => {
     expect(answerProblem(places("4", "3"), "whole-number")).toMatch(/kind "digit", which is not "whole-number"/);
     expect(answerProblem({ parts: [{ name: "answer", kind: "whole-number", value: "10" }] }, "whole-number")).toBeNull();
+  });
+});
+
+describe("an answer of a quantity, with its unit", () => {
+  const quantity = (value: string, unit?: unknown) => ({ parts: [{ name: "answer", kind: "quantity", value, ...(unit === undefined ? {} : { unit }) }] });
+  it("is good with a whole number and a unit, and the last step says both", () => {
+    expect(answerProblem(quantity("24", "muffins") as Answer, "quantity")).toBeNull();
+    expect(answerProblem(quantity("0", "litres") as Answer, "quantity")).toBeNull();
+    expect(answerLine(quantity("24", "muffins") as Answer)).toBe("24 muffins");
+  });
+  it.each<[string, unknown, RegExp]>([
+    ["no unit", quantity("24"), /the part "answer" of the kind "quantity" has no unit/],
+    ["an empty unit", quantity("24", ""), /the part "answer" has the unit "", which cannot be printed/],
+    ["a unit with a space at an end", quantity("24", "cm "), /the unit "cm ", which cannot be printed/],
+    ["a unit that the fonts cannot print", quantity("24", "cm²"), /the unit "cm²", which cannot be printed/],
+    ["a unit that is no text", quantity("24", 3), /the unit 3, which cannot be printed/],
+    ["a value that is no whole number", quantity("2.5", "cm"), /has the value "2\.5", which is no whole-number/],
+    ["a value with a zero in front", quantity("07", "cm"), /has the value "07", which is no whole-number/],
+    ["a whole number in a part of a quantity", { parts: [{ name: "answer", kind: "whole-number", value: "4" }] }, /kind "whole-number", which is not "quantity"/],
+  ])("refuses %s", (_name, answer, problem) => expect(answerProblem(answer as Answer, "quantity")).toMatch(problem));
+  it("has no unit in a part of a whole number or a digit, so those answers stay as they are", () => {
+    expect(answerProblem({ parts: [{ name: "answer", kind: "whole-number", value: "4", unit: "cm" }] }, "whole-number")).toMatch(/the part "answer" of the kind "whole-number" has a unit/);
+    expect(answerProblem({ parts: [{ name: "ones", kind: "digit", value: "4", unit: "cm" }] }, "digit")).toMatch(/the part "ones" of the kind "digit" has a unit/);
+    expect(answerLine({ parts: [{ name: "answer", kind: "whole-number", value: "4" }] })).toBe("4");
+    expect(answerLine({ parts: [{ name: "quotient", kind: "whole-number", value: "9" }, { name: "remainder", kind: "whole-number", value: "1" }] })).toBe("9 R1");
   });
 });
 
@@ -313,5 +338,44 @@ describe("a bar model", () => {
       item.answer = wholeNumber(76);
       item.steps = [{ text: "76", marks: [] }];
     }, /cannot be read as figure\.bar/],
+  ])("%s stops the book", (_name, number, change, problem) => expect(after(number, change)).toMatch(problem));
+});
+
+describe("a word problem", () => {
+  // Pages 5 and 6 of the invented book are word problems. The second computation reads the numbers of the text and the unit
+  // beside the answer area from the page, and works the formula again with code of its own.
+  const good = inventedBook();
+  /** The problems after a change of question 1 of a page of word problems: of its item, and of its rectangles on a copy of the page. */
+  const after = (number: 5 | 6, change: (item: BookItem, ink: Ink[]) => unknown): string => {
+    const page = structuredClone(good.pages[number - 1]);
+    const item = structuredClone(good.items.find((i) => i.id === `${page.id}/1`)!);
+    change(item, page.regions.find((r) => r.item === item.id && r.role === "question")!.ink);
+    return checkPrintedAnswers([page], [item], SHAPES).join("\n");
+  };
+  const flowOf = (ink: Ink[]) => ink.find((i): i is Extract<Ink, { kind: "flow" }> => i.kind === "flow")!;
+  const unitOf = (ink: Ink[]) => ink.find((i): i is Extract<Ink, { kind: "text" }> => i.kind === "text")!;
+  const story = (item: BookItem) => item.question as { slots: { name: string; value: number }[]; solver: unknown };
+
+  it("is read from its page and agrees with the item", () => {
+    expect(problemsOf(good)).toEqual([]);
+    expect(good.items.filter((i) => i.face.kind === "story")).toHaveLength(6);
+  });
+
+  it.each<[string, 5 | 6, (item: BookItem, ink: Ink[]) => unknown, RegExp]>([
+    ["a number of the text that is not the number of the question", 5, (_item, ink) => { const flow = flowOf(ink); const at = flow.tokens.findIndex((t) => /^\d+$/.test(t.pieces[0])); flow.tokens[at] = { kind: "word", pieces: [String(Number(flow.tokens[at].pieces[0]) + 1)] }; }, /^Sheet "story-problems-1", front side, question 1 \(\): the text prints the numbers \d+, \d+ and the question has \d+, \d+\.$/],
+    ["the numbers of the question in another order", 5, (item) => { const { slots } = story(item); slots.reverse(); }, /the text prints the numbers [\d, ]+ and the question has [\d, ]+/],
+    ["a number more in the text", 5, (_item, ink) => { flowOf(ink).tokens.push({ kind: "word", pieces: ["7"] }); }, /the text prints the numbers [\d, ]+, 7 and the question has/],
+    ["a unit beside the area that is not the unit of the answer", 5, (_item, ink) => { unitOf(ink).text = "boxes"; }, /the unit beside the answer area is "boxes" and the answer is in "muffins"/],
+    ["no unit beside the area", 5, (_item, ink) => { ink.splice(ink.indexOf(unitOf(ink)), 1); }, /the unit beside the answer area is missing and the answer is in "muffins"/],
+    ["an answer of another unit", 5, ({ answer: { parts }, steps }) => { parts[0].unit = "boxes"; steps[steps.length - 1].text = `${parts[0].value} boxes`; }, /the unit beside the answer area is "muffins" and the answer is in "boxes"/],
+    ["an answer that the formula does not give", 5, ({ answer: { parts }, steps }) => { parts[0].value = String(Number(parts[0].value) + 1); steps[steps.length - 1].text = `${parts[0].value} ${parts[0].unit}`; }, /the answer is "\d+ muffins" by one computation and "\d+" by another/],
+    ["a formula in the item that is not the one that was worked", 6, (item) => { story(item).solver = { op: "+", left: { slot: "count" }, right: { number: 1 } }; }, /the answer is "\d+ dollars" by one computation and "\d+" by another/],
+    ["worked steps that end with another answer", 5, ({ steps }) => { steps[steps.length - 1].text = "8 boxes"; }, /the answer is "\d+ muffins" by one computation and "8 boxes" by the worked steps/],
+    ["a wrong first worked step", 6, ({ steps }) => { steps[0].text = "2 + 2 = 5"; }, /the worked steps are \["2 \+ 2 = 5".*\] and another computation gives/],
+    ["a first worked step that draws", 6, ({ steps }) => { steps[0].marks = [{ mark: "write", place: 0, digit: "1" }]; }, /a worked step of a word problem must draw nothing/],
+    ["a fraction in the text that disagrees with the formula", 5, (_item, ink) => { flowOf(ink).tokens.push({ kind: "math", pieces: ["¼"] }); }, /the text prints the fractions ¼ and the formula has none/],
+    ["a fraction printed as a word token", 5, (_item, ink) => { flowOf(ink).tokens.push({ kind: "word", pieces: ["½"] }); }, /the text prints a fraction as a word instead of math/],
+    ["a last step that draws", 5, ({ steps }) => { steps[steps.length - 1].marks = [{ mark: "write", place: 0, digit: "1" }]; }, /the last worked step is the answer and must draw nothing/],
+    ["an answer with no unit", 5, ({ answer: { parts } }) => { Reflect.deleteProperty(parts[0], "unit"); }, /the answer the part "answer" of the kind "quantity" has no unit/],
   ])("%s stops the book", (_name, number, change, problem) => expect(after(number, change)).toMatch(problem));
 });

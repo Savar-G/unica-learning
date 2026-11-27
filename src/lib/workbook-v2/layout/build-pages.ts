@@ -2,7 +2,7 @@
 import type { SnapshotSheet } from "../bank/snapshot";
 import { BRACKET_SIGN, PAPER, partRegionName, PRINT_RULES, type BookItem, type Capture, type FaceToken, type Ink, type PageModel, type Rect, type Region, type RegionRole, type Side } from "../contract";
 import { qrSquares } from "./qr";
-import { cellsFor, placeProblem, tokensOf, type AnswerArea, type BracketPlace, type ColumnPlace, type FieldsPlace, type FigurePlace, type ItemPlace, type PageFrame, type TokenCell, type TokenPlace } from "./templates";
+import { cellsFor, placeProblem, tokensOf, type AnswerArea, type BracketPlace, type ColumnPlace, type FieldsPlace, type FigurePlace, type ItemPlace, type PageFrame, type StoryPlace, type TokenCell, type TokenPlace } from "./templates";
 
 export interface PlannedSheet {
   sheet: SnapshotSheet;
@@ -144,8 +144,24 @@ function figureRegions(make: MakeRegion, place: FigurePlace, { face, answer }: L
   ];
 }
 
+const STORY = PRINT_RULES.story;
+
+/** The flow text of a word problem and the unit after the reach of its answer area; the work area below the text is empty. */
+function storyRegions(make: MakeRegion, place: StoryPlace, { face }: LaidOut): Region[] {
+  if (face.kind !== "story") throw new Error("a word problem has flow text");
+  return [
+    make("question", place.question, [
+      { kind: "flow", rect: place.flow, color: BLACK, tokens: face.tokens, size: STORY.flow.size, weight: STORY.flow.weight, leading: STORY.flow.leading },
+      text(place.unit, face.unit, STORY.unit.size, STORY.unit.weight, "left"),
+    ]),
+    ...areaRegions(make, place, face.blank),
+    make("work", place.work),
+  ];
+}
+
 /** The rectangles of a question that the kind of its place decides. */
 function faceRegions(make: MakeRegion, place: ItemPlace, item: LaidOut): Region[] {
+  if ("flow" in place) return storyRegions(make, place, item);
   if ("frame" in place) return figureRegions(make, place, item);
   if ("fields" in place) return fieldsRegions(make, place, item);
   if ("forms" in place) return tokenRegions(make, place, item);

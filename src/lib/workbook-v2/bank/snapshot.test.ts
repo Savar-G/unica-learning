@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import raw from "../fixtures/snapshot.json";
+import inventedSnapshot from "../fixtures/snapshot-invented-topic.json";
 import { TEMPLATES, type PageTemplate } from "../layout/templates";
 import { wholeNumber } from "../shapes/shape";
 import { SHAPES, shapeLibrary, type Shape } from "../shapes";
@@ -235,5 +236,114 @@ describe("the questions of a side fit its template", () => {
     const wide: Shape = { ...mul, worstCase: () => ({ question: {}, answer: wholeNumber("1234") }), face: () => ({ kind: "column", top: "617", sign: "×", bottom: "2" }) };
     const result = validateSnapshot(copy(), shapeLibrary([wide]));
     expect(result).toMatchObject({ ok: false, problems: expect.arrayContaining([`${ROW}: the widest question, 617 × 2 = 1234, needs 4 digit places and the template "columns-2x4" has 3.`]) });
+  });
+});
+
+describe("the word problems of a snapshot", () => {
+  type Stories = typeof inventedSnapshot & Record<string, unknown>;
+  type Question = Stories["questions"][number] & Record<string, unknown>;
+  const stories = (): Stories => structuredClone(inventedSnapshot) as Stories;
+  const question = (s: Stories, id: string): Question => {
+    const found = s.questions.find((q) => q.id === id);
+    if (!found) throw new Error(`no question ${id}`);
+    return found as Question;
+  };
+  /** The ids of the questions of the story row of a side. */
+  const rowQuestions = (s: Stories, side: "front" | "back") => (s.sheets[2][side].rows[0].limits as unknown as { questions: string[] }).questions;
+  const storyProblems = (change: (s: Stories) => unknown): string => {
+    const s = stories();
+    change(s);
+    const result = validateSnapshot(s);
+    return result.ok ? "" : result.problems.join("\n");
+  };
+
+  it("are read with the snapshot: questions, scenarios and two region packs, and a snapshot with none has none", () => {
+    const result = validateSnapshot(stories());
+    if (!result.ok) throw new Error(result.problems.join("\n"));
+    const bank = result.snapshot.stories;
+    expect(bank && [bank.defaultRegion, [...bank.packs.keys()], bank.questions.size, new Set(bank.scenarios.map((s) => s.interest))]).toEqual(["CA", ["CA", "US"], 7, new Set(["default", "space"])]);
+    expect(bank?.questions.get("half-of-them")?.phrasings[0].tokens.find((t) => t.kind === "math")).toEqual({ kind: "math", text: "½" });
+    const plain = validateSnapshot(copy());
+    expect(plain.ok && plain.snapshot.stories).toBeNull();
+  });
+
+  it.each<[string, (s: Stories) => unknown, RegExp]>([
+    // Q1: the defined questions.
+    ["one phrasing", (s) => { question(s, "muffin-boxes").phrasings.pop(); }, /^Question "muffin-boxes": a question needs at least 2 phrasings, and it has 1\.$/m],
+    ["an empty token", (s) => { question(s, "muffin-boxes").phrasings[0].tokens[0] = { word: "" }; }, /^Question "muffin-boxes", phrasing "packs", token 1: the token "" must not be empty or have a space at its ends\.$/m],
+    ["no token", (s) => { question(s, "muffin-boxes").phrasings[0].tokens = []; }, /^Question "muffin-boxes", phrasing "packs": tokens must have at least 1 entry\.$/m],
+    ["a token that is neither a word nor math", (s) => { Object.assign(question(s, "muffin-boxes").phrasings[0].tokens, { 0: { text: "The" } }); }, /token 1: a token must be \{"word": text\} or \{"math": text\}/],
+    ["a word with a space", (s) => { question(s, "muffin-boxes").phrasings[0].tokens[0] = { word: "The big" }; }, /the word "The big" has a space: a word token is one word/],
+    ["a slot that the formula names and the question does not have", (s) => { question(s, "muffin-boxes").solver = { op: "×", left: { slot: "groups" }, right: { slot: "boxes" } }; }, /^Question "muffin-boxes", solver: the slot "boxes" is not a slot of the question\.$/m],
+    ["a placeholder of no slot", (s) => { question(s, "muffin-boxes").phrasings[0].tokens[3] = { word: "[boxes]" }; }, /phrasing "packs": the placeholder \[boxes\] is not known\.[^]*the slot "groups" must be printed one time and it is printed 0 times/],
+    ["a slot that is printed twice", (s) => { question(s, "muffin-boxes").phrasings[1].tokens.push({ word: "[each]" }); }, /phrasing "holds": the slot "each" must be printed one time and it is printed 2 times/],
+    ["a range with min above max", (s) => { question(s, "muffin-boxes").slots.groups = { min: 9, max: 2 }; }, /^Question "muffin-boxes", slot "groups": min and max must be whole numbers from 0 to 9999, with min not more than max\.$/m],
+    ["a range with no multiple in it", (s) => { question(s, "half-of-them").slots.count = { min: 5, max: 5, multipleOf: 2 }; }, /slot "count": no number from 5 to 5 is a multiple of 2/],
+    ["a character that the fonts cannot print", (s) => { question(s, "muffin-boxes").phrasings[0].tokens[0] = { word: "Thé→" }; }, /the token "Thé→" has a character that the fonts cannot print/],
+    ["a digit of its own", (s) => { question(s, "muffin-boxes").phrasings[0].tokens[0] = { word: "2nd" }; }, /the token "2nd" has a digit, and only a slot prints a number/],
+    ["a unit that is no placeholder", (s) => { question(s, "muffin-boxes").unit = "muffins"; }, /^Question "muffin-boxes": unit must be "\[unit\]" of the scenario or "\[unit\.<name>\]" of the region pack\.$/m],
+    ["a story row that names no question of the snapshot", (s) => { rowQuestions(s, "front")[0] = "flying-boxes"; }, /^Sheet "story-problems-1", front side, row "one-step": there is no question "flying-boxes"\.$/m],
+    ["a story row that names a question twice", (s) => { rowQuestions(s, "front")[1] = "muffin-boxes"; }, /row "one-step": the question "muffin-boxes" is used more than once/],
+    ["a story row in a snapshot with no word problems", (s) => { for (const name of ["questions", "scenarios", "regionPacks", "defaultRegion"]) Reflect.deleteProperty(s, name); }, /^Sheet "story-problems-1", front side, row "one-step": a story row needs the questions, scenarios and region packs of its snapshot\.$/m],
+    ["word problems with a part missing", (s) => { Reflect.deleteProperty(s, "scenarios"); }, /^The snapshot: scenarios is missing: word problems need defaultRegion, regionPacks, scenarios, questions\.$/m],
+    ["a scenario word with a digit", (s) => { s.scenarios[0].place = "bakery 2"; }, /^Scenario "bakery-boxes": place has a digit, and only a slot prints a number\.$/m],
+    // A2: the formula is worked for every choice of numbers.
+    ["a half of a number that can be odd", (s) => { question(s, "half-of-them").slots.count = { min: 4, max: 40 }; }, /^Question "half-of-them", solver: with count 5: ½ × 5 is not a whole number\.$/m],
+    ["a difference that can be below zero", (s) => { question(s, "ribbon-cut").slots.cut = { min: 26, max: 30 }; }, /^Question "ribbon-cut", solver: with cut 26, length 25: 25 - 26 is less than zero\.$/m],
+    ["an answer that can be 1, beside a plural unit", (s) => { question(s, "ribbon-cut").slots.cut = { min: 5, max: 24 }; }, /^Question "ribbon-cut", solver: with cut 24, length 25 the answer is 1, and the unit beside the answer area is plural\.$/m],
+    ["too many choices of numbers to check", (s) => { question(s, "muffin-boxes").slots = { groups: { min: 2, max: 999 }, each: { min: 2, max: 999 } }; }, /^Question "muffin-boxes", solver: the slots allow 996004 choices of numbers and the most is 10000\.$/m],
+    ["a number that can be 1 before a plural word", (s) => { question(s, "muffins-left").slots.taken = { min: 1, max: 4 }; }, /phrasing "given": the slot "taken" can be 1 and the word after it is plural, \[things\]/],
+    ["a number that can be 1 before a plural word inside one math token", (s) => {
+      const q = question(s, "muffin-boxes");
+      q.slots.each = { min: 1, max: 4 };
+      const at = q.phrasings[0].tokens.findIndex((t) => "word" in t && t.word === "[each]");
+      q.phrasings[0].tokens.splice(at, 2, { math: "[each] [things]" });
+    }, /phrasing "packs": the slot "each" can be 1 and the word after it is plural, \[things\]/],
+    ["a fraction that disagrees with the formula", (s) => {
+      const token = question(s, "half-of-them").phrasings[0].tokens.find((t) => "math" in t);
+      if (token && "math" in token) token.math = "¼";
+    }, /phrasing "takes": the phrasing prints the fractions ¼ and the formula has ½/],
+    ["a fraction printed as a word token", (s) => {
+      const tokens = question(s, "half-of-them").phrasings[0].tokens;
+      const at = tokens.findIndex((t) => "math" in t);
+      tokens[at] = { word: "½" };
+    }, /phrasing "takes": the word "½" has a fraction: a fraction must be a math token/],
+    ["a formula that uses no slot", (s) => { Object.assign(question(s, "half-of-them"), { solver: { number: 2 } }); }, /^Question "half-of-them", solver: the formula must use a slot of the question\.$/m],
+    ["an explicit null regions list", (s) => { Object.assign(question(s, "half-of-them"), { regions: null }); }, /^Question "half-of-them": regions must be a list of different region pack ids\.$/m],
+    ["a scenario word with a fraction", (s) => { s.scenarios[0].place = "bakery ½"; }, /^Scenario "bakery-boxes": place has a fraction, and only a math token of a phrasing prints a fraction\.$/m],
+    ["a longer answer in a non-default scenario that exceeds the template", (s) => {
+      const q = question(s, "muffins-left");
+      Object.assign(q, { slots: { groups: { min: 99, max: 100 }, each: { min: 99, max: 100 }, taken: { min: 0, max: 2, multipleOf: 2 } } });
+      s.scenarios.find((x) => x.id === "bakery-boxes")!.quantityLimits = { groups: { min: 2, max: 100 }, each: { min: 2, max: 100 }, taken: { min: 2, max: 2 } };
+      s.scenarios.find((x) => x.id === "station-crates")!.quantityLimits = { groups: { min: 2, max: 100 }, each: { min: 2, max: 100 }, taken: { min: 0, max: 2 } };
+    }, /needs 5 characters in an answer and the template "stories-1x3" has 4/],
+    // T1: the scenarios.
+    ["no default scenario of a kind that a question uses", (s) => { s.scenarios[0].interest = "farm"; }, /^Question "muffin-boxes": no scenario of the kind "groups" has the interest "default"\.$/m],
+    ["two scenarios of one interest and kind", (s) => { s.scenarios[1].interest = "default"; }, /^The pair of interest and kind of a scenario "default, groups" is used more than once\.$/m],
+    ["limits of a scenario that leave no number of a slot", (s) => { s.scenarios[1].quantityLimits.groups = { min: 10, max: 12 }; }, /^Question "muffin-boxes": the slot "groups" and the limits of the scenario "station-crates" have no number in common\.$/m],
+    ["a scenario with no limit for a slot", (s) => { Reflect.deleteProperty(s.scenarios[4].quantityLimits, "cut"); }, /^Question "ribbon-cut": the scenario "craft-ribbon" sets no limit for the slot "cut"\.$/m],
+    ["a limit of a slot that no question has", (s) => { Object.assign(s.scenarios[4].quantityLimits, { width: { min: 1, max: 9 } }); }, /^Scenario "craft-ribbon": no question of the kind "measure" has the slot "width"\.$/m],
+    // T2: the region packs.
+    ["a default region that is no pack", (s) => { s.defaultRegion = "UK"; }, /^The snapshot: defaultRegion must be the id of a region pack, and it is "UK"\.$/m],
+    ["a question of a region that has no pack", (s) => { question(s, "toonie-savings").regions = ["CA", "UK"]; }, /^Question "toonie-savings": there is no region pack "UK"\.$/m],
+    ["a row with too few questions for a region", (s) => { rowQuestions(s, "back").splice(3, 1); }, /^Sheet "story-problems-1", back side, row "two-steps": the row asks for 3 different questions and the region "US" has 2 of them\.$/m],
+    ["a pack with a coin twice", (s) => { s.regionPacks[1].coins.list[1] = { ...s.regionPacks[1].coins.list[0] }; }, /Region pack "US": the coin id "dollar" is used more than once/],
+    ["a pack with a digit-leading coin id", (s) => { s.regionPacks[1].coins.list[4].id = "1-cent"; }, /Region pack "US", coins, coin 5: id must start with a small letter and use only small letters, digits and dashes/],
+    ["a slot with unaligned multipleOf bounds whose aligned values break the formula", (s) => {
+      const q = question(s, "half-of-them");
+      q.slots.count = { min: 5, max: 9, multipleOf: 2 };
+      q.phrasings.forEach((p) => { p.tokens = p.tokens.filter((t) => !("math" in t)); });
+      Object.assign(q, { solver: { op: "÷", left: { op: "+", left: { slot: "count" }, right: { number: 1 } }, right: { number: 2 } } });
+    }, /Question "half-of-them", solver: with count 6: 7 ÷ 2 is not a whole number/],
+    ["a pack with another rounding", (s) => { s.regionPacks[0].coins.rounding = "nearest-dime"; }, /Region pack "CA", coins: rounding must be "none" or "nearest-5-cents"/],
+    // T3: every placeholder fills with every scenario and region pack that a question can meet.
+    ["a spelling that one region pack does not have", (s) => { Reflect.deleteProperty(s.regionPacks[1].spelling, "colour"); }, /^Question "ribbon-cut", scenario "craft-ribbon", region "US": phrasing "cuts": the region pack "US" has no \[spell\.colour\]\.$/m],
+    ["a coin that a region of the question does not have", (s) => { question(s, "toonie-savings").regions = ["CA", "US"]; }, /^Question "toonie-savings", scenario "piggy-bank", region "US": phrasing "saves": the region pack "US" has no \[coins\.toonie\]\.$/m],
+    ["a unit of the answer that a region pack does not have", (s) => { question(s, "ribbon-cut").unit = "[unit.area]"; }, /^Question "ribbon-cut", scenario "craft-ribbon", region "CA": the region pack "CA" has no \[unit\.area\]\.$/m],
+  ])("refuses %s", (_name, change, problem) => expect(storyProblems(change)).toMatch(problem));
+
+  it("passes a question of one region that its own region packs fill, and aligns multipleOf slot bounds before checking the formula", () => {
+    expect(storyProblems((s) => { question(s, "nickels-to-pennies").regions = ["US"]; })).toBe("");
+    expect(storyProblems((s) => { question(s, "half-of-them").slots.count = { min: 5, max: 9, multipleOf: 2 }; })).toBe("");
   });
 });

@@ -378,7 +378,7 @@ describe("a bar model", () => {
 
   it("breaks no rule on any page of the invented book, with full sides of one answer column", () => {
     expect(good.pages.flatMap((p) => checkPage(p, good.items))).toEqual([]);
-    expect(good.pages.slice(2).map((p) => `${p.template} ${p.regions.filter((r) => r.role === "slot").length} ${new Set(p.regions.filter((r) => r.role === "answer").map((r) => r.rect.x)).size}`)).toEqual(["figures-1x4 4 1", "figures-1x4 4 1"]);
+    expect(good.pages.slice(2).map((p) => `${p.template} ${p.regions.filter((r) => r.role === "slot").length} ${new Set(p.regions.filter((r) => r.role === "answer").map((r) => r.rect.x)).size}`)).toEqual(["figures-1x4 4 1", "figures-1x4 4 1", "stories-1x3 3 1", "stories-1x3 3 1"]);
   });
 
   it.each<[string, number, (page: PageModel, items: GoodBook["items"]) => unknown, RegExp]>([
@@ -412,6 +412,50 @@ describe("a bar model", () => {
   ])("%s stops the page", (_name, number, change, problem) => expect(problemsAfter(number, change)).toMatch(problem));
 });
 
+describe("a word problem", () => {
+  // Pages 5 and 6 of the invented book: three word problems a side.
+  const good = inventedBook();
+  const problemsAfter = (number: 5 | 6, change: (page: PageModel, items: GoodBook["items"]) => unknown): string => {
+    const page = structuredClone(good.pages[number - 1]);
+    const items = structuredClone(good.items.filter((i) => i.id.startsWith(`${page.id}/`)));
+    change(page, items);
+    return checkPage(page, items).join("\n");
+  };
+  const named = (page: PageModel, name: string): Region => page.regions.find((r) => r.id.endsWith(`/${name}`))!;
+  const flowOf = (page: PageModel, name = "question-1") => named(page, name).ink.find((i): i is Extract<Ink, { kind: "flow" }> => i.kind === "flow")!;
+  const unitOf = (page: PageModel) => named(page, "question-1").ink.find((i): i is Extract<Ink, { kind: "text" }> => i.kind === "text")!;
+  const story = (items: GoodBook["items"]) => {
+    const face = items.find((i) => i.number === 1)?.face;
+    if (face?.kind !== "story") throw new Error("no story");
+    return face;
+  };
+
+  it("breaks no rule on either side", () => {
+    expect([5, 6].map((n) => problemsAfter(n as 5 | 6, () => {}))).toEqual(["", ""]);
+  });
+
+  it.each<[string, 5 | 6, (page: PageModel, items: GoodBook["items"]) => unknown, RegExp]>([
+    ["a work area that is too low", 5, (p) => { const w = named(p, "work-1"); w.rect = { ...w.rect, h: 100 }; }, /^Page 385: "work-1" is 220 by 100 points and needs 220 by 104\.$/m],
+    ["a work area that is too narrow", 6, (p) => { const w = named(p, "work-2"); w.rect = { ...w.rect, w: 200 }; }, /^Page 386: "work-2" is 200 by 104 points and needs 220 by 104\.$/m],
+    ["no work area", 5, (p) => { p.regions = p.regions.filter((r) => !r.id.endsWith("/work-1")); }, /^Page 385: question 1 has no "work" rectangle\.$/m],
+    ["a work area that starts in the text", 5, (p) => { const w = named(p, "work-1"); w.rect = { ...w.rect, y: w.rect.y - 10 }; }, /"question-1" and "work-1" overlap[^]*"work-1" is not below the text of its question/],
+    ["ink of the question in its work area", 5, (p) => { const w = named(p, "work-1"); named(p, "question-1").ink.push({ kind: "fill", rect: { x: w.rect.x + 10, y: w.rect.y + 10, w: 4, h: 4 }, color: "black" }); }, /"question-1" and "work-1" overlap[^]*question 1 prints a line that its face does not have there/],
+    ["ink in the work area itself", 5, (p) => { const w = named(p, "work-1"); w.ink = [{ kind: "fill", rect: { ...w.rect, w: 2, h: 2 }, color: "black" }]; }, /"work-1" must be empty/],
+    ["a work area in the reach of the answer area", 5, (p) => { const w = named(p, "work-1"); w.rect = { ...w.rect, w: 240 }; }, /"work-1" enters the reach "reach-1"/],
+    ["a second column of answer areas", 6, (p) => { for (const name of ["answer-2", "reach-2"]) move(named(p, name), -30, 0); }, /there are 2 answer columns and the limit is 1/],
+    ["a unit in another place", 5, (p) => { const u = unitOf(p); u.rect = { ...u.rect, y: u.rect.y + 6 }; }, /^Page 385: question 1 must print "muffins" at \(458, 180\.6, 118 by 28\)\.$/m],
+    ["a unit that is not the unit of the face", 5, (p) => { unitOf(p).text = "boxes"; }, /question 1 prints ".*boxes" and must print ".*muffins"/],
+    ["an empty unit", 5, (p, items) => { story(items).unit = " "; unitOf(p).text = " "; }, /^Page 385: question 1 has an empty unit\.$/m],
+    ["no text", 5, (p, items) => { story(items).tokens = []; flowOf(p).tokens = []; }, /"question-1" has flow text with no token[^]*question 1 has no text/],
+    ["a word that is split in its middle", 5, (p, items) => { for (const tokens of [story(items).tokens, flowOf(p).tokens]) tokens[0] = { kind: "word", pieces: ["Th", "ere"] }; }, /"question-1" has the token "There", which may not be split like that/],
+    ["a text that is not the text of the face", 5, (p) => { flowOf(p).tokens[0] = wordToken("Where"); }, /question 1 prints "Where .*" and must print "There .*"[^]*question 1 must print its flow text at/],
+    ["a text of another size", 5, (p) => { flowOf(p).size = 11; }, /^Page 385: question 1 must print its flow text at \(112, 90, 464 by 68\)\.$/m],
+    ["a text with other leading", 5, (p) => { flowOf(p).leading = 4; }, /question 1 must print its flow text at/],
+    ["a text that is moved down", 5, (p) => { const f = flowOf(p); f.rect = { ...f.rect, y: f.rect.y + 2 }; }, /question 1 must print its flow text at \(112, 90, 464 by 68\)/],
+    ["a number that is not beside the first line", 6, (p) => move(named(p, "label-3"), 0, 4), /^Page 386: question 3: its label is at \(36, 504, 20 by 15\) and must be at \(36, 500, 20 by 15\)\.$/m],
+  ])("%s stops the page", (_name, number, change, problem) => expect(problemsAfter(number, change)).toMatch(problem));
+});
+
 describe("the time log", () => {
   // Sheet 1 of the invented book starts a day; sheet 2 does not.
   const good = inventedBook();
@@ -437,7 +481,7 @@ describe("the time log", () => {
   };
 
   it("is on the front page of the first sheet of a day only, with a start and a finish box", () => {
-    expect(good.pages.map((p) => p.captures.length)).toEqual([1, 0, 0, 0]);
+    expect(good.pages.map((p) => p.captures.length)).toEqual([1, 0, 0, 0, 1, 0]);
     expect(first.captures).toEqual([{ id: `${first.id}/time-log`, kind: "time-log", rect: { x: 111.5, y: 700, w: 256, h: 36 }, fields: [
       { name: "start", rect: { x: 158.5, y: 705, w: 72, h: 26 }, reach: { x: 153.5, y: 700, w: 82, h: 36 } },
       { name: "finish", rect: { x: 290.5, y: 705, w: 72, h: 26 }, reach: { x: 285.5, y: 700, w: 82, h: 36 } },
@@ -489,13 +533,14 @@ describe("what a question prints", () => {
   // One question of each form of a face: the first one on each template, the forms with a blank in another place, and a
   // sequence that stands below another one.
   const books = [goodBook(), factsBook(), divisionBook(), placesBook(), inventedBook()];
-  const formOf = ({ face }: BookItem) => (face.kind === "column" ? "column" : face.kind === "fields" ? "fields" : face.kind === "figure" ? `figure ${face.figure.parts.length < 4 ? "of few" : "of many"} bars` : `${face.kind} ${(face.kind === "bracket" ? face.above : face.tokens).map((t) => ("text" in t ? "t" : "_")).join("")}`);
+  const formOf = ({ face }: BookItem) => (face.kind === "column" || face.kind === "story" ? face.kind : face.kind === "fields" ? "fields" : face.kind === "figure" ? `figure ${face.figure.parts.length < 4 ? "of few" : "of many"} bars` : `${face.kind} ${(face.kind === "bracket" ? face.above : face.tokens).map((t) => ("text" in t ? "t" : "_")).join("")}`);
   const linesOf = (page: PageModel, item: BookItem) => page.regions.find((r) => r.item === item.id && r.role === "question")!.ink.filter((i) => i.kind === "fill").length;
   const cases = new Map(books.flatMap(({ pages, items }) => pages.flatMap((page) => items.filter((i) => i.id.startsWith(`${page.id}/`)).map((item) => [`${page.template}, ${formOf(item)}, ${linesOf(page, item)} lines`, { page, item }] as const))).reverse());
 
   it("is looked at for each face, with and without its line", () => {
     const names = [...cases.keys()];
-    expect(new Set([...cases.values()].map(({ item }) => item.face.kind))).toEqual(new Set(["column", "equation", "sequence", "bracket", "fields", "figure"]));
+    expect(new Set([...cases.values()].map(({ item }) => item.face.kind))).toEqual(new Set(["column", "equation", "sequence", "bracket", "fields", "figure", "story"]));
+    expect(names.filter((n) => n.startsWith("stories-1x3"))).toEqual(["stories-1x3, story, 0 lines"]);
     expect(names.filter((n) => n.startsWith("figures-1x4"))).toEqual(expect.arrayContaining(["figures-1x4, figure of few bars, 3 lines", "figures-1x4, figure of many bars, 3 lines"]));
     expect(names.filter((n) => n.startsWith("column") || n.startsWith("bracket")).every((n) => n.endsWith("1 lines"))).toBe(true);
     expect(["0 lines", "1 lines"].map((end) => names.some((n) => n.startsWith("sequences-2x2") && n.endsWith(end)))).toEqual([true, true]);

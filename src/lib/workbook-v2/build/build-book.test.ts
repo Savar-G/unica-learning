@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Answer, PageModel } from "../contract";
+import { tokenText, type Answer, type Face, type PageModel } from "../contract";
 import rawBook from "../fixtures/book.json";
 import rawSnapshot from "../fixtures/snapshot.json";
 import inventedBookFixture from "../fixtures/book-invented-topic.json";
@@ -13,6 +13,7 @@ import { pagesPdf } from "../testing/fake-pdf";
 import { fakeRenderer } from "../testing/fake-renderer";
 import { drawPage, paint, pagePng, toPng } from "../testing/raster";
 import { stackOf } from "../testing/sample";
+import type { StoryQuestion } from "../shapes/story";
 import { skipTypstTests, testAssets } from "../testing/typst";
 import { buildBook, planBook, type BuiltBook } from "./build-book";
 
@@ -63,7 +64,7 @@ describe("a good input", () => {
       expect(steps.at(-1)).toEqual({ text: value, marks: [] });
       expect(shapeVersion).toBe(SHAPES.get(shape)?.version);
     }
-    expect(book.record).toMatchObject({ bookId: "example-book", engine: "2.0.0-s9", ...IDENTITY, snapshot: { id: "invented-level-3-v1" } });
+    expect(book.record).toMatchObject({ bookId: "example-book", engine: "2.0.0-s10", ...IDENTITY, snapshot: { id: "invented-level-3-v1" } });
     expect(book.record.snapshot.hash).toMatch(/^[0-9a-f]{64}$/);
     expect(book.record.inputHash).toMatch(/^[0-9a-f]{64}$/);
   });
@@ -118,7 +119,7 @@ describe("a good input", () => {
     book.sheets[1].startsDay = true;
     const planned = planBook({ snapshot: inventedSnapshotFixture, book });
     if (!planned.ok) throw new Error(planned.problems.join("\n"));
-    expect(planned.pages.map((p) => p.captures.map((c) => c.kind))).toEqual([["time-log"], [], ["time-log"], []]);
+    expect(planned.pages.map((p) => p.captures.map((c) => c.kind))).toEqual([["time-log"], [], ["time-log"], [], ["time-log"], []]);
 
     Object.defineProperty(Object.prototype, "startsDay", { value: true, configurable: true, writable: true });
     try {
@@ -315,6 +316,100 @@ describe("a build stops, draws nothing and says why", () => {
   it("but a fault in the code itself is not hidden as a problem of the book", async () => {
     const renderer = fake({ render: async () => { throw new TypeError("a fault"); } });
     await expect(buildBook(input(), renderer)).rejects.toThrow("a fault");
+  });
+});
+
+describe("a book of word problems", () => {
+  type StoryInput = { snapshot: typeof inventedSnapshotFixture; book: typeof inventedBookFixture & Record<string, unknown> };
+  /** The sheet of word problems alone, for a child, with a change of the book. */
+  const storyBook = (change: (book: StoryInput["book"]) => unknown = () => {}, childId = "story-child"): StoryInput => {
+    const book = { ...structuredClone(inventedBookFixture), childId, sheets: [structuredClone(inventedBookFixture.sheets[2])] } as StoryInput["book"];
+    change(book);
+    return { snapshot: inventedSnapshotFixture, book };
+  };
+  const planned = (i: StoryInput) => {
+    const plan = planBook(i);
+    if (!plan.ok) throw new Error(plan.problems.join("\n"));
+    return plan;
+  };
+  const storyOf = (item: { question: unknown }) => item.question as StoryQuestion;
+  const textOf = (item: { face: Face }) => (item.face.kind === "story" ? `${item.face.tokens.map(tokenText).join(" ")} [${item.face.unit}]` : "");
+  const children = Array.from({ length: 10 }, (_, i) => `child-${i}`);
+
+  it("fills every story with the default scenario and the default region when the book names none", () => {
+    const plan = planned(storyBook());
+    for (const item of plan.items) expect(storyOf(item).region).toBe("CA");
+    const words = children.flatMap((child) => planned(storyBook(() => {}, child)).items.map(textOf)).join("\n");
+    for (const word of ["muffins", "stickers", "centimetres", "colourful", "litres", "toonies"]) expect(words).toContain(word);
+    for (const word of ["moon rocks", "snack bars", "inches", "color", "quarts", "pennies"]) expect(words).not.toContain(word);
+  });
+
+  it("takes another approved scenario and another region pack when the book names them", () => {
+    const words = (change: (book: StoryInput["book"]) => unknown) => children.flatMap((child) => planned(storyBook(change, child)).items.map(textOf)).join("\n");
+    const space = words((b) => { b.scenario = "space"; });
+    for (const word of ["moon rocks", "space station", "snack bars", "centimetres"]) expect(space).toContain(word);
+    expect(space).not.toMatch(/\bmuffins\b|\bstickers\b/);
+    const us = words((b) => { b.region = "US"; });
+    for (const word of ["inches", "colorful", "quarts", "pennies", "nickels", "muffins"]) expect(us).toContain(word);
+    for (const word of ["centimetres", "colourful", "litres", "toonie"]) expect(us).not.toContain(word);
+  });
+
+  it("prints a question of one region only in that region", () => {
+    const ids = (region: string) => new Set(children.flatMap((child) => planned(storyBook((b) => { b.region = region; }, child)).items.map((i) => storyOf(i).question)));
+    expect([...ids("CA")].sort()).toEqual(["half-of-them", "juice-left", "muffin-boxes", "muffins-left", "ribbon-cut", "toonie-savings"]);
+    expect([...ids("US")].sort()).toEqual(["half-of-them", "juice-left", "muffin-boxes", "muffins-left", "nickels-to-pennies", "ribbon-cut"]);
+  });
+
+  it.each<[string, (book: StoryInput["book"]) => unknown, string]>([
+    ["an unknown region", (b) => { b.region = "UK"; }, 'The book: the snapshot has no region pack "UK".'],
+    ["a region that is no text", (b) => { b.region = 5; }, "The book: the snapshot has no region pack 5."],
+    ["an unknown scenario", (b) => { b.scenario = "jungle"; }, 'The book: the snapshot has no scenario of the interest "jungle".'],
+  ])("stops a book with %s", (_name, change, problem) => {
+    expect(planBook(storyBook(change))).toEqual({ ok: false, problems: [problem] });
+  });
+
+  it("reads no region, scenario or word problems that an object inherits", () => {
+    const names = ["region", "scenario", "questions", "scenarios", "regionPacks", "defaultRegion", "multipleOf", "regions"];
+    const values: Record<string, unknown> = { region: "US", scenario: "space", questions: [], scenarios: [], regionPacks: [], defaultRegion: "US", multipleOf: 7, regions: ["US"] };
+    for (const name of names) Object.defineProperty(Object.prototype, name, { value: values[name], configurable: true, writable: true });
+    try {
+      const plan = planned(storyBook());
+      expect(plan.items.every((i) => storyOf(i).region === "CA" && !storyOf(i).scenario.includes("station") && !storyOf(i).scenario.includes("rocket"))).toBe(true);
+      const plain = planBook(input());
+      expect(plain.ok).toBe(true);
+    } finally {
+      for (const name of names) Reflect.deleteProperty(Object.prototype, name);
+    }
+  });
+
+  it("stops a region or a scenario for a snapshot with no word problems, and refuses null region or scenario", () => {
+    expect(planBook(input((i) => { put(i.book, "region", "CA"); }))).toEqual({ ok: false, problems: ["The book: the snapshot has no word problems, so the book has no region or scenario."] });
+    expect(planBook(storyBook((b) => { put(b, "region", null); put(b, "scenario", null); }))).toEqual({
+      ok: false,
+      problems: [
+        "The book: the snapshot has no region pack null.",
+        "The book: the snapshot has no scenario of the interest null.",
+      ],
+    });
+  });
+
+  it("prints the half as one piece of math, and the answer is the half with its unit and worked steps", () => {
+    const halves = children.flatMap((child) => planned(storyBook(() => {}, child)).items).filter((i) => storyOf(i).question === "half-of-them");
+    expect(halves.length).toBeGreaterThan(5);
+    for (const item of halves) {
+      if (item.face.kind !== "story") throw new Error("not a story");
+      const [{ value: count }] = storyOf(item).slots;
+      expect(item.face.tokens.filter((t) => tokenText(t).includes("½"))).toEqual([{ kind: "math", pieces: ["½"] }]);
+      expect(item.answer).toEqual({ parts: [{ name: "answer", kind: "quantity", value: String(count / 2), unit: item.face.unit }] });
+      expect(item.steps).toEqual([{ text: `½ × ${count} = ${count / 2}`, marks: [] }, { text: `${count / 2} ${item.face.unit}`, marks: [] }]);
+    }
+  });
+
+  it("chooses the phrasing from the seed: the same for one child and attempt, both for many children", () => {
+    const phrasings = (child: string, attempt = 1) => planned(storyBook((b) => { b.sheets[0].attempt = attempt; }, child)).items.map((i) => `${storyOf(i).question}/${storyOf(i).phrasing}`);
+    expect(phrasings("child-1")).toEqual(phrasings("child-1"));
+    const all = new Set(children.flatMap((child) => phrasings(child)));
+    for (const question of ["muffin-boxes", "half-of-them", "ribbon-cut"]) expect([...all].filter((p) => p.startsWith(`${question}/`))).toHaveLength(2);
   });
 });
 

@@ -5,6 +5,1466 @@
     "id": "level-3",
     "name": "3"
   },
+  "defaultRegion": "CA",
+  "regionPacks": [
+    {
+      "id": "CA",
+      "units": {
+        "length": {
+          "one": "centimetre",
+          "many": "centimetres"
+        },
+        "volume": {
+          "one": "litre",
+          "many": "litres"
+        },
+        "money": {
+          "one": "dollar",
+          "many": "dollars"
+        },
+        "cent": {
+          "one": "cent",
+          "many": "cents"
+        }
+      },
+      "coins": {
+        "rounding": "nearest-5-cents",
+        "list": [
+          {
+            "id": "loonie",
+            "one": "loonie",
+            "many": "loonies",
+            "cents": 100
+          },
+          {
+            "id": "toonie",
+            "one": "toonie",
+            "many": "toonies",
+            "cents": 200
+          },
+          {
+            "id": "quarter",
+            "one": "quarter",
+            "many": "quarters",
+            "cents": 25
+          },
+          {
+            "id": "dime",
+            "one": "dime",
+            "many": "dimes",
+            "cents": 10
+          },
+          {
+            "id": "nickel",
+            "one": "nickel",
+            "many": "nickels",
+            "cents": 5
+          }
+        ]
+      },
+      "spelling": {
+        "colour": "colour",
+        "metre": "metre",
+        "litre": "litre",
+        "favourite": "favourite"
+      },
+      "basis": {
+        "note": "Invented pack: Canadian units, coins and spelling."
+      }
+    },
+    {
+      "id": "US",
+      "units": {
+        "length": {
+          "one": "inch",
+          "many": "inches"
+        },
+        "volume": {
+          "one": "quart",
+          "many": "quarts"
+        },
+        "money": {
+          "one": "dollar",
+          "many": "dollars"
+        },
+        "cent": {
+          "one": "cent",
+          "many": "cents"
+        }
+      },
+      "coins": {
+        "rounding": "none",
+        "list": [
+          {
+            "id": "dollar",
+            "one": "dollar coin",
+            "many": "dollar coins",
+            "cents": 100
+          },
+          {
+            "id": "quarter",
+            "one": "quarter",
+            "many": "quarters",
+            "cents": 25
+          },
+          {
+            "id": "dime",
+            "one": "dime",
+            "many": "dimes",
+            "cents": 10
+          },
+          {
+            "id": "nickel",
+            "one": "nickel",
+            "many": "nickels",
+            "cents": 5
+          },
+          {
+            "id": "penny",
+            "one": "penny",
+            "many": "pennies",
+            "cents": 1
+          }
+        ]
+      },
+      "spelling": {
+        "colour": "color",
+        "metre": "meter",
+        "litre": "liter",
+        "favourite": "favorite"
+      }
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "bakery-boxes",
+      "interest": "default",
+      "kind": "groups",
+      "place": "bakery",
+      "container": {
+        "one": "box",
+        "many": "boxes"
+      },
+      "thing": {
+        "one": "muffin",
+        "many": "muffins"
+      },
+      "verb": "packs",
+      "unit": {
+        "one": "muffin",
+        "many": "muffins"
+      },
+      "quantityLimits": {
+        "groups": {
+          "min": 2,
+          "max": 9
+        },
+        "each": {
+          "min": 2,
+          "max": 12
+        },
+        "taken": {
+          "min": 2,
+          "max": 4
+        }
+      },
+      "basis": {
+        "note": "Invented scenario."
+      }
+    },
+    {
+      "id": "station-crates",
+      "interest": "space",
+      "kind": "groups",
+      "place": "space station",
+      "container": {
+        "one": "crate",
+        "many": "crates"
+      },
+      "thing": {
+        "one": "moon rock",
+        "many": "moon rocks"
+      },
+      "verb": "loads",
+      "unit": {
+        "one": "moon rock",
+        "many": "moon rocks"
+      },
+      "quantityLimits": {
+        "groups": {
+          "min": 2,
+          "max": 6
+        },
+        "each": {
+          "min": 2,
+          "max": 10
+        },
+        "taken": {
+          "min": 2,
+          "max": 4
+        }
+      }
+    },
+    {
+      "id": "class-stickers",
+      "interest": "default",
+      "kind": "share",
+      "place": "classroom",
+      "container": {
+        "one": "sheet",
+        "many": "sheets"
+      },
+      "thing": {
+        "one": "sticker",
+        "many": "stickers"
+      },
+      "verb": "shares",
+      "unit": {
+        "one": "sticker",
+        "many": "stickers"
+      },
+      "quantityLimits": {
+        "count": {
+          "min": 4,
+          "max": 40
+        }
+      }
+    },
+    {
+      "id": "rocket-snacks",
+      "interest": "space",
+      "kind": "share",
+      "place": "rocket",
+      "container": {
+        "one": "pouch",
+        "many": "pouches"
+      },
+      "thing": {
+        "one": "snack bar",
+        "many": "snack bars"
+      },
+      "verb": "packs",
+      "unit": {
+        "one": "snack bar",
+        "many": "snack bars"
+      },
+      "quantityLimits": {
+        "count": {
+          "min": 4,
+          "max": 30
+        }
+      }
+    },
+    {
+      "id": "craft-ribbon",
+      "interest": "default",
+      "kind": "measure",
+      "place": "craft table",
+      "container": {
+        "one": "spool",
+        "many": "spools"
+      },
+      "thing": {
+        "one": "ribbon",
+        "many": "ribbons"
+      },
+      "verb": "cuts",
+      "unit": {
+        "one": "ribbon",
+        "many": "ribbons"
+      },
+      "quantityLimits": {
+        "length": {
+          "min": 25,
+          "max": 90
+        },
+        "cut": {
+          "min": 5,
+          "max": 19
+        }
+      }
+    },
+    {
+      "id": "picnic-juice",
+      "interest": "default",
+      "kind": "pour",
+      "place": "picnic",
+      "container": {
+        "one": "jug",
+        "many": "jugs"
+      },
+      "thing": {
+        "one": "cup",
+        "many": "cups"
+      },
+      "verb": "pours",
+      "unit": {
+        "one": "cup",
+        "many": "cups"
+      },
+      "quantityLimits": {
+        "jugs": {
+          "min": 2,
+          "max": 5
+        },
+        "size": {
+          "min": 3,
+          "max": 4
+        },
+        "drunk": {
+          "min": 2,
+          "max": 4
+        }
+      }
+    },
+    {
+      "id": "piggy-bank",
+      "interest": "default",
+      "kind": "coins",
+      "place": "toy shop",
+      "container": {
+        "one": "jar",
+        "many": "jars"
+      },
+      "thing": {
+        "one": "coin",
+        "many": "coins"
+      },
+      "verb": "saves",
+      "unit": {
+        "one": "coin",
+        "many": "coins"
+      },
+      "quantityLimits": {
+        "count": {
+          "min": 2,
+          "max": 9
+        }
+      }
+    }
+  ],
+  "questions": [
+    {
+      "id": "muffin-boxes",
+      "scenarioKind": "groups",
+      "slots": {
+        "groups": {
+          "min": 2,
+          "max": 9
+        },
+        "each": {
+          "min": 2,
+          "max": 12
+        }
+      },
+      "unit": "[unit]",
+      "solver": {
+        "op": "×",
+        "left": {
+          "slot": "groups"
+        },
+        "right": {
+          "slot": "each"
+        }
+      },
+      "difficulty": 1,
+      "phrasings": [
+        {
+          "id": "packs",
+          "tokens": [
+            {
+              "word": "The"
+            },
+            {
+              "word": "[place]"
+            },
+            {
+              "word": "[verb]"
+            },
+            {
+              "word": "[groups]"
+            },
+            {
+              "word": "[containers]"
+            },
+            {
+              "word": "with"
+            },
+            {
+              "word": "[each]"
+            },
+            {
+              "word": "[things]"
+            },
+            {
+              "word": "in"
+            },
+            {
+              "word": "each."
+            },
+            {
+              "word": "How"
+            },
+            {
+              "word": "many"
+            },
+            {
+              "word": "[things]"
+            },
+            {
+              "word": "is"
+            },
+            {
+              "word": "that?"
+            }
+          ]
+        },
+        {
+          "id": "holds",
+          "tokens": [
+            {
+              "word": "There"
+            },
+            {
+              "word": "are"
+            },
+            {
+              "word": "[groups]"
+            },
+            {
+              "word": "[containers]"
+            },
+            {
+              "word": "at"
+            },
+            {
+              "word": "the"
+            },
+            {
+              "word": "[place]."
+            },
+            {
+              "word": "Each"
+            },
+            {
+              "word": "one"
+            },
+            {
+              "word": "holds"
+            },
+            {
+              "word": "[each]"
+            },
+            {
+              "word": "[things]."
+            },
+            {
+              "word": "How"
+            },
+            {
+              "word": "many"
+            },
+            {
+              "word": "[things]"
+            },
+            {
+              "word": "are"
+            },
+            {
+              "word": "there"
+            },
+            {
+              "word": "in"
+            },
+            {
+              "word": "all?"
+            }
+          ]
+        }
+      ],
+      "basis": {
+        "note": "Invented question: equal groups."
+      }
+    },
+    {
+      "id": "half-of-them",
+      "scenarioKind": "share",
+      "slots": {
+        "count": {
+          "min": 4,
+          "max": 40,
+          "multipleOf": 2
+        }
+      },
+      "unit": "[unit]",
+      "solver": {
+        "op": "×",
+        "left": {
+          "fraction": [
+            1,
+            2
+          ]
+        },
+        "right": {
+          "slot": "count"
+        }
+      },
+      "difficulty": 2,
+      "phrasings": [
+        {
+          "id": "takes",
+          "tokens": [
+            {
+              "word": "There"
+            },
+            {
+              "word": "are"
+            },
+            {
+              "word": "[count]"
+            },
+            {
+              "word": "[things]"
+            },
+            {
+              "word": "in"
+            },
+            {
+              "word": "the"
+            },
+            {
+              "word": "[place]."
+            },
+            {
+              "word": "Ana"
+            },
+            {
+              "word": "takes"
+            },
+            {
+              "math": "½"
+            },
+            {
+              "word": "of"
+            },
+            {
+              "word": "them."
+            },
+            {
+              "word": "How"
+            },
+            {
+              "word": "many"
+            },
+            {
+              "word": "[things]"
+            },
+            {
+              "word": "does"
+            },
+            {
+              "word": "Ana"
+            },
+            {
+              "word": "take?"
+            }
+          ]
+        },
+        {
+          "id": "gives",
+          "tokens": [
+            {
+              "word": "Ana"
+            },
+            {
+              "word": "has"
+            },
+            {
+              "word": "[count]"
+            },
+            {
+              "word": "[things]."
+            },
+            {
+              "word": "She"
+            },
+            {
+              "word": "gives"
+            },
+            {
+              "math": "½"
+            },
+            {
+              "word": "of"
+            },
+            {
+              "word": "the"
+            },
+            {
+              "word": "[things]"
+            },
+            {
+              "word": "to"
+            },
+            {
+              "word": "a"
+            },
+            {
+              "word": "friend."
+            },
+            {
+              "word": "How"
+            },
+            {
+              "word": "many"
+            },
+            {
+              "word": "[things]"
+            },
+            {
+              "word": "does"
+            },
+            {
+              "word": "she"
+            },
+            {
+              "word": "give"
+            },
+            {
+              "word": "away?"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ribbon-cut",
+      "scenarioKind": "measure",
+      "slots": {
+        "length": {
+          "min": 25,
+          "max": 90
+        },
+        "cut": {
+          "min": 5,
+          "max": 19
+        }
+      },
+      "unit": "[unit.length]",
+      "solver": {
+        "op": "-",
+        "left": {
+          "slot": "length"
+        },
+        "right": {
+          "slot": "cut"
+        }
+      },
+      "difficulty": 2,
+      "phrasings": [
+        {
+          "id": "cuts",
+          "tokens": [
+            {
+              "word": "Sam"
+            },
+            {
+              "word": "has"
+            },
+            {
+              "word": "a"
+            },
+            {
+              "word": "[spell.colour]ful"
+            },
+            {
+              "word": "ribbon"
+            },
+            {
+              "word": "that"
+            },
+            {
+              "word": "is"
+            },
+            {
+              "word": "[length]"
+            },
+            {
+              "word": "[units.length]"
+            },
+            {
+              "word": "long."
+            },
+            {
+              "word": "Sam"
+            },
+            {
+              "word": "cuts"
+            },
+            {
+              "word": "off"
+            },
+            {
+              "word": "[cut]"
+            },
+            {
+              "word": "[units.length]."
+            },
+            {
+              "word": "How"
+            },
+            {
+              "word": "long"
+            },
+            {
+              "word": "is"
+            },
+            {
+              "word": "the"
+            },
+            {
+              "word": "ribbon"
+            },
+            {
+              "word": "now?"
+            }
+          ]
+        },
+        {
+          "id": "bow",
+          "tokens": [
+            {
+              "word": "A"
+            },
+            {
+              "word": "ribbon"
+            },
+            {
+              "word": "at"
+            },
+            {
+              "word": "the"
+            },
+            {
+              "word": "[place]"
+            },
+            {
+              "word": "is"
+            },
+            {
+              "word": "[length]"
+            },
+            {
+              "word": "[units.length]"
+            },
+            {
+              "word": "long."
+            },
+            {
+              "word": "A"
+            },
+            {
+              "word": "bow"
+            },
+            {
+              "word": "uses"
+            },
+            {
+              "word": "[cut]"
+            },
+            {
+              "word": "[units.length]"
+            },
+            {
+              "word": "of"
+            },
+            {
+              "word": "it."
+            },
+            {
+              "word": "How"
+            },
+            {
+              "word": "much"
+            },
+            {
+              "word": "ribbon"
+            },
+            {
+              "word": "is"
+            },
+            {
+              "word": "left?"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "muffins-left",
+      "scenarioKind": "groups",
+      "slots": {
+        "groups": {
+          "min": 3,
+          "max": 6
+        },
+        "each": {
+          "min": 2,
+          "max": 10
+        },
+        "taken": {
+          "min": 2,
+          "max": 4
+        }
+      },
+      "unit": "[unit]",
+      "solver": {
+        "op": "-",
+        "left": {
+          "op": "×",
+          "left": {
+            "slot": "groups"
+          },
+          "right": {
+            "slot": "each"
+          }
+        },
+        "right": {
+          "slot": "taken"
+        }
+      },
+      "difficulty": 3,
+      "phrasings": [
+        {
+          "id": "given",
+          "tokens": [
+            {
+              "word": "The"
+            },
+            {
+              "word": "[place]"
+            },
+            {
+              "word": "[verb]"
+            },
+            {
+              "word": "[groups]"
+            },
+            {
+              "word": "[containers]"
+            },
+            {
+              "word": "with"
+            },
+            {
+              "word": "[each]"
+            },
+            {
+              "word": "[things]"
+            },
+            {
+              "word": "in"
+            },
+            {
+              "word": "each."
+            },
+            {
+              "word": "Then"
+            },
+            {
+              "word": "[taken]"
+            },
+            {
+              "word": "[things]"
+            },
+            {
+              "word": "are"
+            },
+            {
+              "word": "given"
+            },
+            {
+              "word": "away."
+            },
+            {
+              "word": "How"
+            },
+            {
+              "word": "many"
+            },
+            {
+              "word": "[things]"
+            },
+            {
+              "word": "are"
+            },
+            {
+              "word": "left?"
+            }
+          ]
+        },
+        {
+          "id": "home",
+          "tokens": [
+            {
+              "word": "There"
+            },
+            {
+              "word": "are"
+            },
+            {
+              "word": "[groups]"
+            },
+            {
+              "word": "[containers]"
+            },
+            {
+              "word": "of"
+            },
+            {
+              "word": "[each]"
+            },
+            {
+              "word": "[things]"
+            },
+            {
+              "word": "at"
+            },
+            {
+              "word": "the"
+            },
+            {
+              "word": "[place]."
+            },
+            {
+              "word": "Lee"
+            },
+            {
+              "word": "takes"
+            },
+            {
+              "word": "[taken]"
+            },
+            {
+              "word": "[things]"
+            },
+            {
+              "word": "home."
+            },
+            {
+              "word": "How"
+            },
+            {
+              "word": "many"
+            },
+            {
+              "word": "[things]"
+            },
+            {
+              "word": "are"
+            },
+            {
+              "word": "still"
+            },
+            {
+              "word": "there?"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "juice-left",
+      "scenarioKind": "pour",
+      "slots": {
+        "jugs": {
+          "min": 2,
+          "max": 5
+        },
+        "size": {
+          "min": 3,
+          "max": 4
+        },
+        "drunk": {
+          "min": 2,
+          "max": 4
+        }
+      },
+      "unit": "[unit.volume]",
+      "solver": {
+        "op": "-",
+        "left": {
+          "op": "×",
+          "left": {
+            "slot": "jugs"
+          },
+          "right": {
+            "slot": "size"
+          }
+        },
+        "right": {
+          "slot": "drunk"
+        }
+      },
+      "difficulty": 3,
+      "phrasings": [
+        {
+          "id": "fills",
+          "tokens": [
+            {
+              "word": "Each"
+            },
+            {
+              "word": "[container]"
+            },
+            {
+              "word": "holds"
+            },
+            {
+              "word": "[size]"
+            },
+            {
+              "word": "[units.volume]"
+            },
+            {
+              "word": "of"
+            },
+            {
+              "word": "juice."
+            },
+            {
+              "word": "Mo"
+            },
+            {
+              "word": "fills"
+            },
+            {
+              "word": "[jugs]"
+            },
+            {
+              "word": "[containers]"
+            },
+            {
+              "word": "for"
+            },
+            {
+              "word": "the"
+            },
+            {
+              "word": "[place]."
+            },
+            {
+              "word": "The"
+            },
+            {
+              "word": "family"
+            },
+            {
+              "word": "drinks"
+            },
+            {
+              "word": "[drunk]"
+            },
+            {
+              "word": "[units.volume]."
+            },
+            {
+              "word": "How"
+            },
+            {
+              "word": "much"
+            },
+            {
+              "word": "juice"
+            },
+            {
+              "word": "is"
+            },
+            {
+              "word": "left?"
+            }
+          ]
+        },
+        {
+          "id": "spills",
+          "tokens": [
+            {
+              "word": "Mo"
+            },
+            {
+              "word": "pours"
+            },
+            {
+              "word": "[size]"
+            },
+            {
+              "word": "[units.volume]"
+            },
+            {
+              "word": "of"
+            },
+            {
+              "word": "juice"
+            },
+            {
+              "word": "into"
+            },
+            {
+              "word": "each"
+            },
+            {
+              "word": "of"
+            },
+            {
+              "word": "[jugs]"
+            },
+            {
+              "word": "[containers]."
+            },
+            {
+              "word": "Then"
+            },
+            {
+              "word": "[drunk]"
+            },
+            {
+              "word": "[units.volume]"
+            },
+            {
+              "word": "spill"
+            },
+            {
+              "word": "on"
+            },
+            {
+              "word": "the"
+            },
+            {
+              "word": "grass."
+            },
+            {
+              "word": "How"
+            },
+            {
+              "word": "much"
+            },
+            {
+              "word": "juice"
+            },
+            {
+              "word": "is"
+            },
+            {
+              "word": "in"
+            },
+            {
+              "word": "the"
+            },
+            {
+              "word": "[containers]"
+            },
+            {
+              "word": "now?"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "toonie-savings",
+      "scenarioKind": "coins",
+      "regions": [
+        "CA"
+      ],
+      "slots": {
+        "count": {
+          "min": 2,
+          "max": 9
+        }
+      },
+      "unit": "[unit.money]",
+      "solver": {
+        "op": "×",
+        "left": {
+          "slot": "count"
+        },
+        "right": {
+          "number": 2
+        }
+      },
+      "difficulty": 2,
+      "phrasings": [
+        {
+          "id": "saves",
+          "tokens": [
+            {
+              "word": "Pia"
+            },
+            {
+              "word": "saves"
+            },
+            {
+              "word": "[count]"
+            },
+            {
+              "word": "[coins.toonie]"
+            },
+            {
+              "word": "in"
+            },
+            {
+              "word": "a"
+            },
+            {
+              "word": "[container]."
+            },
+            {
+              "word": "A"
+            },
+            {
+              "word": "[coin.toonie]"
+            },
+            {
+              "word": "is"
+            },
+            {
+              "word": "worth"
+            },
+            {
+              "word": "two"
+            },
+            {
+              "word": "dollars."
+            },
+            {
+              "word": "How"
+            },
+            {
+              "word": "many"
+            },
+            {
+              "word": "dollars"
+            },
+            {
+              "word": "does"
+            },
+            {
+              "word": "Pia"
+            },
+            {
+              "word": "have?"
+            }
+          ]
+        },
+        {
+          "id": "finds",
+          "tokens": [
+            {
+              "word": "Pia"
+            },
+            {
+              "word": "finds"
+            },
+            {
+              "word": "[count]"
+            },
+            {
+              "word": "[coins.toonie]"
+            },
+            {
+              "word": "at"
+            },
+            {
+              "word": "the"
+            },
+            {
+              "word": "[place]."
+            },
+            {
+              "word": "Each"
+            },
+            {
+              "word": "[coin.toonie]"
+            },
+            {
+              "word": "is"
+            },
+            {
+              "word": "two"
+            },
+            {
+              "word": "dollars."
+            },
+            {
+              "word": "How"
+            },
+            {
+              "word": "many"
+            },
+            {
+              "word": "dollars"
+            },
+            {
+              "word": "is"
+            },
+            {
+              "word": "that?"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "nickels-to-pennies",
+      "scenarioKind": "coins",
+      "regions": [
+        "US"
+      ],
+      "slots": {
+        "count": {
+          "min": 2,
+          "max": 9
+        }
+      },
+      "unit": "[unit.cent]",
+      "solver": {
+        "op": "×",
+        "left": {
+          "slot": "count"
+        },
+        "right": {
+          "number": 5
+        }
+      },
+      "difficulty": 2,
+      "phrasings": [
+        {
+          "id": "trades",
+          "tokens": [
+            {
+              "word": "A"
+            },
+            {
+              "word": "[coin.nickel]"
+            },
+            {
+              "word": "is"
+            },
+            {
+              "word": "worth"
+            },
+            {
+              "word": "five"
+            },
+            {
+              "word": "[coins.penny]."
+            },
+            {
+              "word": "Pia"
+            },
+            {
+              "word": "trades"
+            },
+            {
+              "word": "[count]"
+            },
+            {
+              "word": "[coins.nickel]"
+            },
+            {
+              "word": "for"
+            },
+            {
+              "word": "[coins.penny]."
+            },
+            {
+              "word": "How"
+            },
+            {
+              "word": "many"
+            },
+            {
+              "word": "cents"
+            },
+            {
+              "word": "does"
+            },
+            {
+              "word": "she"
+            },
+            {
+              "word": "get?"
+            }
+          ]
+        },
+        {
+          "id": "jar",
+          "tokens": [
+            {
+              "word": "Pia"
+            },
+            {
+              "word": "has"
+            },
+            {
+              "word": "[count]"
+            },
+            {
+              "word": "[coins.nickel]"
+            },
+            {
+              "word": "in"
+            },
+            {
+              "word": "a"
+            },
+            {
+              "word": "[container]."
+            },
+            {
+              "word": "Each"
+            },
+            {
+              "word": "one"
+            },
+            {
+              "word": "is"
+            },
+            {
+              "word": "worth"
+            },
+            {
+              "word": "five"
+            },
+            {
+              "word": "[coins.penny]."
+            },
+            {
+              "word": "How"
+            },
+            {
+              "word": "many"
+            },
+            {
+              "word": "cents"
+            },
+            {
+              "word": "are"
+            },
+            {
+              "word": "in"
+            },
+            {
+              "word": "the"
+            },
+            {
+              "word": "[container]?"
+            }
+          ]
+        }
+      ]
+    }
+  ],
   "topics": [
     {
       "id": "topic-20",
@@ -12,7 +1472,8 @@
       "title": "Multiplying 2 digits by 1 digit",
       "sheets": [
         "column-multiplication-1",
-        "equal-groups-1"
+        "equal-groups-1",
+        "story-problems-1"
       ],
       "basis": {
         "note": "Invented topic: column multiplication, then equal groups drawn as bars."
@@ -299,6 +1760,53 @@
       },
       "basis": {
         "note": "Invented sheet: a bar for each group."
+      }
+    },
+    {
+      "id": "story-problems-1",
+      "firstPage": 385,
+      "front": {
+        "instruction": "Read each story. Write the answer in the box.",
+        "template": "stories-1x3",
+        "rows": [
+          {
+            "id": "one-step",
+            "shape": "story",
+            "items": 3,
+            "limits": {
+              "questions": [
+                "muffin-boxes",
+                "half-of-them",
+                "ribbon-cut"
+              ]
+            },
+            "basis": {
+              "note": "Invented row: one step, one of them a half."
+            }
+          }
+        ]
+      },
+      "back": {
+        "instruction": "Use the work space. Write the answer in the box.",
+        "template": "stories-1x3",
+        "rows": [
+          {
+            "id": "two-steps",
+            "shape": "story",
+            "items": 3,
+            "limits": {
+              "questions": [
+                "muffins-left",
+                "juice-left",
+                "toonie-savings",
+                "nickels-to-pennies"
+              ]
+            }
+          }
+        ]
+      },
+      "basis": {
+        "note": "Invented sheet: word problems."
       }
     }
   ],

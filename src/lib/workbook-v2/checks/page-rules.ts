@@ -73,19 +73,23 @@ function checkInk(page: PageModel, tell: Tell): void {
   }
 }
 
-/** Whether an answer area or a reach stands in a question that goes round it: then only the print of the question counts. */
-function isInLine(question: Region, area: Region): boolean {
-  return question.role === "question" && (area.role === "answer" || area.role === "reach") && inside(area.rect, question.rect) && question.ink.every((i) => !overlaps(i.rect, area.rect));
+/**
+ * Whether an answer area or a reach stands in a question that goes round it: then only the print of the question counts.
+ * The work area of a word problem stands in its question too, below the text, and no ink of the question may touch it.
+ */
+function isInLine(question: Region, area: Region, withWork: boolean): boolean {
+  const role = area.role === "answer" || area.role === "reach" || (withWork && area.role === "work");
+  return question.role === "question" && role && inside(area.rect, question.rect) && question.ink.every((i) => !overlaps(i.rect, area.rect));
 }
 
-/** Slots, reaches and their parts lie inside each other on purpose; everything else is apart. */
-function checkOverlaps(page: PageModel, inLine: ReadonlySet<string | null>, tell: Tell): void {
+/** Slots, reaches and their parts lie inside each other on purpose; everything else is apart. `stories` are items of word problems. */
+function checkOverlaps(page: PageModel, inLine: ReadonlySet<string | null>, stories: ReadonlySet<string | null>, tell: Tell): void {
   page.regions.forEach((a, i) => {
     for (const b of page.regions.slice(i + 1)) {
       if (!overlaps(a.rect, b.rect)) continue;
       const sameItem = a.item !== null && a.item === b.item;
       if (sameItem && (a.role === "slot" || b.role === "slot")) continue;
-      if (sameItem && inLine.has(a.item) && (isInLine(a, b) || isInLine(b, a))) continue;
+      if (sameItem && inLine.has(a.item) && (isInLine(a, b, stories.has(a.item)) || isInLine(b, a, stories.has(a.item)))) continue;
       const reach = a.role === "reach" ? a : b.role === "reach" ? b : null;
       const other = reach === a ? b : a;
       if (!reach) tell(`${regionName(a)} and ${regionName(b)} overlap`);
@@ -186,10 +190,13 @@ function isBelowAnother(page: PageModel, item: BookItem): boolean {
 /** The work area of a stack is beside it and of a fixed size. The one of a bracket is below all digits, with room for each line of work. */
 function checkWork(work: Region, { face, answer }: BookItem, question: Region, areas: ReadonlyMap<string, Area>, tell: Tell): void {
   const { rect } = work;
-  if (face.kind === "column") {
-    const least = PRINT_RULES.stackWork;
+  if (face.kind === "column" || face.kind === "story") {
+    const least = face.kind === "column" ? PRINT_RULES.stackWork : PRINT_RULES.storyWork;
     if (rect.w < least.w - EPSILON || rect.h < least.h - EPSILON) tell(`${regionName(work)} is ${size(rect.w)} by ${size(rect.h)} points and needs ${least.w} by ${least.h}`);
   }
+  // The work of a word problem stands below its text, so that nothing is written over the story.
+  const flow = question.ink.find((i) => i.kind === "flow");
+  if (face.kind === "story" && (!flow || rect.y < bottom(flow.rect) - EPSILON)) tell(`${regionName(work)} is not below the text of its question`);
   if (face.kind !== "bracket") return;
   const needed = face.workLines * PRINT_RULES.workLine;
   if (rect.h < needed - EPSILON) tell(`${regionName(work)} is ${size(rect.h)} points high and ${face.workLines} lines of work need ${needed}`);
@@ -240,8 +247,8 @@ function checkItem(page: PageModel, item: BookItem, tell: Tell): void {
   const parts = new Map<RegionRole, Region>();
   // A stack and a bracket with lines of work are worked on the page. Other brackets may still sit in a template with a work area; all other faces are worked in the head and have none.
   const workLines = item.face.kind === "bracket" ? item.face.workLines : 0;
-  const needsWork = item.face.kind === "column" || workLines > 0;
-  const mayHaveWork = item.face.kind === "column" || item.face.kind === "bracket";
+  const needsWork = item.face.kind === "column" || item.face.kind === "story" || workLines > 0;
+  const mayHaveWork = needsWork || item.face.kind === "bracket";
   for (const role of needsWork ? [...ITEM_ROLES, "work" as const] : ITEM_ROLES) {
     const found = page.regions.filter((r) => r.item === item.id && r.role === role);
     if (found.length === 0) tell(`question ${item.number} has no "${role}" rectangle`);
@@ -268,6 +275,10 @@ function checkItem(page: PageModel, item: BookItem, tell: Tell): void {
     if (totalLabel.includes("|")) tell(`question ${item.number} has "|" in the label of the total`);
     if (prompt.trim() === "") tell(`question ${item.number} has an empty prompt`);
     if (prompt.includes("|")) tell(`question ${item.number} has "|" in the prompt`);
+  }
+  if (item.face.kind === "story") {
+    if (item.face.tokens.length === 0) tell(`question ${item.number} has no text`);
+    if (item.face.unit.trim() === "") tell(`question ${item.number} has an empty unit`);
   }
   if (item.face.kind === "fields") {
     if (item.face.prompt.trim() === "") tell(`question ${item.number} has an empty prompt`);
@@ -313,7 +324,7 @@ function checkIds(page: PageModel, items: ReadonlyMap<string | null, BookItem>, 
 function checkColumns(page: PageModel, onPage: readonly BookItem[], tell: Tell): void {
   const lefts: number[] = [];
   for (const { rect } of page.regions.filter((r) => r.role === "answer")) if (!lefts.some((x) => near(x, rect.x))) lefts.push(rect.x);
-  const limit = onPage.some((i) => i.face.kind === "figure") ? 1 : PRINT_RULES.maxAnswerColumns;
+  const limit = onPage.some((i) => i.face.kind === "figure" || i.face.kind === "story") ? 1 : PRINT_RULES.maxAnswerColumns;
   if (lefts.length > limit) tell(`there are ${lefts.length} answer columns and the limit is ${limit}`);
 }
 
@@ -335,7 +346,7 @@ export function checkPage(page: PageModel, items: readonly BookItem[]): string[]
   for (const problem of timeLogProblems(page, live)) tell(problem);
   const onPage = items.filter((i) => i.sheetId === page.sheetId && i.side === page.side && i.id.startsWith(`${page.id}/`));
   checkColumns(page, onPage, tell);
-  checkOverlaps(page, new Set(onPage.filter((i) => i.face.kind !== "column").map((i) => i.id)), tell);
+  checkOverlaps(page, new Set(onPage.filter((i) => i.face.kind !== "column").map((i) => i.id)), new Set(onPage.filter((i) => i.face.kind === "story").map((i) => i.id)), tell);
   checkIds(page, new Map(onPage.map((i) => [i.id, i])), tell);
   if (onPage.length === 0) tell("the page has no question");
   for (const item of onPage) checkItem(page, item, tell);

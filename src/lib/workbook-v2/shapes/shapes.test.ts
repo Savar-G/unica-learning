@@ -43,7 +43,7 @@ describe("registered shapes", () => {
 
   // Product rule: a child writes every answer. A true or false, tick or circle question would need another face, kind or rectangle.
   it("ask for a written answer: no face, answer kind or rectangle is a choice to tick, circle or call true", () => {
-    expect([FACE_KINDS, ANSWER_KINDS]).toEqual([["column", "equation", "sequence", "bracket", "fields", "figure"], ["whole-number", "digit"]]);
+    expect([FACE_KINDS, ANSWER_KINDS]).toEqual([["column", "equation", "sequence", "bracket", "fields", "figure", "story"], ["whole-number", "digit", "quantity"]]);
     // A capture is writing that is never scored, such as the time of a day: no answer and no choice.
     expect(REGION_ROLES.filter((role) => !["heading", "instruction", "footer", "qr", "scan-mark", "slot", "label", "question", "capture"].includes(role))).toEqual(["answer", "reach", "work"]);
     for (const { id, cases } of SHAPE_REGISTRATIONS) {
@@ -59,7 +59,8 @@ describe("registered shapes", () => {
   });
 
   it("are checked with the limits of every row of the example books", () => {
-    const rows = [...rawSnapshot.sheets, ...factsSnapshot.sheets, ...divisionSnapshot.sheets, ...placesSnapshot.sheets, ...inventedSnapshot.sheets].flatMap((s) => [...s.front.rows, ...s.back.rows]);
+    // A row of word problems is no registered shape: its limits are the defined questions of its snapshot (shapes/story.ts).
+    const rows = [...rawSnapshot.sheets, ...factsSnapshot.sheets, ...divisionSnapshot.sheets, ...placesSnapshot.sheets, ...inventedSnapshot.sheets].flatMap((s) => [...s.front.rows, ...s.back.rows]).filter((row) => row.shape !== "story");
     const registered = SHAPE_REGISTRATIONS.flatMap(({ id, cases }) => cases.map((c) => `${id} ${canonicalJson(c.limits)}`));
     for (const { shape, limits } of rows) expect(registered).toContain(`${shape} ${canonicalJson(limits)}`);
   });
