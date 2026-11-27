@@ -10,6 +10,7 @@ import { wholeNumber } from "../shapes/shape";
 import { validateSnapshot } from "../bank/snapshot";
 import { sheetItems } from "../build/items";
 import factsSnapshot from "../fixtures/snapshot-facts.json";
+import factsRequest from "../fixtures/book-facts.json";
 import { buildPages } from "./build-pages";
 import { fitProblem, needsOf, questionText, TEMPLATES, type ItemPlace } from "./templates";
 
@@ -31,6 +32,19 @@ describe("the two pages of a sheet", () => {
     expect(texts(one(front, "footer"))).toEqual(["Level 3 · Page 381"]);
     expect(texts(one(back, "footer"))).toEqual(["Level 3 · Page 382"]);
     expect([front.qr, back.qr]).toEqual(["https://unicalearning.com/tutor/p/example-front-381", "https://unicalearning.com/tutor/p/example-back-382"]);
+  });
+
+  it("of a repeated sheet print the attempt after the page number, and the first attempt prints as before", () => {
+    const footers = (attempt: number) => {
+      const book = structuredClone(factsRequest);
+      for (const sheet of book.sheets) sheet.attempt = attempt;
+      const plan = planBook({ snapshot: factsSnapshot, book });
+      if (!plan.ok) throw new Error(plan.problems.join("\n"));
+      return plan.pages.map((page) => texts(one(page, "footer"))[0]);
+    };
+    expect(footers(1).slice(0, 2)).toEqual(["Level 2 · Page 121", "Level 2 · Page 122"]);
+    expect(footers(2).slice(0, 2)).toEqual(["Level 2 · Page 121 · #2", "Level 2 · Page 122 · #2"]);
+    expect(footers(12).at(-1)).toMatch(/^Level 2 · Page \d+ · #12$/);
   });
 
   it("put the fixed rectangles where the template says, mirrored between the sides", () => {

@@ -17,7 +17,7 @@ The command writes the whole book into a hidden folder beside the output folder 
 
 `snapshot-4-digits.json` and `book-4-digits.json` in the same folder are a sheet of the wide template. `snapshot-add-sub.json` and `book-add-sub.json` are a sheet of `add.column` and one of `sub.column`, each with a side of both column templates. `snapshot-facts.json` and `book-facts.json` are five sheets of facts, equations with a blank inside and sequences. `snapshot-division.json` and `book-division.json` are seven sheets of divisions, in lines and in brackets. `snapshot-place-value.json` and `book-place-value.json` are two sheets of place value, one of each template of fields. `draft-invented-topic.json` is the draft of an invented topic (3-20) with notes: the sheet of stacks, a sheet of bar models and a sheet of word problems (pages 385 and 386), with its questions, scenarios and two region packs. `snapshot-invented-topic.json` is what it freezes to, and a test keeps the two the same. In `book-invented-topic.json` the first and the third sheet start a day, so their front pages have the time log.
 
-The snapshot file holds the content of one level. The book file holds the book id, the child id, and for each sheet the attempt, the text of the two QR codes and, if the sheet is the first of a day, `"startsDay": true` (any other value than true or false is refused; no value is false). For a snapshot with word problems it may also hold `region` (a region pack, such as `"US"`; the default region of the snapshot when it is left out) and `scenario` (an interest, such as `"space"`; `"default"` when it is left out). An unknown one stops the book, and so does either one for a snapshot with no word problems. The caller makes all of these; the engine makes none. Both must be plain JSON data: the build reads a copy, and the hashes cover exactly that copy. An inherited, hidden or computed value is refused. A level name is a number, and a page number and the next one must be exact whole numbers.
+The snapshot file holds the content of one level. The book file holds the book id, the child id, and for each sheet the attempt, the text of the two QR codes and, if the sheet is the first of a day, `"startsDay": true` (any other value than true or false is refused; no value is false). For a snapshot with word problems it may also hold `region` (a region pack, such as `"US"`; the default region of the snapshot when it is left out) and `scenario` (an interest, such as `"space"`; `"default"` when it is left out). An unknown one stops the book, and so does either one for a snapshot with no word problems. It may also hold `history`: what the child met in earlier books (see "Repeat books"). A book with no history is the same as before histories were known. The caller makes all of these; the engine makes none. Both must be plain JSON data: the build reads a copy, and the hashes cover exactly that copy. An inherited, hidden or computed value is refused. A level name is a number, and a page number and the next one must be exact whole numbers.
 
 ## Modules
 
@@ -31,12 +31,14 @@ The snapshot file holds the content of one level. The book file holds the book i
 | Checks | before the drawing: `checkPrintedAnswers(pages, items, shapes)`, `checkPage(page, items)`; after it: `checkDrawing(pages, items, drawn)`, which is `checkRendering`, `checkPositions`, `placeTexts`, `checkFit`, `checkPlaces`, `checkImages` and `checkPdf` | `checks/` |
 | Renderer | the interface to a typesetter: `render(pages)`, and `images(pages)` and `report(pages)` for a part of it | `renderer.ts` |
 | Render | the only module that calls Typst; fonts, pins, install | `render/` |
+| Results | `sheetResult(items, marks, { masteryPercent })`: the result of one attempt of a sheet | `results/` |
+| Assemble | `position(state, issued, receipts, results, snapshot)`: the queue of a child, never stored; `planNextBook(input)`: the request of the next book; `historyFromBooks(books)` | `assemble/` |
 | Build | `buildBook(input, renderer)`: the book with its notices, or a list of problems; `planBook(input)`: the pages and items of the book before the drawing, as `{ ok: true, ... }`, or `{ ok: false, problems }`; `checkBank(snapshot, renderer)`: the problems of a level, with sheet, side and row; `freezeBank(draft, renderer)`: the snapshot of a draft with its capacity, or every problem | `build/` |
 
 ## Rules
 
 - **Pure boundary:** everything outside `render/` and `testing/` is pure and cannot import `render/`. `buildBook` gets a `Renderer`. Behind it, `render/` may read files and start Typst, with no clock, random source, network or setting of the computer. `npm run check:guard` enforces this, the import list and the rule of no level branches (`scripts/engine-guard.mjs`, which says what it does not see). A drawing file may use `json("pages.json")`, `str(sys.version)` and `"report" in sys.inputs`, and no other file, clock or fact of the computer. The checks read page images with `inflateSync` of `node:zlib` and with `jsqr`. Both turn bytes into a value and touch nothing else, so the guard lists them for the pure part.
-- **Seed:** the child, the sheet id and the attempt decide the numbers. See "Repeats" for the questions of a sheet. A new attempt of a sheet may repeat a question of an earlier attempt, also when others exist; the choice of unseen questions is UNI-258.
+- **Seed:** the child, the sheet id and the attempt decide the numbers, and the history of the book when it has one. See "Repeats" for the questions of a sheet and "Repeat books" for the history.
 - **Order on a side:** the difficulty decides it, from easy to hard, so the questions of two rows may mix. A row in order (see "Rows in order") is not sorted and mixes with no row. Questions of equal difficulty keep the row order of the bank. Each item records its row (`rowId`). Scores compare only inside one shape, so rows of two shapes never mix.
 - **Places:** a side has no more questions than the places of its template on that side.
 - **Answers:** a shape computes each answer from the parameters of the question. The second computation (`solveAgain`) gets only the printed rows, which the build takes from the rectangles of the page model, from top to bottom and from left to right. An answer area beside or inside its question is a blank of the row (`□`, a character that no page prints). Each answer must first have a good form: parts with names that marking knows, each one time, of the kind of the shape, with a value in the form of the kind (`checks/answer-form.ts`). The second computation must read the same question and compute the same answer, with the same parts in the same order, and the last worked step must be it and draw nothing. If not, the build stops.
@@ -211,7 +213,7 @@ A word problem is a defined question that a person approved, filled by code: no 
 
 A fact limit `tables` is stored as a set: the first numbers in rising order, such as `[2, 5, 10]`; a range is refused. The limit `order` is `mixed`, `up` or `down`. For the last two, `orderedRuns(limits, items)` gives every row that it can be: consecutive questions of one table (of the tables one after the other when no table is long enough). The seed of the row names the first of them, and the builder takes the next one when it repeats a question. A row is one decision, so a seed for each place could not make it, and the builder cannot sort a row into the order of a table because it knows no math. The difficulty of the questions is stored as always, the range of the limits still decides whether a row may stand below another one, and the sort of the side leaves the row alone.
 
-`swapped(question, limits)` gives the swapped form of a fact (7 × 5 for 5 × 7) and whether the limits allow it, or null (5 × 5, and every subtraction). The swapped form of 35 ÷ 7 is 35 ÷ 5, with another answer (the registration says `swapChangesAnswer`); 49 ÷ 7, 7 ÷ 7 and 0 ÷ 7 have none. Nothing prints it yet; the choice of unseen questions is UNI-258.
+`swapped(question, limits)` gives the swapped form of a fact (7 × 5 for 5 × 7) and whether the limits allow it, or null (5 × 5, and every subtraction). The swapped form of 35 ÷ 7 is 35 ÷ 5, with another answer (the registration says `swapChangesAnswer`); 49 ÷ 7, 7 ÷ 7 and 0 ÷ 7 have none. A repeat prints it (see "Repeat books").
 
 ## Repeats
 
@@ -225,6 +227,45 @@ For a shape with a list, `build/row-questions.ts` chooses the questions of all i
 A shape that prints one question in more than one form gives its `identity`: for a division the two numbers, so that 37 ÷ 4 in a line and in a bracket, with one area or two, are one question.
 
 A shape with no list asks 500 times for a question that the sheet does not have, then takes one that the side or at least the row does not have. It stops as soon as the sheet has met as many different questions of these limits as `count` says and none of them is less used than the one it holds: more tries would give the same question. A book with a repeat is built: `notices` of the book, which the command prints, name each row that has a question of an earlier row of the side or of the front side. The bank check stops a row that asks for more questions than its own limits allow.
+
+## Repeat books
+
+A repeat book is the next book of a child: the sheets that failed and the next new ones. Each part is pure and takes plain data; nothing is stored but what happened (UNI-243 and UNI-258 add the tables).
+
+**The result of a sheet** (`results/sheet-results.ts`) counts only the first try of each question: right, wrong or blank (a blank is wrong). A correction never changes it, and a question with no mark is unmarked. `masteryPercent` is data (90, say, or 80), never a branch on a level. `maxMistakes` is `total - ceil(total × masteryPercent / 100)`, so 16 questions at 90% allow 1 mistake.
+
+1. More mistakes than `maxMistakes` is `repeat`, whatever is unmarked.
+2. Else less than 80% of the questions marked is `unknown`.
+3. Else `mastered` when the right ones are at least `masteryPercent` of the marked ones, and `repeat` when not.
+
+A sheet with no questions, a mastery percent that is not a whole number from 1 to 100, two marks of one question and a mark of an unknown question are refused.
+
+**The position** (`assemble/position.ts`) is computed each time from the issued sheets of all books, the accepted page scans and the sheet results, and never stored. For each sheet from the start sheet on, in the order of its pages, the latest attempt decides:
+
+1. `mastered`: done.
+2. `repeat`: the next attempt is due, also when the result comes after a later book moved on.
+3. `unknown` or no result: when less than half of the pages of that book were scanned, the sheet repeats one time and the team gets a notice. A sheet that repeated for this already, or a book with half or more scanned, counts as passed until its marks arrive. So unscanned books never make a loop.
+
+The queue has the repeats first, then the sheets that were never issued, each in the order of the level. A page scanned twice counts one time. A sheet with 3 failed attempts gets a nudge to Maya, which no page prints. An unknown sheet, an attempt below 1, an attempt or a page of a book twice, a later attempt in an earlier book, a scan of a page that no book issued and a result of an attempt that is not issued are refused.
+
+**The next book** (`assemble/plan-book.ts`): `planNextBook` takes the first sheets of the queue, `pagesPerDay × days / 2` of them (or `sheetsCount`), at most 60. A book has an even number of sheets, so that its pages and the 4 pages of the cover are a multiple of 4 with no blank page: an odd count takes one more sheet of the queue (it belongs to the last day), or one fewer when the queue has no more. The first sheet of each day starts the day. It needs exactly 2 QR texts for each sheet and gives a request that `readBookRequest` accepts, with the region, the scenario and the history when it has them.
+
+**The history** (`history` in the book, `build/book-history.ts`) is plain JSON with three lists, which `historyFromBooks` makes from earlier built books, oldest first:
+
+| List | What it holds |
+|---|---|
+| `books` | each book with the shape and the key (`questionKey`) of each question, in printed order |
+| `lastAttempts` | the last attempt of each sheet: for each question its side, row, shape, key and `form` (the printed question as canonical JSON) |
+| `seenPhrasings` | each phrasing of a word problem that the child read: question and phrasing |
+
+Every field is checked, and an unknown or missing one stops the book. The input hash covers the history. With it, the build:
+
+- takes a question that the child has not seen first, then one seen longest ago (the books are the age). A sheet never repeats a question to avoid a seen one: that comes after the rules of "Repeats". A row in order takes the run with the fewest seen questions, and the run of its last attempt last. A shape with no list counts how recently the child saw a question after how often the sheet has it. A book is never refused for lack of unseen questions.
+- prints a question of the last attempt in its swapped form (7 × 5 for 5 × 7, 35 ÷ 5 for 35 ÷ 7) when the limits of its row allow it, the last attempt did not print that form, and the sheet does not print it yet. A row in order keeps its table.
+- changes the order of a side that would print exactly what the last attempt printed, in the same order: in the first group of questions of one row with equal difficulty that can change, the first goes to the end. The order from easy to hard stays, so a side whose questions all differ in difficulty keeps its one order.
+- passes the seen phrasings to `bindSheet` (`StoryLimits.seen`, each `<question>/<phrasing>`), so `choosePhrasing` takes one that the child has not read while there is one. A word problem is one question whatever its numbers, so an unseen defined question comes first too.
+
+**The attempt mark:** the footer of a repeated sheet says its attempt after the page, `Level 3 · Page 381 · #2`, in the footer rectangle, outside the spine zone, with no change to any answer or work area. The first attempt prints `Level 3 · Page 381` as before, so its PDF and images are the same bytes. `checkPage` wants exactly this text (`footerText`). A test builds Book 1 with the real Typst, invents marks, computes the position, builds Book 2 with every check, and rebuilds Book 1 from its saved input to the same PDF and page images.
 
 ## Steps
 
@@ -363,7 +404,7 @@ Measured on 2026-11-26 from a laptop against the hosted project, for the full-si
 ## Where the next parts connect
 
 - The freeze of a level is `freezeBank`; the bank tables and the admin tool (B1, B8) call it. The questions, scenarios and region packs of a snapshot are the rows of `bank_questions`, `bank_scenarios` and `bank_region_packs`.
-- The book job gives `region` from the family and, when themes come, `scenario` from the interest of the child. Seen phrasings are an input of `choosePhrasing` that no book passes yet (UNI-258).
+- The book job gives `region` from the family and, when themes come, `scenario` from the interest of the child. It does not pass a history yet: UNI-258 reads it from `workbook_item_answers` across books, and UNI-243 stores the sheet results (`child_sheet_results`, `child_bank_state`).
 - Marking reads the captures of a page (B6): the time log is the first.
 - The book job for real families (UNI-260) uses the job of "Publishing" with the family's plan.
 - More shapes: follow "Adding a shape" above. A new look of a question is a new `Face` and a template that takes it.

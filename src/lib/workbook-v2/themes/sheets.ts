@@ -5,12 +5,13 @@ import { STORY_SHAPE_ID, type StoryLimits } from "../shapes/story";
 import { bindStory } from "./bind";
 import type { StoryBank, StoryChoice } from "./types";
 
-function bindSide(side: SnapshotSide, bank: StoryBank, choice: StoryChoice): SnapshotSide {
+function bindSide(side: SnapshotSide, bank: StoryBank, choice: StoryChoice, seen: readonly string[]): SnapshotSide {
   if (!side.rows.some((row) => row.shape.id === STORY_SHAPE_ID)) return side;
-  return { ...side, rows: side.rows.map((row) => (row.shape.id === STORY_SHAPE_ID ? { ...row, limits: bindStory((row.limits as StoryLimits).ids, bank, choice) } : row)) };
+  return { ...side, rows: side.rows.map((row) => (row.shape.id === STORY_SHAPE_ID ? { ...row, limits: bindStory((row.limits as StoryLimits).ids, bank, choice, seen) } : row)) };
 }
 
-export function bindSheet(sheet: SnapshotSheet, bank: StoryBank, choice: StoryChoice): SnapshotSheet {
-  const [front, back] = [bindSide(sheet.front, bank, choice), bindSide(sheet.back, bank, choice)];
+/** `seen` holds the phrasings that the child has read, each as `<question>/<phrasing>`: the choice takes another one while there is one. */
+export function bindSheet(sheet: SnapshotSheet, bank: StoryBank, choice: StoryChoice, seen: readonly string[] = []): SnapshotSheet {
+  const [front, back] = [bindSide(sheet.front, bank, choice, seen), bindSide(sheet.back, bank, choice, seen)];
   return front === sheet.front && back === sheet.back ? sheet : { ...sheet, front, back };
 }

@@ -6,6 +6,9 @@ import { canonicalJson, seedFrom } from "../hash";
 import rawSnapshot from "../fixtures/snapshot.json";
 import { SHAPES, type Shape } from "../shapes";
 import { stackOf } from "../testing/sample";
+import { historyFromBooks } from "../assemble/plan-book";
+import type { BookItem } from "../contract";
+import { sheetHistory, type BookHistory } from "./book-history";
 import { itemSeed, repeatNotices, sheetItems } from "./items";
 
 const result = validateSnapshot(structuredClone(rawSnapshot));
@@ -385,5 +388,162 @@ describe("the tries of a shape with no list", () => {
     const { sheet, askedFor } = watched([row("f", 2)], [], { ...unlisted, count: () => 2, generate: (limits) => unlisted.generate(limits, "one") });
     expect(askedFor("child")).toBe(501);
     expect(said(sheet, "child")).toEqual(byAllTries(sheet, "child").sort());
+  });
+});
+
+describe("a repeat with the history of the child", () => {
+  type RowOf = { id: string; items: number; limits: unknown; shape: string };
+  const facts = (order: string, tables: number[], second: [number, number]) => ({ tables, second: { min: second[0], max: second[1] }, result: { min: 0, max: 100 }, order });
+  const sheetOf = (front: RowOf[], back: RowOf[]): SnapshotSheet => {
+    const rows = (all: RowOf[]) => all.map(({ shape, ...row }) => {
+      const found = SHAPES.get(shape);
+      if (!found) throw new Error(`no shape ${shape}`);
+      return { ...row, shape: found };
+    });
+    return { ...SHEET, front: { ...SHEET.front, rows: rows(front) }, back: { ...SHEET.back, rows: rows(back) } };
+  };
+  const OTHER: RowOf = { id: "other", items: 10, limits: facts("mixed", [1, 2, 3, 4, 5, 6, 7, 8, 9], [1, 9]), shape: "fact.add" };
+  /** The history after some books, each the items of one attempt (or more) of the child. */
+  const historyOf = (books: BookItem[][], sheetId = SHEET.id) => sheetHistory(historyFromBooks(books.map((items, i) => ({ record: { bookId: `book-${i + 1}` }, items }))), sheetId);
+  /** Repeats of a sheet, each with the history of the attempts before it. */
+  function attempts(sheet: SnapshotSheet, child: string, count: number): BookItem[][] {
+    const books: BookItem[][] = [];
+    for (let attempt = 1; attempt <= count; attempt++) books.push(sheetItems(sheet, child, attempt, attempt === 1 ? null : historyOf(books)));
+    return books;
+  }
+  const keyOf = (item: BookItem) => `${item.shape} ${canonicalJson(item.question)}`;
+  const keys = (items: readonly BookItem[]) => items.map(keyOf);
+  const formsOn = (items: readonly BookItem[], side: string) => items.filter((i) => i.side === side).map((i) => canonicalJson(i.question));
+  const children = (check: (child: string) => void, numRuns = 60) => fc.assert(fc.property(fc.uuid(), check), { numRuns });
+
+  it("is the same as with no history when the history holds nothing", () => {
+    const empty: BookHistory = { books: [], lastAttempts: [], seenPhrasings: [] };
+    const facts20 = sheetOf([{ id: "table", items: 9, limits: facts("up", [4], [0, 10]), shape: "fact.mul" }, { id: "mixed", items: 11, limits: facts("mixed", [6, 7, 8, 9], [3, 9]), shape: "fact.mul" }], [OTHER]);
+    children((child) => {
+      for (const sheet of [SHEET, facts20]) for (const attempt of [1, 2, 5]) expect(sheetItems(sheet, child, attempt, sheetHistory(empty, sheet.id))).toEqual(sheetItems(sheet, child, attempt));
+    }, 40);
+  });
+
+  it("prints questions that the child has not seen while the limits have them, then those seen longest ago", () => {
+    const row = (id: string): RowOf => ({ id, items: 10, limits: facts("mixed", [2, 3, 4, 5, 6, 7, 8, 9], [2, 9]), shape: "fact.mul" });
+    const sheet = sheetOf([row("front")], [row("back")]);
+    children((child) => {
+      const [one, two, three, four] = attempts(sheet, child, 4).map(keys);
+      expect(two.filter((k) => one.includes(k))).toEqual([]);
+      expect(three.filter((k) => one.includes(k) || two.includes(k))).toEqual([]);
+      // 64 questions: after 60 seen, the 4 unseen come first and the other 16 are of the oldest book.
+      const unseen = four.filter((k) => ![...one, ...two, ...three].includes(k));
+      expect(unseen).toHaveLength(4);
+      expect(four.filter((k) => !unseen.includes(k)).every((k) => one.includes(k))).toBe(true);
+      expect(new Set(four).size).toBe(20);
+    }, 30);
+  });
+
+  it("reuses the oldest questions of a small row and never fails for lack of unseen ones", () => {
+    const sheet = sheetOf([{ id: "small", items: 5, limits: facts("mixed", [5], [1, 6]), shape: "fact.mul" }], [OTHER]);
+    children((child) => {
+      const books = attempts(sheet, child, 4);
+      const fronts = books.map((items) => keys(items.filter((i) => i.side === "front")));
+      const all = new Set(fronts.flat());
+      expect(all.size).toBe(6);
+      fronts.slice(1).forEach((front, i) => {
+        const before = fronts.slice(0, i + 1);
+        const lastSeen = (k: string) => before.findLastIndex((f) => f.includes(k));
+        // The one question that is unseen or seen longest ago is never left out.
+        const oldest = Math.min(...[...all].map((k) => lastSeen(k)));
+        for (const k of all) if (lastSeen(k) === oldest) expect(front).toContain(k);
+        expect(new Set(front).size).toBe(5);
+      });
+    });
+  });
+
+  it("prints a question of the last attempt in its swapped form when its limits allow it and neither the last attempt nor the sheet prints that form", () => {
+    for (const [shape, limits] of [["fact.mul", facts("mixed", [5, 7], [5, 7])], ["div.fact", { divisors: [5, 7], quotient: { min: 5, max: 7 }, order: "mixed", form: "line" }]] as const) {
+      const sheet = sheetOf([{ id: "pairs", items: 2, limits, shape }], [OTHER]);
+      const found = SHAPES.get(shape);
+      if (!found?.list || !found.swapped) throw new Error("no shape");
+      const listed = found.list(limits);
+      let swaps = 0;
+      children((child) => {
+        const one = sheetItems(sheet, child, 1);
+        // Every question of the row was seen in one book; the last attempt printed two of them.
+        const history: BookHistory = {
+          books: [{ bookId: "book-1", items: listed.map((q) => ({ shape, key: canonicalJson(found.identity?.(q) ?? q) })) }],
+          lastAttempts: [{ sheetId: SHEET.id, attempt: 1, items: one.filter((i) => i.rowId === "pairs").map((i) => ({ shape, key: canonicalJson(found.identity?.(i.question) ?? i.question), side: i.side, rowId: i.rowId, form: canonicalJson(i.question) })) }],
+          seenPhrasings: [],
+        };
+        const before = new Set(history.lastAttempts[0].items.map((i) => i.key));
+        const two = sheetItems(sheet, child, 2, sheetHistory(history, SHEET.id)).filter((i) => i.rowId === "pairs");
+        const printed = new Set(two.map((i) => canonicalJson(found.identity?.(i.question) ?? i.question)));
+        for (const item of two) {
+          const key = canonicalJson(found.identity?.(item.question) ?? item.question);
+          const turned = found.swapped?.(item.question, limits);
+          // A question of the last attempt prints as it was only when its swapped form is out of the limits, was in the last attempt too, or is on the sheet.
+          const turnedKey = turned ? canonicalJson(found.identity?.(turned.question) ?? turned.question) : "";
+          if (before.has(key) && turned?.inLimits && !before.has(turnedKey)) expect(printed.has(turnedKey)).toBe(true);
+          expect(found.answer(item.question)).toEqual(item.answer);
+        }
+        if (two.some((i) => !before.has(canonicalJson(found.identity?.(i.question) ?? i.question)))) swaps++;
+      }, 80);
+      expect(swaps).toBeGreaterThan(0);
+    }
+  });
+
+  it("prints 7 × 5 for the 5 × 7 of the last attempt, and 35 ÷ 5 for 35 ÷ 7", () => {
+    const cases = [
+      ["fact.mul", facts("mixed", [5, 7], [5, 7]), { a: 5, b: 7 }, { a: 7, b: 5 }],
+      ["div.fact", { divisors: [5, 7], quotient: { min: 5, max: 7 }, order: "mixed", form: "line" }, { dividend: 35, divisor: 7, form: "line", parts: 1 }, { dividend: 35, divisor: 5, form: "line", parts: 1 }],
+    ] as const;
+    for (const [shape, limits, was, turned] of cases) {
+      const sheet = sheetOf([{ id: "one", items: 1, limits, shape }], [OTHER]);
+      const key = (q: unknown) => canonicalJson(SHAPES.get(shape)?.identity?.(q) ?? q);
+      const history: BookHistory = { books: [{ bookId: "book-1", items: [{ shape, key: key(was) }, { shape, key: key(turned) }] }], lastAttempts: [{ sheetId: SHEET.id, attempt: 1, items: [{ shape, key: key(was), side: "front", rowId: "one", form: canonicalJson(was) }] }], seenPhrasings: [] };
+      const pinned = { ...sheet, front: { ...sheet.front, rows: sheet.front.rows.map((r) => ({ ...r, shape: { ...r.shape, list: () => [was, turned], generate: () => ({ question: was, answer: r.shape.answer(was) }) } })) } };
+      // Both forms were seen in one book and the seed gives the question of the last attempt: the choice keeps it, the swap turns it.
+      const [item] = sheetItems(pinned, "child-a", 2, sheetHistory(history, SHEET.id)).filter((i) => i.rowId === "one");
+      expect(item.question).toEqual(turned);
+      const [unswapped] = sheetItems(pinned, "child-a", 2, sheetHistory({ ...history, lastAttempts: [] }, SHEET.id)).filter((i) => i.rowId === "one");
+      expect(unswapped.question).toEqual(was);
+      expect(item.answer).toEqual(SHAPES.get(shape)?.answer(turned));
+    }
+  });
+
+  it("does not print a side in the order of the last attempt when another order is valid", () => {
+    // 5 × 5, 5 × 6, 6 × 5 and 6 × 6: 5 × 6 and 6 × 5 are equally hard.
+    const sheet = sheetOf([{ id: "four", items: 4, limits: facts("mixed", [5, 6], [5, 6]), shape: "fact.mul" }], [OTHER]);
+    children((child) => {
+      const [one, two] = attempts(sheet, child, 2);
+      const front = two.filter((i) => i.side === "front");
+      expect(new Set(keys(front))).toEqual(new Set(keys(one.filter((i) => i.side === "front"))));
+      expect(formsOn(two, "front")).not.toEqual(formsOn(one, "front"));
+      front.slice(1).forEach((item, i) => expect(item.difficulty).toBeGreaterThanOrEqual(front[i].difficulty));
+    });
+  });
+
+  it("keeps the one order of a side whose questions all differ in difficulty", () => {
+    const sheet = sheetOf([{ id: "four", items: 4, limits: facts("mixed", [5], [1, 4]), shape: "fact.mul" }], [OTHER]);
+    children((child) => {
+      const [one, two] = attempts(sheet, child, 2);
+      expect(formsOn(two, "front")).toEqual(formsOn(one, "front"));
+    }, 20);
+  });
+
+  it("takes another run of a row in order when there is one", () => {
+    const sheet = sheetOf([{ id: "table", items: 9, limits: facts("up", [4], [0, 10]), shape: "fact.mul" }], [OTHER]);
+    children((child) => {
+      const [one, two, three] = attempts(sheet, child, 3).map((items) => formsOn(items, "front"));
+      expect(two).not.toEqual(one);
+      expect(three).not.toEqual(two);
+    });
+  });
+
+  it("prefers unseen questions, then the oldest, for a shape with no list", () => {
+    const places = (min: number, max: number) => ({ digits: { min: 2, max: 2 }, number: { min, max }, zeros: { min: 0, max: 3 }, zeroInOnes: "allowed", zeroInTens: "allowed", zeroInHundreds: "allowed" });
+    const sheet = sheetOf([{ id: "places", items: 3, limits: places(10, 15), shape: "place.value" }], [{ id: "others", items: 3, limits: places(20, 25), shape: "place.value" }]);
+    children((child) => {
+      const [one, two, three] = attempts(sheet, child, 3).map((items) => new Set(keys(items.filter((i) => i.side === "front"))));
+      expect([...two].filter((k) => one.has(k))).toEqual([]);
+      expect(three).toEqual(one);
+    }, 30);
   });
 });

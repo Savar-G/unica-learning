@@ -1,5 +1,7 @@
 // Chooses the questions of the rows of one shape that has a list: for the whole sheet when its rows can all be different,
-// and otherwise for each side. The seeds of the rows and places decide; nothing else does.
+// and otherwise for each side. The seeds of the rows and places decide, and what the child met in earlier books: a
+// question that the child has not seen comes first, then one seen longest ago. A sheet never repeats a question to avoid
+// a seen one.
 import { pick } from "../hash";
 import type { Shape } from "../shapes";
 import { questionKey } from "../shapes/shape";
@@ -13,6 +15,34 @@ type Keys = ReadonlySet<string>;
 type Chosen = Map<AskedRow, Question[]>;
 
 const NONE: Keys = new Set();
+
+/**
+ * What the child met before, for the rows of one shape: how recent each question key is (more is more recent; a key that
+ * is not there is unseen), and the questions of each row in the last attempt of the sheet, in order.
+ */
+export interface SeenBefore { recency: ReadonlyMap<string, number>; lastOfRow: ReadonlyMap<string, readonly string[]> }
+export const NOTHING_SEEN: SeenBefore = { recency: new Map(), lastOfRow: new Map() };
+
+const sameKeys = (a: Keys, b: Keys): boolean => a.size === b.size && [...a].every((key) => b.has(key));
+
+/**
+ * The questions that each pass of a choice leaves out, the strictest first: the stale ones and every seen one, then the
+ * stale ones and all but the oldest seen ones, and so on; then the stale ones alone, then the seen ones alone, then none.
+ * With nothing seen, this is the stale ones and then none, as before history.
+ */
+function bansOf(stale: Keys, { recency }: SeenBefore): Keys[] {
+  const since = [...new Set(recency.values())].sort((a, b) => a - b).map((oldest) => new Set([...recency].filter(([, r]) => r >= oldest).map(([key]) => key)));
+  const all = [...since.map((seen) => new Set([...stale, ...seen])), stale, ...since, NONE];
+  return all.filter((keys, i) => !all.slice(0, i).some((before) => sameKeys(before, keys)));
+}
+
+/** The questions that the child has not seen, or else those seen longest ago. */
+function freshest(questions: readonly Question[], { recency }: SeenBefore): Question[] {
+  const unseen = questions.filter((q) => !recency.has(q.key));
+  if (unseen.length > 0 || questions.length === 0) return unseen;
+  const oldest = Math.min(...questions.map((q) => recency.get(q.key) ?? 0));
+  return questions.filter((q) => recency.get(q.key) === oldest);
+}
 /** How many choices of a row in order one search looks at. More than ten such rows on a sheet could need more. */
 const MOST_TRIES = 20_000;
 
@@ -42,17 +72,29 @@ function canAllDiffer(rows: readonly Row[], taken: Keys): boolean {
   return rows.every((row) => Array.from({ length: row.items }).every(() => give(row, new Set())));
 }
 
-/** The runs of a row from the one that its seed names, those with the fewest stale questions first. */
-function runsInOrder({ runs, seedOf }: Row, stale: Keys): Question[][] {
+/**
+ * The runs of a row from the one that its seed names: those with the fewest stale questions first, then the fewest seen
+ * ones, then those seen longest ago, and the run of the last attempt of the row after every other.
+ */
+function runsInOrder({ id, runs, seedOf }: Row, stale: Keys, seen: SeenBefore): Question[][] {
   if (!runs) return [];
   const start = pick(seedOf(0, 0), runs.length);
   const turned = [...runs.slice(start), ...runs.slice(0, start)];
-  return stale.size === 0 ? turned : turned.map((run) => ({ run, old: count(run, stale) })).sort((a, b) => a.old - b.old).map(({ run }) => run);
+  if (stale.size === 0 && seen.recency.size === 0) return turned;
+  const last = seen.lastOfRow.get(id)?.join("\n");
+  const scoreOf = (run: Question[]) => [
+    count(run, stale),
+    run.filter((q) => seen.recency.has(q.key)).length,
+    run.reduce((sum, q) => sum + (seen.recency.get(q.key) ?? -1) + 1, 0),
+    last !== undefined && run.map((q) => q.key).join("\n") === last ? 1 : 0,
+  ];
+  const before = (a: number[], b: number[]) => a.findIndex((n, i) => n !== b[i]);
+  return turned.map((run) => ({ run, score: scoreOf(run) })).sort((a, b) => { const i = before(a.score, b.score); return i < 0 ? 0 : a.score[i] - b.score[i]; }).map(({ run }) => run);
 }
 
 /** The first choice of runs that share no question and leave a complete assignment for the mixed rows, or null. */
-function chooseRuns(ordered: readonly Row[], mixed: readonly Row[], taken: Keys, stale: Keys): Chosen | null {
-  const candidates = ordered.map((row) => runsInOrder(row, stale));
+function chooseRuns(ordered: readonly Row[], mixed: readonly Row[], taken: Keys, stale: Keys, seen: SeenBefore): Chosen | null {
+  const candidates = ordered.map((row) => runsInOrder(row, stale, seen));
   const failed = new Set<string>();
   let tries = 0;
   const search = (index: number, used: Keys): Chosen | null => {
@@ -79,9 +121,10 @@ interface Place { row: Row; index: number; question: Question | null }
 
 /**
  * The questions of the mixed rows, the row with the fewest first: the one that the seed of the place gives, or one of
- * those that are left, or an augmenting path that moves earlier places. Stale questions come only after all others.
+ * those that are left, or an augmenting path that moves earlier places. Stale questions come only after all others, and
+ * seen ones after unseen ones, the oldest first (`bansOf`).
  */
-function assignMixed(mixed: readonly Row[], taken: Keys, stale: Keys): Place[] {
+function assignMixed(mixed: readonly Row[], taken: Keys, stale: Keys, seen: SeenBefore): Place[] {
   const places = [...mixed].sort((a, b) => a.list.length - b.list.length).flatMap((row) => Array.from({ length: row.items }, (_, index): Place => ({ row, index, question: null })));
   const owner = new Map<string, Place>();
   const own = (place: Place, question: Question): true => {
@@ -107,8 +150,8 @@ function assignMixed(mixed: readonly Row[], taken: Keys, stale: Keys): Place[] {
     const left = list.filter(isFree);
     return left.length > 0 ? own(place, left[pick(seedOf(place.index, 1), left.length)]) : move(place, banned, new Set());
   };
-  const without = places.filter((place) => !give(place, stale));
-  if (stale.size > 0) for (const place of without) give(place, NONE);
+  let without = places;
+  for (const banned of bansOf(stale, seen)) if (without.length > 0) without = without.filter((place) => !give(place, banned));
   return places;
 }
 
@@ -119,36 +162,36 @@ function byRow(runs: Chosen, places: readonly Place[]): Chosen {
 }
 
 /** A choice with no question twice and none that is taken, or null when there is none. */
-function chooseDifferent(rows: readonly Row[], taken: Keys, stale: Keys): Chosen | null {
+function chooseDifferent(rows: readonly Row[], taken: Keys, stale: Keys, seen: SeenBefore): Chosen | null {
   const mixed = rows.filter((row) => !row.runs);
-  const runs = chooseRuns(rows.filter((row) => row.runs), mixed, taken, stale);
-  return runs && byRow(runs, assignMixed(mixed, new Set([...taken, ...keysOf(runs)]), stale));
+  const runs = chooseRuns(rows.filter((row) => row.runs), mixed, taken, stale, seen);
+  return runs && byRow(runs, assignMixed(mixed, new Set([...taken, ...keysOf(runs)]), stale, seen));
 }
 
 /** The rows of a side that cannot all be different: each row has no question twice, and as few are repeated as it finds. */
-function chooseWithRepeats(rows: readonly Row[], stale: Keys): Chosen {
+function chooseWithRepeats(rows: readonly Row[], stale: Keys, seen: SeenBefore): Chosen {
   const runs: Chosen = new Map();
   for (const row of rows.filter((r) => r.runs)) {
     const used = new Set(keysOf(runs));
-    runs.set(row, runsInOrder(row, stale).reduce((best, run) => (count(run, used) < count(best, used) ? run : best)));
+    runs.set(row, runsInOrder(row, stale, seen).reduce((best, run) => (count(run, used) < count(best, used) ? run : best)));
   }
-  const places = assignMixed(rows.filter((row) => !row.runs), new Set(keysOf(runs)), stale);
+  const places = assignMixed(rows.filter((row) => !row.runs), new Set(keysOf(runs)), stale, seen);
   for (const place of places) {
     if (place.question) continue;
     const own = new Set(places.flatMap((p) => (p.row === place.row && p.question ? [p.question.key] : [])));
-    const left = place.row.list.filter((q) => !own.has(q.key));
+    const left = freshest(place.row.list.filter((q) => !own.has(q.key)), seen);
     place.question = left[pick(place.row.seedOf(place.index, 3), left.length)];
   }
   return byRow(runs, places);
 }
 
 /** The questions of each row of a sheet, in the order of its places. All rows are of one shape. */
-export function chooseQuestions(sides: readonly (readonly AskedRow[])[]): Map<AskedRow, unknown[]> {
+export function chooseQuestions(sides: readonly (readonly AskedRow[])[], seen: SeenBefore = NOTHING_SEEN): Map<AskedRow, unknown[]> {
   const rows = sides.map((side) => side.map(prepared));
-  const whole = chooseDifferent(rows.flat(), NONE, NONE);
+  const whole = chooseDifferent(rows.flat(), NONE, NONE, seen);
   const used = new Set<string>();
   const found = whole ? [whole] : rows.map((side) => {
-    const chosen = (used.size > 0 && chooseDifferent(side, used, NONE)) || chooseDifferent(side, NONE, used) || chooseWithRepeats(side, used);
+    const chosen = (used.size > 0 && chooseDifferent(side, used, NONE, seen)) || chooseDifferent(side, NONE, used, seen) || chooseWithRepeats(side, used, seen);
     for (const key of keysOf(chosen)) used.add(key);
     return chosen;
   });

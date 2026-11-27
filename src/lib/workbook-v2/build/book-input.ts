@@ -5,11 +5,15 @@ import type { Snapshot, SnapshotSheet } from "../bank/snapshot";
 import type { Side } from "../contract";
 import { interestsOf } from "../themes/bind";
 import { DEFAULT_INTEREST, type StoryChoice } from "../themes/types";
+import { readHistory, type BookHistory } from "./book-history";
 
 /** `startsDay` says that the sheet is the first of a day of the book, so that its front page has the time log. */
 export interface BookSheet { sheet: SnapshotSheet; attempt: number; qr: Record<Side, string>; startsDay: boolean }
-/** `stories` is the theme and the region of the word problems, or null for a snapshot with none. */
-export interface BookRequest { bookId: string; childId: string; sheets: BookSheet[]; stories: StoryChoice | null }
+/**
+ * `stories` is the theme and the region of the word problems, or null for a snapshot with none. `history` is what the child
+ * met in earlier books, or null when the request has none.
+ */
+export interface BookRequest { bookId: string; childId: string; sheets: BookSheet[]; stories: StoryChoice | null; history: BookHistory | null }
 
 const isName = (value: unknown): value is string => typeof value === "string" && /^[A-Za-z0-9-]{1,64}$/.test(value);
 const isQrText = (value: unknown): value is string => typeof value === "string" && /^[!-~]+$/.test(value);
@@ -49,8 +53,9 @@ function readStoryChoice(r: FieldReader, fields: Record<string, unknown>, { stor
 export function readBookRequest(raw: unknown, snapshot: Snapshot): BookRequest | string[] {
   const r = new FieldReader();
   const place = "The book";
-  const fields = r.object(place, raw, ["bookId", "childId", "sheets"], ["region", "scenario"]);
+  const fields = r.object(place, raw, ["bookId", "childId", "sheets"], ["region", "scenario", "history"]);
   if (!fields) return r.problems;
+  const history = Object.hasOwn(fields, "history") ? readHistory(r, fields.history) : null;
   const stories = readStoryChoice(r, fields, snapshot);
   const { bookId, childId } = fields;
   for (const name of ["bookId", "childId"]) if (!isName(fields[name])) r.problem(place, `${name} must use only letters, digits and dashes`);
@@ -58,5 +63,5 @@ export function readBookRequest(raw: unknown, snapshot: Snapshot): BookRequest |
   r.unique("sheet and attempt", sheets.map((s) => `${s.sheet.id}, attempt ${s.attempt}`), place);
   // Two pages with one QR text would send the scan of one page to the answers of the other.
   r.unique("QR text", sheets.flatMap((s) => [s.qr.front, s.qr.back]), place);
-  return r.problems.length === 0 && isName(bookId) && isName(childId) ? { bookId, childId, sheets, stories } : r.problems;
+  return r.problems.length === 0 && isName(bookId) && isName(childId) ? { bookId, childId, sheets, stories, history } : r.problems;
 }
