@@ -218,7 +218,7 @@ export class MayaVoiceAgent extends voice.Agent {
     const sentence = telemetry().speech(this.utteranceOwner?.() ?? { turnId: null, kind: "other" });
     let sentenceIndex = 0;
     const synthesize = (input: ReadableStream<string> | AsyncIterable<string>) =>
-      countedSynthesis(input, counted => voice.Agent.default.ttsNode(this, counted, settings), said => void this.call.spoken(said), sentence(sentenceIndex++));
+      countedSynthesis(input, counted => voice.Agent.default.ttsNode(this, counted, settings), said => void this.call.spoken(said), sentence(sentenceIndex++), this.voiceStyle ?? undefined);
     // The worker's own opening has an empty plan, and must not wait for the board to connect.
     const ungated = this.ungatedNext;
     this.ungatedNext = false;
@@ -236,6 +236,8 @@ export class MayaVoiceAgent extends voice.Agent {
 
   /** One-shot: the next speech's audio does not wait for its (empty) board plan to be sent (the worker's own opening). */
   ungatedNext = false;
+  /** The Inworld steering tag at the start of each speech request (MAYA_VOICE_STYLE, D-348). Null: none. */
+  voiceStyle: string | null = null;
   /** Who owns the speech whose voice stream starts now (the run knows its turns). Absent: the speech is not attributed. */
   utteranceOwner: (() => UtteranceOwner) | null = null;
   /** A speech with a board plan whose voice gave no audio (./speech-audio.ts `boardAudio`). */
@@ -478,6 +480,8 @@ export class VoiceCallRun {
       heardVad?: VAD;
       /** The worker's detector's minimum silence (VoiceTuning.detectorMinSilenceMs). Absent: the session's VAD as it is. */
       detectorMinSilenceMs?: number;
+      /** The Inworld steering tag for every speech request (VoiceConfig.style, D-348). Absent: none. */
+      voiceStyle?: string;
     },
   ) {
     this.segment = call.revision;
@@ -486,6 +490,7 @@ export class VoiceCallRun {
       { greetingOver: () => this.greetingOver(), childWentOn: text => this.childWentOn(text), prepare: text => this.prepareHint(text) });
     this.agent.hearing = { dropSilentPeakDbfs: options.dropSilentPeakDbfs ?? null, ...(options.heardVad ? { vad: options.heardVad } : {}), detectorMinSilenceMs: options.detectorMinSilenceMs ?? null };
     this.agent.onSilent = speech => this.silentSpeech(speech);
+    this.agent.voiceStyle = options.voiceStyle ?? null;
     this.agent.utteranceOwner = () => this.utteranceOwner();
     call.onGuidance(turn => this.guidanceNow(turn));
     // The controller's prepared-reply decisions (optional: an older call has no setter, and selection stays unreported).

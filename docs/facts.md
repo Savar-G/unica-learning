@@ -141,6 +141,7 @@ Use the pricing page wording. Keep the full rules on `/terms#referrals`. Do not 
 | Before a family is deleted, a copy of each test is kept without names, contact details, drawings, typed work or free text, and with no link to the family. | `DESIGN.md:210` (D-119) | 2026-11-14 |
 | Unica counts visits to public pages with no cookie and no IP address. | `src/app/(site)/privacy/page.tsx:59` | 2026-11-14 |
 | Unica does not send account names, email addresses or account identifiers to the AI that reviews a child's work. | `src/app/(site)/privacy/page.tsx:39` | 2026-11-14 |
+| For Maya's voice, LiveKit sends Maya's words to Inworld or Cartesia, depending on the voice in use. Those words can include the child's first name. Use this claim only in the privacy disclosure. | D-336, D-338, D-348, [Maya voice deployment](maya-voice-deploy.md#mayas-production-voice) | 2026-11-20 |
 
 Name no provider outside `/privacy`. Write "our payment provider" and "an AI service", not the company names.
 

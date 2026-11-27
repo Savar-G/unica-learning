@@ -34,6 +34,18 @@ export interface Providers {
   patience: TurnPatience | null;
 }
 
+/** Apply the LiveKit Inference Scale estimate to this worker's ledger when there is no valid plan override. */
+export function voiceSpendEnv(
+  voice: VoiceConfig,
+  env: Readonly<Record<string, string | undefined>>,
+): Readonly<Record<string, string | undefined>> {
+  if (voice.provider !== "inference" || voice.model !== "inworld/inworld-tts-2") return env;
+  const override = Number(env.MAYA_VOICE_USD_PER_1K_CHARS);
+  if (Number.isFinite(override) && override > 0) return env;
+  // USD 15 per million characters. https://livekit.io/pricing/inference#tts
+  return { ...env, MAYA_VOICE_USD_PER_1K_CHARS: "0.015" };
+}
+
 /** The AssemblyAI models of the direct plugin that take the Universal-3 Pro options (`languageCodes`). */
 const DIRECT_U3 = new Set(["u3-rt-pro", "u3-rt-pro-beta-1", "universal-3-5-pro", "universal-3-6-pro"]);
 

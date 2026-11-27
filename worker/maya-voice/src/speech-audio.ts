@@ -13,6 +13,10 @@ import { delivery, deliveryLog, LeadTrim } from "./voice-delivery";
  * Every line Maya says reaches the provider here, so here its math signs become words (`spokenMath`, a sentence at a
  * time): "52 − 28" goes to the provider as "52 minus 28". `count` gets that spoken text, which is what the provider
  * receives and bills. Text that is already spoken (from `boardAudio`) does not change again.
+ *
+ * `style` (an Inworld voice with MAYA_VOICE_STYLE, D-348) is a bracketed steering tag put at the start of this request.
+ * Inworld bills the tag and can echo it in the audio's timed transcript. Remove the echo before the transcript and
+ * board cues read the timings.
  */
 export async function countedSynthesis(
   text: ReadableStream<string> | AsyncIterable<string>,
@@ -20,6 +24,7 @@ export async function countedSynthesis(
   count: (text: string) => void,
   /** The telemetry of this speech: the first words given to the voice, and its first audio frame (./telemetry.ts). */
   probe?: UtteranceProbe,
+  style?: string,
 ): Promise<ReadableStream<AudioFrame> | null> {
   let sent = "";
   const chunks = text[Symbol.asyncIterator]();
@@ -30,9 +35,13 @@ export async function countedSynthesis(
         const { value, done } = await chunks.next();
         const said = done ? spoken.end() : spoken.push(value);
         if (said) {
-          if (!sent) probe?.request();
-          sent += said;
-          controller.enqueue(said);
+          let out = said;
+          if (!sent) {
+            probe?.request();
+            if (style) out = `${style} ${said}`;
+          }
+          sent += out;
+          controller.enqueue(out);
         }
         if (done) return controller.close();
         if (said) return;
@@ -44,6 +53,7 @@ export async function countedSynthesis(
   const reader = frames.getReader();
   let heard = false;
   let counted = false;
+  const filterStyle = style ? styleTimingFilter(style) : undefined;
   const charge = () => {
     if (!heard || counted) return;
     counted = true;
@@ -56,6 +66,7 @@ export async function countedSynthesis(
         if (done) { charge(); return controller.close(); }
         if (!heard) probe?.firstFrame();
         heard = true;
+        filterStyle?.(value);
         controller.enqueue(value);
       } catch (e) {
         charge();
@@ -68,6 +79,47 @@ export async function countedSynthesis(
       await reader.cancel(reason);
     },
   });
+}
+
+/**
+ * Match one configured tag at the start of each request. Alignment can split it across tokens and audio frames,
+ * with or without spaces. Hold only the candidate timings so audio can continue while the prefix is checked.
+ */
+function styleTimingFilter(style: string): (frame: AudioFrame) => void {
+  // An empty remainder means the tag matched. Null means the rest of the transcript passes through.
+  let remaining: string | null = style.replace(/\s/g, "");
+  const pending: voice.TimedString[] = [];
+  return (frame) => {
+    const times = frame.userdata[USERDATA_TIMED_TRANSCRIPT] as voice.TimedString[] | undefined;
+    if (remaining === null || !times?.length) return;
+    const kept: voice.TimedString[] = [];
+    for (const t of times) {
+      if (remaining === null) { kept.push(t); continue; }
+      let text = t.text;
+      if (remaining) {
+        const fragment = text.replace(/\s/g, "");
+        if (fragment.length < remaining.length && remaining.startsWith(fragment)) {
+          pending.push(t);
+          remaining = remaining.slice(fragment.length);
+          continue;
+        }
+        if (!fragment.startsWith(remaining)) {
+          kept.push(...pending, t);
+          pending.length = 0;
+          remaining = null;
+          continue;
+        }
+        pending.length = 0;
+        remaining = "";
+        text = text.slice(text.indexOf("]") + 1);
+      }
+      text = text.trimStart();
+      if (!text) continue;
+      kept.push(text === t.text ? t : voice.createTimedString({ ...t, text }));
+      remaining = null;
+    }
+    frame.userdata[USERDATA_TIMED_TRANSCRIPT] = kept;
+  };
 }
 
 /** A speech whose audio did not come, or stopped coming, for its own reason: not a cut. */

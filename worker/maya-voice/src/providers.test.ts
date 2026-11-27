@@ -1,9 +1,11 @@
 import { inference, initializeLogger } from "@livekit/agents";
 import { describe, expect, it } from "vitest";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
+import { callSpend, createSpendLedger, spendConfig } from "@/lib/maya-spend";
+import { memorySpendStore } from "@/lib/maya-spend-memory";
 import { callKeyterms, voiceProviders } from "@/lib/maya-voice";
 import { FakeSTT, FakeTTS } from "./fake-providers";
-import { makeProviders } from "./providers";
+import { makeProviders, voiceSpendEnv } from "./providers";
 
 // Providers change by configuration only (#326, D-163, D-238): the same worker builds the fakes, LiveKit Inference, or
 // AssemblyAI and Inworld directly, from the environment. The real plugins are only constructed here (no network, no account): whether they work is
@@ -18,6 +20,35 @@ const build = async (env: Record<string, string>) => {
 };
 
 describe("the worker's providers", () => {
+  it.each([
+    { model: "inworld/inworld-tts-2", rate: undefined, cost: 210_000 },
+    { model: "inworld/inworld-tts-2", rate: "invalid", cost: 210_000 },
+    { model: "inworld/inworld-tts-2", rate: "0.025", cost: 350_000 },
+    { model: "cartesia/sonic-3.6", rate: undefined, cost: 420_000 },
+    { model: "cartesia/sonic-3.6", rate: "0.03", cost: 420_000 },
+  ])("settles 10,000 billed characters for $model with rate override $rate", async ({ model, rate, cost }) => {
+    const env = {
+      MAYA_TTS: "inference", MAYA_TTS_MODEL: model, MAYA_VOICE: "test-voice",
+      LIVEKIT_API_KEY: "test-key", LIVEKIT_API_SECRET: "test-secret",
+      MAYA_VOICE_PRIVACY_CONFIRMED: "livekit-inference-zdr,child-use-approved",
+      MAYA_VOICE_USD_PER_1K_CHARS: rate,
+    };
+    const providers = voiceProviders(env);
+    if (!providers.ok) throw new Error(providers.problems.join("; "));
+    const store = memorySpendStore();
+    const clock = () => Date.parse("2026-11-20T18:00:00Z");
+    const ledger = createSpendLedger({
+      store, clock, zone: async () => "America/Vancouver", config: spendConfig(voiceSpendEnv(providers.voice, env)),
+    });
+    const meter = callSpend(ledger, { clock, newId: () => "spend-1" }).voice({
+      id: "call-1", kind: "chat", parentId: "parent-1", childId: "child-1",
+    });
+    const text = model === "inworld/inworld-tts-2" ? "[warm] " + "x".repeat(9_991) + "😊" : "x".repeat(10_000);
+    await meter.spoken(text);
+    await meter.stop();
+    expect(store.rows()).toMatchObject([{ what: "voice", cost, settled: true }]);
+  });
+
   it("are the fakes with nothing set", async () => {
     const { providers } = await build({});
     expect(providers.stt).toBeInstanceOf(FakeSTT);
