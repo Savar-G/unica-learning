@@ -139,6 +139,7 @@ describe("the privacy guard of a bug fixture", () => {
   const withHistoryUuid = () => { const i = invented(); i.book.history.books[0].bookId = "4b1f2c3d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"; return i; };
   const realSnapshot = () => { const i = invented(); i.snapshot.id = "level-3-v4"; return i; };
   const unknownInventedSnapshot = () => { const i = invented(); i.snapshot.id = "invented-scrubbed-real-v1"; return i; };
+  const tamperedSyntheticSnapshot = () => { const i = invented(); (i.snapshot as Record<string, unknown>).topics = []; return i; };
   const withEmail = () => { const i = invented(); (i.book as Record<string, unknown>).note = "parent@example.com"; return i; };
   const withProductionQr = () => {
     const i = invented() as ReturnType<typeof invented> & { book: { sheets: { qr: { front: string; back: string } }[] } };
@@ -150,6 +151,7 @@ describe("the privacy guard of a bug fixture", () => {
     ["a UUID child id", realLooking, /the childId "4b1f2c3d-.*" is not an invented id/],
     ["a snapshot that is not invented", realSnapshot, /the snapshot "level-3-v4" is not a known invented snapshot/],
     ["an unknown invented snapshot id", unknownInventedSnapshot, /is not a known invented snapshot/],
+    ["a tampered synthetic snapshot with an allowed id", tamperedSyntheticSnapshot, /content does not match the committed synthetic snapshot/],
     ["a UUID in the history", withHistoryUuid, /the history names the book "4b1f2c3d-.*", which is not an invented id/],
     ["a production-shaped QR token", withProductionQr, /is not an invented page link/],
     ["an email address", withEmail, /holds an email address/],
@@ -236,14 +238,16 @@ async function openFixtureRenderer(name: "fake" | "typst", cache: { typst: Rende
   return (cache.typst ??= await openRenderer(testAssets()));
 }
 
-// The committed fixtures: each one fails until its bug is fixed, and each one is invented.
+// The committed fixtures (including nested subdirectories): each one fails until its bug is fixed, and its raw JSON is invented.
 const committed = existsSync(join(process.cwd(), BUG_FIXTURES_DIR))
-  ? readdirSync(join(process.cwd(), BUG_FIXTURES_DIR)).filter((f) => f.endsWith(".json")).sort()
+  ? readdirSync(join(process.cwd(), BUG_FIXTURES_DIR), { recursive: true, encoding: "utf8" }).filter((f) => f.endsWith(".json")).sort()
   : [];
 describe.skipIf(committed.length === 0)("the committed bug fixtures", () => {
   const cache: { typst: Renderer | null } = { typst: null };
   it.each(committed)("%s passes and is invented", async (file) => {
-    const fixture = readBugFixture(JSON.parse(readFileSync(join(process.cwd(), BUG_FIXTURES_DIR, file), "utf8")));
+    const raw = JSON.parse(readFileSync(join(process.cwd(), BUG_FIXTURES_DIR, file), "utf8")) as unknown;
+    expect(syntheticProblems(raw)).toEqual([]);
+    const fixture = readBugFixture(raw);
     if (typeof fixture === "string") throw new Error(`${file}: ${fixture}`);
     expect(syntheticProblems(fixture)).toEqual([]);
     const renderer = await openFixtureRenderer(fixture.renderer, cache);

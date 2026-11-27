@@ -36,14 +36,14 @@ function options(): Record<string, string | boolean | undefined> {
 }
 
 /** A real level: its snapshot file must be outside every git repository, and so must every file the run writes or reads of it. */
-function realLevel(values: Record<string, string | boolean | undefined>): GoldenLevel {
-  const safeFile = refuseInsideGit(values.snapshot as string, "the real-level snapshot");
+function realLevel(values: Record<string, string | boolean | undefined>): { level: GoldenLevel; safeSnapshot: string } {
+  const safeSnapshot = refuseInsideGit(values.snapshot as string, "the real-level snapshot");
   for (const name of ["out", "baseline", "diff-dir"] as const) if (typeof values[name] === "string") refuseInsideGit(values[name], `--${name}`);
   if (values.update) throw new Error("Refused: --update writes the committed synthetic baselines and never a real level. Use --out DIR outside every git repository.");
   if (values.out === undefined && values.baseline === undefined && !values.hashes) throw new Error("A real level needs --out DIR or --baseline DIR, outside every git repository.");
   const mastery = values.mastery === undefined ? 90 : Number(values.mastery);
   if (!Number.isSafeInteger(mastery) || mastery < 1 || mastery > 100) throw new Error("--mastery must be a whole number from 1 to 100.");
-  return { snapshot: JSON.parse(readFileSync(safeFile, "utf8")) as unknown, masteryPercent: mastery };
+  return { level: { snapshot: JSON.parse(readFileSync(safeSnapshot, "utf8")) as unknown, masteryPercent: mastery }, safeSnapshot };
 }
 
 async function rendererOf(name: string): Promise<{ renderer: Renderer; label: string }> {
@@ -83,7 +83,9 @@ function update(levels: readonly GoldenLevel[], builds: readonly GoldenBuild[], 
 async function main(): Promise<void> {
   const values = options();
   const real = typeof values.snapshot === "string";
-  const levels = real ? [realLevel(values)] : SYNTHETIC_LEVELS;
+  const resolvedReal = real ? realLevel(values) : null;
+  const levels = resolvedReal ? [resolvedReal.level] : SYNTHETIC_LEVELS;
+  const safeSnapshot = resolvedReal?.safeSnapshot;
   const safeOut = typeof values.out === "string" ? refuseInsideGit(values.out, "--out") : undefined;
   const safeBaseline = typeof values.baseline === "string" ? refuseInsideGit(values.baseline, "--baseline") : undefined;
   const safeDiffDir = typeof values["diff-dir"] === "string" ? refuseInsideGit(values["diff-dir"], "--diff-dir") : undefined;
@@ -91,6 +93,8 @@ async function main(): Promise<void> {
     ["--out", safeOut, "--baseline", safeBaseline],
     ["--out", safeOut, "--diff-dir", safeDiffDir],
     ["--baseline", safeBaseline, "--diff-dir", safeDiffDir],
+    ["--snapshot", safeSnapshot, "--out", safeOut],
+    ["--snapshot", safeSnapshot, "--diff-dir", safeDiffDir],
   ] as const) {
     if (a !== undefined && b !== undefined && pathsOverlap(a, b)) {
       throw new Error(`Refused: ${aName} (${a}) and ${bName} (${b}) overlap. Use separate folders.`);

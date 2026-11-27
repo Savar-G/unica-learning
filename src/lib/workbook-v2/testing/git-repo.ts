@@ -3,7 +3,7 @@
 // link resolved, also links in parts that do not exist yet, and finds a ".git" folder or file (a worktree has a file) in
 // the path or any folder above it.
 import { lstatSync, readlinkSync } from "node:fs";
-import { dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
 
 const MAX_LINKS = 40;
 
@@ -28,7 +28,11 @@ export function resolvedPath(path: string, links = 0): string {
     try {
       link = lstatSync(next).isSymbolicLink();
     } catch {
-      return resolve(next, ...queue.slice(i + 1));
+      const tail = queue.slice(i + 1);
+      if (tail.includes("..")) {
+        throw new Error(`Refused: path ${path} traverses ".." through non-existent component ${next}.`);
+      }
+      return tail.length > 0 ? join(next, ...tail) : next;
     }
     if (link) {
       linkCount++;
@@ -85,7 +89,7 @@ export function pathsOverlap(a: string, b: string): boolean {
   if (ra === rb) return true;
   const inside = (parent: string, child: string) => {
     const rel = relative(parent, child);
-    return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+    return rel !== "" && rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
   };
   return inside(ra, rb) || inside(rb, ra);
 }

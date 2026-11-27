@@ -7,22 +7,16 @@ import { existsSync, linkSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } f
 import { join } from "node:path";
 import { buildBook } from "@/lib/workbook-v2/build/build-book";
 import { tokenText } from "@/lib/workbook-v2/contract";
+import { canonicalJson, sha256 } from "@/lib/workbook-v2/hash";
 import type { Renderer } from "@/lib/workbook-v2/renderer";
 import { gitRepoOf, resolvedPath } from "@/lib/workbook-v2/testing/git-repo";
+import { KNOWN_SYNTHETIC_SNAPSHOT_HASHES } from "@/lib/workbook-v2/testing/golden-books";
 import { readReplayExpected, readSavedInput, replayBook, type ReplayExpected } from "./replay";
 
 export const BUG_FIXTURES_DIR = "src/lib/workbook-v2-publish/bug-fixtures";
 
 /** The known synthetic snapshot ids of the workbook engine's invented levels. */
-export const KNOWN_SYNTHETIC_SNAPSHOT_IDS: ReadonlySet<string> = new Set([
-  "invented-level-3-v1",
-  "invented-level-3-wide-v1",
-  "invented-level-2-v1",
-  "invented-division-v1",
-  "invented-level-2-facts-v1",
-  "invented-level-3-topic-20-v1",
-  "invented-level-2-places-v1",
-]);
+export const KNOWN_SYNTHETIC_SNAPSHOT_IDS: ReadonlySet<string> = new Set(KNOWN_SYNTHETIC_SNAPSHOT_HASHES.keys());
 
 /** What must be true once the bug is fixed. `page` is the page in the book, from 1. */
 export type BugExpectation =
@@ -79,8 +73,19 @@ export function syntheticProblems(inputOrFixture: unknown, expected?: ReplayExpe
   const snapshot = isObject(input) ? input.snapshot : undefined;
   const book = isObject(input) ? input.book : undefined;
   const id = isObject(snapshot) ? snapshot.id : undefined;
-  if (typeof id !== "string" || !KNOWN_SYNTHETIC_SNAPSHOT_IDS.has(id)) {
+  const expectedHash = typeof id === "string" ? KNOWN_SYNTHETIC_SNAPSHOT_HASHES.get(id) : undefined;
+  if (expectedHash === undefined) {
     problems.push(`the snapshot ${JSON.stringify(id ?? null)} is not a known invented snapshot`);
+  } else {
+    let actualHash = "";
+    try {
+      actualHash = sha256(canonicalJson(snapshot));
+    } catch {
+      actualHash = "";
+    }
+    if (actualHash !== expectedHash) {
+      problems.push(`the snapshot ${JSON.stringify(id)} content does not match the committed synthetic snapshot`);
+    }
   }
   for (const name of ["bookId", "childId"]) {
     const value = isObject(book) ? book[name] : undefined;

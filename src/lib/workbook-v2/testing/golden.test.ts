@@ -362,18 +362,26 @@ describe("the git repository guard", () => {
     const hopParent = `${outside}/hop/..`;
     expect(resolvedPath(hopParent)).toBe(resolvedPath(repo));
     expect(gitRepoOf(hopParent)).not.toBeNull();
+    // Missing component followed by `..` must be refused so a later symlink cannot bypass checks.
+    expect(() => resolvedPath(`${outside}/missing/../hop/level.json`)).toThrow(/traverses "\.\." through non-existent component/);
     expect(pathsOverlap(out, join(out, "sub"))).toBe(true);
+    expect(pathsOverlap(out, join(out, "..output"))).toBe(true);
   });
 
-  it("refuses overlapping --out and --baseline folders before overwriting anything", async () => {
+  it("refuses overlapping --out/--baseline/--snapshot folders and refuses overwriting an existing full baseline", async () => {
     const { outside } = places();
-    const privateSnapshot = join(outside, "level.json");
+    const privateSnapshot = join(outside, "golden.json");
     writeFileSync(privateSnapshot, JSON.stringify(factsSnapshot));
+    const snapOverlap = await run(["--snapshot", privateSnapshot, "--out", outside, "--renderer", "fake"]);
+    expect(snapOverlap.code).toBe(1);
+    expect(snapOverlap.stderr).toMatch(/Refused: --snapshot .* and --out .* overlap/);
+
     const base = join(outside, "same-dir");
     expect((await run(["--snapshot", privateSnapshot, "--out", base, "--renderer", "fake"])).code).toBe(0);
     const overlap = await run(["--snapshot", privateSnapshot, "--out", base, "--baseline", base, "--renderer", "fake"]);
     expect(overlap.code).toBe(1);
     expect(overlap.stderr).toMatch(/Refused: --out .* and --baseline .* overlap/);
+    expect(() => writeFullBaseline(base, "fake", builds)).toThrow(/already exists/);
   });
 
   it("refuses a real-level snapshot or output inside a repository, also through a link or a worktree, and writes nothing", async () => {

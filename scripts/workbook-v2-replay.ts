@@ -36,8 +36,10 @@ async function fromFiles(values: Record<string, string | undefined>, renderer: R
   let inputHash = values["expected-input-hash"];
   if (inputHash === undefined) {
     const input = readSavedInput(saved);
-    const plan = typeof input === "string" ? null : planBook({ snapshot: input.snapshot, book: input.book });
-    inputHash = plan?.ok ? plan.inputHash : "";
+    if (typeof input === "string") throw new Error(input);
+    const plan = planBook({ snapshot: input.snapshot, book: input.book });
+    if (!plan.ok) throw new Error(["First difference (plan): the saved input does not plan a book", "", "Every difference:", ...plan.problems.map((p) => `- ${p}`)].join("\n"));
+    inputHash = plan.inputHash;
   }
   const snapshotHash = values["expected-snapshot-hash"];
   if (snapshotHash !== undefined && !HEX.test(snapshotHash)) throw new Error(USAGE);

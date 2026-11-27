@@ -50,26 +50,49 @@ export function writeBaselineFile(file: string, renderer: string, builds: readon
   writeJson(file, { format: 1, renderer, books: builds.map(goldenRecord) } satisfies GoldenBaseline);
 }
 
-/** Writes a full baseline: golden.json, and for each book its page models and page images. Never inside a git repository. */
+/** Writes a full baseline: golden.json, and for each book its page models and page images. Never inside a git repository, and never overwrites an existing baseline in place. */
 export function writeFullBaseline(dir: string, renderer: string, builds: readonly GoldenBuild[]): void {
   const safeDir = refuseInsideGit(dir, "the golden baseline folder");
   const manifest = refuseInsideGit(join(safeDir, "golden.json"), "the golden baseline manifest");
+  if (existsSync(manifest)) {
+    throw new Error(`Refused: ${manifest} already exists. Write the new full baseline to a separate folder so the existing baseline stays intact.`);
+  }
   const plan = builds.map((build) => {
-    const folder = refuseInsideGit(join(safeDir, folderOf(build.book)), `the golden baseline folder for ${build.book}`);
+    const bookDir = folderOf(build.book);
+    const folder = refuseInsideGit(join(safeDir, bookDir), `the golden baseline folder for ${build.book}`);
     const modelsFile = refuseInsideGit(join(folder, "models.json"), `the models file for ${build.book}`);
     const pageFiles = build.pages.map((p, i) => ({
+      name: `page-${i + 1}.png`,
       file: refuseInsideGit(join(folder, `page-${i + 1}.png`), `the page image for ${build.book} page ${i + 1}`),
       image: p.image,
     }));
-    return { build, folder, modelsFile, pageFiles };
+    return { build, bookDir, folder, modelsFile, pageFiles };
   });
-  mkdirSync(safeDir, { recursive: true });
-  for (const { build, folder, modelsFile, pageFiles } of plan) {
-    mkdirSync(folder, { recursive: true });
-    writeJson(modelsFile, build.pages.map((p) => p.model));
-    for (const { file, image } of pageFiles) writeAtomic(file, image);
+  const parent = dirname(safeDir);
+  mkdirSync(parent, { recursive: true });
+  const stage = mkdtempSync(join(parent, ".golden-baseline-stage-"));
+  try {
+    for (const { build, bookDir, pageFiles } of plan) {
+      const stagedBook = join(stage, bookDir);
+      mkdirSync(stagedBook, { recursive: true });
+      writeFileSync(join(stagedBook, "models.json"), `${JSON.stringify(build.pages.map((p) => p.model), null, 2)}\n`);
+      for (const { name, image } of pageFiles) writeFileSync(join(stagedBook, name), image);
+    }
+    writeFileSync(join(stage, "golden.json"), `${JSON.stringify({ format: 1, renderer, books: builds.map(goldenRecord) } satisfies GoldenBaseline, null, 2)}\n`);
+    if (!existsSync(safeDir)) {
+      renameSync(stage, safeDir);
+      return;
+    }
+    for (const { bookDir, folder } of plan) {
+      if (existsSync(folder)) {
+        throw new Error(`Refused: ${folder} already exists inside ${safeDir}. Write the full baseline to a clean folder.`);
+      }
+      renameSync(join(stage, bookDir), folder);
+    }
+    renameSync(join(stage, "golden.json"), manifest);
+  } finally {
+    rmSync(stage, { recursive: true, force: true });
   }
-  writeBaselineFile(manifest, renderer, builds);
 }
 
 /** A full baseline as expected books by name, verified against its manifest and never read from a git repository. */

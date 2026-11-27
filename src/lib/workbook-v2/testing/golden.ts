@@ -73,11 +73,29 @@ const SHORT = 16;
 
 export const modelSha256 = (model: PageModel): string => sha256(canonicalJson(model));
 
+/** True when a PNG contains a `tRNS` transparency chunk (which affects RGB/greyscale rendering on white). */
+function hasPngTrnsChunk(png: Uint8Array): boolean {
+  if (png.length < 8) return false;
+  const view = new DataView(png.buffer, png.byteOffset, png.byteLength);
+  for (let offset = 8; offset + 8 <= png.length; ) {
+    const len = view.getUint32(offset);
+    const type = String.fromCharCode(png[offset + 4], png[offset + 5], png[offset + 6], png[offset + 7]);
+    if (type === "tRNS") return true;
+    const next = offset + 12 + len;
+    if (next <= offset || next > png.length) break;
+    offset = next;
+  }
+  return false;
+}
+
 /** Each pixel as red, green and blue on white paper, or why the image cannot be read. */
 function onWhite(png: Uint8Array): (PngPixels & { rgb: Uint8Array }) | string {
   const read = readPngPixels(png);
   if (typeof read === "string") return read;
   const { width, height, parts, pixels } = read;
+  if ((parts === 1 || parts === 3) && hasPngTrnsChunk(png)) {
+    return "the PNG uses a tRNS transparency chunk, which cannot be flattened to opaque RGB";
+  }
   const rgb = new Uint8Array(width * height * 3);
   for (let p = 0, at = 0; p < width * height; p++, at += parts) {
     const cover = parts === 4 ? pixels[at + 3] : 255;

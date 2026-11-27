@@ -7,12 +7,24 @@ import { historyFromBooks, planNextBook } from "../assemble/plan-book";
 import { position, type ChildPosition, type IssuedSheet, type SheetResultRecord } from "../assemble/position";
 import { validateSnapshot, type Snapshot } from "../bank/snapshot";
 import { buildBook, planBook, type BuildInput, type BuildResult } from "../build/build-book";
-import factsSnapshot from "../fixtures/snapshot-facts.json";
+import baseSnapshot from "../fixtures/snapshot.json";
+import fourDigitsSnapshot from "../fixtures/snapshot-4-digits.json";
+import addSubSnapshot from "../fixtures/snapshot-add-sub.json";
 import divisionSnapshot from "../fixtures/snapshot-division.json";
+import factsSnapshot from "../fixtures/snapshot-facts.json";
+import inventedTopicSnapshot from "../fixtures/snapshot-invented-topic.json";
+import placeValueSnapshot from "../fixtures/snapshot-place-value.json";
 import type { BookItem } from "../contract";
+import { canonicalJson, sha256 } from "../hash";
 import type { Renderer } from "../renderer";
 import { sheetResult, type ItemMark } from "../results/sheet-results";
 import type { GoldenBuild } from "./golden";
+
+/** Canonical SHA-256 hashes of every committed synthetic snapshot, keyed by snapshot id. */
+export const KNOWN_SYNTHETIC_SNAPSHOT_HASHES: ReadonlyMap<string, string> = new Map(
+  [baseSnapshot, fourDigitsSnapshot, addSubSnapshot, divisionSnapshot, factsSnapshot, inventedTopicSnapshot, placeValueSnapshot]
+    .map((s) => [s.id, sha256(canonicalJson(s))]),
+);
 
 export const GOLDEN_CHILDREN = ["strong", "weak"] as const;
 export type GoldenChild = (typeof GOLDEN_CHILDREN)[number];
