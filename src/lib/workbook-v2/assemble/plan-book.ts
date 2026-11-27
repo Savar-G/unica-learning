@@ -120,6 +120,25 @@ export function nextBookSheets(position: ChildPosition, size: BookSize): QueueEn
 }
 
 /**
+ * The first day, from 0, whose number of sheets is wrong at `pagesPerDay` pages a day, or -1 when every day is right: each
+ * day has `pagesPerDay / 2` sheets, and the last day may have one more only so that the book has an even number of
+ * sheets (product spec 7.2). `lengths` are the sheets of each day in order. The level check of each book
+ * (checks/level-check.ts) holds a built book to this rule too.
+ */
+export function wrongDay(lengths: readonly number[], pagesPerDay: number): number {
+  const count = lengths.reduce((sum, n) => sum + n, 0);
+  return lengths.findIndex((n, d) => !isWholeDay(n, d === lengths.length - 1, count, pagesPerDay));
+}
+
+/** Whether one day of a book of `count` sheets has the right number of sheets (`wrongDay`). */
+export const isWholeDay = (sheets: number, isLast: boolean, count: number, pagesPerDay: number): boolean =>
+  sheets === pagesPerDay / 2 || (isLast && sheets === pagesPerDay / 2 + 1 && count % 2 === 0);
+
+/** The sheets of each day, from the sheets that start one (the first sheet always does). */
+export const dayLengths = (starts: readonly boolean[]): number[] =>
+  starts.reduce<number[]>((days, isStart, i) => (isStart || i === 0 ? [...days, 1] : [...days.slice(0, -1), days[days.length - 1] + 1]), []);
+
+/**
  * The day of a sheet, from 1: each day has `pagesPerDay / 2` sheets. A sheet past the last day (one that makes the count
  * even) belongs to the last day.
  */
@@ -135,6 +154,14 @@ export function planNextBook(input: NextBookInput): NextBook {
   const sheets = nextBookSheets(input.position, input);
   if (typeof sheets[0] === "string") return { ok: false, problems: sheets as string[] };
   const chosen = sheets as QueueEntry[];
+  // A short queue can leave fewer sheets than the days ask for: the book must still be whole days of this size.
+  const starts = chosen.map((_, i) => startsDay(i, input.pagesPerDay, size.days));
+  const lengths = dayLengths(starts);
+  const wrong = wrongDay(lengths, input.pagesPerDay);
+  if (wrong >= 0) {
+    const perDay = input.pagesPerDay / 2;
+    return { ok: false, problems: [`Day ${wrong + 1} of the book has ${lengths[wrong]} ${lengths[wrong] === 1 ? "sheet" : "sheets"}, and at ${input.pagesPerDay} pages a day each day has ${perDay} ${perDay === 1 ? "sheet" : "sheets"} (the last day may have one more, so that the book has an even number of sheets). The queue has ${input.position.queue.length} ${input.position.queue.length === 1 ? "sheet" : "sheets"}.`] };
+  }
   const tokens = input.qrTokens;
   if (!Array.isArray(tokens) || tokens.length !== 2 * chosen.length) {
     return { ok: false, problems: [`The book has ${chosen.length} sheets, so it needs exactly ${2 * chosen.length} QR texts, and it has ${Array.isArray(tokens) ? tokens.length : 0}.`] };
@@ -145,7 +172,7 @@ export function planNextBook(input: NextBookInput): NextBook {
     childId: input.childId,
     sheets: chosen.map((entry, i) => ({
       sheetId: entry.sheetId, attempt: entry.attempt, qr: { front: tokens[2 * i], back: tokens[2 * i + 1] },
-      ...(startsDay(i, input.pagesPerDay, size.days) ? { startsDay: true as const } : {}),
+      ...(starts[i] ? { startsDay: true as const } : {}),
     })),
     ...(input.region === undefined ? {} : { region: input.region }),
     ...(input.scenario === undefined ? {} : { scenario: input.scenario }),

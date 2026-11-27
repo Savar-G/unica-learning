@@ -7,7 +7,7 @@
 // 4. Write all rows in one call to publish_v2_workbook. When that call fails or its answer is lost, read the book by its
 //    input hash before one retry: a book that was written is given back, never written twice.
 // The record of each run says the time of each step and the bytes and rows it wrote.
-import { buildBook, planBook } from "@/lib/workbook-v2/build/build-book";
+import { buildBook, planBook, wholeBook } from "@/lib/workbook-v2/build/build-book";
 import { canonicalJson } from "@/lib/workbook-v2/hash";
 import type { Renderer } from "@/lib/workbook-v2/renderer";
 import { writeBook } from "./contract-writer";
@@ -137,7 +137,8 @@ export async function publishV2Book(deps: JobDeps, request: PublishRequest): Pro
   const allocate = deps.clock() - started;
 
   const buildStart = deps.clock();
-  const built = await buildBook({ snapshot: request.snapshot, book: allocation.allocation.book }, await deps.renderer());
+  // A published book is a whole book: its page count, order and days are checked at the pages a day of its allocation.
+  const built = await buildBook({ snapshot: request.snapshot, book: allocation.allocation.book }, await deps.renderer(), wholeBook(allocation.allocation.pagesPerDay));
   if (built.status === "failed") return { status: "failed", problems: built.problems };
   if (built.record.inputHash !== allocation.inputHash) return { status: "failed", problems: ["the built book is not the book of its allocation"] };
   const build = deps.clock() - buildStart;

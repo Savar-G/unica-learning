@@ -1,19 +1,24 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { COVER_PAGES, MAX_SHEETS, MAX_TOTAL_PAGES } from "../assemble/plan-book";
-import { bookCheckInput, planBook } from "../build/build-book";
+import { bookCheckInput, PART_OF_BOOK, planBook, wholeBook } from "../build/build-book";
 import type { BookItem, PageModel, Region } from "../contract";
 import { openRenderer } from "../render/typst";
 import type { Rendering } from "../renderer";
 import { SHAPES } from "../shapes";
 import { questionKey, type Shape } from "../shapes/shape";
+import type { SnapshotRow, SnapshotSheet } from "../bank/snapshot";
+import type { BookHistory } from "../build/book-history";
 import { fakeRenderer } from "../testing/fake-renderer";
 import { FULL_SIZE_PAGES_A_DAY, fullSizeCheckInput } from "../testing/full-size-book";
 import { goldenInput, SYNTHETIC_LEVELS } from "../testing/golden-books";
 import { drawPage, paint, pagePng, toPng } from "../testing/raster";
 import { skipTypstTests, testAssets } from "../testing/typst";
 import { BOOK_CHECK_STEPS, checkBook, checkLayout, checkLevel, formatFinding, type BookCheckInput, type BookFinding } from "./book-checks";
-import { attemptOf } from "./findings";
-import { itemSourceHash, snapshotItemHashes, sourceKey } from "./source-check";
+import { pagesPerDayOf } from "./book-input";
+import { attemptOf, NONE } from "./findings";
+import { rowMembership } from "./membership";
+import { repeatFindings } from "./repeat-rule";
+import { itemRowHash, snapshotRowHashes, sourceKey } from "./source-check";
 
 const PAGES_A_DAY = 4;
 const TITLES = { source: "Source", layout: "Layout", level: "Level" } as const;
@@ -22,7 +27,7 @@ const TITLES = { source: "Source", layout: "Layout", level: "Level" } as const;
 async function goldenBook(child: "weak" | "strong"): Promise<BookCheckInput> {
   const plan = planBook(goldenInput(SYNTHETIC_LEVELS[0], child));
   if (!plan.ok) throw new Error(plan.problems.join("\n"));
-  return bookCheckInput(plan, await fakeRenderer().render(plan.pages), SHAPES, { pagesPerDay: PAGES_A_DAY });
+  return bookCheckInput(plan, await fakeRenderer().render(plan.pages), wholeBook(PAGES_A_DAY), SHAPES);
 }
 
 let weak: BookCheckInput;
@@ -66,9 +71,12 @@ describe("a good book", () => {
     expect(checkBook(strong)).toEqual([]);
   });
 
-  it("gives each printed item the item hash of its snapshot row", () => {
-    const hashes = snapshotItemHashes(weak.snapshot);
-    for (const item of weak.items) expect(hashes.get(sourceKey(item.sheetId, item.side, item.rowId))).toBe(itemSourceHash(item));
+  it("gives each printed item the hash of its frozen snapshot row: its shape version, number of questions and limits", () => {
+    const hashes = snapshotRowHashes(weak.snapshot);
+    for (const item of weak.items) {
+      const row = weak.snapshot.sheets.get(item.sheetId)![item.side].rows.find((r) => r.id === item.rowId)!;
+      expect(hashes.get(sourceKey(item.sheetId, item.side, item.rowId))).toBe(itemRowHash(item, row));
+    }
     expect(new Set(hashes.values()).size).toBe(hashes.size);
   });
 });
@@ -82,6 +90,34 @@ describe("the source check", () => {
     const bad = withItems(weak, change);
     const finding = named(BOOK_CHECK_STEPS.source(bad), "source", "snapshot-item", { slot: "slot-1" });
     expect(finding.page).toBe(pageOf(weak, weak.items[0]).page);
+  });
+
+  it("stops a question that is not one of its frozen row, whose two answers agree", () => {
+    const at = weak.items.findIndex((i) => isMixed(weak, i));
+    const item = weak.items[at];
+    const row = rowOf(weak, item);
+    // A question of the same shape just past the row's limits (the build of 44 × 2 in a row up to 43, UNI-259 review).
+    const forms = new Set((row.shape.list?.(row.limits) ?? []).map((q) => JSON.stringify(q)));
+    const question = item.question as { a: number; b: number };
+    const outside = Array.from({ length: 30 }, (_, k) => ({ ...question, b: question.b + k + 1 })).find((q) => !forms.has(JSON.stringify(q)));
+    if (!outside || forms.size === 0 || rowMembership()(row, outside) !== false) throw new Error("no question outside the row");
+    const bad = withItems(weak, (items) => { items[at] = { ...items[at], question: outside, answer: row.shape.answer(outside) }; });
+    const finding = named(BOOK_CHECK_STEPS.source(bad), "source", "snapshot-item", { sheet: item.sheetId, page: pageOf(weak, item).page, slot: `slot-${item.number}` });
+    expect(finding.message).toMatch(/is not a question of the snapshot row/);
+  });
+
+  it("stops a row of the book whose limits differ from its frozen row, and an item that names another row of its side", () => {
+    const checked = weak.sheets[0];
+    const [first] = checked.sheet.front.rows;
+    const changed = { ...first, limits: { ...(first.limits as object), result: { min: 0, max: 1 } } };
+    const sheets = weak.sheets.map((s) => (s === checked ? { ...s, sheet: { ...s.sheet, front: { ...s.sheet.front, rows: [changed, ...s.sheet.front.rows.slice(1)] } } } : s));
+    const item = weak.items.find((i) => i.sheetId === checked.sheet.id && attemptOf(i) === checked.attempt && i.side === "front" && i.rowId === first.id)!;
+    const tampered = named(BOOK_CHECK_STEPS.source({ ...weak, sheets }), "source", "snapshot-item", { slot: `slot-${item.number}`, page: pageOf(weak, item).page });
+    expect(tampered.message).toMatch(/has the row hash \w+ .* and the snapshot row .* has \w+/);
+    const side = checked.sheet.front.rows;
+    if (side.length < 2) throw new Error("one row on the side");
+    const swapped = withItems(weak, (items) => { const at = items.findIndex((i) => i.id === item.id); items[at] = { ...items[at], rowId: side[1].id }; });
+    named(BOOK_CHECK_STEPS.source(swapped), "source", "snapshot-item", { sheet: item.sheetId, page: pageOf(weak, item).page });
   });
 
   it("stops a row that misses a question", () => {
@@ -232,19 +268,98 @@ describe("the level check", () => {
   });
 
   it("stops pages a day that differ from the number set for the book, and a day that starts in the wrong place", () => {
-    const finding = named(checkLevel({ ...weak, pagesPerDay: 8 }), "level", "pages-a-day", { sheet: weak.sheets[0].sheet.id, page: weak.pages[0].page, slot: "time-log" });
+    const finding = named(checkLevel({ ...weak, ...wholeBook(8) }), "level", "pages-a-day", { sheet: weak.sheets[0].sheet.id, page: weak.pages[0].page, slot: "time-log" });
     expect(finding.message).toBe("day 1 has 4 pages, and this book has 8 pages a day");
     // 2 pages a day of 1 day is 1 sheet, and the book takes 1 more so that it has an even number: 4 pages on its last day.
-    expect(checkLevel({ ...weak, pagesPerDay: 2 })).toEqual([]);
+    expect(checkLevel({ ...weak, ...wholeBook(2) })).toEqual([]);
     const split = weak.sheets.map((s) => ({ ...s, startsDay: true }));
     named(checkLevel({ ...weak, sheets: split }), "level", "pages-a-day", { sheet: weak.sheets[1].sheet.id, page: weak.pages[2].page });
     const late = weak.sheets.map((s) => ({ ...s, startsDay: false }));
     named(checkLevel({ ...weak, sheets: late }), "level", "pages-a-day", { sheet: weak.sheets[0].sheet.id, page: weak.pages[0].page });
   });
 
-  it("runs the order and the days only for a whole planned book", () => {
+  it("runs the order and the days only for a whole planned book, and the order of the pages for every book", () => {
     const sheets = [...weak.sheets].reverse();
-    expect(checkLevel({ ...weak, sheets, pagesPerDay: undefined })).toEqual([]);
+    const rules = (findings: readonly BookFinding[]) => [...new Set(findings.map((f) => f.rule))].sort();
+    expect(rules(checkLevel({ ...weak, sheets, ...PART_OF_BOOK }))).toEqual(["page-order"]);
+    expect(rules(checkLevel({ ...weak, sheets }))).toEqual(["page-order", "pages-a-day", "repeats-first"]);
+  });
+});
+
+/** A sheet of one row on its front, for the repeat rule on its own. */
+function oneRowSheet(shapeId: string, rawLimits: unknown, items: number): { sheet: SnapshotSheet; row: SnapshotRow } {
+  const shape = SHAPES.get(shapeId)!;
+  const read = shape.readLimits(rawLimits);
+  if (!read.ok) throw new Error(read.problem);
+  const row: SnapshotRow = { id: "row-1", shape, limits: read.limits, items };
+  const side = (rows: SnapshotRow[]) => ({ instruction: "Work.", template: {} as SnapshotSheet["front"]["template"], rows });
+  return { row, sheet: { id: "sheet-1", topic: { id: "t", code: "3-1", title: "T" }, firstPage: 1, front: side([row]), back: side([]) } };
+}
+const printed = (row: SnapshotRow, attempt: number, questions: unknown[]): BookItem[] => questions.map((question, i) => ({
+  id: `sheet-1/${attempt}/front/${i + 1}`, sheetId: "sheet-1", side: "front", rowId: row.id, number: i + 1, shape: row.shape.id, shapeVersion: row.shape.version,
+  question, face: row.shape.face(question), answer: row.shape.answer(question), steps: [], difficulty: row.shape.difficulty(question),
+}));
+const seenIn = (row: SnapshotRow, questions: unknown[]): BookHistory => ({ books: [{ bookId: "book-1", items: questions.map((q) => ({ shape: row.shape.id, key: questionKey(row.shape, q) })) }], lastAttempts: [], seenPhrasings: [] });
+const placeOfItem = (item: BookItem) => ({ sheet: item.sheetId, page: 1, slot: `slot-${item.number}` });
+const repeats = (sheet: SnapshotSheet, attempt: number, items: BookItem[], history: BookHistory | null) =>
+  repeatFindings({ sheets: [{ sheet, attempt, startsDay: true }], items, history }, placeOfItem, rowMembership());
+
+describe("the repeat rule on a large space and on a row in order", () => {
+  // 2 to 4 digits by 1 digit: 79,920 questions, more than the check reads whole.
+  const wide = oneRowSheet("mul.column", {
+    digits: { min: 2, max: 4 }, a: { min: 10, max: 9999 }, b: { min: 2, max: 9 }, carries: { min: 0, max: 3 }, carryIntoTens: { min: 0, max: 8 },
+    carryIntoHundreds: { min: 0, max: 8 }, carryIntoThousands: { min: 0, max: 8 }, product: { min: 10, max: 99_999 }, zeroInProduct: "allowed", wholeTens: "allowed",
+  }, 4);
+
+  it("stops a question twice on a sheet of a space too large to read whole", () => {
+    expect(wide.row.shape.space!(wide.row.limits).count).toBeGreaterThan(20_000);
+    const items = printed(wide.row, 1, [{ a: 22, b: 2 }, { a: 22, b: 2 }, { a: 31, b: 3 }, { a: 45, b: 4 }]);
+    expect(repeats(wide.sheet, 1, items, null)).toEqual([expect.objectContaining({ check: "source", rule: "no-repeat", slot: "slot-2" })]);
+    expect(repeats(wide.sheet, 1, printed(wide.row, 1, [{ a: 22, b: 2 }, { a: 23, b: 2 }, { a: 31, b: 3 }, { a: 45, b: 4 }]), null)).toEqual([]);
+  });
+
+  it("stops a seen question on a repeat when the large space has unseen ones, and passes unseen questions", () => {
+    const questions = [{ a: 22, b: 2 }, { a: 23, b: 2 }, { a: 31, b: 3 }, { a: 45, b: 4 }];
+    const items = printed(wide.row, 2, questions);
+    expect(repeats(wide.sheet, 2, items, seenIn(wide.row, [questions[1]]))).toEqual([expect.objectContaining({ rule: "unseen-first", slot: "slot-2" })]);
+    expect(repeats(wide.sheet, 2, items, seenIn(wide.row, [{ a: 99, b: 9 }]))).toEqual([]);
+  });
+
+  // The tables of 5 and of 6 in order: each table is one run of 9.
+  const ordered = oneRowSheet("fact.mul", { tables: [5, 6], second: { min: 1, max: 9 }, result: { min: 0, max: 100 }, order: "up" }, 9);
+  const [fives, sixes] = ordered.row.shape.orderedRuns!(ordered.row.limits, 9)!;
+
+  it("stops a row in order that prints no run of its table, and passes a run", () => {
+    expect(repeats(ordered.sheet, 1, printed(ordered.row, 1, [...fives].reverse()), null)).toEqual([expect.objectContaining({ rule: "ordered-run", slot: "slot-1" })]);
+    expect(repeats(ordered.sheet, 1, printed(ordered.row, 1, sixes), null)).toEqual([]);
+  });
+
+  it("stops a repeat of a row in order that prints its seen table while a run of its table is unseen", () => {
+    expect(repeats(ordered.sheet, 2, printed(ordered.row, 2, fives), seenIn(ordered.row, fives))).toEqual([expect.objectContaining({ rule: "unseen-first", slot: "slot-1" })]);
+    expect(repeats(ordered.sheet, 2, printed(ordered.row, 2, fives), seenIn(ordered.row, [...fives, ...sixes]))).toEqual([]);
+    expect(repeats(ordered.sheet, 2, printed(ordered.row, 2, sixes), seenIn(ordered.row, fives))).toEqual([]);
+  });
+});
+
+describe("the order of the pages and the place of a typesetter's page", () => {
+  it("stops pages drawn in another order than the planned sheets, with repeats first in the plan", () => {
+    const [front, back, ...rest] = weak.pages;
+    const pages = [...rest.slice(0, 2), front, back, ...rest.slice(2)];
+    const finding = named(checkLevel({ ...weak, pages }), "level", "page-order", { page: pages[0].page, sheet: pages[0].sheetId, slot: "page" });
+    expect(finding.message).toMatch(/^page 1 of the book prints the front of attempt \d+ of ".+", and the plan has the front of attempt 2 of ".+" there$/);
+  });
+
+  it("stops a first page of a day with no time log", () => {
+    const pages = weak.pages.map((p, i) => (i === 0 ? { ...p, captures: [] } : p));
+    named(checkLevel({ ...weak, pages }), "level", "day-start", { page: weak.pages[0].page, slot: "page" });
+  });
+
+  it("names the page of the model of a text that the typesetter drew on a page of the file", () => {
+    const [first] = weak.drawn.texts;
+    const drawn = { ...weak.drawn, texts: [...weak.drawn.texts, { ...first, text: "extra", x: 1, y: 1 }] };
+    const finding = named(layout({ ...weak, drawn }), "layout", "fit", { sheet: weak.pages[first.sheet - 1].sheetId, page: weak.pages[first.sheet - 1].page, slot: "page" });
+    expect(finding.message).toBe(`"extra" on page ${first.sheet} of the file is not in the model.`);
+    expect(finding.page).not.toBe(NONE);
   });
 });
 
@@ -271,7 +386,7 @@ describe("a full-size book of 120 pages", () => {
     const { input } = await fullSizeCheckInput(fakeRenderer());
     expect(input.pages).toHaveLength(2 * MAX_SHEETS);
     expect(input.pages.length + COVER_PAGES).toBe(MAX_TOTAL_PAGES);
-    expect(input.pagesPerDay).toBe(FULL_SIZE_PAGES_A_DAY);
+    expect(pagesPerDayOf(input)).toBe(FULL_SIZE_PAGES_A_DAY);
     expect(input.sheets.slice(0, 4).map((s) => s.attempt)).toEqual([2, 2, 2, 1]);
     expect(input.sheets.filter((s) => s.startsDay)).toHaveLength(19);
     const { findings, ms, totalMs, cpuMs } = timed(input);

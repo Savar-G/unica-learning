@@ -2,12 +2,15 @@
 // workbook id, a QR token for each page and the time, with the engine's input hash. The engine makes no id, token or date;
 // this adapter does, from the clock and random source the job is given.
 import { isUuid } from "@/lib/workbook-content";
-import { planBook } from "@/lib/workbook-v2/build/build-book";
+import { COVER_PAGES, MAX_TOTAL_PAGES } from "@/lib/workbook-v2/assemble/plan-book";
+import { formatFinding } from "@/lib/workbook-v2/checks/findings";
+import { planBook, wholeBookFindings } from "@/lib/workbook-v2/build/build-book";
 import type { PlannedBookSheet } from "./full-book";
 import type { AllocationCandidate, AllocationRecord, BookInputJson, PublishRequest } from "./types";
 
 /** The most pages a book may have, and the count a book's pages are a multiple of (architecture 11.3). */
-export const MAX_PAGES = 120;
+/** The most pages of a printed book with its cover, and its pages and cover come in sheets of 4 (assemble/plan-book.ts). */
+export const MAX_PAGES = MAX_TOTAL_PAGES;
 export const PAGE_MULTIPLE = 4;
 /** A request key: what the caller keeps to try the same book again. */
 export const REQUEST_KEY = /^[A-Za-z0-9:_-]{8,120}$/;
@@ -34,7 +37,8 @@ export function requestProblem(r: PublishRequest): string | null {
   if (typeof r.requestKey !== "string" || !REQUEST_KEY.test(r.requestKey)) return "the request key is not 8 to 120 letters, digits, :, _ or -";
   if (!isUuid(r.childId)) return "the child id is not a UUID";
   if (!Array.isArray(r.sheets) || r.sheets.length === 0) return "the book has no sheets";
-  if ((r.sheets.length * 2) % PAGE_MULTIPLE !== 0 || r.sheets.length * 2 > MAX_PAGES) return `the pages of a book are a multiple of ${PAGE_MULTIPLE}, up to ${MAX_PAGES}`;
+  const total = r.sheets.length * 2 + COVER_PAGES;
+  if (total % PAGE_MULTIPLE !== 0 || total > MAX_PAGES) return `the pages of a book and the ${COVER_PAGES} of its cover are a multiple of ${PAGE_MULTIPLE}, up to ${MAX_PAGES}, and this book has ${total}`;
   let day = 0;
   for (const [i, s] of r.sheets.entries()) {
     if (!isWhole(s.day, 1, 100) || typeof s.startsDay !== "boolean") return `sheet ${i + 1} has no day`;
@@ -77,8 +81,12 @@ export function allocationOf(request: PublishRequest, source: AllocationSource):
   const snapshot = request.snapshot as { level: { name: string } };
   const levels = levelsOf(snapshot.level.name);
   if (!levels) return { ok: false, problems: ["the level of the snapshot is not U1 to U30"] };
+  const pagesPerDay = 2 * request.sheets.filter((s) => s.day === 1).length;
+  // A published book is a whole book: one that breaks its page count, order or days is refused before it is allocated.
+  const whole = wholeBookFindings(plan, pagesPerDay);
+  if (whole.length > 0) return { ok: false, problems: [...new Set(whole.map(formatFinding))] };
   const allocation: AllocationRecord = {
-    format: 1, snapshotId: plan.snapshot.id, snapshotHash: plan.snapshot.hash, levels, pagesPerDay: 2 * request.sheets.filter((s) => s.day === 1).length,
+    format: 1, snapshotId: plan.snapshot.id, snapshotHash: plan.snapshot.hash, levels, pagesPerDay,
     book, days: request.sheets.map((s) => s.day), qrTokens: source.qrTokens,
   };
   return {

@@ -2,10 +2,10 @@
 // page rules), no ink in an answer area, reach box, spine zone or margin, the pages with the cover a multiple of 4 and at
 // most 120, and the QR code read from each page image equals its payload. Each problem names its page and slot.
 import { COVER_PAGES, MAX_TOTAL_PAGES } from "../assemble/plan-book";
-import type { BookItem, PageModel, Region } from "../contract";
+import type { BookItem, PageModel } from "../contract";
 import type { Rendering } from "../renderer";
 import { tailOf } from "./blank";
-import { finder, BOOK_PLACE, NONE, pagePlace, type BookFinding, type Place } from "./findings";
+import { finder, placeNamer, withoutPage, BOOK_PLACE, NONE, pagePlace, type BookFinding } from "./findings";
 import { flowProblems, textProblem } from "./fit";
 import { pageImageProblems } from "./images";
 import { checkPage, regionName } from "./page-rules";
@@ -22,25 +22,17 @@ export interface LayoutCheckInput {
   pages: readonly PageModel[];
   items: readonly BookItem[];
   drawn: Rendering;
-  /** A whole planned book: with its cover, its pages are a multiple of 4 and at most 120. */
+  /** A whole planned book: with its cover, its pages are a multiple of 4 and at most 120. A part of a book skips this rule only. */
   wholeBook: boolean;
 }
 
-const withoutPage = (message: string): string => message.replace(/^Page \d+: /, "");
-const QUOTED = /"([^"]+)"/g;
-
-/** The page and slot of the first rectangle that a problem names in quotes, by its whole id or by its name on `within`. */
-function regionPlace(message: string, ids: ReadonlyMap<string, { page: PageModel; region: Region }>, within: PageModel | null): Place | null {
-  for (const [, quoted] of message.matchAll(QUOTED)) {
-    const byId = ids.get(quoted);
-    if (byId) return pagePlace(byId.page, tailOf(byId.region.id));
-    const own = within?.regions.find((r) => tailOf(r.id) === quoted);
-    if (within && own) return pagePlace(within, quoted);
-  }
-  return null;
+/** What is wrong with the page count of a book with its cover: a book has pages, and a whole book has at most 120 in sheets of 4. */
+export function pageCountFindings(pages: readonly PageModel[], wholeBook: boolean): BookFinding[] {
+  const found: BookFinding[] = [];
+  checkPageCount(pages, wholeBook, finder("layout", found));
+  return found;
 }
 
-/** The page count of a book with its cover. */
 function checkPageCount(pages: readonly PageModel[], wholeBook: boolean, tell: ReturnType<typeof finder>): void {
   const total = pages.length + COVER_PAGES;
   const counted = `the book has ${pages.length} pages and ${COVER_PAGES} cover pages, ${total} in all`;
@@ -58,9 +50,7 @@ export function checkLayout({ pages, items, drawn, wholeBook }: LayoutCheckInput
   for (const { page, problem } of drawing) tell("typesetter", page ? pagePlace(page) : BOOK_PLACE, problem);
   if (drawing.length > 0) return found;
 
-  const ids = new Map(pages.flatMap((page) => page.regions.map((region) => [region.id, { page, region }] as const)));
-  const byNumber = (message: string): PageModel | null => pages.find((p) => message.startsWith(`Page ${p.page}: `)) ?? null;
-  const named = (message: string, page: PageModel | null = byNumber(message)): Place => regionPlace(message, ids, page) ?? (page ? pagePlace(page) : BOOK_PLACE);
+  const named = placeNamer(pages);
 
   // Layer 1: each text is drawn where the model puts it, once, with all the room that it wants.
   const placed = placeTexts(pages, drawn.texts);
@@ -79,7 +69,7 @@ export function checkLayout({ pages, items, drawn, wholeBook }: LayoutCheckInput
     }
   }
   for (const problem of checkPdf(pages, placed, drawn.pdf)) {
-    const page = byNumber(problem);
+    const page = pages.find((p) => problem.startsWith(`Page ${p.page}: `));
     tell("pdf", page ? pagePlace(page) : BOOK_PLACE, withoutPage(problem));
   }
 

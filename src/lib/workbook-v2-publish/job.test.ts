@@ -158,6 +158,9 @@ describe("the v2 book job", () => {
     ["pages that are not a multiple of 4", { sheets: request().sheets.slice(0, 3) }, /multiple of 4/],
     ["a day that does not start with its first sheet", { sheets: request().sheets.map((s, i) => ({ ...s, startsDay: i === 1 })) }, /each day starts/],
     ["a sheet the snapshot does not have", { sheets: request().sheets.map((s, i) => (i === 0 ? { ...s, sheetId: "no-such-sheet" } : s)) }, /no sheet/],
+    // 60 sheets are 120 pages, and with the 4 of the cover 124: more than a book has.
+    ["more than 120 pages with the cover", { sheets: Array.from({ length: 30 }, (_, d) => request().sheets.slice(0, 2).map((s, i) => ({ ...s, startsDay: i === 0, day: d + 1 }))).flat() }, /the pages of a book and the 4 of its cover are a multiple of 4, up to 120, and this book has 124/],
+    ["new sheets out of the level order", { sheets: request().sheets.map((s, i, all) => ({ ...all[[1, 0, 2, 3][i]], startsDay: s.startsDay, day: s.day })) }, /^Level check, sheet "times-facts", page 1, slot "page": this new sheet comes after a new sheet that is later in the level\.$/m],
   ])("refuses %s before anything is written", async (_case, change, problem) => {
     const { store, files } = memory();
     const result = await publishV2Book(deps(store, files), request(change));

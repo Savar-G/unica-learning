@@ -6,7 +6,7 @@
 import { historyFromBooks, MAX_SHEETS, planNextBook, type BookRequestJson } from "../assemble/plan-book";
 import { levelOrder, position, type ChildPosition, type IssuedSheet, type SheetResultRecord } from "../assemble/position";
 import { validateSnapshot, type Snapshot } from "../bank/snapshot";
-import { bookCheckInput, planBook, type BookPlan } from "../build/build-book";
+import { bookCheckInput, planBook, wholeBook, type BookPlan } from "../build/build-book";
 import type { BookCheckInput } from "../checks/book-input";
 import divisionSnapshot from "../fixtures/snapshot-division.json";
 import factsSnapshot from "../fixtures/snapshot-facts.json";
@@ -96,7 +96,7 @@ export async function fullSizeCheckInput(renderer: Renderer): Promise<{ input: B
   const { snapshot, book, pagesPerDay } = fullSizeBookInput();
   const plan = planned(snapshot, book);
   const drawn = await renderer.render(plan.pages);
-  return { input: bookCheckInput(plan, drawn, undefined, { pagesPerDay }), plan };
+  return { input: bookCheckInput(plan, drawn, wholeBook(pagesPerDay)), plan };
 }
 
 /** The ids of the sheets of the full-size level, in level order. */

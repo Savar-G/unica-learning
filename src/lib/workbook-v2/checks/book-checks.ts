@@ -7,7 +7,7 @@ import { checkLayout } from "./layout-check";
 import { checkLevel } from "./level-check";
 import { checkSource } from "./source-check";
 
-export type { BookCheckInput, BookCheckOptions, CheckedSheet } from "./book-input";
+export { PART_OF_BOOK, wholeBook, type BookCheckInput, type BookCheckOptions, type CheckedSheet } from "./book-input";
 export { formatFinding, type BookFinding } from "./findings";
 export { checkLayout } from "./layout-check";
 export { checkLevel } from "./level-check";
@@ -16,7 +16,7 @@ export { checkSource } from "./source-check";
 /** Each check of a book on its own, in the order that they run, so that a caller can time each one. */
 export const BOOK_CHECK_STEPS = {
   source: (input: BookCheckInput): BookFinding[] => checkSource(input),
-  layout: (input: BookCheckInput): BookFinding[] => checkLayout({ ...input, wholeBook: input.pagesPerDay !== undefined }),
+  layout: (input: BookCheckInput): BookFinding[] => checkLayout({ ...input, wholeBook: input.book === "whole" }),
   level: (input: BookCheckInput): BookFinding[] => checkLevel(input),
 } as const;
 

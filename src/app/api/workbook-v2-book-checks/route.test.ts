@@ -55,9 +55,16 @@ it("checks the 120-page book and answers with the time of each check, which add 
   const { sourceMs, layoutMs, levelMs } = record.checks;
   for (const ms of [sourceMs, layoutMs, levelMs, record.totalMs, record.drawMs]) expect(Number.isInteger(ms) && ms >= 0).toBe(true);
   expect(record.totalMs).toBe(sourceMs + layoutMs + levelMs);
-  expect(record.underBudget).toBe(record.totalMs < 5000);
+  // The budget is decided on the time before rounding: well under 5 s here, with the fake typesetter.
+  expect(record.underBudget).toBe(true);
   expect(typst.open).not.toHaveBeenCalled();
 }, 60_000);
+
+it("answers 413 for a body of more than 1,024 bytes, before it draws", async () => {
+  expect((await call(JSON.stringify({ renderer: "fake", pad: "x".repeat(2000) }))).status).toBe(413);
+  expect((await call(JSON.stringify({ renderer: "fake", pad: "x".repeat(900) }))).status).toBe(400);
+  expect(typst.open).not.toHaveBeenCalled();
+});
 
 it("draws with the pinned Typst by default, and answers 500 when it cannot draw", async () => {
   typst.open.mockRejectedValue(new RenderError("Typst is not installed"));

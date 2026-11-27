@@ -5,7 +5,7 @@
 // and child ids, and no id or email of a person anywhere in it), or nothing is written.
 import { existsSync, linkSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { buildBook } from "@/lib/workbook-v2/build/build-book";
+import { buildBook, PART_OF_BOOK } from "@/lib/workbook-v2/build/build-book";
 import { tokenText } from "@/lib/workbook-v2/contract";
 import { canonicalJson, sha256 } from "@/lib/workbook-v2/hash";
 import type { Renderer } from "@/lib/workbook-v2/renderer";
@@ -134,7 +134,8 @@ export async function runBugFixture(fixture: BugFixture, renderer: Renderer): Pr
     const replay = await replayBook(fixture.input, fixture.expected, renderer);
     return replay.ok ? { ok: true, actual: "the replay is the same" } : { ok: false, actual: `${replay.firstDifference.kind}: ${replay.firstDifference.message}` };
   }
-  const built = await buildBook({ snapshot: fixture.input.snapshot, book: fixture.input.book }, renderer);
+  // A fixture is often a few sheets of a book, so it is checked as a part of a book.
+  const built = await buildBook({ snapshot: fixture.input.snapshot, book: fixture.input.book }, renderer, PART_OF_BOOK);
   if (expect.kind === "builds") return built.status === "built" ? { ok: true, actual: "the book builds" } : { ok: false, actual: `the book does not build: ${built.problems.join("; ")}` };
   if (expect.kind === "refused") {
     if (built.status === "built") return { ok: false, actual: "the book builds, and it must be refused" };

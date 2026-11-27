@@ -21,12 +21,12 @@ export const STORE_OPTIONS: MemoryStoreOptions = {
   numbers: { [CHILD]: [1, 2] },
 };
 
-/** Two days of two sheets: word problems and brackets, then facts and bar models (8 pages, 78 questions). */
+/** Two days of two new sheets in level order: facts and brackets, then bar models and word problems (8 pages, 78 questions). */
 export const SMALL_PLAN: PlannedBookSheet[] = [
-  { sheetId: "story-problems", attempt: 1, startsDay: true, day: 1 },
+  { sheetId: "times-facts", attempt: 1, startsDay: true, day: 1 },
   { sheetId: "division-brackets", attempt: 1, startsDay: false, day: 1 },
-  { sheetId: "times-facts", attempt: 1, startsDay: true, day: 2 },
-  { sheetId: "equal-groups", attempt: 1, startsDay: false, day: 2 },
+  { sheetId: "equal-groups", attempt: 1, startsDay: true, day: 2 },
+  { sheetId: "story-problems", attempt: 1, startsDay: false, day: 2 },
 ];
 
 export const request = (o: Partial<PublishRequest> = {}): PublishRequest => ({

@@ -4,7 +4,7 @@
 import { pick } from "../hash";
 import type { Answer, Step, StepMark } from "../contract";
 import {
-  chooseQuestion, columnSpace, countQuestions, NOT_ONLY, NUMBER_RANGES, numberRules, readColumnLimits, scoreOf, scoreRange, widestQuestion, WORD, ZERO_WORDS,
+  chooseQuestion, columnHas, columnSpace, countQuestions, NOT_ONLY, NUMBER_RANGES, numberRules, readColumnLimits, scoreOf, scoreRange, widestQuestion, WORD, ZERO_WORDS,
   type ColumnQuestion, type ColumnRules, type NumberLimits, type Word,
 } from "./column-count";
 import { wholeNumber, type Item, type Range, type Shape } from "./shape";
@@ -96,5 +96,6 @@ export const addColumn: Shape<AddColumnLimits, AddColumnQuestion> = {
     const space = columnSpace(addColumnRules(limits));
     return { count: space.count, at: (index) => item(space.at(index)) };
   },
+  contains: (question, limits) => columnHas(addColumnRules(limits), question),
   face: ({ a, b }) => ({ kind: "column", top: String(a), sign: "+", bottom: String(b) }),
 };

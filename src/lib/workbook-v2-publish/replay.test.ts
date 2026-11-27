@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { buildBook, planBook } from "@/lib/workbook-v2/build/build-book";
+import { buildBook, PART_OF_BOOK, planBook } from "@/lib/workbook-v2/build/build-book";
 import { canonicalJson, sha256 } from "@/lib/workbook-v2/hash";
 import { RenderError } from "@/lib/workbook-v2/renderer";
 import { fakeRenderer } from "@/lib/workbook-v2/testing/fake-renderer";
@@ -77,7 +77,7 @@ describe("the first difference of a replay", () => {
     return changed;
   };
   const modelHashes = async () => {
-    const built = await buildBook({ snapshot: (saved as Saved).snapshot, book: (saved as Saved).book }, fakeRenderer());
+    const built = await buildBook({ snapshot: (saved as Saved).snapshot, book: (saved as Saved).book }, fakeRenderer(), PART_OF_BOOK);
     if (built.status !== "built") throw new Error(built.problems.join("\n"));
     return built.pages.map((p) => sha256(canonicalJson(p.model)));
   };

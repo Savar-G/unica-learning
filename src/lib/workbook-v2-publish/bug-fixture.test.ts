@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { buildBook, planBook } from "@/lib/workbook-v2/build/build-book";
+import { buildBook, PART_OF_BOOK, planBook } from "@/lib/workbook-v2/build/build-book";
 import { ENGINE_VERSION } from "@/lib/workbook-v2/contract";
 import { sha256 } from "@/lib/workbook-v2/hash";
 import { openRenderer } from "@/lib/workbook-v2/render/typst";
@@ -49,7 +49,7 @@ const request = (outDir: string, change: Partial<BugFixtureRequest> = {}): BugFi
 });
 async function expectedOf(input: ReturnType<typeof invented>): Promise<ReplayExpected> {
   const renderer = fakeRenderer();
-  const built = await buildBook(input, renderer);
+  const built = await buildBook(input, renderer, PART_OF_BOOK);
   if (built.status !== "built") throw new Error(built.problems.join("\n"));
   return {
     inputHash: built.record.inputHash, engineVersion: ENGINE_VERSION, rendererVersion: rendererVersion(renderer.identity), fontHashes: fontHashes(renderer.identity),
@@ -92,7 +92,7 @@ describe("a bug fixture", () => {
   });
 
   it("extracts word-problem flow text for both page-text and no-page-text expectations", async () => {
-    const storySheet = SMALL_PLAN[0];
+    const storySheet = SMALL_PLAN.find((s) => s.sheetId === "story-problems") ?? SMALL_PLAN[0];
     const storyInput = {
       snapshot: FULL_BOOK_SNAPSHOT,
       book: {

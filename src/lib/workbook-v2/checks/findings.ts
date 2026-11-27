@@ -1,7 +1,7 @@
 // What the three checks of each book (architecture 11.3) say about a wrong book. A finding names the check, the sheet,
 // the page and the slot, so that a person goes straight to the place, and replay reproduces it. "none" stands only for a
 // problem of the whole book, such as its page count.
-import type { BookItem, PageModel } from "../contract";
+import type { BookItem, PageModel, Region } from "../contract";
 import { tailOf } from "./blank";
 
 export const BOOK_CHECKS = ["source", "layout", "level"] as const;
@@ -61,3 +61,34 @@ export function itemPlaces(pages: readonly PageModel[], items: readonly BookItem
 
 /** Makes the findings of one check. */
 export const finder = (check: BookCheck, into: BookFinding[]) => (rule: string, place: Place, message: string): void => { into.push({ check, rule, ...place, message }); };
+
+const QUOTED = /"([^"]+)"/g;
+const PAGE_FIRST = /^Page (\d+): /;
+const FILE_PAGE = /\bon page (\d+) of the file\b/;
+
+/**
+ * The place that a problem in words names, on the pages of a book: the first rectangle that it names in quotes (by its
+ * whole id, or by its short name on `within` or on the page that the problem starts with), else that page, else the page
+ * of the file that it names (the typesetter's page index, from 1), else the whole book.
+ */
+export function placeNamer(pages: readonly PageModel[]): (message: string, within?: PageModel | null) => Place {
+  const ids = new Map(pages.flatMap((page) => page.regions.map((region) => [region.id, { page, region }] as const)));
+  const byNumber = new Map(pages.map((page) => [page.page, page]));
+  return (message, within) => {
+    const printed = PAGE_FIRST.exec(message);
+    const page = within ?? (printed ? byNumber.get(Number(printed[1])) ?? null : null);
+    for (const [, quoted] of message.matchAll(QUOTED)) {
+      const byId = ids.get(quoted);
+      if (byId) return pagePlace(byId.page, tailOf(byId.region.id));
+      const own: Region | undefined = page?.regions.find((r) => tailOf(r.id) === quoted);
+      if (page && own) return pagePlace(page, quoted);
+    }
+    if (page) return pagePlace(page);
+    const file = FILE_PAGE.exec(message);
+    const drawn = file ? pages[Number(file[1]) - 1] : undefined;
+    return drawn ? pagePlace(drawn) : BOOK_PLACE;
+  };
+}
+
+/** A problem in words without the page that it starts with: the place is in the other fields. */
+export const withoutPage = (message: string): string => message.replace(PAGE_FIRST, "");

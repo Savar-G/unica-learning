@@ -2,7 +2,7 @@
 // 90,899,091 and 49,995,000. The columns are filled from the ones up. All that the columns so far can change in the ones
 // above is one number, a `Low`, and each Low knows in how many ways the columns reach it. Digits that change a Low in the
 // same way are one `Move`.
-import { emptyProblem, readLimitFields, within, type Range } from "./shape";
+import { emptyProblem, isExactly, readLimitFields, wholeFields, within, type Range } from "./shape";
 
 export type Word = "never" | "allowed" | "only";
 export const WORD: readonly Word[] = ["never", "allowed", "only"];
@@ -349,9 +349,27 @@ export function chooseQuestion(given: ColumnRules, choose: (count: number) => nu
 }
 
 /** The place of a question in the order of `chooseQuestion`, or -1 when it does not meet the limits. */
-export function placeOfQuestion(given: ColumnRules, { a, b }: ColumnQuestion): number {
+export function placeOfQuestion(given: ColumnRules, question: ColumnQuestion): number {
+  return placeIn(placesOf(given, false), question);
+}
+
+/**
+ * Whether data is a question of the rules, exactly as `chooseQuestion` gives it: two whole numbers `a` and `b` and no
+ * other field, whose place in the order holds the same question.
+ */
+export function columnHas(given: ColumnRules, question: unknown): boolean {
+  const fields = wholeFields(question, ["a", "b"] as const);
+  if (!fields || !isExactly(question, fields)) return false;
+  const places = placesOf(given, false);
+  const place = placeIn(places, fields);
+  if (place < 0 || place >= countOf(places.whole)) return false;
+  const back = questionAt(places, place);
+  return back.a === fields.a && back.b === fields.b;
+}
+
+function placeIn(places: Places, { a, b }: ColumnQuestion): number {
   if (![a, b].every((n) => Number.isSafeInteger(n) && n > 0)) return -1;
-  const { rules, kept, moves, below, whole } = placesOf(given, false);
+  const { rules, kept, moves, below, whole } = places;
   const last = lengthOf(a) - 1;
   if (last >= moves.length) return -1;
   // From the ones up, where the question stands in the group that its columns so far are in.

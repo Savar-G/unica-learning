@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, writeFile } fr
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { buildBook, type BuiltBook } from "@/lib/workbook-v2/build/build-book";
+import { buildBook, PART_OF_BOOK, type BuiltBook } from "@/lib/workbook-v2/build/build-book";
 import { openRenderer, projectAssets } from "@/lib/workbook-v2/render/typst";
 
 const USAGE = "Usage: npm run workbook:v2 -- --snapshot FILE --book FILE --out FOLDER";
@@ -85,7 +85,8 @@ const args = readArgs(process.argv.slice(2));
 const input = { snapshot: await readJson(args.snapshot), book: await readJson(args.book) };
 await checkEmpty(args.out);
 const renderer = await openRenderer(projectAssets(process.cwd(), homedir(), process.platform, process.arch));
-const result = await buildBook(input, renderer);
+// A book from the command line is any input for a person to look at; it is not published, so it is checked as a part of a book.
+const result = await buildBook(input, renderer, PART_OF_BOOK);
 if (result.status === "failed") throw new Error(result.problems.join("\n"));
 await publish(args.out, result);
 for (const notice of result.notices) console.log(`Notice: ${notice}`);

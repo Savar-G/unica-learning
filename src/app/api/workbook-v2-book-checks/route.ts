@@ -21,6 +21,9 @@ export const maxDuration = 60;
 const BUDGET_MS = 5000;
 /** The most findings that the answer lists in plain words; a good book has none. */
 const MOST_PROBLEMS = 20;
+/** The largest body that the route reads: {"renderer": "typst"} is 20 bytes. */
+const MOST_BODY_BYTES = 1024;
+const TOO_LARGE = "too-large";
 
 let busy = false;
 
@@ -32,8 +35,28 @@ function authorized(header: string | null, secret: string): boolean {
 
 type RendererName = "typst" | "fake";
 
-async function readBody(request: Request): Promise<RendererName | string> {
-  const text = await request.text();
+/** The body as text, read no further than `MOST_BODY_BYTES`, or `TOO_LARGE`. */
+async function boundedText(request: Request): Promise<string | typeof TOO_LARGE> {
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.length;
+    if (size > MOST_BODY_BYTES) {
+      await reader.cancel();
+      return TOO_LARGE;
+    }
+    chunks.push(value);
+  }
+  return new TextDecoder().decode(Buffer.concat(chunks));
+}
+
+async function readBody(request: Request): Promise<RendererName | typeof TOO_LARGE | string> {
+  const text = await boundedText(request);
+  if (text === TOO_LARGE) return TOO_LARGE;
   if (text.trim() === "") return "typst";
   let raw: unknown;
   try {
@@ -59,6 +82,7 @@ export async function POST(request: Request) {
   if (process.env.VERCEL_ENV === "production" && process.env.WORKBOOK_V2_TEST_PUBLISH !== "on") return new Response("Off in production", { status: 404 });
 
   const renderer = await readBody(request);
+  if (renderer === TOO_LARGE) return Response.json({ error: `The body is more than ${MOST_BODY_BYTES} bytes.` }, { status: 413 });
   if (renderer !== "typst" && renderer !== "fake") return Response.json({ error: renderer }, { status: 400 });
 
   if (busy) return new Response("A book is being checked", { status: 429, headers: { "Retry-After": "30" } });
@@ -68,12 +92,16 @@ export async function POST(request: Request) {
     const { input } = await fullSizeCheckInput(await rendererOf(renderer));
     const drawMs = Math.round(performance.now() - started);
     const findings: BookFinding[] = [];
+    let elapsed = 0;
     const time = (step: keyof typeof BOOK_CHECK_STEPS): number => {
       const at = performance.now();
       findings.push(...BOOK_CHECK_STEPS[step](input));
-      return Math.round(performance.now() - at);
+      const ms = performance.now() - at;
+      elapsed += ms;
+      return Math.round(ms);
     };
     const checks = { sourceMs: time("source"), layoutMs: time("layout"), levelMs: time("level") };
+    // The times are rounded to show; the budget is decided on the time before rounding.
     const totalMs = checks.sourceMs + checks.layoutMs + checks.levelMs;
     return Response.json({
       ok: findings.length === 0,
@@ -83,7 +111,7 @@ export async function POST(request: Request) {
       itemCount: input.items.length,
       totalMs,
       checks,
-      underBudget: totalMs < BUDGET_MS,
+      underBudget: elapsed < BUDGET_MS,
       drawMs,
       findings: findings.length,
       problems: findings.slice(0, MOST_PROBLEMS).map(formatFinding),

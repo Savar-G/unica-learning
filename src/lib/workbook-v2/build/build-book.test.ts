@@ -21,7 +21,7 @@ import { goldenInput, SYNTHETIC_LEVELS } from "../testing/golden-books";
 import { stackOf } from "../testing/sample";
 import type { StoryQuestion } from "../shapes/story";
 import { skipTypstTests, testAssets } from "../testing/typst";
-import { buildBook, planBook, type BuiltBook } from "./build-book";
+import { buildBook, PART_OF_BOOK, planBook, wholeBook, type BuiltBook } from "./build-book";
 
 // A hook between the layout and the checks: the layout of the engine makes no wrong page, and one must still stop a book.
 const layout = vi.hoisted(() => ({ change: (pages: PageModel[]) => pages }));
@@ -47,7 +47,7 @@ function fake(change: Partial<Renderer> = {}): Renderer & { drawn: PageModel[][]
 }
 
 async function built(i: Input, renderer: Renderer = fake()): Promise<BuiltBook> {
-  const result = await buildBook(i, renderer);
+  const result = await buildBook(i, renderer, PART_OF_BOOK);
   if (result.status !== "built") throw new Error(result.problems.join("\n"));
   return result;
 }
@@ -86,7 +86,7 @@ describe("a good input", () => {
     const mul = SHAPES.get("mul.column");
     if (!mul) throw new Error("no shape");
     const one = await plain();
-    const result = await buildBook(input(), fake(), shapeLibrary([{ ...mul, version: mul.version + 1 }]));
+    const result = await buildBook(input(), fake(), PART_OF_BOOK, shapeLibrary([{ ...mul, version: mul.version + 1 }]));
     if (result.status !== "built") throw new Error(result.problems.join("\n"));
     expect(result.items.every((i) => i.shapeVersion === mul.version + 1)).toBe(true);
     const [before, after] = [hashed(one), hashed(result)];
@@ -171,18 +171,35 @@ describe("a build stops, draws nothing and says why", () => {
     ["a computed child", (i) => { Object.defineProperty(i.book, "childId", { get: () => "child", enumerable: true }); }, "The book, childId: this must be a plain value."],
   ])("%s", async (_name, change, problem) => {
     const renderer = fake();
-    const result = await buildBook(input(change), renderer);
+    const result = await buildBook(input(change), renderer, PART_OF_BOOK);
     expect(result).toEqual({ status: "failed", problems: expect.arrayContaining([problem]) });
     expect(renderer.drawn).toEqual([]);
+  });
+
+  it("a question outside the limits of its frozen row, whose two computations agree (44 × 2 in a row up to 43)", async () => {
+    const mul = SHAPES.get("mul.column");
+    if (!mul) throw new Error("no shape");
+    let calls = 0;
+    const shape: Shape = { ...mul, generate: (l, seed) => (calls++ === 0 ? { question: { a: 44, b: 2 }, answer: wholeNumber(88) } : mul.generate(l, seed)) };
+    const renderer = fake();
+    const result = await buildBook(input(), renderer, PART_OF_BOOK, shapeLibrary([shape]));
+    if (result.status !== "failed") throw new Error("the book was built");
+    const finding = result.findings?.find((f) => f.rule === "snapshot-item");
+    expect(finding).toMatchObject({ check: "source", sheet: "column-multiplication-1", page: 381, slot: expect.stringMatching(/^slot-\d+$/) });
+    expect(finding?.message).toMatch(/^question \d+ \(\{"a":44,"b":2\}\) is not a question of the snapshot row "column-multiplication-1\/front\/no-carry" \(shape "mul.column" version 2\)$/);
+    expect(result.problems).toContain(`Source check, sheet "column-multiplication-1", page 381, slot "${finding?.slot}": ${finding?.message}.`);
+    expect(renderer.drawn).toHaveLength(1);
   });
 
   it("two computations of an answer that disagree", async () => {
     const mul = SHAPES.get("mul.column");
     if (!mul) throw new Error("no shape");
     const renderer = fake();
-    const result = await buildBook(input(), renderer, shapeLibrary([{ ...mul, solveAgain: (rows) => { const r = mul.solveAgain(rows); return r && { ...r, answer: wholeNumber(7) }; } }]));
-    expect(result.status).toBe("failed");
-    if (result.status === "failed") expect(result.problems[0]).toMatch(/question 1 .* by one computation and "7" by another\.$/);
+    const result = await buildBook(input(), renderer, PART_OF_BOOK, shapeLibrary([{ ...mul, solveAgain: (rows) => { const r = mul.solveAgain(rows); return r && { ...r, answer: wholeNumber(7) }; } }]));
+    if (result.status !== "failed") throw new Error("the book was built");
+    // Stopped before the drawing, with the place of the question: the source check, its sheet, page and slot.
+    expect(result.findings?.[0]).toMatchObject({ check: "source", rule: "answer-twice", sheet: "column-multiplication-1", page: 381, slot: "slot-1" });
+    expect(result.problems[0]).toMatch(/^Source check, sheet "column-multiplication-1", page 381, slot "slot-1": question 1 .* by one computation and "7" by another\.$/);
     expect(renderer.drawn).toEqual([]);
   });
 
@@ -196,7 +213,7 @@ describe("a build stops, draws nothing and says why", () => {
     const bad = <T extends { answer: Answer }>(item: T): T => ({ ...item, answer: { parts: [part as Answer["parts"][number]] } });
     const renderer = fake();
     const shape: Shape = { ...mul, generate: (l, seed) => bad(mul.generate(l, seed)), solveAgain: (rows) => { const r = mul.solveAgain(rows); return r && bad(r); } };
-    const result = await buildBook(input(), renderer, shapeLibrary([shape]));
+    const result = await buildBook(input(), renderer, PART_OF_BOOK, shapeLibrary([shape]));
     if (result.status !== "failed") throw new Error("the book was built");
     expect(result.problems).toHaveLength(16);
     expect(result.problems[0]).toMatch(/^Sheet "column-multiplication-1", front side, question 1: the answer /);
@@ -208,7 +225,7 @@ describe("a build stops, draws nothing and says why", () => {
     const mul = SHAPES.get("mul.column");
     if (!mul) throw new Error("no shape");
     const renderer = fake();
-    const result = await buildBook(input(), renderer, shapeLibrary([{ ...mul, face: (q) => { const f = stackOf({ face: mul.face(q) }); return { ...f, bottom: f.bottom === "9" ? "8" : String(Number(f.bottom) + 1) }; } }]));
+    const result = await buildBook(input(), renderer, PART_OF_BOOK, shapeLibrary([{ ...mul, face: (q) => { const f = stackOf({ face: mul.face(q) }); return { ...f, bottom: f.bottom === "9" ? "8" : String(Number(f.bottom) + 1) }; } }]));
     expect(result.status).toBe("failed");
     if (result.status === "failed") expect(result.problems[0]).toMatch(/question 1 .* by one computation and "\d+" by another\.$/);
     expect(renderer.drawn).toEqual([]);
@@ -217,7 +234,7 @@ describe("a build stops, draws nothing and says why", () => {
   it("a layout that puts two digits in each other's place, in a question and in its rows of ink alike", async () => {
     layout.change = (pages) => pages.map((page) => ({ ...page, regions: page.regions.map((r) => (r.role === "question" ? { ...r, ink: r.ink.map((ink, i) => (i < 2 ? { ...ink, rect: r.ink[1 - i].rect } : ink)) } : r)) }));
     const renderer = fake();
-    const result = await buildBook(input(), renderer);
+    const result = await buildBook(input(), renderer, PART_OF_BOOK);
     expect(result.status).toBe("failed");
     expect(renderer.drawn).toEqual([]);
   });
@@ -225,7 +242,11 @@ describe("a build stops, draws nothing and says why", () => {
   it("a page that breaks a layout rule", async () => {
     layout.change = (pages) => pages.map((p) => ({ ...p, regions: p.regions.filter((r) => r.role !== "qr") }));
     const renderer = fake();
-    expect(await buildBook(input(), renderer)).toEqual({ status: "failed", problems: ["Page 381: there must be one qr, not 0.", "Page 382: there must be one qr, not 0."] });
+    expect(await buildBook(input(), renderer, PART_OF_BOOK)).toEqual({
+      status: "failed",
+      problems: ['Layout check, sheet "column-multiplication-1", page 381, slot "page": there must be one qr, not 0.', 'Layout check, sheet "column-multiplication-1", page 382, slot "page": there must be one qr, not 0.'],
+      findings: [381, 382].map((page) => ({ check: "layout", rule: "page-rule", sheet: "column-multiplication-1", page, slot: "page", message: "there must be one qr, not 0." })),
+    });
     expect(renderer.drawn).toEqual([]);
   });
 
@@ -237,16 +258,18 @@ describe("a build stops, draws nothing and says why", () => {
 
     layout.change = (pages) => pages.map((p) => ({ ...p, captures: [], regions: p.regions.filter((r) => r.role !== "capture") }));
     const renderer = fake();
-    expect(await buildBook(input((i) => put(i.book.sheets[0], "startsDay", true)), renderer)).toEqual({
+    expect(await buildBook(input((i) => put(i.book.sheets[0], "startsDay", true)), renderer, PART_OF_BOOK)).toEqual({
       status: "failed",
-      problems: ["Page 381: the first page of a day must have a time log."],
+      problems: ['Level check, sheet "column-multiplication-1", page 381, slot "page": the first page of a day has no time log.'],
+      findings: [{ check: "level", rule: "day-start", sheet: "column-multiplication-1", page: 381, slot: "page", message: "the first page of a day has no time log" }],
     });
     expect(renderer.drawn).toEqual([]);
 
     layout.change = (pages) => pages.map((p, i) => (i === 0 ? { ...p, captures: structuredClone(frontWithLog.captures), regions: [...p.regions, structuredClone(captureRegion)] } : p));
-    expect(await buildBook(input(), renderer)).toEqual({
+    expect(await buildBook(input(), renderer, PART_OF_BOOK)).toEqual({
       status: "failed",
-      problems: ["Page 381: a page that does not start a day must not have a time log."],
+      problems: ['Level check, sheet "column-multiplication-1", page 381, slot "time-log": a page that does not start a day has a time log.'],
+      findings: [{ check: "level", rule: "day-start", sheet: "column-multiplication-1", page: 381, slot: "time-log", message: "a page that does not start a day has a time log" }],
     });
     expect(renderer.drawn).toEqual([]);
   });
@@ -254,14 +277,14 @@ describe("a build stops, draws nothing and says why", () => {
   it("a typesetter that puts a rectangle in another place", async () => {
     const good = fake();
     const renderer = fake({ render: async (pages) => { const out = await good.render(pages); out.positions[4] = { ...out.positions[4], rect: { ...out.positions[4].rect, x: 0 } }; return out; } });
-    const result = await buildBook(input(), renderer);
+    const result = await buildBook(input(), renderer, PART_OF_BOOK);
     expect(result).toMatchObject({ status: "failed", problems: [expect.stringMatching(/^Layout check, sheet "column-multiplication-1", page 381, slot "heading": ".*heading" is at \(0, .* and the model puts it at/)] });
   });
 
   it("a typesetter that prints another number", async () => {
     const good = fake();
     const renderer = fake({ render: async (pages) => { const out = await good.render(pages); out.texts[3] = { ...out.texts[3], text: "77" }; return out; } });
-    const result = await buildBook(input(), renderer);
+    const result = await buildBook(input(), renderer, PART_OF_BOOK);
     expect(result).toMatchObject({ status: "failed", problems: expect.arrayContaining([expect.stringMatching(/^Layout check, sheet "column-multiplication-1", page 381, slot "[a-z]+-\d+": .*the typesetter drew "77"/)]) });
   });
 
@@ -270,7 +293,7 @@ describe("a build stops, draws nothing and says why", () => {
   const at = (page: number, slot: string) => `Layout check, sheet "column-multiplication-1", page ${page}, slot "${slot}": `;
   const stops = async (change: Change) => {
     const good = fake();
-    const result = await buildBook(input(), fake({ render: async (pages) => { const out = await good.render(pages); change(out, pages); return out; } }));
+    const result = await buildBook(input(), fake({ render: async (pages) => { const out = await good.render(pages); change(out, pages); return out; } }), PART_OF_BOOK);
     if (result.status !== "failed") throw new Error("the book was built");
     return result.problems;
   };
@@ -318,12 +341,12 @@ describe("a build stops, draws nothing and says why", () => {
 
   it("a typesetter that fails", async () => {
     const renderer = fake({ render: async () => { throw new RenderError("Typst reported: a warning"); } });
-    expect(await buildBook(input(), renderer)).toEqual({ status: "failed", problems: ["Typst reported: a warning"] });
+    expect(await buildBook(input(), renderer, PART_OF_BOOK)).toEqual({ status: "failed", problems: ["Typst reported: a warning"] });
   });
 
   it("but a fault in the code itself is not hidden as a problem of the book", async () => {
     const renderer = fake({ render: async () => { throw new TypeError("a fault"); } });
-    await expect(buildBook(input(), renderer)).rejects.toThrow("a fault");
+    await expect(buildBook(input(), renderer, PART_OF_BOOK)).rejects.toThrow("a fault");
   });
 });
 
@@ -331,13 +354,13 @@ describe("the three checks of each book", () => {
   const golden = () => goldenInput(SYNTHETIC_LEVELS[0], "weak");
 
   it("build a whole planned book with its pages a day to the same bytes as with no options", async () => {
-    const [whole, part] = [await buildBook(golden(), fake(), SHAPES, { pagesPerDay: 4 }), await buildBook(golden(), fake())];
+    const [whole, part] = [await buildBook(golden(), fake(), wholeBook(4)), await buildBook(golden(), fake(), PART_OF_BOOK)];
     if (whole.status !== "built" || part.status !== "built") throw new Error("not built");
     expect(hashed(whole)).toEqual(hashed(part));
   });
 
   it("stop a whole book whose days do not have the pages a day set for it, and never give it as built", async () => {
-    const result = await buildBook(golden(), fake(), SHAPES, { pagesPerDay: 8 });
+    const result = await buildBook(golden(), fake(), wholeBook(8));
     if (result.status !== "failed") throw new Error("the book was built");
     expect(result.findings).toEqual([expect.objectContaining({ check: "level", rule: "pages-a-day", page: expect.any(Number), slot: "time-log" })]);
     expect(result.problems).toEqual([expect.stringMatching(/^Level check, sheet "add-and-take-away", page \d+, slot "time-log": day 1 has 4 pages, and this book has 8 pages a day\.$/)]);
@@ -346,7 +369,7 @@ describe("the three checks of each book", () => {
   it("stop a book with ink in an answer area, with a finding that names the check, sheet, page and slot", async () => {
     const good = fake();
     const renderer = fake({ render: async (pages) => { const out = await good.render(pages); const canvas = drawPage(pages[0]); paint(canvas, { x: 150, y: 190, w: 3, h: 3 }); put(out.images, "0", toPng(canvas)); return out; } });
-    const result = await buildBook(input(), renderer);
+    const result = await buildBook(input(), renderer, PART_OF_BOOK);
     if (result.status !== "failed") throw new Error("the book was built");
     expect(result.findings).toContainEqual({ check: "layout", rule: "blank-zone-ink", sheet: "column-multiplication-1", page: 381, slot: "answer-1", message: "the image has ink that the model does not have, at (150, 190) in \"answer-1\"" });
   });

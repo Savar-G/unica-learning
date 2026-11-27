@@ -5,9 +5,10 @@ Every v2 book passes three checks before `buildBook` gives it back as `"built"` 
 | Module | Gives |
 | -- | -- |
 | `book-checks.ts` | `checkBook(input)`, and `BOOK_CHECK_STEPS` (each check alone, so that a caller can time it) |
-| `book-input.ts` | `BookCheckInput`, `BookCheckOptions` (`pagesPerDay`) |
+| `book-input.ts` | `BookCheckInput`, `BookCheckOptions` (`wholeBook(pagesPerDay)` or `PART_OF_BOOK`) |
 | `findings.ts` | `BookFinding`, `formatFinding` |
-| `source-check.ts` | `checkSource`, `snapshotItemHashes`, `itemSourceHash` |
+| `source-check.ts` | `checkSource`, `snapshotRowHashes`, `itemRowHash` |
+| `membership.ts` | whether a printed question is one of its frozen row (`Shape.contains`, the list, or a space of at most 20,000) |
 | `repeat-rule.ts` | the repeat rule of architecture 9.3, read back from the book |
 | `layout-check.ts` | `checkLayout` |
 | `level-check.ts` | `checkLevel` |
@@ -26,10 +27,11 @@ Layout check, sheet "times-facts", page 121, slot "answer-3": the image has ink 
 
 | Check | Rule | What it stops |
 | -- | -- | -- |
-| Source | `snapshot-item` | An item whose hash (`sha256` of sheet, side, row, shape and shape version) is not a row of the snapshot; an item of no sheet of the book; a row that prints more or fewer questions than the snapshot row asks for |
+| Source | `snapshot-item` | An item whose row hash (`sha256` of sheet, side, row, shape, shape version, number of questions and the row's canonical limits; for word problems, its question ids) is not the frozen snapshot row's; a question that is not one of that frozen row (for word problems, the frozen questions bound again to the book's theme and region), or that its shape cannot read back; an item of no sheet of the book; a row that prints more or fewer questions than the snapshot row asks for |
 | Source | `answer-twice` | An answer that the second computation (`solveAgain` on the printed rows, or the story reader) does not agree with |
 | Source | `no-repeat` | A question twice on a sheet while its row has questions that the sheet does not print |
-| Source | `unseen-first` | On a repeat with history, a seen question while its row has unseen questions that the sheet does not print (a swap of the last attempt is not such a choice) |
+| Source | `ordered-run` | A row in table order (`orderedRuns`) that prints no whole run of its table, in the table's order |
+| Source | `unseen-first` | On a repeat with history, a seen question while its row has unseen questions that the sheet does not print (a swap of the last attempt is not such a choice); for a row in table order, a run with a seen question while a run of its table is all unseen and free of the rest of the sheet |
 | Source | `swapped-form` | A question of the last attempt in the same form when its limits allow the swapped form and the sheet does not print it |
 | Source | `new-order` | A repeated side in the exact order of the last attempt when two questions of one row and one difficulty can change places |
 | Layout | `fit` | A text, flow, position or digit place that layer 1 refuses (`fit.ts`, `positions.ts`, `texts.ts`, `place-value.ts`) |
@@ -39,22 +41,28 @@ Layout check, sheet "times-facts", page 121, slot "answer-3": the image has ink 
 | Layout | `drawn-ink`, `colour`, `image`, `pdf`, `typesetter` | Model ink missing from the image, a grey or colour that the model does not use, an unreadable image, a PDF that differs from the model, a typesetter that gave too little |
 | Layout | `page-count` | A whole book whose pages and 4 cover pages are not a multiple of 4, or more than 120 (`MAX_TOTAL_PAGES`) |
 | Level | `in-level` | A sheet, page or question of a sheet that is not in the snapshot of the child's level |
+| Level | `page-order` | Pages that do not print the planned sheets in their order, front then back (every book) |
+| Level | `day-start` | A first page of a day with no time log, or another page with one, read in the order of the pages (every book; `planBook` checks it before drawing too) |
 | Level | `repeats-first`, `order` | In a whole book: a repeat after a new sheet, or repeats or new sheets out of snapshot order |
-| Level | `pages-a-day` | In a whole book: a day with another number of pages than `pagesPerDay` (only the last day may have one more sheet, when `planNextBook` adds one to make the sheet count even), or a first sheet that does not start a day |
+| Level | `pages-a-day` | In a whole book: a day with another number of pages than `pagesPerDay` (only the last day may have one more sheet, when the book's sheet count is even), or a first sheet that does not start a day. `planNextBook` refuses a book that breaks this rule (`wrongDay` in `assemble/plan-book.ts`), for example a short queue that leaves 2 sheets at 6 pages a day |
 
-The repeat rules decide from the items, the bound rows and the history only. They read a row's whole question space when the shape has `list`, or `space` with at most 20,000 questions, which is where the build reads it whole too. A row in table order (`orderedRuns`) is not judged item by item.
+The repeat rules decide from the items, the bound rows and the history only. They read a row's whole question space when the shape has `list`, or `space` with at most 20,000 questions, which is where the build reads it whole too. A larger space (column shapes) is not read: it has another question when its `count` is more than the keys that the sheet prints or the rule refuses and that `Shape.contains` places in the row. A key that cannot be read back counts as one of the row's, so a doubt never stops a book. A row in table order is judged by its runs (`ordered-run`, `unseen-first`), not item by item.
+
+`Shape.contains(question, limits)` reads a question back apart from `generate`: `add.column` and `sub.column` find its place in the order and read the question at that place again, `mul.column` counts the questions of its first number and multiplier, `count.skip` finds its line and blanks, and a word problem is filled again from its question, phrasing and numbers. A shape with no `contains` is checked against its list, or its whole space of at most 20,000.
 
 ## Whole books and parts of books
 
-`buildBook(input, renderer, shapes, { pagesPerDay })` says that the input is a whole planned book with that many pages a day. Then the page count, order and day rules run too. Without `pagesPerDay`, the build runs every rule that needs no plan: all source rules, all layout rules but `page-count`, and `in-level`. Test books of one or three sheets and the publish tool's 60-sheet test book (124 pages, attempts in turn) are parts of books in this sense. The golden books pass `pagesPerDay`, so every rule runs on them.
+`buildBook(input, renderer, checks, shapes?)` needs `checks`: there is no default. `wholeBook(pagesPerDay)` says that the input is a whole planned book with that many pages a day, and the page count, order and day rules run too. `PART_OF_BOOK` says that it is not, and skips only those rules: every source rule, every layout rule but `page-count`, `in-level`, `page-order` and `day-start` still run. The publish job passes `wholeBook` with the pages a day of its allocation, and `allocationOf` refuses a request that breaks a whole-book rule before it writes anything (`wholeBookFindings`). Fixtures, replay (the saved input does not keep the pages a day), the command line and tests of a few sheets pass `PART_OF_BOOK`. The golden books and the full-size book pass `wholeBook`.
 
-The problems that `planBook` finds before drawing (`checkPage`, the first printed-answer check, time logs) keep their earlier wording. When the three checks stop a book, `BuildResult` has `problems` (from `formatFinding`) and `findings`.
+The publish tool's book (`src/lib/workbook-v2-publish/full-book.ts`) is a whole book: 54 sheets of a 56-sheet invented level (108 pages and 4 cover pages, 112 in all; 9 days of 6 sheets), 12 repeats first and then 42 new sheets, each part in level order. `requestProblem` counts the 4 cover pages, so a request of 60 sheets (124 pages) is refused.
+
+When a check of the pages stops a book before drawing (the first printed-answer check, `checkPage`, time logs), `buildBook` gives findings too, with the same places as after drawing; `planBook` and `planPages` keep their earlier wording for the bank checks. A text that the typesetter drew on a page of the file and that the model does not have is placed on the page model of that page. When a check stops a book, `BuildResult` has `problems` (from `formatFinding`) and `findings`.
 
 ## Timing (target: under 5 s)
 
 `src/lib/workbook-v2/testing/full-size-book.ts` makes a full-size synthetic book: Book 2 of a weak child on an invented level of 64 sheets. It has 58 sheets (116 pages and 4 cover pages, 120 in all) and 1,050 questions: 3 repeats with the history of Book 1, then 55 new sheets, at 6 pages a day (19 days of 3 sheets, and the last day 4).
 
-`POST /api/workbook-v2-book-checks` draws that book in the function, runs the three checks, and answers `{ ok, renderer, totalPages, interiorPages, itemCount, totalMs, checks: { sourceMs, layoutMs, levelMs }, underBudget, drawMs, findings, problems }`. `totalMs` is the sum of the three checks; `drawMs` is the drawing before them and is not in the budget. Call it with `Authorization: Bearer <CRON_SECRET>` and an empty body (pinned Typst) or `{"renderer": "fake"}`. It writes nothing, answers 404 in production unless `WORKBOOK_V2_TEST_PUBLISH=on`, and runs one check at a time (429).
+`POST /api/workbook-v2-book-checks` draws that book in the function, runs the three checks, and answers `{ ok, renderer, totalPages, interiorPages, itemCount, totalMs, checks: { sourceMs, layoutMs, levelMs }, underBudget, drawMs, findings, problems }`. `totalMs` is the sum of the three rounded checks; `underBudget` is decided on the time before rounding; `drawMs` is the drawing before them and is not in the budget. A body of more than 1,024 bytes gets 413. Call it with `Authorization: Bearer <CRON_SECRET>` and an empty body (pinned Typst) or `{"renderer": "fake"}`. It writes nothing, answers 404 in production unless `WORKBOOK_V2_TEST_PUBLISH=on`, and runs one check at a time (429).
 
 `checks/book-checks.test.ts` runs the same book with the fake typesetter on every run, and with Typst when it is installed. Its budget is on processor time, so a busy computer does not fail it.
 
@@ -66,7 +74,11 @@ Local measurements on Apple Silicon (MacBook, Node 22), 120-page book, Typst pag
 | 2026-11-27, final code | Typst | 14 ms | 1,521 ms | 0 ms | 1,535 ms | 1,784 ms |
 | 2026-11-27, final code | fake | 16 ms | 1,230 ms | 0 ms | 1,246 ms | 1,584 ms |
 | 2026-11-27, final code | fake | 16 ms | 1,214 ms | 0 ms | 1,231 ms | 1,619 ms |
+| 2026-11-27, review repair | Typst | 69 ms | 1,788 ms | 1 ms | 1,858 ms | 2,247 ms |
+| 2026-11-27, review repair | Typst | 57 ms | 1,559 ms | 0 ms | 1,616 ms | 1,786 ms |
+| 2026-11-27, review repair | fake | 68 ms | 1,223 ms | 0 ms | 1,291 ms | 1,588 ms |
+| 2026-11-27, review repair | fake | 60 ms | 1,168 ms | 0 ms | 1,228 ms | 1,377 ms |
 
-The computer had a load average near 9 during these runs. With a load near 50 (other agents running), the clock total of the same book rose to about 5 s while the processor time stayed near 2 s; that is why the test budget is on processor time.
+The computer had a load average near 9 during the first runs and near 36 during the review-repair runs. The review repair reads each question back against its frozen row, which moved the source check from about 15 ms to about 60 ms. With a load near 50 (other agents running), the clock total of the same book rose to about 5 s while the processor time stayed near 2 s; that is why the test budget is on processor time.
 
-Where the layout time goes (same book): reading the 116 PNG files 0.59 s, the search for a second QR code 0.32 s, reading each QR code 0.12 s, the PDF 0.15 to 0.17 s, stray ink 0.09 s, flat greys 0.07 s, page rules 0.02 s. The source check is 11 to 30 ms and the level check under 1 ms. The Vercel figure (x64) is not measured yet: call the route on a preview.
+Where the layout time goes (same book): reading the 116 PNG files 0.59 s, the search for a second QR code 0.32 s, reading each QR code 0.12 s, the PDF 0.15 to 0.17 s, stray ink 0.09 s, flat greys 0.07 s, page rules 0.02 s. The source check is 57 to 69 ms after the review repair and the level check under 1 ms. The Vercel figure (x64) is not measured yet: call the route on a preview.

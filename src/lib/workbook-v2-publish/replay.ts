@@ -5,7 +5,7 @@
 // the saved input, its plan, the snapshot, the input hash, the engine, the renderer, the fonts, the build, the page count,
 // any page model, then any page's pixels, and last the PDF, so a later difference that only follows from an earlier one is
 // never reported as the cause.
-import { buildBook, planBook } from "@/lib/workbook-v2/build/build-book";
+import { buildBook, PART_OF_BOOK, planBook } from "@/lib/workbook-v2/build/build-book";
 import { ENGINE_VERSION } from "@/lib/workbook-v2/contract";
 import { canonicalJson, sha256 } from "@/lib/workbook-v2/hash";
 import type { Renderer } from "@/lib/workbook-v2/renderer";
@@ -127,7 +127,8 @@ export async function replayBook(raw: unknown, rawExpected: ReplayExpected, rend
   if (causes.length > 0) return differ(firstOf(causes), causes.map((c) => c.message));
 
   const started = clock();
-  const built = await buildBook({ snapshot: saved.snapshot, book: saved.book }, renderer);
+  // A replay reproduces the book and its findings; the saved input does not keep the pages a day, so it is checked as a part of a book.
+  const built = await buildBook({ snapshot: saved.snapshot, book: saved.book }, renderer, PART_OF_BOOK);
   if (built.status === "failed") return differ({ kind: "build", message: "the book does not build again" }, ["the book does not build again:", ...built.problems]);
   const buildMs = Math.round(clock() - started);
   const pdfSha256 = sha256(built.pdf);

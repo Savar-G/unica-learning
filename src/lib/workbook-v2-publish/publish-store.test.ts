@@ -152,28 +152,28 @@ describe("a full-size book in today's tables (F1, C1)", () => {
     fake = fakeSupabase();
     const result = await publishV2Book(deps(v2PublishStore(fake.db), v2Files(fake.db)), fullRequest());
     if (result.status !== "published") throw new Error(JSON.stringify(result));
-    expect(result.record.counts).toEqual({ pages: 120, questions: 1990, itemAnswers: 1990, sheets: 60, timeLogs: 10 });
+    expect(result.record.counts).toEqual({ pages: 108, questions: 1378, itemAnswers: 1378, sheets: 54, timeLogs: 9 });
     workbookId = result.record.workbookId;
   }, 60_000);
 
-  it("reads back every one of its 1,990 questions through today's workbook store, Maya teaching, and parent answer keys", async () => {
+  it("reads back every one of its 1,378 questions through today's workbook store, Maya teaching, and parent answer keys", async () => {
     const book = await workbookStore(fake.db).workbook(workbookId);
     const questions = book?.pages.flatMap((p) => p.questions) ?? [];
-    expect(book?.pages).toHaveLength(120);
-    expect(questions).toHaveLength(1990);
+    expect(book?.pages).toHaveLength(108);
+    expect(questions).toHaveLength(1378);
     expect(questions.every((q) => q.content.status === "found" && q.regions !== null)).toBe(true);
     expect(book?.pages.every((p) => p.printContract !== null)).toBe(true);
     expect(book?.printedRevision).toMatch(/^[0-9a-f]{28}$/);
-    expect((await workbookStore(fake.db).pageIndex(workbookId)).reduce((n, p) => n + p.questions, 0)).toBe(1990);
+    expect((await workbookStore(fake.db).pageIndex(workbookId)).reduce((n, p) => n + p.questions, 0)).toBe(1378);
     // Maya can teach the supported arithmetic and story items across the whole book.
     const teachable = questions.filter((q) => q.content.status === "found"
       && createSession({ callId: `full-${q.number}`, package: teachingPackage(q.content.package) }).package !== null).length;
-    expect(teachable).toBeGreaterThan(1900);
-    // Parent answer keys preserve units on all 30 quantity word problems.
+    expect(teachable).toBeGreaterThan(1300);
+    // Parent answer keys preserve units on all 42 quantity word problems.
     const answers = workbookAnswerPages(book!);
     expect(answers).not.toBeNull();
     const quantityAnswers = fake.memory.store.tables.books[0].payload.itemAnswers.filter((a) => a.answerKind === "quantity");
-    expect(quantityAnswers).toHaveLength(30);
+    expect(quantityAnswers).toHaveLength(42);
     for (const a of quantityAnswers) {
       const q = answers!.find((p) => p.number === a.pageNumber)?.questions.find((x) => x.number === a.questionNumber);
       expect(q?.answers).toEqual([{ part: 1, value: `${a.answerValue} ${a.unit}`, alternatives: [] }]);
