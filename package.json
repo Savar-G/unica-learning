@@ -56,6 +56,8 @@
     "workbook:v2:check": "node scripts/workbook-v2-check.mjs",
     "workbook:v2:freeze": "node scripts/workbook-v2-freeze.mjs",
     "workbook:v2:replay": "node scripts/workbook-v2-replay.mjs",
+    "workbook:v2:golden": "node scripts/workbook-v2-golden.mjs",
+    "workbook:v2:fixture": "node scripts/workbook-v2-fixture.mjs",
     "workbook:v2:fingerprints": "node scripts/shape-fingerprints.mjs"
   },
   "dependencies": {

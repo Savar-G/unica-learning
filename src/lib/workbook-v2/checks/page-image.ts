@@ -106,6 +106,23 @@ const onPaper = (part: number, cover: number): number => (cover === 255 ? part :
 /** Whether a line is made of the same pixels as the line above it: most lines of a page are white. */
 const isSameAsAbove = (lines: Buffer, start: number, stride: number): boolean => lines.compare(lines, start - stride - 1, start - 1, start, start + stride) === 0;
 
+/** Every byte of the pixels of a PNG, line by line with no filter byte, and the parts of one pixel: 1 grey, 3 colour, 4 colour with a see-through part. */
+export interface PngPixels { width: number; height: number; parts: number; pixels: Uint8Array }
+
+/** The pixels of a PNG as they are stored, for a comparison of two images that does not depend on how each was packed. */
+export function readPngPixels(png: Uint8Array): PngPixels | string {
+  const chunks = chunksOf(png);
+  const header = chunks && readHeader(chunks[0]);
+  if (!chunks || !header) return CANNOT_READ;
+  const { width, height, parts } = header;
+  const stride = width * parts;
+  const lines = unpack(chunks, (stride + 1) * height);
+  if (!lines || !unfilter(lines, header, stride)) return CANNOT_READ;
+  const pixels = new Uint8Array(stride * height);
+  for (let y = 0; y < height; y++) pixels.set(lines.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1)), y * stride);
+  return { width, height, parts, pixels };
+}
+
 export function readPageImage(png: Uint8Array): PageImage | string {
   const chunks = chunksOf(png);
   const header = chunks && readHeader(chunks[0]);

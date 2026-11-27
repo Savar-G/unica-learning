@@ -63,6 +63,12 @@ test("dynamically-read docs trigger their exact consumer tests instead of skippi
   const research = classifyScope({ eventName: "pull_request", changedFiles: [".design/research/foo.csv"] });
   assert.equal(research.mode, "affected");
   assert.deepEqual(research.extraTests, ["src/lib/assessment/bank-coverage.test.ts", "src/lib/assessment/skill-map.test.ts"]);
+
+  const bugFixture = classifyScope({ eventName: "pull_request", changedFiles: ["src/lib/workbook-v2-publish/bug-fixtures/missing-level.json"] });
+  assert.equal(bugFixture.mode, "affected");
+  assert.equal(bugFixture.runPrUnit, true);
+  assert.deepEqual(bugFixture.extraTests, ["src/lib/workbook-v2-publish/bug-fixture.test.ts"]);
+  assert.equal(bugFixture.runEngine, true);
 });
 
 test("scoped feature PR runs affected unit + lint-and-types without engine or unrelated suites", () => {
