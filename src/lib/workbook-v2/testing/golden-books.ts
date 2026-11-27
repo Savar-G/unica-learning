@@ -102,8 +102,9 @@ export function goldenInput(level: GoldenLevel, child: GoldenChild): BuildInput 
   return { snapshot: level.snapshot, book };
 }
 
+/** A golden book is a whole planned book, so every check of a book runs on it: its page count, order and days too. */
 export function buildGoldenBook(level: GoldenLevel, child: GoldenChild, renderer: Renderer): Promise<BuildResult> {
-  return buildBook(goldenInput(level, child), renderer);
+  return buildBook(goldenInput(level, child), renderer, undefined, { pagesPerDay: PAGES_A_DAY });
 }
 
 /** Every golden book of the levels, strong then weak for each level, built with every check. `only` keeps one book by name. */

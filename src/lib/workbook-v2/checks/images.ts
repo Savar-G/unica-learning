@@ -1,7 +1,7 @@
 // A book proves its own pages: what the page model says is read back from each finished page image. The image is made
 // apart from the report of the typesetter, so text that is reported and not printed is found here.
 import { IMAGE_PIXELS_PER_INCH, PRINT_RULES, type Ink, type PageModel, type Rect, type Region } from "../contract";
-import { flatGrey, inkOutside, inner, outer, strayInk, type Box } from "./blank";
+import { flatGrey, inkOutside, inner, outer, strayInk, tailOf, type Box } from "./blank";
 import { readQr, strayQrTexts } from "./find-qr";
 import { readPageImage, type PageImage } from "./page-image";
 import { regionName } from "./page-rules";
@@ -11,7 +11,10 @@ const SCALE = IMAGE_PIXELS_PER_INCH / 72;
 /** How far the corners of a QR code may be from their place: about one square. */
 const QR_CORNER_ROOM = 4;
 
-type Tell = (problem: string) => void;
+/** What a page image does not prove: the rule, the short name of the part of the page, and the problem in plain words. */
+export interface ImageProblem { rule: "image" | "drawn-ink" | "colour" | "qr" | "blank-zone-ink"; slot: string; problem: string }
+
+type Tell = (problem: string, slot?: string, rule?: ImageProblem["rule"]) => void;
 
 /** The grey of each colour of the model, as the image has it. */
 const GREYS: Readonly<Record<string, number>> = { black: 0 };
@@ -58,11 +61,12 @@ function isDrawn(image: PageImage, ink: Ink): boolean {
 
 function checkInk(image: PageImage, region: Region, tell: Tell): void {
   // The outline shows where an answer goes, so it is looked for whatever the model says of its ink.
-  if (region.role === "answer" && !isDrawn(image, { kind: "outline", rect: region.rect, color: "black", width: PRINT_RULES.answer.outline })) tell(`the image has no outline of ${regionName(region)}`);
+  const slot = tailOf(region.id);
+  if (region.role === "answer" && !isDrawn(image, { kind: "outline", rect: region.rect, color: "black", width: PRINT_RULES.answer.outline })) tell(`the image has no outline of ${regionName(region)}`, slot, "drawn-ink");
   for (const ink of region.ink) {
     if (isDrawn(image, ink)) continue;
-    if (ink.kind === "text") tell(`${regionName(region)} must print "${ink.text}" and the image has no ink there`);
-    else tell(`the image has no ink for a part of ${regionName(region)}`);
+    if (ink.kind === "text") tell(`${regionName(region)} must print "${ink.text}" and the image has no ink there`, slot, "drawn-ink");
+    else tell(`the image has no ink for a part of ${regionName(region)}`, slot, "drawn-ink");
   }
 }
 
@@ -74,33 +78,34 @@ function fills(box: Box, ink: readonly Ink[]): boolean {
 
 function checkQr(image: PageImage, page: PageModel, tell: Tell): void {
   const region = page.regions.find((r) => r.role === "qr");
-  if (!region) return tell("there is no place for a QR code");
+  if (!region) return tell("there is no place for a QR code", "qr", "qr");
+  const slot = tailOf(region.id);
   const box = outer(region.rect);
   const found = readQr(image, box);
-  if (!found) tell("the image has no QR code that can be read in its box");
-  else if (found.text !== page.qr) tell(`the QR code reads "${found.text}" and must read "${page.qr}"`);
-  else if (!fills(found.box, region.ink)) tell("the QR code does not fill its box");
-  for (const text of strayQrTexts(image, box)) tell(`the image has a second QR code, which reads "${text}"`);
+  if (!found) tell("the image has no QR code that can be read in its box", slot, "qr");
+  else if (found.text !== page.qr) tell(`the QR code reads "${found.text}" and must read "${page.qr}"`, slot, "qr");
+  else if (!fills(found.box, region.ink)) tell("the QR code does not fill its box", slot, "qr");
+  for (const text of strayQrTexts(image, box)) tell(`the image has a second QR code, which reads "${text}"`, "page", "qr");
 }
 
 const points = (at: { x: number; y: number }) => `(${Math.round(at.x)}, ${Math.round(at.y)})`;
 
 function checkColours(image: PageImage, tell: Tell): void {
-  if (image.colour) tell(`the image has a colour that is not a grey, at ${points({ x: image.colour.x / SCALE, y: image.colour.y / SCALE })}`);
+  if (image.colour) tell(`the image has a colour that is not a grey, at ${points({ x: image.colour.x / SCALE, y: image.colour.y / SCALE })}`, "page", "colour");
   const grey = flatGrey(image, [...Object.values(GREYS), PAPER_WHITE]);
-  if (grey) tell(`the image has the grey ${grey.grey}, which the model does not use, at ${points(grey)}`);
+  if (grey) tell(`the image has the grey ${grey.grey}, which the model does not use, at ${points(grey)}`, "page", "colour");
 }
 
 /** An image of the size of its page with every ink of it, in the colours of the model, or null. */
 function readInk(page: PageModel, png: Uint8Array, tell: Tell): PageImage | null {
   const image = readPageImage(png);
   if (typeof image === "string") {
-    tell(image);
+    tell(image, "page", "image");
     return null;
   }
   const [width, height] = [Math.round(page.size.w * SCALE), Math.round(page.size.h * SCALE)];
   if (image.width !== width || image.height !== height) {
-    tell(`the page image is ${image.width} by ${image.height} pixels and must be ${width} by ${height}`);
+    tell(`the page image is ${image.width} by ${image.height} pixels and must be ${width} by ${height}`, "page", "image");
     return null;
   }
   for (const region of page.regions) checkInk(image, region, tell);
@@ -112,7 +117,7 @@ function checkImage(page: PageModel, png: Uint8Array, tell: Tell): void {
   const image = readInk(page, png, tell);
   if (!image) return;
   checkQr(image, page, tell);
-  for (const { place, ...at } of strayInk(page, image)) tell(`the image has ink that the model does not have, at ${points(at)} in ${place}`);
+  for (const { place, slot, ...at } of strayInk(page, image)) tell(`the image has ink that the model does not have, at ${points(at)} in ${place}`, slot, "blank-zone-ink");
 }
 
 /** What is wrong with the image of one item that is drawn alone: it must have all its ink, and no ink outside its slot. */
@@ -125,9 +130,16 @@ export function checkItemImage(page: PageModel, slot: Region, png: Uint8Array): 
   return [...new Set(problems)];
 }
 
+/** What one page image does not prove, each problem one time, with the part of the page that it names. */
+export function pageImageProblems(page: PageModel, png: Uint8Array): ImageProblem[] {
+  const found = new Map<string, ImageProblem>();
+  checkImage(page, png, (problem, slot = "page", rule = "image") => { if (!found.has(problem)) found.set(problem, { rule, slot, problem }); });
+  return [...found.values()];
+}
+
 /** What the page images do not prove, in plain words. `images` has one image a page, in page order. */
 export function checkImages(pages: readonly PageModel[], images: readonly Uint8Array[]): string[] {
   const problems = new Set<string>();
-  pages.forEach((page, i) => checkImage(page, images[i], (problem) => problems.add(`Page ${page.page}: ${problem}.`)));
+  pages.forEach((page, i) => { for (const { problem } of pageImageProblems(page, images[i])) problems.add(`Page ${page.page}: ${problem}.`); });
   return [...problems];
 }

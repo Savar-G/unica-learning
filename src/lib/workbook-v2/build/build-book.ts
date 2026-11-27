@@ -2,8 +2,8 @@
 // renderer's pinned program and fonts: no network, database, clock, random source or AI. The renderer is the edge: only
 // it touches files and starts a program (render/typst.ts). Every check runs before anything is returned.
 import { plainCopy } from "../bank/plain";
-import { validateSnapshot, type TemplateLibrary } from "../bank/snapshot";
-import { checkDrawing } from "../checks/drawn";
+import { validateSnapshot, type Snapshot, type TemplateLibrary } from "../bank/snapshot";
+import { checkBook, formatFinding, type BookCheckInput, type BookCheckOptions, type BookFinding, type CheckedSheet } from "../checks/book-checks";
 import { checkPage } from "../checks/page-rules";
 import { checkAnswerForms, checkPrintedAnswers } from "../checks/printed-answers";
 import { ENGINE_VERSION, type BookItem, type PageModel, type Position, type Side } from "../contract";
@@ -13,7 +13,7 @@ import { TEMPLATES } from "../layout/templates";
 import { RenderError, type Renderer, type Rendering } from "../renderer";
 import { SHAPES, type ShapeLibrary } from "../shapes";
 import { bindSheet } from "../themes/sheets";
-import { seenPhrasingIds, sheetHistory } from "./book-history";
+import { seenPhrasingIds, sheetHistory, type BookHistory } from "./book-history";
 import { readBookRequest } from "./book-input";
 import { repeatNotices, sheetItems } from "./items";
 
@@ -41,7 +41,8 @@ export interface BuiltBook {
   notices: string[];
 }
 
-export type BuildResult = BuiltBook | { status: "failed"; problems: string[] };
+/** A book that stops: its problems in plain words, and the findings of the three checks of each book when they stopped it. */
+export type BuildResult = BuiltBook | { status: "failed"; problems: string[]; findings?: BookFinding[] };
 
 const failed = (problems: string[]): BuildResult => ({ status: "failed", problems });
 
@@ -55,7 +56,7 @@ async function draw(renderer: Renderer, pages: readonly PageModel[]): Promise<Re
 }
 
 /** What a book prints, before a typesetter draws it. */
-interface BookPlan {
+export interface BookPlan {
   ok: true;
   bookId: string;
   snapshot: { id: string; hash: string };
@@ -63,6 +64,8 @@ interface BookPlan {
   items: BookItem[];
   pages: PageModel[];
   notices: string[];
+  /** What the three checks of each book read of the input: the snapshot, the sheets in printed order, and the history. */
+  source: { snapshot: Snapshot; sheets: CheckedSheet[]; history: BookHistory | null };
 }
 
 type PagePlan = { ok: true; pages: PageModel[] } | { ok: false; problems: string[] };
@@ -108,17 +111,30 @@ export function planBook(input: BuildInput, shapes: ShapeLibrary = SHAPES, templ
   if (!layout.ok) return layout;
   const items = sheets.flatMap((s) => s.items);
   const inputHash = sha256(canonicalJson({ snapshot: bank.hash, book: request.value }));
-  return { ok: true, bookId: book.bookId, snapshot: { id: bank.snapshot.id, hash: bank.hash }, inputHash, items, pages: layout.pages, notices: sheets.flatMap((s) => repeatNotices(s.sheet, s.items)) };
+  return {
+    ok: true, bookId: book.bookId, snapshot: { id: bank.snapshot.id, hash: bank.hash }, inputHash, items, pages: layout.pages, notices: sheets.flatMap((s) => repeatNotices(s.sheet, s.items)),
+    source: { snapshot: bank.snapshot, sheets: sheets.map(({ sheet, attempt, startsDay }) => ({ sheet, attempt, startsDay })), history },
+  };
 }
 
-export async function buildBook(input: BuildInput, renderer: Renderer, shapes: ShapeLibrary = SHAPES): Promise<BuildResult> {
+/** What the three checks of each book read of a planned book and its drawing. */
+export function bookCheckInput(plan: BookPlan, drawn: Rendering, shapes: ShapeLibrary = SHAPES, options: BookCheckOptions = {}): BookCheckInput {
+  return { ...plan.source, items: plan.items, pages: plan.pages, drawn, shapes, ...options };
+}
+
+/**
+ * The book of an input, or every problem. Every check that needs no drawing runs first; then the three checks of each
+ * book (source, layout, level) stop a wrong book. `checks.pagesPerDay` says that the input is a whole planned book with
+ * that many pages a day, so that its page count, order and days are checked too.
+ */
+export async function buildBook(input: BuildInput, renderer: Renderer, shapes: ShapeLibrary = SHAPES, checks: BookCheckOptions = {}): Promise<BuildResult> {
   const plan = planBook(input, shapes);
   if (!plan.ok) return failed(plan.problems);
   const { pages, items } = plan;
   const drawn = await draw(renderer, pages);
   if (typeof drawn === "string") return failed([drawn]);
-  const problems = checkDrawing(pages, items, drawn);
-  if (problems.length > 0) return failed(problems);
+  const findings = checkBook(bookCheckInput(plan, drawn, shapes, checks));
+  if (findings.length > 0) return { status: "failed", problems: [...new Set(findings.map(formatFinding))], findings };
 
   return {
     status: "built",

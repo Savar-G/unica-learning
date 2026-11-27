@@ -40,8 +40,10 @@ const nextConfig: NextConfig = {
     "./node_modules/jsqr/LICENSE", "./node_modules/sharp/LICENSE",
   ]]).concat([
     // The v2 book job (UNI-141) draws with the pinned Typst that `npm run typst:stage` puts in .workbook-v2/ at build
-    // time (vercel.json buildCommand), with its drawing file and fonts. No other route gets Typst.
+    // time (vercel.json buildCommand), with its drawing file and fonts, and so does the timing check of the three checks
+    // of each book (UNI-259). No other route gets Typst.
     ["/api/workbook-v2-publish", [...workbookV2TraceFiles()]],
+    ["/api/workbook-v2-book-checks", [...workbookV2TraceFiles()]],
   ])),
   // Pages whose address can hold an id or a token (a Stripe session, a report id, a sign-in or unsubscribe token) send
   // only the origin as the referrer, so the next page, and any tag on it, never sees the full address (D-126).

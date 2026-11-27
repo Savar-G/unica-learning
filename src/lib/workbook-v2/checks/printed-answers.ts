@@ -96,13 +96,18 @@ export function checkAnswerForms(items: readonly BookItem[], shapes: ShapeLibrar
   });
 }
 
+/** Whether the two computations of one item's answer agree: the problem with the printed rows that it read, or null. */
+export function printedAnswerProblem(item: BookItem, own: readonly Region[], shapes: ShapeLibrary): { rows: string[]; problem: string } | null {
+  const rows = item.face.kind === "story" ? [] : questionRows(own, item.face);
+  const problem = problemOf(item, rows, shapeOf(shapes, item.shape), own);
+  return problem ? { rows, problem } : null;
+}
+
 /** What is wrong with the answers of a book, in plain words. */
 export function checkPrintedAnswers(pages: readonly PageModel[], items: readonly BookItem[], shapes: ShapeLibrary): string[] {
   const regions = regionsByItem(pages);
   return items.flatMap((item) => {
-    const own = regions.get(item.id) ?? [];
-    const rows = item.face.kind === "story" ? [] : questionRows(own, item.face);
-    const problem = problemOf(item, rows, shapeOf(shapes, item.shape), own);
-    return problem ? [`${placeOf(item)} (${rows.join(" ")}): ${problem}.`] : [];
+    const found = printedAnswerProblem(item, regions.get(item.id) ?? [], shapes);
+    return found ? [`${placeOf(item)} (${found.rows.join(" ")}): ${found.problem}.`] : [];
   });
 }

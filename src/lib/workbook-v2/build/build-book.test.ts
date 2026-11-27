@@ -17,6 +17,7 @@ import { wholeNumber } from "../shapes/shape";
 import { pagesPdf } from "../testing/fake-pdf";
 import { fakeRenderer } from "../testing/fake-renderer";
 import { drawPage, paint, pagePng, toPng } from "../testing/raster";
+import { goldenInput, SYNTHETIC_LEVELS } from "../testing/golden-books";
 import { stackOf } from "../testing/sample";
 import type { StoryQuestion } from "../shapes/story";
 import { skipTypstTests, testAssets } from "../testing/typst";
@@ -254,61 +255,63 @@ describe("a build stops, draws nothing and says why", () => {
     const good = fake();
     const renderer = fake({ render: async (pages) => { const out = await good.render(pages); out.positions[4] = { ...out.positions[4], rect: { ...out.positions[4].rect, x: 0 } }; return out; } });
     const result = await buildBook(input(), renderer);
-    expect(result).toEqual({ status: "failed", problems: [expect.stringMatching(/heading" is at \(0, .* and the model puts it at/)] });
+    expect(result).toMatchObject({ status: "failed", problems: [expect.stringMatching(/^Layout check, sheet "column-multiplication-1", page 381, slot "heading": ".*heading" is at \(0, .* and the model puts it at/)] });
   });
 
   it("a typesetter that prints another number", async () => {
     const good = fake();
     const renderer = fake({ render: async (pages) => { const out = await good.render(pages); out.texts[3] = { ...out.texts[3], text: "77" }; return out; } });
     const result = await buildBook(input(), renderer);
-    expect(result).toEqual({ status: "failed", problems: expect.arrayContaining([expect.stringMatching(/the typesetter drew "77"/)]) });
+    expect(result).toMatchObject({ status: "failed", problems: expect.arrayContaining([expect.stringMatching(/^Layout check, sheet "column-multiplication-1", page 381, slot "[a-z]+-\d+": .*the typesetter drew "77"/)]) });
   });
 
   type Change = (out: Rendering, pages: readonly PageModel[]) => unknown;
+  const BOOK = 'Layout check, sheet "none", page none, slot "none": ';
+  const at = (page: number, slot: string) => `Layout check, sheet "column-multiplication-1", page ${page}, slot "${slot}": `;
   const stops = async (change: Change) => {
     const good = fake();
     const result = await buildBook(input(), fake({ render: async (pages) => { const out = await good.render(pages); change(out, pages); return out; } }));
     if (result.status !== "failed") throw new Error("the book was built");
     return result.problems;
   };
-  const ONE_EACH = "The typesetter must give one image for each of the 2 pages";
+  const ONE_EACH = `${BOOK}The typesetter must give one image for each of the 2 pages`;
   it.each<[string, Change, string]>([
-    ["no PDF", (o) => put(o, "pdf", undefined), "The typesetter gave no PDF."],
-    ["an empty PDF", (o) => put(o, "pdf", new Uint8Array()), "The typesetter gave no PDF."],
-    ["another file as the PDF", (o) => put(o, "pdf", o.images[0]), "The typesetter gave no PDF."],
+    ["no PDF", (o) => put(o, "pdf", undefined), `${BOOK}The typesetter gave no PDF.`],
+    ["an empty PDF", (o) => put(o, "pdf", new Uint8Array()), `${BOOK}The typesetter gave no PDF.`],
+    ["another file as the PDF", (o) => put(o, "pdf", o.images[0]), `${BOOK}The typesetter gave no PDF.`],
     ["no images", (o) => put(o, "images", undefined), `${ONE_EACH}, and it gave 0.`],
     ["an empty list of images", (o) => put(o, "images", []), `${ONE_EACH}, and it gave 0.`],
     ["an image too few", (o) => o.images.pop(), `${ONE_EACH}, and it gave 1.`],
     ["an image too many", (o) => o.images.push(o.images[0]), `${ONE_EACH}, and it gave 3.`],
-    ["an empty image", (o) => put(o.images, "1", new Uint8Array()), "The typesetter gave no image of page 382."],
-    ["a missing image", (o) => put(o.images, "0", undefined), "The typesetter gave no image of page 381."],
-    ["an image that is text", (o) => put(o.images, "0", "page"), "The typesetter gave no image of page 381."],
-    ["no positions", (o) => put(o, "positions", undefined), "The typesetter gave no positions of page 381."],
-    ["no positions of one page", (o) => put(o, "positions", o.positions.filter((p) => p.sheet === 1)), "The typesetter gave no positions of page 382."],
-    ["texts with no size", (o) => put(o.texts[0], "natural", undefined), "The typesetter gave a text with no size or place."],
-    ["texts with no line", (o) => put(o.texts[0], "start", { x: 1 }), "The typesetter gave a text with no size or place."],
-    ["a text that is nothing", (o) => put(o.texts, "0", null), "The typesetter gave a text with no size or place."],
-    ["no texts", (o) => put(o, "texts", undefined), "The typesetter gave no texts of page 381."],
+    ["an empty image", (o) => put(o.images, "1", new Uint8Array()), `${at(382, "page")}The typesetter gave no image of page 382.`],
+    ["a missing image", (o) => put(o.images, "0", undefined), `${at(381, "page")}The typesetter gave no image of page 381.`],
+    ["an image that is text", (o) => put(o.images, "0", "page"), `${at(381, "page")}The typesetter gave no image of page 381.`],
+    ["no positions", (o) => put(o, "positions", undefined), `${at(381, "page")}The typesetter gave no positions of page 381.`],
+    ["no positions of one page", (o) => put(o, "positions", o.positions.filter((p) => p.sheet === 1)), `${at(382, "page")}The typesetter gave no positions of page 382.`],
+    ["texts with no size", (o) => put(o.texts[0], "natural", undefined), `${BOOK}The typesetter gave a text with no size or place.`],
+    ["texts with no line", (o) => put(o.texts[0], "start", { x: 1 }), `${BOOK}The typesetter gave a text with no size or place.`],
+    ["a text that is nothing", (o) => put(o.texts, "0", null), `${BOOK}The typesetter gave a text with no size or place.`],
+    ["no texts", (o) => put(o, "texts", undefined), `${at(381, "page")}The typesetter gave no texts of page 381.`],
   ])("a typesetter that gives %s", async (_name, change, problem) => {
     expect(await stops(change)).toContain(problem);
   });
 
   it.each<[string, Change, RegExp]>([
-    ["a blank page", (o, pages) => put(o.images, "0", pagePng({ ...pages[0], regions: [] })), /^Page 381: the image has no QR code that can be read in its box\.$/m],
-    ["a page with no QR ink", (o, pages) => put(o.images, "1", pagePng({ ...pages[1], regions: pages[1].regions.filter((r) => r.role !== "qr") })), /^Page 382: the image has no QR code that can be read in its box\.$/m],
-    ["the images of two pages in each other's place", (o) => o.images.reverse(), /^Page 381: .*QR code[^]*^Page 382: .*QR code/m],
-    ["a page with no printed text", (o, pages) => put(o.images, "0", pagePng({ ...pages[0], regions: pages[0].regions.map((r) => ({ ...r, ink: r.ink.filter((i) => i.kind !== "text") })) })), /^Page 381: "heading" must print "3-20 · Multiplying 2 digits by 1 digit" and the image has no ink there\.$/m],
-    ["a page with a black square in an answer area", (o, pages) => { const canvas = drawPage(pages[0]); paint(canvas, { x: 150, y: 190, w: 3, h: 3 }); put(o.images, "0", toPng(canvas)); }, /^Page 381: the image has ink that the model does not have, at \(150, 190\) in "answer-1"\.$/m],
-    ["bytes that are not an image", (o) => put(o.images, "0", new TextEncoder().encode("page")), /^Page 381: the page image cannot be read\.$/m],
+    ["a blank page", (o, pages) => put(o.images, "0", pagePng({ ...pages[0], regions: [] })), /^Layout check, sheet "column-multiplication-1", page 381, slot "qr": the image has no QR code that can be read in its box\.$/m],
+    ["a page with no QR ink", (o, pages) => put(o.images, "1", pagePng({ ...pages[1], regions: pages[1].regions.filter((r) => r.role !== "qr") })), /^Layout check, sheet "column-multiplication-1", page 382, slot "qr": the image has no QR code that can be read in its box\.$/m],
+    ["the images of two pages in each other's place", (o) => o.images.reverse(), /^Layout check, sheet "column-multiplication-1", page 381, slot "qr": .*QR code[^]*^Layout check, sheet "column-multiplication-1", page 382, slot "qr": .*QR code/m],
+    ["a page with no printed text", (o, pages) => put(o.images, "0", pagePng({ ...pages[0], regions: pages[0].regions.map((r) => ({ ...r, ink: r.ink.filter((i) => i.kind !== "text") })) })), /^Layout check, sheet "column-multiplication-1", page 381, slot "heading": "heading" must print "3-20 · Multiplying 2 digits by 1 digit" and the image has no ink there\.$/m],
+    ["a page with a black square in an answer area", (o, pages) => { const canvas = drawPage(pages[0]); paint(canvas, { x: 150, y: 190, w: 3, h: 3 }); put(o.images, "0", toPng(canvas)); }, /^Layout check, sheet "column-multiplication-1", page 381, slot "answer-1": the image has ink that the model does not have, at \(150, 190\) in "answer-1"\.$/m],
+    ["bytes that are not an image", (o) => put(o.images, "0", new TextEncoder().encode("page")), /^Layout check, sheet "column-multiplication-1", page 381, slot "page": the page image cannot be read\.$/m],
   ])("a typesetter whose image is %s, with a good report", async (_name, change, problem) => {
     expect((await stops(change)).join("\n")).toMatch(problem);
   });
 
   it.each<[string, Change, RegExp]>([
-    ["a text that does not fit its place", (o) => { Object.assign(o.texts[0].natural, { w: 500 }); }, /^Page 381: the text "3-20 · Multiplying 2 digits by 1 digit" of "heading" is 500 points wide and its place is 443\.$/m],
-    ["a digit in another place", (o) => { for (const at of [o.texts[6].start, o.texts[6].end]) at.x -= 24; }, /^Page 381: question 1 must have "\d" of its line 2 in the ones, and it stands in the tens\.$/m],
-    ["a PDF of other pages", (o, pages) => put(o, "pdf", pagesPdf([...pages].reverse())), /^Page 381: the PDF draws/m],
-    ["a PDF that cannot be read", (o) => put(o, "pdf", new TextEncoder().encode("%PDF-1.7")), /^The PDF cannot be read\.$/m],
+    ["a text that does not fit its place", (o) => { Object.assign(o.texts[0].natural, { w: 500 }); }, /^Layout check, sheet "column-multiplication-1", page 381, slot "heading": the text "3-20 · Multiplying 2 digits by 1 digit" of "heading" is 500 points wide and its place is 443\.$/m],
+    ["a digit in another place", (o) => { for (const at of [o.texts[6].start, o.texts[6].end]) at.x -= 24; }, /^Layout check, sheet "column-multiplication-1", page 381, slot "slot-1": question 1 must have "\d" of its line 2 in the ones, and it stands in the tens\.$/m],
+    ["a PDF of other pages", (o, pages) => put(o, "pdf", pagesPdf([...pages].reverse())), /^Layout check, sheet "column-multiplication-1", page 381, slot "page": the PDF draws/m],
+    ["a PDF that cannot be read", (o) => put(o, "pdf", new TextEncoder().encode("%PDF-1.7")), /^Layout check, sheet "none", page none, slot "none": The PDF cannot be read\.$/m],
   ])("a typesetter that gives %s", async (_name, change, problem) => {
     expect((await stops(change)).join("\n")).toMatch(problem);
   });
@@ -321,6 +324,31 @@ describe("a build stops, draws nothing and says why", () => {
   it("but a fault in the code itself is not hidden as a problem of the book", async () => {
     const renderer = fake({ render: async () => { throw new TypeError("a fault"); } });
     await expect(buildBook(input(), renderer)).rejects.toThrow("a fault");
+  });
+});
+
+describe("the three checks of each book", () => {
+  const golden = () => goldenInput(SYNTHETIC_LEVELS[0], "weak");
+
+  it("build a whole planned book with its pages a day to the same bytes as with no options", async () => {
+    const [whole, part] = [await buildBook(golden(), fake(), SHAPES, { pagesPerDay: 4 }), await buildBook(golden(), fake())];
+    if (whole.status !== "built" || part.status !== "built") throw new Error("not built");
+    expect(hashed(whole)).toEqual(hashed(part));
+  });
+
+  it("stop a whole book whose days do not have the pages a day set for it, and never give it as built", async () => {
+    const result = await buildBook(golden(), fake(), SHAPES, { pagesPerDay: 8 });
+    if (result.status !== "failed") throw new Error("the book was built");
+    expect(result.findings).toEqual([expect.objectContaining({ check: "level", rule: "pages-a-day", page: expect.any(Number), slot: "time-log" })]);
+    expect(result.problems).toEqual([expect.stringMatching(/^Level check, sheet "add-and-take-away", page \d+, slot "time-log": day 1 has 4 pages, and this book has 8 pages a day\.$/)]);
+  });
+
+  it("stop a book with ink in an answer area, with a finding that names the check, sheet, page and slot", async () => {
+    const good = fake();
+    const renderer = fake({ render: async (pages) => { const out = await good.render(pages); const canvas = drawPage(pages[0]); paint(canvas, { x: 150, y: 190, w: 3, h: 3 }); put(out.images, "0", toPng(canvas)); return out; } });
+    const result = await buildBook(input(), renderer);
+    if (result.status !== "failed") throw new Error("the book was built");
+    expect(result.findings).toContainEqual({ check: "layout", rule: "blank-zone-ink", sheet: "column-multiplication-1", page: 381, slot: "answer-1", message: "the image has ink that the model does not have, at (150, 190) in \"answer-1\"" });
   });
 });
 
