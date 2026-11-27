@@ -5,6 +5,7 @@ import type { Json } from "@/lib/database.types";
 import type { PagePrintContract, PrintedRegion, ScanManifest } from "@/lib/workbook-print-contract";
 import type { QuestionBox } from "@/lib/workbook-content";
 import type { QuestionPackage } from "@/lib/question-package";
+import type { QueueReason } from "@/lib/workbook-v2/assemble/position";
 import type { AnswerKind, AnswerPart, Step } from "@/lib/workbook-v2/contract";
 import type { PlannedBookSheet } from "./full-book";
 
@@ -38,6 +39,8 @@ export interface AllocationRecord {
   book: BookInputJson;
   /** The day of each sheet, in book order. */
   days: number[];
+  /** One queue reason per sheet, in book order. Absent on allocations saved before queue reasons. */
+  reasons?: QueueReason[];
   /** The QR token of each page, in page order (the front, then the back of each sheet). */
   qrTokens: string[];
 }
@@ -102,7 +105,7 @@ export interface PayloadItemAnswer {
   itemHash: string;
 }
 
-export interface PayloadSheet { sheetId: string; attempt: number; day: number; frontPageNumber: number; backPageNumber: number; snapshotId: string; startsDay: boolean }
+export interface PayloadSheet { sheetId: string; attempt: number; day: number; frontPageNumber: number; backPageNumber: number; snapshotId: string; startsDay: boolean; reason?: QueueReason | null }
 export interface PayloadTimeLog { day: number; firstSheetId: string; pageNumber: number }
 
 /** One whole book for publish_v2_workbook: every row, written in one transaction. */

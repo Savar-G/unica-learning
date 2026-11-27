@@ -9,9 +9,9 @@ UNI-243 (B3). The architecture spec, sections 9.3 and 10.3, is the source of the
 | `child_sheet_results` | One row per issued sheet attempt of a v2 book: questions on the sheet, questions scored, mistakes, result (`mastered`, `repeat`, `unknown`) and the `marks_version` it came from | `write_child_sheet_results` (service role only) |
 | `child_bank_state` | Per child and level: the start sheet, the level-test state and the parent's request for fewer or more pages | The service role (`BookStore.saveChildState`) |
 
-The migration is `supabase/migrations/20261127205443_child_sheet_results.sql`. Position is never stored. `position(...)` computes it each time from the issued sheets, the accepted page scans and these results.
+The migrations are `20261127205443_child_sheet_results` and `20261127215019_child_sheet_results_hardening`. Position is never stored. `position(...)` computes it each time from the issued sheets, the accepted page scans and these results.
 
-A result row references the issued sheet in `workbook_sheets` (`workbook_id`, `sheet_id`, `attempt`). The database refuses a result for a sheet attempt that no v2 book issued to the child.
+A result row references the issued sheet in `workbook_sheets` (`workbook_id`, `sheet_id`, `attempt`). The database refuses a result for a sheet attempt that the workbook did not issue to the child or whose printed revision differs from the workbook.
 
 ## The rules
 
@@ -28,24 +28,18 @@ A result row references the issued sheet in `workbook_sheets` (`workbook_id`, `s
 1. Read the child's v2 books. A child with v1 books only stops here, after one read.
 2. Read the marks version: `scan_marking_revisions.revision` (the `revision` action of `scan_marking_command`). It only goes up: marking raises it in the same transaction as each applied mark, publication and team mark change.
 3. Read the effective marks (the canonical set that the profile also reads) and every printed question of the books (`workbook_item_answers`, paged past 1,000 rows).
-4. Compute every sheet attempt and write all rows in one call with that version.
+4. Match each mark to its workbook, printed revision and item ID. Compute every sheet attempt and write the results with the marks version.
+5. Record the completed revision when every book was processed and the results saved.
 
 The version is read before the marks, so a row is never newer than its version. `write_child_sheet_results` writes a row when its stored version is the same or older. It skips the row and counts it as `stale` when the stored version is newer. A trigger refuses any other write that lowers `marks_version` (SQLSTATE `PT409`).
 
-Marking calls the rebuild in `src/lib/scan-marking-server.ts`: after each profile rebuild (a photo, a closed-plan publication and the recovery run) and after our team's mark change (`publishMarkChange`). A failure never holds back the v1 work. It is reported as `scan.recovery_failed` with step `sheet_results`, and the next published mark rebuilds every sheet again.
+Marking calls the rebuild in `src/lib/scan-marking-server.ts`: after each profile rebuild (a photo, a closed-plan publication and the recovery run) and after our team's mark change (`publishMarkChange`). A failed sheet result rebuild reports `scan.recovery_failed` with step `sheet_results`. The recovery queue retries while the sheet results are behind the marks, even after the profile is current.
 
 A v2 question's package id is `v2:<engine item id>`. `childMarksFrom` (`marks.ts`) maps the effective set to engine ids. A question that still waits for a reading or a parent check has no mark.
 
 ## BookStore
 
-`BookStore` (`src/lib/workbook-v2-results/types.ts`) has a memory adapter and a Supabase adapter. `book-store.test.ts` runs the same contract on both, and on the live project when you set these variables:
-
-```
-BOOK_STORE_LIVE=1 SUPABASE_URL=... SUPABASE_SECRET_KEY=... SUPABASE_ACCESS_TOKEN=... SUPABASE_PROJECT_REF=cdjobwsyzndtltzfpyqa \
-  npx vitest run src/lib/workbook-v2-results/book-store.test.ts -t live
-```
-
-The live run makes invented families (`<id>@example.invalid`, marked as test families, named "Book store probe") and deletes their Auth users afterwards. The cascades remove every row. Only the scan functions write `workbook_scan_receipts`, so the probe inserts its receipts through the Management API with the access token.
+`BookStore` (`src/lib/workbook-v2-results/types.ts`) has a memory adapter and a Supabase adapter. `book-store.test.ts` runs the same contract on the memory adapter and the Supabase adapter with a fake PostgREST server. The hosted SQL probe runs inside a transaction and rolls back all synthetic rows.
 
 `rebuild.test.ts` runs invented marks on an invented book through `BookStore`, `sheetResults` and `position` on both adapters. It covers both sides of the half-book scan rule, a late fail, a team mark change and a slow, stale rebuild.
 
@@ -55,6 +49,6 @@ The live run makes invented families (`<id>@example.invalid`, marked as test fam
 
 ## Limits
 
-- `workbook_sheets` keeps no queue reason. `childHistory` (`progress.ts`) reads the reason of attempt 2 or later from the attempt before it: `repeat` when its stored result is a repeat, otherwise `unscanned`. If a late mark turns an earlier `unknown` into `repeat` after an `unscanned` repeat was issued, the reason reads as `repeat`, and the half-book rule can give that sheet one more `unscanned` repeat. The fix is to store the queue reason when a book is published.
+- New books store each sheet's queue reason at publication. Older rows with a null reason use the previous attempt's result to infer the reason. A late mark can change that inference for an older book. Scan coverage always uses all the issued pages in the book, including pages for retired sheets.
 - A sheet result is only for books with a printed revision.
 - `child_bank_state` has no writer in the product yet. The book job reads it when position drives the next book.

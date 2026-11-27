@@ -19,15 +19,15 @@ const REV = "abcdefabcdefabcdefabcdefabcd";
 const ITEMS = 10;
 
 /** Marks in memory with marking's rule: every change raises the child's marks version. */
-function memoryMarks(): MarkSource & { set(workbookId: string, sheetId: string, attempt: number, tries: (FirstTry | null)[]): void; reads: number } {
+function memoryMarks(): MarkSource & { set(workbookId: string, sheetId: string, attempt: number, tries: (FirstTry | null)[], printedRevision?: string): void; reads: number } {
   let version = 0;
   const marks = new Map<string, ChildMark>();
   const source = {
     reads: 0,
-    set(workbookId: string, sheetId: string, attempt: number, tries: (FirstTry | null)[]) {
+    set(workbookId: string, sheetId: string, attempt: number, tries: (FirstTry | null)[], printedRevision = REV) {
       tries.forEach((firstTry, i) => {
         const itemId = itemIdOf(sheetId, attempt, i + 1, ITEMS);
-        if (firstTry) marks.set(`${workbookId} ${itemId}`, { workbookId, itemId, firstTry });
+        if (firstTry) marks.set(`${workbookId} ${printedRevision} ${itemId}`, { workbookId, printedRevision, itemId, firstTry });
       });
       version++;
     },
@@ -170,10 +170,73 @@ describe.each(adapters)("sheet results on the %s store", (_name, make) => {
     expect(outcome).toMatchObject({ status: "written", written: 0, problems: [expect.stringMatching(/Book 1: no mastery line/)] });
     expect(await w.store.sheetResults(w.family.childId)).toEqual([]);
   });
+
+  it("ignores marks from an older printed revision of the same workbook", async () => {
+    const w = await world(make);
+    const marks = memoryMarks();
+    marks.set(w.book1, A, 1, tries(10, 0), "0000000000000000000000000000");
+    await rebuildSheetResults({ books: w.store, marks }, w.family.childId);
+    expect(await stored(w, A)).toMatchObject({ result: "unknown", itemsScored: 0, mistakes: 0 });
+  });
+
+  it("scores Level 1 books at 90% mastery independently of Workbook 1 pace tables", async () => {
+    const { store, seeder } = make();
+    const book1 = crypto.randomUUID();
+    const family: SeedFamily = {
+      parentId: crypto.randomUUID(), childId: crypto.randomUUID(),
+      books: [{ workbookId: book1, number: 1, printedRevision: REV, levels: [1], sheets: [{ sheetId: A, attempt: 1, items: ITEMS }] }],
+    };
+    await seeder.seed(family);
+    const marks = memoryMarks();
+    marks.set(book1, A, 1, tries(9, 1));
+    expect(await rebuildSheetResults({ books: store, marks }, family.childId)).toMatchObject({ status: "written", written: 1, problems: [] });
+    expect((await store.sheetResults(family.childId))[0]).toMatchObject({ sheetId: A, result: "mastered" });
+  });
+
+  it("keeps the persisted unscanned reason on attempt 2 after a late fail on attempt 1 so no second unscanned repeat is scheduled", async () => {
+    const { store, seeder } = make();
+    const [book1, book2] = [crypto.randomUUID(), crypto.randomUUID()];
+    const family: SeedFamily = {
+      parentId: crypto.randomUUID(), childId: crypto.randomUUID(),
+      books: [
+        { workbookId: book1, number: 1, printedRevision: REV, levels: [3], sheets: [{ sheetId: A, attempt: 1, items: ITEMS, reason: "new" }, { sheetId: B, attempt: 1, items: ITEMS, reason: "new" }] },
+        { workbookId: book2, number: 2, printedRevision: REV, levels: [3], sheets: [{ sheetId: A, attempt: 2, items: ITEMS, reason: "unscanned" }] },
+      ],
+    };
+    await seeder.seed(family);
+    const marks = memoryMarks();
+    // Late fail arrives for attempt 1; book 2 has 0 pages scanned, but attempt 2 already used the one unscanned repeat.
+    marks.set(book1, A, 1, tries(6, 4));
+    await rebuildSheetResults({ books: store, marks }, family.childId);
+    const p = await childPosition(store, family.childId, SNAPSHOT);
+    if (!p.ok) throw new Error(p.problems.join("\n"));
+    expect(p.queue.filter((q) => q.sheetId === A)).toEqual([]);
+    expect(p.assumedPassed).toContainEqual({ sheetId: A, attempt: 2, bookId: book2 });
+  });
+
+  it("computes old-book scan coverage across retired sheets so retiring a scanned sheet never triggers a false unscanned repeat", async () => {
+    const { store, seeder } = make();
+    const book1 = crypto.randomUUID();
+    const family: SeedFamily = {
+      parentId: crypto.randomUUID(), childId: crypto.randomUUID(),
+      books: [{
+        workbookId: book1, number: 1, printedRevision: REV, levels: [3],
+        sheets: [{ sheetId: "retired-sheet-1", attempt: 1, items: ITEMS, reason: "new" }, { sheetId: B, attempt: 1, items: ITEMS, reason: "new" }],
+      }],
+    };
+    await seeder.seed(family);
+    // 2 of 4 pages of book 1 were scanned (both belonging to the retired sheet) -> 50% scanned -> B is assumedPassed, not repeated.
+    await seeder.scan(family, book1, 1);
+    await seeder.scan(family, book1, 2);
+    const p = await childPosition(store, family.childId, SNAPSHOT);
+    if (!p.ok) throw new Error(p.problems.join("\n"));
+    expect(p.assumedPassed).toContainEqual({ sheetId: B, attempt: 1, bookId: book1 });
+    expect(p.queue.filter((q) => q.sheetId === B)).toEqual([]);
+  });
 });
 
 describe("the mastery line of a book", () => {
-  it.each<[number[], number | null]>([[[3], 90], [[6], 90], [[7], 80], [[12], 80], [[2, 5], 90], [[6, 7], null], [[1], null], [[], null]])("levels %j: %s", (levels, percent) => {
+  it.each<[number[], number | null]>([[[1], 90], [[3], 90], [[6], 90], [[7], 80], [[12], 80], [[2, 5], 90], [[6, 7], null], [[], null]])("levels %j: %s", (levels, percent) => {
     expect(masteryConfigFor(levels)).toEqual(percent === null ? null : { masteryPercent: percent });
   });
 });
@@ -181,15 +244,15 @@ describe("the mastery line of a book", () => {
 describe("the marks of a child's v2 questions", () => {
   const mark = (itemId: string, result: FirstTry | null, state: string) =>
     ({ expected: { identity: { workbookId: "book", printedRevision: REV, pageId: "page", itemId } }, observation: { result, state } }) as unknown as Pick<EffectiveMark, "expected" | "observation">;
-  it("keeps the marked v2 questions only, by their engine id", () => {
+  it("keeps the marked v2 questions only, by their engine id and printed revision", () => {
     expect(childMarksFrom([
       mark("v2:s/1/front/1", "right", "scored"), mark("v2:s/1/front/2", "blank", "scored"), mark("v2:s/1/front/3", "wrong", "parent-checked"),
       mark("v2:s/1/front/4", null, "pending"), mark("v2:s/1/front/5", "wrong", "pending"), mark("v2:s/1/front/6", "right", "parent-pending"),
       mark("question-1", "right", "scored"),
     ])).toEqual([
-      { workbookId: "book", itemId: "s/1/front/1", firstTry: "right" },
-      { workbookId: "book", itemId: "s/1/front/2", firstTry: "blank" },
-      { workbookId: "book", itemId: "s/1/front/3", firstTry: "wrong" },
+      { workbookId: "book", printedRevision: REV, itemId: "s/1/front/1", firstTry: "right" },
+      { workbookId: "book", printedRevision: REV, itemId: "s/1/front/2", firstTry: "blank" },
+      { workbookId: "book", printedRevision: REV, itemId: "s/1/front/3", firstTry: "wrong" },
     ]);
   });
 });

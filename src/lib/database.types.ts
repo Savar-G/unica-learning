@@ -5620,18 +5620,21 @@ export type Database = {
           parent_id: string
           profile_revision: number
           revision: number
+          sheet_results_revision: number
         }
         Insert: {
           child_id: string
           parent_id: string
           profile_revision?: number
           revision?: number
+          sheet_results_revision?: number
         }
         Update: {
           child_id?: string
           parent_id?: string
           profile_revision?: number
           revision?: number
+          sheet_results_revision?: number
         }
         Relationships: [
           {
@@ -9446,6 +9449,7 @@ export type Database = {
           front_page_number: number
           id: string
           parent_id: string
+          queue_reason: string | null
           sheet_id: string
           snapshot_id: string
           starts_day: boolean
@@ -9460,6 +9464,7 @@ export type Database = {
           front_page_number: number
           id?: string
           parent_id: string
+          queue_reason?: string | null
           sheet_id: string
           snapshot_id: string
           starts_day: boolean
@@ -9474,6 +9479,7 @@ export type Database = {
           front_page_number?: number
           id?: string
           parent_id?: string
+          queue_reason?: string | null
           sheet_id?: string
           snapshot_id?: string
           starts_day?: boolean
@@ -11671,6 +11677,10 @@ export type Database = {
           p_stage3_route: string
         }
         Returns: string
+      }
+      mark_sheet_results_revision: {
+        Args: { p_child: string; p_marks_version: number }
+        Returns: Json
       }
       mark_workbook: {
         Args: {

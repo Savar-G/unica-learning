@@ -1,10 +1,6 @@
-// One contract for every BookStore (UNI-243 R5): the memory store, the Supabase store over a fake PostgREST, and (with
-// BOOK_STORE_LIVE=1, SUPABASE_URL and SUPABASE_SECRET_KEY) the Supabase store on the live project, on invented families
-// `<id>@example.invalid` that are deleted afterwards.
-import { createClient } from "@supabase/supabase-js";
-import { afterAll, describe, expect, it } from "vitest";
-import type { Database } from "@/lib/database";
-import { bookItemOf, fakeBookSupabase, itemIdOf, liveSeeder, memorySeeder, seedRows, type BookSeeder, type SeedFamily } from "./book-store.fixtures";
+// The memory and PostgREST adapters run the same contract. The hosted SQL probe uses a transaction that rolls back.
+import { describe, expect, it } from "vitest";
+import { bookItemOf, fakeBookSupabase, itemIdOf, memorySeeder, seedRows, type BookSeeder, type SeedFamily } from "./book-store.fixtures";
 import { memoryBookStore } from "./memory-store";
 import { BOOK_PAGE_ROWS, supabaseBookStore, writeAnswer } from "./supabase-store";
 import type { BookStore, SheetResultWrite } from "./types";
@@ -74,14 +70,20 @@ export function runBookStoreContract(name: string, make: () => { store: BookStor
       ]);
     }, timeout);
 
-    it("refuses a result of a sheet attempt that no book issued, or of an unknown child, and writes nothing", async () => {
+    it("refuses unissued attempts, invalid counts, wrong printed revision, workbook swaps, or unknown child, and writes nothing atomically", async () => {
       const { store, seeder } = make();
       const family = bigFamily();
       await seeder.seed(family);
       expect(await store.writeSheetResults(family.childId, 1, [resultRow(family, 1), resultRow(family, 1, { sheetId: "never-issued" })])).toMatchObject({ status: "refused" });
+      expect(await store.writeSheetResults(family.childId, 1, [resultRow(family, 1), resultRow(family, 2, { itemsTotal: 1001 })])).toMatchObject({ status: "refused" });
+      expect(await store.writeSheetResults(family.childId, 1, [resultRow(family, 1), resultRow(family, 2, { printedRevision: "f".repeat(28) })])).toMatchObject({ status: "refused" });
       expect(await store.writeSheetResults(family.childId, 1, [resultRow(family, 1, { attempt: 2 })])).toMatchObject({ status: "refused" });
       expect(await store.writeSheetResults(crypto.randomUUID(), 1, [resultRow(family, 1)])).toEqual({ status: "refused", reason: "the child is not known" });
       expect(await store.sheetResults(family.childId)).toEqual([]);
+      // Once written, a result for (sheetId, attempt) cannot be rebound to another workbook.
+      expect(await store.writeSheetResults(family.childId, 1, [resultRow(family, 1)])).toMatchObject({ status: "written", written: 1 });
+      expect(await store.writeSheetResults(family.childId, 2, [resultRow(family, 2), resultRow(family, 1, { workbookId: crypto.randomUUID() })])).toMatchObject({ status: "refused" });
+      expect(await store.sheetResults(family.childId)).toEqual([{ ...resultRow(family, 1), marksVersion: 1 }]);
     }, timeout);
 
     it("saves and reads the child's bank state of a level", async () => {
@@ -102,16 +104,40 @@ runBookStoreContract("memory", () => { const store = memoryBookStore(); return {
 runBookStoreContract("Supabase (fake PostgREST)", () => { const fake = fakeBookSupabase(); return { store: supabaseBookStore(fake.db), seeder: fake.seeder }; });
 
 describe("the Supabase book store over PostgREST", () => {
-  it("reads the questions in pages of 1,000 rows and writes the results in one call", async () => {
+  it("reads the questions with keyset pagination of 1,000 rows and writes the results in one call", async () => {
     const fake = fakeBookSupabase();
     const store = supabaseBookStore(fake.db);
     const family = bigFamily();
     await fake.seeder.seed(family);
     await store.bookItems(family.childId);
-    expect(fake.calls.filter((c) => c.startsWith("GET /rest/v1/workbook_item_answers"))).toEqual(["GET /rest/v1/workbook_item_answers?0", "GET /rest/v1/workbook_item_answers?1000"]);
+    const itemCalls = fake.calls.filter((c) => c.startsWith("GET /rest/v1/workbook_item_answers"));
+    expect(itemCalls).toHaveLength(2);
+    expect(itemCalls[0]).toBe("GET /rest/v1/workbook_item_answers?");
+    expect(itemCalls[1]).toMatch(/^GET \/rest\/v1\/workbook_item_answers\?gt\./);
     fake.calls.length = 0;
     await store.writeSheetResults(family.childId, 1, [resultRow(family, 1), resultRow(family, 2)]);
     expect(fake.calls).toEqual(["POST /rest/v1/rpc/write_child_sheet_results?"]);
+  });
+
+  it("ignores a concurrently published new book between keyset pages without duplicating boundary questions", async () => {
+    const fake = fakeBookSupabase();
+    const store = supabaseBookStore(fake.db);
+    const family = bigFamily();
+    await fake.seeder.seed(family);
+    let injected = false;
+    fake.onRequest = (_method, path, params) => {
+      if (!injected && path === "/rest/v1/workbook_item_answers" && params.has("id")) {
+        injected = true;
+        const wb2 = crypto.randomUUID();
+        const extra = seedRows(family, { workbookId: wb2, number: 2, printedRevision: REV, levels: [3], sheets: [{ sheetId: "synth-sheet-99", attempt: 1, items: 5 }] });
+        fake.memory.tables.books.get(family.childId)?.push(extra.book);
+        // Prepend into the table so offset pagination would shift and duplicate the boundary row; keyset + fixed workbook IDs must not.
+        fake.memory.tables.items.set(family.childId, [...extra.items.map(bookItemOf), ...(fake.memory.tables.items.get(family.childId) ?? [])]);
+      }
+    };
+    const items = await store.bookItems(family.childId);
+    expect(items).toHaveLength(1020);
+    expect(new Set(items.map((i) => i.itemId)).size).toBe(1020);
   });
 
   it.each([
@@ -122,16 +148,4 @@ describe("the Supabase book store over PostgREST", () => {
   it.each([null, { status: "written", written: -1, stale: 0, marksVersion: 1 }, { status: "maybe" }])("throws on an answer it cannot read: %j", (data) => {
     expect(() => writeAnswer(data)).toThrow(/unexpected answer/);
   });
-});
-
-const live = process.env.BOOK_STORE_LIVE === "1" ? { url: process.env.SUPABASE_URL ?? "", key: process.env.SUPABASE_SECRET_KEY ?? "" } : null;
-describe.skipIf(!live)("live", () => {
-  const db = createClient<Database>(live?.url ?? "https://unused.invalid", live?.key ?? "unused", { auth: { persistSession: false, autoRefreshToken: false } });
-  const seeders: ReturnType<typeof liveSeeder>[] = [];
-  runBookStoreContract("live Supabase", () => {
-    const seeder = liveSeeder(db);
-    seeders.push(seeder);
-    return { store: supabaseBookStore(db), seeder };
-  }, 120_000);
-  afterAll(async () => { for (const seeder of seeders) await seeder.remove(); }, 120_000);
 });

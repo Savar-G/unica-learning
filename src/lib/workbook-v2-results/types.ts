@@ -2,6 +2,7 @@
 // BookStore reads what a child's v2 books issued and printed, the accepted page scans and the stored sheet results, and
 // writes the results and the child's bank state. It has a memory adapter (memory-store.ts) and a Supabase adapter
 // (supabase-store.ts), and both pass the contract of book-store.test.ts. The engine (src/lib/workbook-v2) knows none of it.
+import type { QueueReason } from "@/lib/workbook-v2/assemble/position";
 import type { FirstTry, SheetResultKind } from "@/lib/workbook-v2/results/sheet-results";
 
 /** The values of child_bank_state.level_test_state. */
@@ -14,8 +15,8 @@ export type PagesRequest = (typeof PAGES_REQUESTS)[number];
 /** A v2 book of the child (workbooks with generator 'v2'). */
 export interface BookRow { workbookId: string; parentId: string; number: number; printedRevision: string | null; levels: number[] }
 
-/** One issued sheet attempt (workbook_sheets). */
-export interface IssuedSheetRow { workbookId: string; sheetId: string; attempt: number; frontPage: number; backPage: number }
+/** One issued sheet attempt (workbook_sheets). `reason` is persisted at publication (null only on legacy rows). */
+export interface IssuedSheetRow { workbookId: string; sheetId: string; attempt: number; frontPage: number; backPage: number; reason: QueueReason | null }
 
 /** One printed question (workbook_item_answers): the engine's item id and the sheet attempt it is on. */
 export interface BookItemRow { workbookId: string; printedRevision: string; itemId: string; sheetId: string; attempt: number }
@@ -62,12 +63,14 @@ export interface BookStore {
   sheetResults(childId: string): Promise<StoredSheetResult[]>;
   /** Writes the rows in one transaction. A row whose stored marks version is newer than `marksVersion` is left as it is. */
   writeSheetResults(childId: string, marksVersion: number, rows: SheetResultWrite[]): Promise<WriteResultsOutcome>;
+  /** Records that sheet results for this child have been rebuilt cleanly through `marksVersion`. */
+  recordResultsRevision(childId: string, marksVersion: number): Promise<void>;
   childState(childId: string, levelId: string): Promise<ChildBankState | null>;
   saveChildState(state: ChildBankState): Promise<void>;
 }
 
 /** The effective first try of a printed v2 question, from marking (a team mark change replaces it; a correction never does). */
-export interface ChildMark { workbookId: string; itemId: string; firstTry: FirstTry }
+export interface ChildMark { workbookId: string; printedRevision: string; itemId: string; firstTry: FirstTry }
 
 /** The child's marks and their version. The version only goes up; it is read before the marks. */
 export interface MarkSource {

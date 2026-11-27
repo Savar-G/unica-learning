@@ -1,7 +1,7 @@
 // Rebuilds the stored results of a child's v2 sheets from the current effective first-try marks (architecture spec 9.3:
 // "Rebuilt when a mark changes"). It reads the marks version before the marks, so a result is never newer than its
 // version says; the store keeps the newest version and skips an older rebuild that finishes late.
-import { WORKBOOK_1_PACES } from "@/lib/workbook-v2/assemble/level-config";
+import { LEVEL_MASTERY_PERCENTS } from "@/lib/workbook-v2/assemble/level-config";
 import { sheetResults, type ResultConfig } from "@/lib/workbook-v2/results/sheet-results";
 import type { BookRow, BookStore, MarkSource, SheetResultWrite } from "./types";
 
@@ -18,12 +18,12 @@ export type RebuildOutcome =
   | { status: "refused"; reason: string; problems: string[] };
 
 /**
- * The mastery line of a book's levels, from the level configs (product spec 7.3: 90% at Levels 1 to 6, 80% from
+ * The mastery line of a book's levels, from the level mastery table (product spec 7.3: 90% at Levels 1 to 6, 80% from
  * Level 7). This picks a config by its data and decides nothing itself. Null when a level has no config, or when the
  * levels of the book disagree.
  */
 export function masteryConfigFor(levels: readonly number[]): ResultConfig | null {
-  const percents = new Set(levels.map((n) => WORKBOOK_1_PACES.find((p) => p.names.includes(String(n)))?.config.masteryPercent));
+  const percents = new Set(levels.map((n) => LEVEL_MASTERY_PERCENTS.find((p) => p.names.includes(String(n)))?.masteryPercent));
   const [only] = [...percents];
   return percents.size === 1 && only !== undefined ? { masteryPercent: only } : null;
 }
@@ -48,7 +48,9 @@ export async function rebuildSheetResults(deps: RebuildDeps, childId: string): P
       continue;
     }
     const ids = new Set(own.map((i) => i.itemId));
-    const ownMarks = marks.filter((m) => m.workbookId === book.workbookId && ids.has(m.itemId)).map((m) => ({ itemId: m.itemId, firstTry: m.firstTry }));
+    const ownMarks = marks
+      .filter((m) => m.workbookId === book.workbookId && m.printedRevision === printedRevision && ids.has(m.itemId))
+      .map((m) => ({ itemId: m.itemId, firstTry: m.firstTry }));
     const outcome = sheetResults(ownMarks, own.map((i) => ({ id: i.itemId, sheetId: i.sheetId, attempt: i.attempt })), config);
     if (!outcome.ok) {
       problems.push(...outcome.problems.map((p) => `Book ${book.number}: ${p}`));
@@ -59,8 +61,12 @@ export async function rebuildSheetResults(deps: RebuildDeps, childId: string): P
       itemsTotal: s.total, itemsScored: s.itemsScored, mistakes: s.mistakes, result: s.result,
     })));
   }
-  if (rows.length === 0) return { status: "written", marksVersion, written: 0, stale: 0, problems };
+  if (rows.length === 0) {
+    if (problems.length === 0) await deps.books.recordResultsRevision(childId, marksVersion);
+    return { status: "written", marksVersion, written: 0, stale: 0, problems };
+  }
   const written = await deps.books.writeSheetResults(childId, marksVersion, rows);
   if (written.status === "refused") return { status: "refused", reason: written.reason, problems };
+  if (problems.length === 0) await deps.books.recordResultsRevision(childId, marksVersion);
   return { status: "written", marksVersion, written: written.written, stale: written.stale, problems };
 }

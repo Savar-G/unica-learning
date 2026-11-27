@@ -12,7 +12,9 @@ export interface SheetResultRecord { bookId: string; sheetId: string; attempt: n
 
 /** "repeat": a proven fail. "unscanned": a sheet with no result whose book came back with less than half of its pages. */
 export type QueueReason = "repeat" | "unscanned" | "new";
-const QUEUE_REASONS: readonly QueueReason[] = ["repeat", "unscanned", "new"];
+export const QUEUE_REASONS: readonly QueueReason[] = ["repeat", "unscanned", "new"];
+/** Full-book page scan coverage, including any retired sheets no longer in the active snapshot. */
+export interface BookScanCoverage { issuedPages: number; scannedPages: number }
 export interface QueueEntry { sheetId: string; attempt: number; reason: QueueReason }
 /** A sheet with no result that counts as passed until its marks arrive. */
 export interface AssumedPass { sheetId: string; attempt: number; bookId: string }
@@ -109,14 +111,28 @@ function problemsOf(state: ChildState, issued: readonly IssuedSheet[], receipts:
  *
  * A sheet with NUDGE_AFTER_FAILS or more failed attempts gets a nudge to Maya.
  */
-export function position(state: ChildState, issued: readonly IssuedSheet[], receipts: readonly ScanReceipt[], results: readonly SheetResultRecord[], snapshot: Snapshot): PositionOutcome {
+export function position(
+  state: ChildState,
+  issued: readonly IssuedSheet[],
+  receipts: readonly ScanReceipt[],
+  results: readonly SheetResultRecord[],
+  snapshot: Snapshot,
+  bookCoverage?: ReadonlyMap<string, BookScanCoverage>,
+): PositionOutcome {
   const problems = problemsOf(state, issued, receipts, results, snapshot);
+  if (bookCoverage) {
+    for (const [bookId, cov] of bookCoverage) {
+      if (!isCount(cov.issuedPages, 2) || cov.issuedPages % 2 !== 0 || !isCount(cov.scannedPages, 0) || cov.scannedPages > cov.issuedPages) {
+        problems.push(`The scan coverage of the book ${JSON.stringify(bookId)} is invalid.`);
+      }
+    }
+  }
   if (problems.length > 0) return { ok: false, problems };
   const order = levelOrder(snapshot);
   const start = state.startSheetId === undefined ? 0 : order.findIndex((s) => s.id === state.startSheetId);
   const resultOf = (sheetId: string, attempt: number) => results.find((r) => r.sheetId === sheetId && r.attempt === attempt)?.result;
-  const issuedPages = (bookId: string) => 2 * issued.filter((s) => s.bookId === bookId).length;
-  const scannedPages = (bookId: string) => new Set(receipts.filter((r) => r.bookId === bookId).map((r) => r.pageNumber)).size;
+  const issuedPages = (bookId: string) => bookCoverage?.get(bookId)?.issuedPages ?? 2 * issued.filter((s) => s.bookId === bookId).length;
+  const scannedPages = (bookId: string) => bookCoverage?.get(bookId)?.scannedPages ?? new Set(receipts.filter((r) => r.bookId === bookId).map((r) => r.pageNumber)).size;
 
   const outcome: ChildPosition = { ok: true, childId: state.childId, queue: [], done: [], assumedPassed: [], teamNotices: [], mayaNudges: [] };
   const fresh: QueueEntry[] = [];

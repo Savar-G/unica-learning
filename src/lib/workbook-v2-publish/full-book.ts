@@ -3,8 +3,10 @@
 // content is invented. App code may not name the engine's data files (scripts/engine-guard.mjs, engine-asset-use), so the
 // rows are written out here; validateSnapshot checks them like any other snapshot.
 
+import type { QueueReason } from "@/lib/workbook-v2/assemble/position";
+
 /** One sheet of a book plan. The first sheet of each day starts it, so its front page has the time log. */
-export interface PlannedBookSheet { sheetId: string; attempt: number; startsDay: boolean; day: number }
+export interface PlannedBookSheet { sheetId: string; attempt: number; startsDay: boolean; day: number; reason?: QueueReason }
 
 /** The invented Level 3 snapshot: facts, brackets, columns, bar models and word problems with the CA and US packs. */
 export const FULL_BOOK_SNAPSHOT = {
@@ -139,7 +141,7 @@ export function fullBookPlan(sheets = 60): PlannedBookSheet[] {
     const sheetId = kind === "facts" ? FACT_SHEETS[facts++ % FACT_SHEETS.length] : kind;
     const attempt = (attempts.get(sheetId) ?? 0) + 1;
     attempts.set(sheetId, attempt);
-    return { sheetId, attempt, startsDay: i === 0, day: d + 1 };
+    return { sheetId, attempt, startsDay: i === 0, day: d + 1, reason: attempt === 1 ? "new" : "repeat" };
   }));
   return plan.slice(0, sheets);
 }

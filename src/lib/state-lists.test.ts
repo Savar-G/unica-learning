@@ -25,6 +25,7 @@ import { LEARNING_EVENT_ASSISTANCE } from "@/lib/learning-events";
 import { ANSWER_KINDS } from "@/lib/workbook-v2/contract";
 import { TIME_LOG_READING_STATES, WORKBOOK_GENERATORS } from "@/lib/workbook-v2-publish/types";
 import { BANK_ITEM_STATUSES, BANK_LEVEL_STATUSES, BANK_SHEET_KINDS } from "@/lib/workbook-v2-bank/types";
+import { QUEUE_REASONS } from "@/lib/workbook-v2/assemble/position";
 import { SHEET_RESULTS } from "@/lib/workbook-v2/results/sheet-results";
 import { LEVEL_TEST_STATES, PAGES_REQUESTS } from "@/lib/workbook-v2-results/types";
 
@@ -75,10 +76,11 @@ const LISTS: { name: string; list: readonly string[]; table: string; column: str
   { name: "BANK_LEVEL_STATUSES", list: BANK_LEVEL_STATUSES, table: "bank_levels", column: "status" },
   ...(["bank_topics", "bank_sheets", "bank_questions", "bank_scenarios", "bank_region_packs"] as const).map((table) => ({ name: "BANK_ITEM_STATUSES", list: BANK_ITEM_STATUSES, table, column: "status" })),
   { name: "BANK_SHEET_KINDS", list: BANK_SHEET_KINDS, table: "bank_sheets", column: "kind" },
-  // UNI-243: a child's v2 sheet results and bank state (migration 20261127205443_child_sheet_results).
+  // UNI-243: a child's v2 sheet results, queue reason and bank state (migrations 20261127205443 & 20261127215019).
   { name: "SHEET_RESULTS", list: SHEET_RESULTS, table: "child_sheet_results", column: "result" },
   { name: "LEVEL_TEST_STATES", list: LEVEL_TEST_STATES, table: "child_bank_state", column: "level_test_state" },
   { name: "PAGES_REQUESTS", list: PAGES_REQUESTS, table: "child_bank_state", column: "pages_request" },
+  { name: "QUEUE_REASONS", list: QUEUE_REASONS, table: "workbook_sheets", column: "queue_reason" },
 ];
 
 // Grandfathered enum-like SQL checks not yet wired to an exported TS `as const` list.

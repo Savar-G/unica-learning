@@ -132,6 +132,17 @@ describe("the v2 book job", () => {
     expect(store.tables.books[0].payload.pages.map((p) => p.qrToken)).toEqual(store.tables.allocations[0].allocation.qrTokens);
   });
 
+  it("saves the repeat reason and refuses to change it on a retry", async () => {
+    const { store, files } = memory();
+    const sheets = request().sheets.map((s, i) => i === 0 ? { ...s, attempt: 2, reason: "unscanned" as const } : s);
+    const first = await publishV2Book(deps(store, files), request({ sheets }));
+    expect(first.status).toBe("published");
+    expect(store.tables.books[0].payload.sheets[0].reason).toBe("unscanned");
+    const changed = sheets.map((s, i) => i === 0 ? { ...s, reason: "repeat" as const } : s);
+    const retry = await publishV2Book(deps(store, files, { seed: "d" }), request({ sheets: changed }));
+    expect(retry).toEqual({ status: "invalid", problems: ["the request key was used for another book"] });
+  });
+
   it("refuses a request key that was used for another book", async () => {
     const { store, files } = memory();
     await publishV2Book(deps(store, files), request());
@@ -155,6 +166,7 @@ describe("the v2 book job", () => {
 
   it.each([
     ["a request key that is too short", { requestKey: "short" }, /request key/],
+    ["a repeat without a queue reason", { sheets: request().sheets.map((s, i) => i === 0 ? { ...s, attempt: 2 } : s) }, /queue reason/],
     ["pages that are not a multiple of 4", { sheets: request().sheets.slice(0, 3) }, /multiple of 4/],
     ["a day that does not start with its first sheet", { sheets: request().sheets.map((s, i) => ({ ...s, startsDay: i === 1 })) }, /each day starts/],
     ["a sheet the snapshot does not have", { sheets: request().sheets.map((s, i) => (i === 0 ? { ...s, sheetId: "no-such-sheet" } : s)) }, /no sheet/],

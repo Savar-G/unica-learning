@@ -5,7 +5,9 @@ set local statement_timeout = '15s';
 do $$
 declare
   p uuid := gen_random_uuid(); c uuid := gen_random_uuid(); c2 uuid := gen_random_uuid();
-  w uuid := gen_random_uuid(); w2 uuid := gen_random_uuid();
+  admin_uid uuid := gen_random_uuid(); photo uuid := gen_random_uuid();
+  future_sent timestamptz := now() + interval '1 day';
+  w uuid := gen_random_uuid(); w2 uuid := gen_random_uuid(); w_dup uuid := gen_random_uuid();
   rev text := repeat('a', 28);
   row_of jsonb := jsonb_build_array(jsonb_build_object('workbookId', w, 'printedRevision', rev, 'sheetId', 'probe-sheet', 'attempt', 1, 'itemsTotal', 16, 'itemsScored', 10, 'mistakes', 1, 'result', 'unknown'));
   r jsonb; n integer; role_name text; checks text[] := '{}';
@@ -21,19 +23,36 @@ begin
   if has_table_privilege('anon', 'public.child_sheet_results', 'SELECT') or has_table_privilege('anon', 'public.child_bank_state', 'SELECT') then raise exception 'anon_read_grant'; end if;
   if exists (select 1 from information_schema.role_table_grants where table_schema = 'public' and table_name in ('child_sheet_results', 'child_bank_state') and grantee = 'PUBLIC') then raise exception 'public_grant'; end if;
   if has_function_privilege('public', 'public.write_child_sheet_results(uuid,bigint,jsonb)', 'EXECUTE') then raise exception 'public_writer_grant'; end if;
+  if has_function_privilege('public', 'public.mark_sheet_results_revision(uuid,bigint)', 'EXECUTE') then raise exception 'public_rev_grant'; end if;
+  if has_function_privilege('anon', 'public.mark_sheet_results_revision(uuid,bigint)', 'EXECUTE') or has_function_privilege('authenticated', 'public.mark_sheet_results_revision(uuid,bigint)', 'EXECUTE') then raise exception 'browser_rev_grant'; end if;
   if not has_function_privilege('service_role', 'public.write_child_sheet_results(uuid,bigint,jsonb)', 'EXECUTE') then raise exception 'service_writer_missing'; end if;
+  if not has_function_privilege('service_role', 'public.mark_sheet_results_revision(uuid,bigint)', 'EXECUTE') then raise exception 'service_rev_missing'; end if;
   checks := array_append(checks, 'grants'::text);
 
-  -- A synthetic family: two children, one v1-shaped book each with one issued sheet attempt.
-  insert into auth.users(id, email) values (p, p || '@example.invalid');
+  -- A synthetic family + synthetic admin: two children, one book each with one issued sheet attempt.
+  insert into auth.users(id, email) values (p, p || '@example.invalid'), (admin_uid, admin_uid || '@example.invalid');
+  insert into public.admin_users(user_id, email, name) values (admin_uid, admin_uid || '@example.invalid', 'Sheet results probe admin');
   insert into public.parents(id, name, email) values (p, 'Sheet results probe', p || '@example.invalid');
   insert into public.children(id, parent_id, first_name, grade, province) values (c, p, 'Probe', 3, 'BC'), (c2, p, 'Sibling', 3, 'BC');
-  insert into public.workbooks(id, parent_id, child_id, number, levels, printed_revision) values (w, p, c, 1, '{3}', rev), (w2, p, c2, 1, '{3}', rev);
-  insert into public.workbook_sheets(workbook_id, parent_id, child_id, sheet_id, attempt, day, front_page_number, back_page_number, snapshot_id, starts_day)
-    values (w, p, c, 'probe-sheet', 1, 1, 1, 2, 'probe-snapshot', true), (w2, p, c2, 'probe-sheet', 1, 1, 1, 2, 'probe-snapshot', true);
+  insert into public.workbooks(id, parent_id, child_id, number, levels, printed_revision, generator, bank_snapshot_id, bank_snapshot_hash,
+      engine_version, renderer_version, font_hashes, input_hash, input_path, pages_per_day)
+    values (w, p, c, 1, '{3}', rev, 'v2', 'probe-snapshot', repeat('a', 64), 'probe', 'probe', '{}', replace(w::text, '-', '') || replace(w::text, '-', ''), p || '/' || w || '/input.json', 2);
+  insert into public.workbooks(id, parent_id, child_id, number, levels, printed_revision) values (w2, p, c2, 1, '{3}', rev), (w_dup, p, c, 2, '{3}', rev);
+  insert into public.workbook_sheets(workbook_id, parent_id, child_id, sheet_id, attempt, day, front_page_number, back_page_number, snapshot_id, starts_day, queue_reason)
+    values (w, p, c, 'probe-sheet', 1, 1, 1, 2, 'probe-snapshot', true, 'new'), (w2, p, c2, 'probe-sheet', 1, 1, 1, 2, 'probe-snapshot', true, 'new');
+
+  -- Duplicate (child_id, sheet_id, attempt) across two workbooks is blocked at issuance.
+  begin
+    insert into public.workbook_sheets(workbook_id, parent_id, child_id, sheet_id, attempt, day, front_page_number, back_page_number, snapshot_id, starts_day, queue_reason)
+      values (w_dup, p, c, 'probe-sheet', 1, 1, 1, 2, 'probe-snapshot', true, 'new');
+    raise exception 'duplicate_child_sheet_attempt_admitted';
+  exception when unique_violation then null;
+  end;
 
   -- The writer, as the service role: a newer marks version replaces, an older one is skipped and changes nothing.
   execute 'set local role service_role';
+  r := public.publish_v2_workbook('{}'::jsonb);
+  if r is distinct from '{"status":"refused","reason":"the book payload is incomplete"}'::jsonb then raise exception 'publish_payload_validation_regressed %', r; end if;
   r := public.write_child_sheet_results(c, 5, row_of);
   if r->>'status' <> 'written' or (r->>'written')::int <> 1 then raise exception 'first_write %', r; end if;
   r := public.write_child_sheet_results(c, 4, jsonb_set(row_of, '{0,result}', '"mastered"'));
@@ -48,11 +67,49 @@ begin
   end;
   r := public.write_child_sheet_results(c, 7, jsonb_set(row_of, '{0,sheetId}', '"never-issued"'));
   if r->>'status' <> 'refused' then raise exception 'unissued_sheet_admitted %', r; end if;
+  r := public.write_child_sheet_results(c, 7, jsonb_set(row_of, '{0,printedRevision}', to_jsonb(repeat('f', 28))));
+  if r->>'status' <> 'refused' then raise exception 'wrong_revision_admitted %', r; end if;
+  r := public.write_child_sheet_results(c, 7, jsonb_set(row_of, '{0,workbookId}', to_jsonb(w_dup::text)));
+  if r->>'status' <> 'refused' then raise exception 'workbook_swap_admitted %', r; end if;
+  r := public.mark_sheet_results_revision(c, 6);
+  if r->>'status' <> 'recorded' or (r->>'sheetResultsRevision')::bigint <> 6 then raise exception 'mark_rev_failed %', r; end if;
+  r := public.mark_sheet_results_revision(c, 3);
+  if r->>'status' <> 'recorded' or (r->>'sheetResultsRevision')::bigint <> 6 then raise exception 'mark_rev_regressed %', r; end if;
   r := public.write_child_sheet_results(c2, 1, jsonb_set(row_of, '{0,workbookId}', to_jsonb(w2::text)));
   if (r->>'written')::int <> 1 then raise exception 'sibling_write %', r; end if;
   insert into public.child_bank_state(child_id, parent_id, level_id, start_sheet_id) values (c, p, 'probe-level', 'probe-sheet'), (c2, p, 'probe-level', null);
   execute 'reset role';
-  checks := array_append(checks, 'monotonic marks_version'::text);
+  checks := array_append(checks, 'publish payload validation, monotonic marks_version, workbook/revision locks'::text);
+
+  -- The expired photo still gets recovery while only the sheet result revision is behind.
+  insert into public.scan_photos(id, parent_id, child_id, state, reserved_bytes, sent_at)
+    values (photo, p, c, 'expired', 0, future_sent);
+  update public.scan_marking_revisions set revision = 7, profile_revision = 7 where child_id = c;
+  perform set_config('lock_timeout', '2s', true);
+  update public.scan_marking_queue_cursor set after_sent_at = future_sent - interval '1 second', after_id = photo where singleton;
+  execute 'set local role service_role';
+  r := public.recover_scan_marking_oldest(1);
+  if r is distinct from jsonb_build_array(jsonb_build_object('photo', photo, 'parent', p, 'child', c)) then raise exception 'sheet_results_recovery_missing %', r; end if;
+  perform public.mark_sheet_results_revision(c, 7);
+  execute 'reset role';
+  update public.scan_marking_queue_cursor set after_sent_at = future_sent - interval '1 second', after_id = photo where singleton;
+  execute 'set local role service_role';
+  r := public.recover_scan_marking_oldest(1);
+  if r is distinct from '[]'::jsonb then raise exception 'completed_sheet_results_still_pending %', r; end if;
+  execute 'reset role';
+  checks := array_append(checks, 'independent revision recovery'::text);
+
+  -- Positive admin read check: synthetic admin reads both tables through RLS.
+  perform set_config('request.jwt.claim.sub', admin_uid::text, true);
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', admin_uid, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  if not public.is_admin() then raise exception 'probe_admin_not_admin'; end if;
+  select count(*) into n from public.child_sheet_results where parent_id = p;
+  if n <> 2 then raise exception 'admin_reads_results_failed %', n; end if;
+  select count(*) into n from public.child_bank_state where parent_id = p;
+  if n <> 2 then raise exception 'admin_reads_state_failed %', n; end if;
+  execute 'reset role';
+  checks := array_append(checks, 'admin rls read'::text);
 
   -- Readers: a parent of the family (not an admin) reads no row and writes none; anon reads nothing.
   perform set_config('request.jwt.claim.sub', p::text, true);

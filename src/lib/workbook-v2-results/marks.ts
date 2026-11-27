@@ -10,9 +10,9 @@ export const V2_ITEM_PREFIX = "v2:";
 /** The marked v2 questions of an effective set. A question still waiting for a reading (or a parent check) is unmarked. */
 export function childMarksFrom(effective: readonly Pick<EffectiveMark, "expected" | "observation">[]): ChildMark[] {
   return effective.flatMap(({ expected, observation }) => {
-    const { workbookId, itemId } = expected.identity;
+    const { workbookId, printedRevision, itemId } = expected.identity;
     const result = observation.result;
     if (!itemId.startsWith(V2_ITEM_PREFIX) || result === null || observation.state === "pending" || observation.state === "parent-pending") return [];
-    return [{ workbookId, itemId: itemId.slice(V2_ITEM_PREFIX.length), firstTry: result }];
+    return [{ workbookId, printedRevision, itemId: itemId.slice(V2_ITEM_PREFIX.length), firstTry: result }];
   });
 }
