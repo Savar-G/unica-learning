@@ -442,7 +442,7 @@ describe("the freeze of a draft", () => {
     const content = draftWith(cut) as Record<string, unknown>;
     expect(result.snapshot).toEqual(contentOf(content));
     expect(result.hash).toBe(sha256(canonicalJson(result.snapshot)));
-    expect(result.checked).toMatchObject({ sheets: 2, rows: 4, seeds: 1, samples: 0 });
+    expect(result.checked).toMatchObject({ sheets: 3, rows: 6, seeds: 1, samples: 0 });
   });
 
   it("makes the checked-in snapshot of the checked-in draft, with its notes", () => {
@@ -461,12 +461,15 @@ describe("the freeze of a draft", () => {
       ["two-or-three-bars", "front", 2, 38, 19], ["four-to-six-bars", "front", 2, 72, 36], ["larger-bars", "back", 2, 123, 61], ["five-or-six-bars", "back", 2, 180, 90],
     ]);
     expect(bars).toMatchObject({ attemptsWithoutRepeat: 19, warnings: [] });
-    expect(capacity.map((c) => c.sheet)).toEqual(["column-multiplication-1", "equal-groups-1"]);
+    expect(capacity.map((c) => c.sheet)).toEqual(["column-multiplication-1", "equal-groups-1", "story-problems-1"]);
+    // A story counts its defined questions: one with other numbers is the same story. Each region has 3 for 3 places.
+    const stories = capacity.find((c) => c.sheet === "story-problems-1");
+    expect(stories?.rows.map(({ row, possible, attemptsWithoutRepeat }) => [row, possible, attemptsWithoutRepeat])).toEqual([["one-step", 3, 1], ["two-steps", 3, 1]]);
   });
 
   it("gives the capacity with the snapshot", async () => {
     const result = await freezeBank(draftWith(cut), fakeRenderer(), QUICK);
-    expect(result.ok && result.capacity.map((c) => [c.sheet, c.rows.length])).toEqual([["column-multiplication-1", 2], ["equal-groups-1", 2]]);
+    expect(result.ok && result.capacity.map((c) => [c.sheet, c.rows.length])).toEqual([["column-multiplication-1", 2], ["equal-groups-1", 2], ["story-problems-1", 2]]);
   });
 
   it("warns of a row with less than one full unseen repeat", () => {
@@ -475,7 +478,7 @@ describe("the freeze of a draft", () => {
       const [, sheet] = d.sheets;
       sheet.front.rows[1].limits = { groups: { min: 6, max: 6 }, size: { min: 98, max: 99 }, product: { min: 4, max: 594 } };
       sheet.back.rows[0].limits = { groups: { min: 2, max: 2 }, size: { min: 10, max: 13 }, product: { min: 20, max: 200 } };
-      for (const one of [d, d.topics[0], sheet, sheet.front, sheet.front.rows[0]]) Reflect.deleteProperty(one, "basis");
+      for (const one of [d, d.topics[0], sheet, sheet.front, sheet.front.rows[0], d.sheets[2], d.sheets[2].front.rows[0], d.regionPacks[0], d.scenarios[0], d.questions[0]]) Reflect.deleteProperty(one, "basis");
     });
     const bank = validateSnapshot(draft);
     if (!bank.ok) throw new Error(bank.problems.join("\n"));
@@ -623,11 +626,11 @@ describe("the freeze of a draft", () => {
     ["a note in the limits of a row", (d) => { Object.assign(d.sheets[1].front.rows[0].limits, { basis: SENTINEL }); }, /The draft has a note "basis" at sheets\[1\]\.front\.rows\[0\]\.limits, where a draft may not have one/],
     ["a note in the level", (d) => { Object.assign(d.level, { basis: SENTINEL }); }, /The draft has a note "basis" at level, where a draft may not have one/],
     ["a field that is not a note", (d) => { Object.assign(d.sheets[0], { source: SENTINEL }); }, /Sheet "column-multiplication-1": unknown field "source"\./],
-    ["a sheet that does not follow the one before it", (d) => { d.sheets[1].firstPage = 385; }, /^Topic "topic-20": the sheet "equal-groups-1" starts on page 385 and must start on page 383, after the sheet "column-multiplication-1"\.$/],
+    ["a sheet that does not follow the one before it", (d) => { d.sheets[1].firstPage = 387; }, /^Topic "topic-20": the sheet "equal-groups-1" starts on page 387 and must start on page 383, after the sheet "column-multiplication-1"\.$/],
     ["sheets of a topic in another order than their pages", (d) => { d.topics[0].sheets.reverse(); }, /the sheet "column-multiplication-1" starts on page 381 and must start on page 385/],
     ["a template that a row does not fit", (d) => { d.sheets[1].front.template = "places-2x2"; }, /Sheet "equal-groups-1", front side, row "two-or-three-bars": the template "places-2x2" has no place for a figure question/],
     ["a row that asks for more questions than its limits allow", (d) => { d.sheets[1].front.rows[0].limits = { groups: { min: 2, max: 2 }, size: { min: 2, max: 2 }, product: { min: 4, max: 4 } }; }, /row "two-or-three-bars": the row asks for 2 different questions and its limits allow 1/],
-    ["a level of one topic when a full level is asked for", (d) => { Object.assign(d, { full: true }); }, /^The level has 1 topic and a full level has 20\.\nTopic "topic-20" has 2 sheets and a topic of a full level has 10\.$/],
+    ["a level of one topic when a full level is asked for", (d) => { Object.assign(d, { full: true }); }, /^The level has 1 topic and a full level has 20\.\nTopic "topic-20" has 3 sheets and a topic of a full level has 10\.$/],
   ])("refuses %s and gives no snapshot", async (_name, change, problem) => {
     const draft = draftWith((d) => { cut(d); change(d); });
     const full = Reflect.get(draft, "full") === true;

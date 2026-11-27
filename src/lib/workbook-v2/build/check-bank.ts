@@ -16,8 +16,14 @@ import { SHAPES, type Item, type ShapeLibrary } from "../shapes";
 import { formsOf, questionKey } from "../shapes/shape";
 import { seedFrom } from "../hash";
 import { planPages } from "./build-book";
+import { itemRegions } from "../layout/build-pages";
+import { STORY_SHAPE_ID } from "../shapes/story";
+import { interestsOf } from "../themes/bind";
+import { bindSheet } from "../themes/sheets";
+import { DEFAULT_INTEREST, type StoryBank } from "../themes/types";
 import { sheetItems } from "./items";
 import { rowTexts } from "./row-texts";
+import { eachDigit, storyCombos } from "./story-combos";
 
 /** How many children a level is made for before it is frozen. */
 export const BANK_SEEDS = 200;
@@ -85,7 +91,7 @@ class BankCheck {
   private readonly texts = new Map<string, Measured>();
   private runs = 0;
 
-  constructor(private readonly levelName: string, private readonly shapes: ShapeLibrary, seeds: number, private readonly renderer: Renderer, private readonly figureSamples: number) {
+  constructor(private readonly levelName: string, private readonly shapes: ShapeLibrary, seeds: number, private readonly renderer: Renderer, private readonly figureSamples: number, private readonly stories: StoryBank | null) {
     this.checked = { sheets: 0, rows: 0, seeds, questions: 0, pages: 0, alone: 0, texts: 0, samples: 0 };
   }
 
@@ -103,7 +109,7 @@ class BankCheck {
   }
 
   /** The first seed that fails, told for each row that fails alone, or for the sides of the sheet. */
-  private tellSeed(sheet: SnapshotSheet, seed: number, problems: readonly string[]): void {
+  private tellSeed(sheet: SnapshotSheet, seed: number, problems: readonly string[], label: string): void {
     let told = false;
     for (const side of SIDES) {
       const only = (rows: SnapshotRow[]): SnapshotSheet => ({ ...sheet, front: { ...sheet.front, rows: [] }, back: { ...sheet.back, rows: [] }, [side]: { ...sheet[side], rows } });
@@ -111,14 +117,14 @@ class BankCheck {
       for (const row of sheet[side].rows) {
         const alone = this.plan(only([row]), seed, [side]);
         if (alone.ok) continue;
-        this.tell(`${rowPlace(sheet, side, [row])}, seed ${seed}`, alone.problems);
+        this.tell(`${rowPlace(sheet, side, [row])}${label}, seed ${seed}`, alone.problems);
         toldRow = true;
       }
       const whole = toldRow ? null : this.plan(only(sheet[side].rows), seed, [side]);
-      if (whole && !whole.ok) this.tell(`${rowPlace(sheet, side, sheet[side].rows)}, seed ${seed}`, whole.problems);
+      if (whole && !whole.ok) this.tell(`${rowPlace(sheet, side, sheet[side].rows)}${label}, seed ${seed}`, whole.problems);
       told ||= toldRow || (whole !== null && !whole.ok);
     }
-    if (!told) this.tell(`Sheet "${sheet.id}", both sides, seed ${seed}`, problems);
+    if (!told) this.tell(`Sheet "${sheet.id}", both sides${label}, seed ${seed}`, problems);
   }
 
   /** A text to measure, one time for each size of its place. */
@@ -131,23 +137,36 @@ class BankCheck {
     else if (!known.owners.has(owner)) known.owners.set(owner, { name, side });
   }
 
-  seeds(sheet: SnapshotSheet): void {
+  /**
+   * The sheet for each seed. `label` names the region and the theme of a sheet of word problems. Flow text is not measured
+   * here: only word problems print it, and `storyRow` measures every text that their numbers can make.
+   */
+  seeds(sheet: SnapshotSheet, label = ""): void {
     for (let seed = 1; seed <= this.checked.seeds; seed++) {
       const plan = this.plan(sheet, seed, SIDES);
-      if (!plan.ok) return this.tellSeed(sheet, seed, plan.problems);
+      if (!plan.ok) return this.tellSeed(sheet, seed, plan.problems, label);
       const { pages, items } = plan.value;
       this.checked.questions += items.length;
       const ownerOf = new Map<string | null, string>(items.map((i) => [i.id, rowPlace(sheet, i.side, [{ id: i.rowId }])]));
       for (const page of pages) {
         const whole = rowPlace(sheet, page.side, sheet[page.side].rows);
-        for (const region of page.regions) for (const ink of region.ink) this.measure(ownerOf.get(region.item) ?? whole, ink, regionName(region).slice(1, -1), page.side);
+        for (const region of page.regions) for (const ink of region.ink) if (ink.kind !== "flow") this.measure(ownerOf.get(region.item) ?? whole, ink, regionName(region).slice(1, -1), page.side);
       }
     }
   }
 
+  /** The seeds of a sheet for each region and theme of its word problems, or once for a sheet with none. */
+  sheetSeeds(sheet: SnapshotSheet): void {
+    const hasStory = SIDES.some((side) => sheet[side].rows.some((row) => row.shape.id === STORY_SHAPE_ID));
+    if (!hasStory || !this.stories) return this.seeds(sheet);
+    for (const region of this.stories.packs.keys()) {
+      for (const interest of interestsOf(this.stories)) this.seeds(bindSheet(sheet, this.stories, { region, interest }), `, region "${region}", scenario "${interest}"`);
+    }
+  }
+
   /** One question at every place of both sides of its template: the widest question of a form, or one of a sampled seed. */
-  private everywhere(sheet: SnapshotSheet, side: Side, row: SnapshotRow, { question, answer }: Item<unknown>): void {
-    const owner = rowPlace(sheet, side, [row]);
+  private everywhere(sheet: SnapshotSheet, side: Side, row: SnapshotRow, { question, answer }: Item<unknown>, label = ""): void {
+    const owner = `${rowPlace(sheet, side, [row])}${label}`;
     const run = ++this.runs;
     const { shape } = row;
     const { template } = sheet[side];
@@ -174,7 +193,34 @@ class BankCheck {
     else this.tell(owner, [`question ${item.number} of the ${item.side} side has no slot to be drawn in.`]);
   }
 
+  /**
+   * Every combination of a row of word problems, drawn at every place of both sides with every check of a book and alone,
+   * and its text measured with every digit in each place of its numbers. A problem names the combination and the place.
+   */
+  private storyRow(sheet: SnapshotSheet, side: Side, row: SnapshotRow): void {
+    const owner = rowPlace(sheet, side, [row]);
+    const combos = this.stories ? attempt("the word problems cannot be made", () => storyCombos(row, this.stories as StoryBank)) : { ok: false as const, problems: ["the snapshot has no word problems."] };
+    if (!combos.ok) return this.tell(owner, combos.problems);
+    if (combos.value.length === 0) return this.tell(owner, ["nothing was drawn, because no question of the row has a scenario and a region pack."]);
+    const { template } = sheet[side];
+    for (const { label, item } of combos.value) {
+      this.everywhere(sheet, side, row, item, `, ${label}`);
+      const face = row.shape.face(item.question);
+      for (const at of SIDES) {
+        template.sides[at].places.forEach((place, i) => {
+          for (const region of itemRegions(place, { id: "", number: i + 1, face, answer: item.answer }, (name) => name)) {
+            for (const ink of region.ink) {
+              if (ink.kind !== "flow") continue;
+              for (const { tokens, room } of eachDigit(ink.tokens, ink.size)) this.measure(`${owner}, ${label}`, { ...ink, tokens, rect: { ...ink.rect, w: ink.rect.w - room } }, region.id, at);
+            }
+          }
+        });
+      }
+    }
+  }
+
   private row(sheet: SnapshotSheet, side: Side, row: SnapshotRow): void {
+    if (row.shape.id === STORY_SHAPE_ID) return this.storyRow(sheet, side, row);
     const owner = rowPlace(sheet, side, [row]);
     const before = this.problems.length;
     const forms = attempt("the widest question cannot be made", () => formsOf(row.shape, row.limits));
@@ -368,10 +414,10 @@ function readBank(snapshot: unknown, shapes: ShapeLibrary, templates: TemplateLi
 export async function checkBank(snapshot: unknown, renderer: Renderer, { shapes = SHAPES, templates = TEMPLATES, seeds = BANK_SEEDS, figureSamples = FIGURE_SAMPLE_SEEDS }: BankOptions = {}): Promise<BankReport> {
   const bank = readBank(snapshot, shapes, templates);
   if (!bank.ok) return { problems: bank.problems, checked: { sheets: 0, rows: 0, seeds: 0, questions: 0, pages: 0, alone: 0, texts: 0, samples: 0 } };
-  const check = new BankCheck(bank.snapshot.level.name, shapes, seeds, renderer, figureSamples);
+  const check = new BankCheck(bank.snapshot.level.name, shapes, seeds, renderer, figureSamples, bank.snapshot.stories);
   for (const sheet of bank.snapshot.sheets.values()) {
     check.checked.sheets++;
-    check.seeds(sheet);
+    check.sheetSeeds(sheet);
     check.rows(sheet);
     await check.draw(false);
   }

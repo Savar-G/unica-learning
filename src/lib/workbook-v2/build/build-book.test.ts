@@ -63,7 +63,7 @@ describe("a good input", () => {
       expect(steps.at(-1)).toEqual({ text: value, marks: [] });
       expect(shapeVersion).toBe(SHAPES.get(shape)?.version);
     }
-    expect(book.record).toMatchObject({ bookId: "example-book", engine: "2.0.0-s9", ...IDENTITY, snapshot: { id: "invented-level-3-v1" } });
+    expect(book.record).toMatchObject({ bookId: "example-book", engine: "2.0.0-s10", ...IDENTITY, snapshot: { id: "invented-level-3-v1" } });
     expect(book.record.snapshot.hash).toMatch(/^[0-9a-f]{64}$/);
     expect(book.record.inputHash).toMatch(/^[0-9a-f]{64}$/);
   });
@@ -118,7 +118,7 @@ describe("a good input", () => {
     book.sheets[1].startsDay = true;
     const planned = planBook({ snapshot: inventedSnapshotFixture, book });
     if (!planned.ok) throw new Error(planned.problems.join("\n"));
-    expect(planned.pages.map((p) => p.captures.map((c) => c.kind))).toEqual([["time-log"], [], ["time-log"], []]);
+    expect(planned.pages.map((p) => p.captures.map((c) => c.kind))).toEqual([["time-log"], [], ["time-log"], [], ["time-log"], []]);
 
     Object.defineProperty(Object.prototype, "startsDay", { value: true, configurable: true, writable: true });
     try {

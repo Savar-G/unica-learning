@@ -55,7 +55,10 @@ const each = (value: unknown, change: (one: unknown) => unknown): unknown => (Ar
 
 const own = (value: Record<string, unknown>, key: string): boolean => Object.hasOwn(value, key);
 
-/** The content of a draft: the same data with no note at the level, a topic, a sheet, a side or a row. */
+/** The lists of word problems at the top of a draft, whose entries may each hold a note. */
+const NOTED_LISTS = ["topics", "questions", "scenarios", "regionPacks"];
+
+/** The content of a draft: the same data with no note at the level, a topic, a sheet, a side, a row, a question, a scenario or a region pack. */
 export function contentOf(draft: Record<string, unknown>): Record<string, unknown> {
   const side = (raw: unknown) => {
     const one = withoutBasis(raw);
@@ -66,7 +69,8 @@ export function contentOf(draft: Record<string, unknown>): Record<string, unknow
     return isRecord(one) ? { ...one, ...(own(one, "front") ? { front: side(one.front) } : {}), ...(own(one, "back") ? { back: side(one.back) } : {}) } : one;
   };
   const root = withoutBasis(draft) as Record<string, unknown>;
-  return { ...root, ...(own(root, "topics") ? { topics: each(root.topics, withoutBasis) } : {}), ...(own(root, "sheets") ? { sheets: each(root.sheets, sheet) } : {}) };
+  const lists = Object.fromEntries(NOTED_LISTS.filter((key) => own(root, key)).map((key) => [key, each(root[key], withoutBasis)]));
+  return { ...root, ...lists, ...(own(root, "sheets") ? { sheets: each(root.sheets, sheet) } : {}) };
 }
 
 /** Each place of the content that still holds a note: one in a place where a draft may not have it. */
@@ -337,7 +341,7 @@ export async function freezeBank(draft: unknown, renderer: Renderer, options: Fr
   if (!plain.ok) return plain;
   const content = contentOf(plain.value as Record<string, unknown>);
   const left = notesIn(content, "");
-  if (left.length > 0) return { ok: false, problems: left.map((place) => `The draft has a note "${BASIS}" at ${place}, where a draft may not have one: only the level, a topic, a sheet, a side and a row may.`) };
+  if (left.length > 0) return { ok: false, problems: left.map((place) => `The draft has a note "${BASIS}" at ${place}, where a draft may not have one: only the level, a topic, a sheet, a side, a row, a question, a scenario and a region pack may.`) };
   const bank = validateSnapshot(content, shapes, templates);
   if (!bank.ok) return bank;
   const { sheets } = bank.snapshot;

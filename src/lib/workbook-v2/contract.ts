@@ -2,26 +2,31 @@
 // it, so it imports nothing. All lengths are points (72 to the inch) from the top left corner of the page.
 
 /** Changes when the same input can give other bytes. A book records it, so a replay can tell which part differs. */
-export const ENGINE_VERSION = "2.0.0-s9";
+export const ENGINE_VERSION = "2.0.0-s10";
 
 export interface Rect { x: number; y: number; w: number; h: number }
 
 export type Side = "front" | "back";
 
-/** The answer kinds that marking can read. A shape may use only one of these. A "digit" is one digit, 0 to 9: the digit of one place of a number. */
-export const ANSWER_KINDS = ["whole-number", "digit"] as const;
+/**
+ * The answer kinds that marking can read. A shape may use only one of these. A "digit" is one digit, 0 to 9: the digit of
+ * one place of a number. A "quantity" is a whole number with the unit that prints beside its answer area (24 muffins).
+ */
+export const ANSWER_KINDS = ["whole-number", "digit", "quantity"] as const;
 export type AnswerKind = (typeof ANSWER_KINDS)[number];
 
-/** What one answer area must hold. The name is unique in its question: "answer", "blank-1", "quotient", "remainder". */
-export interface AnswerPart { name: string; kind: AnswerKind; value: string }
+/** What one answer area must hold. The name is unique in its question: "answer", "blank-1", "quotient", "remainder". Only a quantity has a unit. */
+export interface AnswerPart { name: string; kind: AnswerKind; value: string; unit?: string }
 /** The parts of an answer in reading order, each with an answer area of its own. A question with one area has one part. */
 export interface Answer { parts: AnswerPart[] }
 
+/** The value of a part, with its unit when it is a quantity: 24 muffins. */
+const partValue = (part: AnswerPart): string => (part.kind === "quantity" ? `${part.value} ${part.unit ?? ""}` : part.value);
 /** The line that ends the worked steps: the value of each part (20, 30). A remainder says that it is one: 9 R1. */
-export const answerLine = ({ parts }: Answer): string => parts.map((p, i) => (i === 0 ? p.value : p.name === "remainder" ? ` R${p.value}` : `, ${p.value}`)).join("");
+export const answerLine = ({ parts }: Answer): string => parts.map((p, i) => (i === 0 ? partValue(p) : p.name === "remainder" ? ` R${p.value}` : `, ${partValue(p)}`)).join("");
 
 /** What a question looks like, with no knowledge of its math: the layout draws it, and nothing else reads it. */
-export const FACE_KINDS = ["column", "equation", "sequence", "bracket", "fields", "figure"] as const;
+export const FACE_KINDS = ["column", "equation", "sequence", "bracket", "fields", "figure", "story"] as const;
 export interface ColumnFace { kind: "column"; top: string; sign: string; bottom: string }
 /** A printed text, or a blank: the answer area of the part with that name. */
 export type FaceToken = { text: string } | { blank: string };
@@ -44,7 +49,9 @@ export interface BarModelFigure { kind: "bar-model"; parts: string[]; totalLabel
 export type FigureData = BarModelFigure;
 /** A drawn figure, and below it a prompt and the answer area of the part with the name `blank`. */
 export interface FigureFace { kind: "figure"; figure: FigureData; prompt: string; blank: string }
-export type Face = ColumnFace | EquationFace | SequenceFace | BracketFace | FieldsFace | FigureFace;
+/** A word problem: flow text of words and math, an answer area with the unit after it, and a work area below the text. */
+export interface StoryFace { kind: "story"; tokens: FlowToken[]; unit: string; blank: string }
+export type Face = ColumnFace | EquationFace | SequenceFace | BracketFace | FieldsFace | FigureFace | StoryFace;
 
 /**
  * What a step puts on the paper. "write" is a digit of the answer; "carry" is the small digit above the next column.
@@ -178,9 +185,10 @@ export const PRINT_RULES = {
   reach: { left: 19.2, right: 28.8, top: 9.6, bottom: 9.6 },
   /** The smallest answer area: a width for each character, plus room, and never less than the minimum. Its outline is a line. */
   answer: { perCharacter: 14.4, extra: 14.4, minWidth: 72, minHeight: 42, outline: 0.75 },
-  /** The smallest height of a line of work that a child writes, and the smallest work area beside a stack. */
+  /** The smallest height of a line of work that a child writes, the smallest work area beside a stack, and below a word problem. */
   workLine: 18,
   stackWork: { w: 38, h: 140 },
+  storyWork: { w: 220, h: 104 },
   /** The place of one digit of a stack or inside a bracket, and the height of a text that stands in a line. */
   cell: { w: 24, h: 28 },
   textHeight: 28,
@@ -211,6 +219,12 @@ export const PRINT_RULES = {
    * The time log on the first page of a day: a band above the footer, beside the QR code, from the left end of the footer.
    * Each field is a label, `labelGap`, and a box with `reach` of clear space round it; `gap` is the room between the fields.
    */
+  /**
+   * A word problem: its flow text starts `top` below the top of its question and has room for `lines` lines; its number
+   * stands at the left of the first line in a box of `label` points; the unit stands right of the reach of the answer
+   * area, in the middle of its height; the work area starts `gap` below the text.
+   */
+  story: { top: 8, flow: { h: 68, size: 12, weight: 400, leading: 5 }, label: 15, unit: { w: 118, size: 16, weight: 400 }, gap: 6 },
   timeLog: { top: 700, h: 36, label: { w: 40, size: 11, weight: 600 }, box: { w: 72, h: 26, outline: 0.75 }, reach: 5, labelGap: 2, gap: 8, fields: ["start", "finish"], labels: ["Start", "Finish"] },
   maxAnswerColumns: 2,
   maxInstructionCharacters: 60,

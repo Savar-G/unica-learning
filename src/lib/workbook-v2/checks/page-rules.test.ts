@@ -378,7 +378,7 @@ describe("a bar model", () => {
 
   it("breaks no rule on any page of the invented book, with full sides of one answer column", () => {
     expect(good.pages.flatMap((p) => checkPage(p, good.items))).toEqual([]);
-    expect(good.pages.slice(2).map((p) => `${p.template} ${p.regions.filter((r) => r.role === "slot").length} ${new Set(p.regions.filter((r) => r.role === "answer").map((r) => r.rect.x)).size}`)).toEqual(["figures-1x4 4 1", "figures-1x4 4 1"]);
+    expect(good.pages.slice(2).map((p) => `${p.template} ${p.regions.filter((r) => r.role === "slot").length} ${new Set(p.regions.filter((r) => r.role === "answer").map((r) => r.rect.x)).size}`)).toEqual(["figures-1x4 4 1", "figures-1x4 4 1", "stories-1x3 3 1", "stories-1x3 3 1"]);
   });
 
   it.each<[string, number, (page: PageModel, items: GoodBook["items"]) => unknown, RegExp]>([
@@ -437,7 +437,7 @@ describe("the time log", () => {
   };
 
   it("is on the front page of the first sheet of a day only, with a start and a finish box", () => {
-    expect(good.pages.map((p) => p.captures.length)).toEqual([1, 0, 0, 0]);
+    expect(good.pages.map((p) => p.captures.length)).toEqual([1, 0, 0, 0, 1, 0]);
     expect(first.captures).toEqual([{ id: `${first.id}/time-log`, kind: "time-log", rect: { x: 111.5, y: 700, w: 256, h: 36 }, fields: [
       { name: "start", rect: { x: 158.5, y: 705, w: 72, h: 26 }, reach: { x: 153.5, y: 700, w: 82, h: 36 } },
       { name: "finish", rect: { x: 290.5, y: 705, w: 72, h: 26 }, reach: { x: 285.5, y: 700, w: 82, h: 36 } },
@@ -489,13 +489,14 @@ describe("what a question prints", () => {
   // One question of each form of a face: the first one on each template, the forms with a blank in another place, and a
   // sequence that stands below another one.
   const books = [goodBook(), factsBook(), divisionBook(), placesBook(), inventedBook()];
-  const formOf = ({ face }: BookItem) => (face.kind === "column" ? "column" : face.kind === "fields" ? "fields" : face.kind === "figure" ? `figure ${face.figure.parts.length < 4 ? "of few" : "of many"} bars` : `${face.kind} ${(face.kind === "bracket" ? face.above : face.tokens).map((t) => ("text" in t ? "t" : "_")).join("")}`);
+  const formOf = ({ face }: BookItem) => (face.kind === "column" || face.kind === "story" ? face.kind : face.kind === "fields" ? "fields" : face.kind === "figure" ? `figure ${face.figure.parts.length < 4 ? "of few" : "of many"} bars` : `${face.kind} ${(face.kind === "bracket" ? face.above : face.tokens).map((t) => ("text" in t ? "t" : "_")).join("")}`);
   const linesOf = (page: PageModel, item: BookItem) => page.regions.find((r) => r.item === item.id && r.role === "question")!.ink.filter((i) => i.kind === "fill").length;
   const cases = new Map(books.flatMap(({ pages, items }) => pages.flatMap((page) => items.filter((i) => i.id.startsWith(`${page.id}/`)).map((item) => [`${page.template}, ${formOf(item)}, ${linesOf(page, item)} lines`, { page, item }] as const))).reverse());
 
   it("is looked at for each face, with and without its line", () => {
     const names = [...cases.keys()];
-    expect(new Set([...cases.values()].map(({ item }) => item.face.kind))).toEqual(new Set(["column", "equation", "sequence", "bracket", "fields", "figure"]));
+    expect(new Set([...cases.values()].map(({ item }) => item.face.kind))).toEqual(new Set(["column", "equation", "sequence", "bracket", "fields", "figure", "story"]));
+    expect(names.filter((n) => n.startsWith("stories-1x3"))).toEqual(["stories-1x3, story, 0 lines"]);
     expect(names.filter((n) => n.startsWith("figures-1x4"))).toEqual(expect.arrayContaining(["figures-1x4, figure of few bars, 3 lines", "figures-1x4, figure of many bars, 3 lines"]));
     expect(names.filter((n) => n.startsWith("column") || n.startsWith("bracket")).every((n) => n.endsWith("1 lines"))).toBe(true);
     expect(["0 lines", "1 lines"].map((end) => names.some((n) => n.startsWith("sequences-2x2") && n.endsWith(end)))).toEqual([true, true]);

@@ -3,7 +3,9 @@
 import { answerLine, type Answer, type BookItem, type Face, type Ink, type PageModel, type Rect, type Region } from "../contract";
 import { canonicalJson } from "../hash";
 import type { Shape, ShapeLibrary } from "../shapes";
+import { STORY_SHAPE_ID, storyShape } from "../shapes/story";
 import { answerProblem } from "./answer-form";
+import { storyAnswerProblem } from "./story-answers";
 import { bottom, EPSILON } from "./rects";
 
 type Text = Extract<Ink, { kind: "text" }>;
@@ -51,10 +53,14 @@ export function questionRows(regions: readonly Region[], face: Face): string[] {
 
 const shown = (answer: Answer): string => (answer.parts.length === 1 ? answerLine(answer) : answer.parts.map((p) => `${p.name} ${p.value}`).join(", "));
 
-function problemOf(item: BookItem, rows: readonly string[], shape: Shape | undefined): string | null {
+/** The shape of an item: one of the library, or the shape of word problems, which is not in it. */
+const shapeOf = (shapes: ShapeLibrary, id: string): Shape | undefined => (id === STORY_SHAPE_ID ? (storyShape as Shape) : shapes.get(id));
+
+function problemOf(item: BookItem, rows: readonly string[], shape: Shape | undefined, regions: readonly Region[]): string | null {
   const { answer } = item;
   const first = shape ? answerProblem(answer, shape.answerKind) : null;
   if (first) return `the answer ${first}`;
+  if (shape?.id === STORY_SHAPE_ID && item.face.kind === "story") return storyAnswerProblem(item, regions);
   const printed = shape?.solveAgain(rows);
   if (!shape || !printed) return `the printed question cannot be read as ${item.shape}`;
   const second = answerProblem(printed.answer, shape.answerKind);
@@ -84,7 +90,7 @@ const placeOf = (item: BookItem): string => `Sheet "${item.sheetId}", ${item.sid
 /** What is wrong with the form of the first computation. The layout reads these answers, so the build asks before it. */
 export function checkAnswerForms(items: readonly BookItem[], shapes: ShapeLibrary): string[] {
   return items.flatMap((item) => {
-    const shape = shapes.get(item.shape);
+    const shape = shapeOf(shapes, item.shape);
     const problem = shape && answerProblem(item.answer, shape.answerKind);
     return problem ? [`${placeOf(item)}: the answer ${problem}.`] : [];
   });
@@ -94,8 +100,9 @@ export function checkAnswerForms(items: readonly BookItem[], shapes: ShapeLibrar
 export function checkPrintedAnswers(pages: readonly PageModel[], items: readonly BookItem[], shapes: ShapeLibrary): string[] {
   const regions = regionsByItem(pages);
   return items.flatMap((item) => {
-    const rows = questionRows(regions.get(item.id) ?? [], item.face);
-    const problem = problemOf(item, rows, shapes.get(item.shape));
+    const own = regions.get(item.id) ?? [];
+    const rows = item.face.kind === "story" ? [] : questionRows(own, item.face);
+    const problem = problemOf(item, rows, shapeOf(shapes, item.shape), own);
     return problem ? [`${placeOf(item)} (${rows.join(" ")}): ${problem}.`] : [];
   });
 }

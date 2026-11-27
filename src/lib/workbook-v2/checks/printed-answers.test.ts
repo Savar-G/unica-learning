@@ -1,6 +1,6 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import type { Answer, BookItem, ColumnFace, Ink, PageModel, Region } from "../contract";
+import { answerLine, type Answer, type BookItem, type ColumnFace, type Ink, type PageModel, type Region } from "../contract";
 import { SHAPES, shapeLibrary, type Shape, type ShapeLibrary } from "../shapes";
 import { wholeNumber } from "../shapes/shape";
 import { bookOf, divisionBook, factsBook, goodBook, inventedBook, stackOf, type GoodBook } from "../testing/sample";
@@ -149,7 +149,7 @@ describe("an answer that has no good form, in both computations", () => {
     ["a name with a number 0", ([first, ...more]) => [{ ...first, name: "blank-0" }, ...more], /the name "blank-0", which is not known/],
     ["two parts with one name", (parts) => parts.map((p) => ({ ...p, name: "blank-1" })), /has two parts with the name "blank-1"/],
     ["another kind", ([first, ...more]) => [{ ...first, kind: "fraction" }, ...more], /has a part of the kind "fraction", which is not "whole-number"/],
-    ["a field more", ([first, ...more]) => [{ ...first, unit: "cm" }, ...more], /has a part that is not a name, a kind and a value/],
+    ["a field more", ([first, ...more]) => [{ ...first, note: "cm" }, ...more], /has a part that is not a name, a kind and a value/],
     ["a part that is nothing", ([, ...more]) => [null, ...more], /has a part that is not a name, a kind and a value/],
     ["no part", () => [], /has no part/],
   ])("%s is a problem of the first and of the second one", (_name, change, problem) => {
@@ -177,6 +177,31 @@ describe("an answer of digits, one for each place", () => {
   it("is no whole number, and a whole number is no digit", () => {
     expect(answerProblem(places("4", "3"), "whole-number")).toMatch(/kind "digit", which is not "whole-number"/);
     expect(answerProblem({ parts: [{ name: "answer", kind: "whole-number", value: "10" }] }, "whole-number")).toBeNull();
+  });
+});
+
+describe("an answer of a quantity, with its unit", () => {
+  const quantity = (value: string, unit?: unknown) => ({ parts: [{ name: "answer", kind: "quantity", value, ...(unit === undefined ? {} : { unit }) }] });
+  it("is good with a whole number and a unit, and the last step says both", () => {
+    expect(answerProblem(quantity("24", "muffins") as Answer, "quantity")).toBeNull();
+    expect(answerProblem(quantity("0", "litres") as Answer, "quantity")).toBeNull();
+    expect(answerLine(quantity("24", "muffins") as Answer)).toBe("24 muffins");
+  });
+  it.each<[string, unknown, RegExp]>([
+    ["no unit", quantity("24"), /the part "answer" of the kind "quantity" has no unit/],
+    ["an empty unit", quantity("24", ""), /the part "answer" has the unit "", which cannot be printed/],
+    ["a unit with a space at an end", quantity("24", "cm "), /the unit "cm ", which cannot be printed/],
+    ["a unit that the fonts cannot print", quantity("24", "cm²"), /the unit "cm²", which cannot be printed/],
+    ["a unit that is no text", quantity("24", 3), /the unit 3, which cannot be printed/],
+    ["a value that is no whole number", quantity("2.5", "cm"), /has the value "2\.5", which is no whole-number/],
+    ["a value with a zero in front", quantity("07", "cm"), /has the value "07", which is no whole-number/],
+    ["a whole number in a part of a quantity", { parts: [{ name: "answer", kind: "whole-number", value: "4" }] }, /kind "whole-number", which is not "quantity"/],
+  ])("refuses %s", (_name, answer, problem) => expect(answerProblem(answer as Answer, "quantity")).toMatch(problem));
+  it("has no unit in a part of a whole number or a digit, so those answers stay as they are", () => {
+    expect(answerProblem({ parts: [{ name: "answer", kind: "whole-number", value: "4", unit: "cm" }] }, "whole-number")).toMatch(/the part "answer" of the kind "whole-number" has a unit/);
+    expect(answerProblem({ parts: [{ name: "ones", kind: "digit", value: "4", unit: "cm" }] }, "digit")).toMatch(/the part "ones" of the kind "digit" has a unit/);
+    expect(answerLine({ parts: [{ name: "answer", kind: "whole-number", value: "4" }] })).toBe("4");
+    expect(answerLine({ parts: [{ name: "quotient", kind: "whole-number", value: "9" }, { name: "remainder", kind: "whole-number", value: "1" }] })).toBe("9 R1");
   });
 });
 

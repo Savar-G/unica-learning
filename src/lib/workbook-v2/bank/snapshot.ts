@@ -5,6 +5,10 @@ import { canonicalJson, sha256 } from "../hash";
 import { fitProblem, questionText, TEMPLATES, type PageTemplate } from "../layout/templates";
 import { SHAPES, type Shape, type ShapeLibrary } from "../shapes";
 import { formsOf, isRecord } from "../shapes/shape";
+import { storyShape } from "../shapes/story";
+import { readStoryBank, STORY_FIELDS } from "../themes/bank";
+import { isStoryRow, readStoryRow } from "../themes/bind";
+import type { StoryBank } from "../themes/types";
 import { FieldReader, isId, type Fields } from "./fields";
 import { plainCopy } from "./plain";
 
@@ -14,11 +18,12 @@ export interface SnapshotRow { id: string; shape: Shape; limits: unknown; items:
 export interface SnapshotSide { instruction: string; template: PageTemplate; rows: SnapshotRow[] }
 export interface SnapshotTopic { id: string; code: string; title: string }
 export interface SnapshotSheet { id: string; topic: SnapshotTopic; firstPage: number; front: SnapshotSide; back: SnapshotSide }
-export interface Snapshot { id: string; level: { id: string; name: string }; sheets: ReadonlyMap<string, SnapshotSheet> }
+/** `stories` holds the word problems that story rows name, or null for a snapshot with none. */
+export interface Snapshot { id: string; level: { id: string; name: string }; sheets: ReadonlyMap<string, SnapshotSheet>; stories: StoryBank | null }
 
 export type TemplateLibrary = ReadonlyMap<string, PageTemplate>;
-/** What the rows and the sides of a snapshot name. */
-interface Libraries { shapes: ShapeLibrary; templates: TemplateLibrary }
+/** What the rows and the sides of a snapshot name. `stories` is undefined when the word problems have a problem of their own. */
+interface Libraries { shapes: ShapeLibrary; templates: TemplateLibrary; stories: StoryBank | null | undefined }
 
 export type SnapshotResult = { ok: true; snapshot: Snapshot; hash: string } | { ok: false; problems: string[] };
 
@@ -40,12 +45,17 @@ function ofShape<T>(at: string, step: () => T): T {
   }
 }
 
-function readRow(r: FieldReader, place: string, raw: unknown, index: number, shapes: ShapeLibrary): SnapshotRow | null {
+function readRow(r: FieldReader, place: string, raw: unknown, index: number, { shapes, stories }: Libraries): SnapshotRow | null {
   const at = `${place}, ${nameOf("row", raw, index)}`;
   const fields = r.object(at, raw, ["id", "shape", "items", "limits"]);
   if (!fields) return null;
   const id = r.id(at, fields);
   const items = r.count(at, fields, "items");
+  if (isStoryRow(fields)) {
+    // Word problems with a problem of their own are told once, where they are.
+    const limits = stories === undefined ? null : readStoryRow(r, at, fields.limits, items, stories);
+    return limits && id !== null && items !== null ? { id, shape: storyShape as Shape, limits, items } : null;
+  }
   const shape = typeof fields.shape === "string" ? shapes.get(fields.shape) : undefined;
   if (!shape) {
     r.problem(at, `there is no shape ${JSON.stringify(fields.shape)}`);
@@ -91,14 +101,15 @@ function checkFit(r: FieldReader, place: string, side: Side, template: PageTempl
   }
 }
 
-function readSide(r: FieldReader, sheet: string, side: Side, raw: unknown, { shapes, templates }: Libraries): SnapshotSide | null {
+function readSide(r: FieldReader, sheet: string, side: Side, raw: unknown, libraries: Libraries): SnapshotSide | null {
+  const { templates } = libraries;
   const place = `${sheet}, ${side} side`;
   const fields = r.object(place, raw, ["instruction", "template", "rows"]);
   if (!fields) return null;
   const instruction = r.text(place, fields, "instruction", PRINT_RULES.maxInstructionCharacters);
   const template = typeof fields.template === "string" ? templates.get(fields.template) : undefined;
   if (!template) r.problem(place, `there is no template ${JSON.stringify(fields.template)}`);
-  const rows = r.list(place, fields, "rows").map((row, i) => readRow(r, place, row, i, shapes)).filter((row) => row !== null);
+  const rows = r.list(place, fields, "rows").map((row, i) => readRow(r, place, row, i, libraries)).filter((row) => row !== null);
   checkRowsRise(r, place, rows);
   if (template) checkFit(r, place, side, template, rows);
   return instruction !== null && template ? { instruction, template, rows } : null;
@@ -173,20 +184,21 @@ export function validateSnapshot(given: unknown, shapes: ShapeLibrary = SHAPES, 
   const plain = plainCopy(place, given);
   if (!plain.ok) return plain;
   const r = new FieldReader();
-  const fields = r.object(place, plain.value, ["format", "id", "level", "topics", "sheets"]);
+  const fields = r.object(place, plain.value, ["format", "id", "level", "topics", "sheets"], STORY_FIELDS);
   if (!fields) return { ok: false, problems: r.problems };
+  const stories = readStoryBank(r, fields);
   if (fields.format !== SNAPSHOT_FORMAT) r.problem(place, `format must be ${SNAPSHOT_FORMAT}`);
   const id = r.id(place, fields);
   const level = readLevel(r, fields);
   const rawSheets = r.list(place, fields, "sheets");
   const topics = level ? r.list(place, fields, "topics").map((t, i) => readTopic(r, t, i, level.name)).filter((t) => t !== null) : [];
-  const sheets = rawSheets.map((s, i) => readSheet(r, s, i, { shapes, templates })).filter((s) => s !== null);
+  const sheets = rawSheets.map((s, i) => readSheet(r, s, i, { shapes, templates, stories })).filter((s) => s !== null);
   r.unique("topic id", topics.map((t) => t.id));
   r.unique("topic code", topics.map((t) => t.code));
   r.unique("sheet id", sheets.map((s) => s.id));
   r.unique("page number", sheets.map((s) => s.firstPage));
   const known = new Set(rawSheets.filter(isRecord).map((s) => s.id).filter((s) => typeof s === "string"));
   const joined = joinTopics(r, topics, sheets, known);
-  if (r.problems.length > 0 || id === null || level === null) return { ok: false, problems: r.problems };
-  return { ok: true, snapshot: { id, level, sheets: joined }, hash: sha256(canonicalJson(plain.value)) };
+  if (r.problems.length > 0 || id === null || level === null || stories === undefined) return { ok: false, problems: r.problems };
+  return { ok: true, snapshot: { id, level, sheets: joined, stories }, hash: sha256(canonicalJson(plain.value)) };
 }

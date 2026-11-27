@@ -71,6 +71,7 @@ export function framePrintProblems(page: PageModel, live: Rect): string[] {
 /** The top of the line that a question starts on: its upper number, its line of text, its first term or its number inside. */
 function lineTop(face: Face, question: Region, areas: ReadonlyMap<string, Area>): number | null {
   if (face.kind === "column") return question.rect.y;
+  if (face.kind === "story") return question.rect.y + PRINT_RULES.story.top;
   const tokens = faceTokens(face);
   const at = tokens.findIndex((t) => "blank" in t && areas.has(t.blank));
   const token = tokens[at];
@@ -88,7 +89,8 @@ function lineTop(face: Face, question: Region, areas: ReadonlyMap<string, Area>)
 export function labelProblems(face: Face, label: Region, slot: Region, question: Region, areas: ReadonlyMap<string, Area>): string[] {
   const y = lineTop(face, question, areas);
   if (y === null) return [];
-  const rect = { x: slot.rect.x, y, w: face.kind === "column" ? CELL.w : LABEL.w, h: face.kind === "column" || face.kind === "bracket" ? CELL.h : TEXT_HEIGHT };
+  const h = face.kind === "column" || face.kind === "bracket" ? CELL.h : face.kind === "story" ? PRINT_RULES.story.label : TEXT_HEIGHT;
+  const rect = { x: slot.rect.x, y, w: face.kind === "column" ? CELL.w : LABEL.w, h };
   return regionProblems(label, textIn("its label", rect, LABEL.size, LABEL.weight, "left"));
 }
 

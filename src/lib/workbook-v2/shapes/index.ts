@@ -11,6 +11,7 @@ import { divLong } from "./div-long";
 import { placeValue } from "./place-value";
 import { figureBar } from "./figure-bar";
 import type { Shape } from "./shape";
+import { STORY_SHAPE_ID } from "./story";
 
 export type { Item, Shape } from "./shape";
 
@@ -20,6 +21,7 @@ export function shapeLibrary(shapes: readonly Shape[]): ShapeLibrary {
   const library = new Map<string, Shape>();
   for (const shape of shapes) {
     if (library.has(shape.id)) throw new Error(`duplicate shape "${shape.id}"`);
+    if (shape.id === STORY_SHAPE_ID) throw new Error(`the shape id "${STORY_SHAPE_ID}" is the row of word problems, which a library does not hold`);
     if (!Number.isSafeInteger(shape.version) || shape.version < 1) {
       throw new Error(`shape "${shape.id}" must have a whole-number version of 1 or more, not ${shape.version}`);
     }

@@ -130,7 +130,7 @@ describe("the templates of tokens", () => {
     expect([...TEMPLATES.values()].map((t) => [t.id, t.sides.front.places.length, t.sides.back.places.length])).toEqual([
       ["columns-2x4", 8, 8], ["columns-2x4-wide", 8, 8], ["facts-2x10", 20, 20], ["sums-1x10", 10, 10], ["blanks-1x10", 10, 10], ["sequences-2x2", 4, 4], ["sequences-2x1", 2, 2],
       ["remainders-1x10", 10, 10], ["brackets-2x6", 12, 12], ["brackets-2x4", 8, 8], ["brackets-2x3", 6, 6], ["brackets-1x4", 4, 4], ["brackets-1x3", 3, 3],
-      ["places-2x2", 4, 4], ["places-2x3", 6, 6], ["figures-1x4", 4, 4],
+      ["places-2x2", 4, 4], ["places-2x3", 6, 6], ["figures-1x4", 4, 4], ["stories-1x3", 3, 3],
     ]);
     // One row more would reach the QR code: a row is an answer area with its reach.
     const [qr] = regions(facts, "qr");
@@ -398,7 +398,7 @@ describe("the place of the time log", () => {
   const overlap = (a: Rect, b: Rect) => Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) > 0.01 && Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) > 0.01;
 
   it("is on the front of every template, in the band between the questions and the footer, apart from every other rectangle", () => {
-    expect(TEMPLATES.size).toBe(16);
+    expect(TEMPLATES.size).toBe(17);
     for (const template of TEMPLATES.values()) {
       expect(template.sides.back.frame.timeLog).toBeNull();
       const { frame, places } = template.sides.front;
