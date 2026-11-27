@@ -4,7 +4,7 @@
 import { canonicalJson } from "../hash";
 import type { SnapshotRow } from "../bank/snapshot";
 import type { FlowToken } from "../contract";
-import { storyItem, type BoundQuestion, type StoryLimits, type StoryQuestion } from "../shapes/story";
+import { longestAnswer, storyItem, type BoundQuestion, type StoryLimits, type StoryQuestion } from "../shapes/story";
 import type { Item } from "../shapes/shape";
 import { rangesOf, widestValues } from "../themes/ranges";
 import type { StoryBank } from "../themes/types";
@@ -17,23 +17,33 @@ const DIGITS = [..."0123456789"];
 
 /**
  * Each combination that prints something of its own. Two that print the same text, unit and answer (a question with no
- * word of a region, in two regions) are drawn one time, under the name of the first.
+ * word of a region, in two regions) are drawn one time, under the name of the first. When another choice of numbers gives
+ * a longer answer than the widest slot numbers, that choice is checked too.
  */
 export function storyCombos({ limits }: SnapshotRow, bank: StoryBank): StoryCombo[] {
   const combos = new Map<string, StoryCombo>();
+  const add = (label: string, item: Item<StoryQuestion>) => {
+    const key = canonicalJson([item.question.tokens, item.question.unit, item.answer]);
+    if (!combos.has(key)) combos.set(key, { label, item });
+  };
   for (const id of (limits as StoryLimits).ids) {
     const question = bank.questions.get(id);
     if (!question) continue;
     const packs = [...bank.packs.values()].filter((p) => question.regions === null || question.regions.includes(p.id));
+    if (packs.length === 0) continue;
     for (const scenario of bank.scenarios.filter((s) => s.kind === question.scenarioKind)) {
       const found = rangesOf(question, scenario);
       if (!("ranges" in found)) continue;
+      const widest = widestValues(found.ranges);
+      const longest = longestAnswer({ question, scenario, pack: packs[0], ranges: found.ranges });
       for (const pack of packs) {
         const bound: BoundQuestion = { question, scenario, pack, ranges: found.ranges };
         question.phrasings.forEach((phrasing, i) => {
-          const item = storyItem(bound, i, widestValues(found.ranges));
-          const key = canonicalJson([item.question.tokens, item.question.unit, item.answer]);
-          if (!combos.has(key)) combos.set(key, { label: `question "${id}", phrasing "${phrasing.id}", scenario "${scenario.id}", region "${pack.id}"`, item });
+          const label = `question "${id}", phrasing "${phrasing.id}", scenario "${scenario.id}", region "${pack.id}"`;
+          const item = storyItem(bound, i, widest);
+          add(label, item);
+          const wideAnswer = storyItem(bound, i, longest);
+          if (wideAnswer.answer.parts[0].value.length > item.answer.parts[0].value.length) add(label, wideAnswer);
         });
       }
     }

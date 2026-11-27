@@ -315,6 +315,20 @@ describe("a bank of word problems", () => {
     ] });
     expect(renderer.drawn).toEqual({ render: [], images: [], report: [] });
   });
+
+  it("reports the tightest region in capacity when a region-only question reduces another region's pool", async () => {
+    const allSix = ["half-of-them", "muffin-boxes", "ribbon-cut", "muffins-left", "juice-left", "toonie-savings"];
+    const draft = storyLevel(allSix, allSix, (s) => {
+      s.sheets[0].front.rows[0].items = 3;
+      s.sheets[0].back.rows[0].items = 3;
+    });
+    const result = await freezeBank(draft, fakeRenderer(), { seeds: 0 });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.capacity[0]).toMatchObject({ sheet: "story-problems-1", attemptsWithoutRepeat: 0, exact: true });
+    expect(result.capacity[0].rows.map((r) => r.possible)).toEqual([5, 5]);
+    expect(result.capacity[0].warnings.join("\n")).toMatch(/Region "US": Sheet "story-problems-1", rows "one-step", "two-steps": together their limits allow 5 questions for 6 places, so one attempt of the sheet repeats a question across these rows\./);
+  });
 });
 
 describe("a bank with a problem", () => {

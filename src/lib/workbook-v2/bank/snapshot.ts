@@ -5,10 +5,10 @@ import { canonicalJson, sha256 } from "../hash";
 import { fitProblem, questionText, TEMPLATES, type PageTemplate } from "../layout/templates";
 import { SHAPES, type Shape, type ShapeLibrary } from "../shapes";
 import { formsOf, isRecord } from "../shapes/shape";
-import { storyShape } from "../shapes/story";
+import { STORY_SHAPE_ID, storyShape, type StoryLimits } from "../shapes/story";
 import { readStoryBank, STORY_FIELDS } from "../themes/bank";
-import { isStoryRow, readStoryRow } from "../themes/bind";
-import type { StoryBank } from "../themes/types";
+import { bindStory, isStoryRow, readStoryRow, storyForms } from "../themes/bind";
+import { DEFAULT_INTEREST, type StoryBank } from "../themes/types";
 import { FieldReader, isId, type Fields } from "./fields";
 import { plainCopy } from "./plain";
 
@@ -72,24 +72,34 @@ function readRow(r: FieldReader, place: string, raw: unknown, index: number, { s
   return { id, shape, limits: limits.limits, items };
 }
 
-/** A row may not have an easier end than the row of the same shape above it. */
-function checkRowsRise(r: FieldReader, place: string, rows: readonly SnapshotRow[]): void {
+/** A row may not have an easier end than the row of the same shape above it (for story rows, in every region pack). */
+function checkRowsRise(r: FieldReader, place: string, rows: readonly SnapshotRow[], stories: StoryBank | null | undefined): void {
   rows.forEach((row, i) => {
     const above = rows[i - 1];
     if (!above || above.shape !== row.shape) return;
     const at = `${place}, row "${row.id}"`;
+    if (row.shape.id === STORY_SHAPE_ID && stories) {
+      for (const region of stories.packs.keys()) {
+        const [now, before] = [row, above].map(({ shape, limits }) => ofShape(at, () => shape.difficultyRange(bindStory((limits as StoryLimits).ids, stories, { interest: DEFAULT_INTEREST, region }))));
+        if (now.easiest < before.easiest || now.hardest < before.hardest) {
+          r.problem(at, "this row is easier than the row above it");
+          return;
+        }
+      }
+      return;
+    }
     const [now, before] = [row, above].map(({ shape, limits }) => ofShape(at, () => shape.difficultyRange(limits)));
     if (now.easiest < before.easiest || now.hardest < before.hardest) r.problem(at, "this row is easier than the row above it");
   });
 }
 
-function checkFit(r: FieldReader, place: string, side: Side, template: PageTemplate, rows: readonly SnapshotRow[]): void {
+function checkFit(r: FieldReader, place: string, side: Side, template: PageTemplate, rows: readonly SnapshotRow[], stories: StoryBank | null | undefined): void {
   const asked = rows.reduce((sum, row) => sum + row.items, 0);
   const places = template.sides[side].places.length;
   if (asked > places) r.problem(place, `${asked} questions do not fit the template "${template.id}", which has ${places} places`);
   for (const row of rows) {
     const at = `${place}, row "${row.id}"`;
-    const forms = ofShape(at, () => formsOf(row.shape, row.limits));
+    const forms = ofShape(at, () => (row.shape.id === STORY_SHAPE_ID && stories ? storyForms((row.limits as StoryLimits).ids, stories) : formsOf(row.shape, row.limits)));
     if (forms.length === 0) r.problem(at, "the shape gives no form of its questions, so their size is not known");
     for (const { question, answer } of forms) {
       const face = ofShape(at, () => row.shape.face(question));
@@ -102,7 +112,7 @@ function checkFit(r: FieldReader, place: string, side: Side, template: PageTempl
 }
 
 function readSide(r: FieldReader, sheet: string, side: Side, raw: unknown, libraries: Libraries): SnapshotSide | null {
-  const { templates } = libraries;
+  const { templates, stories } = libraries;
   const place = `${sheet}, ${side} side`;
   const fields = r.object(place, raw, ["instruction", "template", "rows"]);
   if (!fields) return null;
@@ -110,8 +120,8 @@ function readSide(r: FieldReader, sheet: string, side: Side, raw: unknown, libra
   const template = typeof fields.template === "string" ? templates.get(fields.template) : undefined;
   if (!template) r.problem(place, `there is no template ${JSON.stringify(fields.template)}`);
   const rows = r.list(place, fields, "rows").map((row, i) => readRow(r, place, row, i, libraries)).filter((row) => row !== null);
-  checkRowsRise(r, place, rows);
-  if (template) checkFit(r, place, side, template, rows);
+  checkRowsRise(r, place, rows, stories);
+  if (template) checkFit(r, place, side, template, rows, stories);
   return instruction !== null && template ? { instruction, template, rows } : null;
 }
 

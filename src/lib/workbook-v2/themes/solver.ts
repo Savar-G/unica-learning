@@ -31,8 +31,9 @@ function readNode(raw: unknown, slots: readonly string[], inProduct: boolean, co
   }
   if (exactKeys(raw, ["fraction"])) {
     const { fraction } = raw;
-    const key = Array.isArray(fraction) && fraction.length === 2 ? fraction.join("/") : String(fraction);
-    if (!Object.hasOwn(FRACTIONS, key)) return `the fraction ${key} cannot be printed: use ${Object.keys(FRACTIONS).join(", ").replace(/, (?=[^,]*$)/, " or ")}`;
+    const good = Array.isArray(fraction) && fraction.length === 2 && fraction.every((n) => typeof n === "number" && Number.isSafeInteger(n));
+    const key = good ? fraction.join("/") : String(fraction);
+    if (!good || !Object.hasOwn(FRACTIONS, key)) return `the fraction ${key} cannot be printed: use ${Object.keys(FRACTIONS).join(", ").replace(/, (?=[^,]*$)/, " or ")}`;
     const [n, d] = fraction as [number, number];
     return inProduct ? { fraction: [n, d] } : "a fraction may only be multiplied";
   }
@@ -77,11 +78,24 @@ function work(expr: Expr, values: Readonly<Record<string, number>>, lines: strin
     "÷": [left.n * right.d, left.d * right.n],
   }[expr.op];
   if (d === 0) return `${step} divides by zero`;
+  if (!Number.isSafeInteger(n) || !Number.isSafeInteger(d)) return `${step} is too large`;
   if (n % d !== 0) return `${step} is not a whole number`;
   const value = n / d;
   if (value < 0) return `${step} is less than zero`;
+  if (!Number.isSafeInteger(value)) return `${step} is too large`;
   lines.push(`${step} = ${value}`);
   return { n: value, d: 1, text: String(value) };
+}
+
+/** The printable fractions that a formula uses, in order. */
+export function exprFractions(expr: Expr): string[] {
+  if ("fraction" in expr) return [FRACTIONS[expr.fraction.join("/")] ?? "?"];
+  return "op" in expr ? [...exprFractions(expr.left), ...exprFractions(expr.right)] : [];
+}
+
+/** Whether a formula reads at least one slot of its question. */
+export function exprHasSlot(expr: Expr): boolean {
+  return "slot" in expr || ("op" in expr && (exprHasSlot(expr.left) || exprHasSlot(expr.right)));
 }
 
 /** The answer of a formula for these numbers, with one line for each operation, or why a child could not work it. */

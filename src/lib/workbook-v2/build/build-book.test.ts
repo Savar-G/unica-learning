@@ -382,8 +382,15 @@ describe("a book of word problems", () => {
     }
   });
 
-  it("stops a region or a scenario for a snapshot with no word problems", () => {
+  it("stops a region or a scenario for a snapshot with no word problems, and refuses null region or scenario", () => {
     expect(planBook(input((i) => { put(i.book, "region", "CA"); }))).toEqual({ ok: false, problems: ["The book: the snapshot has no word problems, so the book has no region or scenario."] });
+    expect(planBook(storyBook((b) => { put(b, "region", null); put(b, "scenario", null); }))).toEqual({
+      ok: false,
+      problems: [
+        "The book: the snapshot has no region pack null.",
+        "The book: the snapshot has no scenario of the interest null.",
+      ],
+    });
   });
 
   it("prints the half as one piece of math, and the answer is the half with its unit and worked steps", () => {

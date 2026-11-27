@@ -8,6 +8,9 @@ import { canonicalJson, seedFrom } from "../hash";
 import type { Renderer } from "../renderer";
 import { SHAPES } from "../shapes";
 import { isRecord, questionKey } from "../shapes/shape";
+import { STORY_SHAPE_ID } from "../shapes/story";
+import { bindSheet } from "../themes/sheets";
+import { DEFAULT_INTEREST, type StoryBank } from "../themes/types";
 import { TEMPLATES } from "../layout/templates";
 import { checkBank, type BankOptions, type BankReport } from "./check-bank";
 
@@ -303,33 +306,71 @@ function shapeSharedCapacity(sheet: SnapshotSheet, entries: readonly RowEntry[])
   return { attempts, conflicts, exact };
 }
 
-/** How many attempts each sheet allows before a row or shared group repeats a question, with warnings under two. */
-export function capacityOf(sheets: ReadonlyMap<string, SnapshotSheet>): SheetCapacity[] {
-  return [...sheets.values()].map((sheet) => {
-    const entries: RowEntry[] = SIDES.flatMap((side) =>
-      sheet[side].rows.map((row) => ({ side, row, capacity: rowCapacity(sheet, side, row), limitKey: canonicalJson(row.limits) })),
-    );
-    const byShape = new Map<string, RowEntry[]>();
-    for (const entry of entries) {
-      const list = byShape.get(entry.row.shape.id) ?? [];
-      list.push(entry);
-      byShape.set(entry.row.shape.id, list);
+function sheetCapacity(sheet: SnapshotSheet): SheetCapacity {
+  const entries: RowEntry[] = SIDES.flatMap((side) =>
+    sheet[side].rows.map((row) => ({ side, row, capacity: rowCapacity(sheet, side, row), limitKey: canonicalJson(row.limits) })),
+  );
+  const byShape = new Map<string, RowEntry[]>();
+  for (const entry of entries) {
+    const list = byShape.get(entry.row.shape.id) ?? [];
+    list.push(entry);
+    byShape.set(entry.row.shape.id, list);
+  }
+  const rows = entries.map((e) => e.capacity);
+  const warnings = rows.flatMap((r) => r.warnings);
+  let attemptsWithoutRepeat = Math.min(...rows.map((r) => r.attemptsWithoutRepeat));
+  let exact = true;
+  for (const group of byShape.values()) {
+    const shared = shapeSharedCapacity(sheet, group);
+    if (!shared.exact) exact = false;
+    if (shared.attempts < attemptsWithoutRepeat) attemptsWithoutRepeat = shared.attempts;
+    for (const conflict of shared.conflicts) {
+      const names = conflict.rows.map((r) => `"${r.id}"`).join(", ");
+      const { possible, items, attempts } = conflict;
+      warnings.push(`Sheet "${sheet.id}", rows ${names}: together their limits allow ${possible} ${possible === 1 ? "question" : "questions"} for ${items} ${items === 1 ? "place" : "places"}, so ${attempts === 0 ? "one attempt of the sheet repeats a question" : "the next attempt of the sheet repeats questions"} across these rows.`);
     }
-    const rows = entries.map((e) => e.capacity);
-    const warnings = rows.flatMap((r) => r.warnings);
-    let attemptsWithoutRepeat = Math.min(...rows.map((r) => r.attemptsWithoutRepeat));
-    let exact = true;
-    for (const group of byShape.values()) {
-      const shared = shapeSharedCapacity(sheet, group);
-      if (!shared.exact) exact = false;
-      if (shared.attempts < attemptsWithoutRepeat) attemptsWithoutRepeat = shared.attempts;
-      for (const conflict of shared.conflicts) {
-        const names = conflict.rows.map((r) => `"${r.id}"`).join(", ");
-        const { possible, items, attempts } = conflict;
-        warnings.push(`Sheet "${sheet.id}", rows ${names}: together their limits allow ${possible} ${possible === 1 ? "question" : "questions"} for ${items} ${items === 1 ? "place" : "places"}, so ${attempts === 0 ? "one attempt of the sheet repeats a question" : "the next attempt of the sheet repeats questions"} across these rows.`);
+  }
+  return { sheet: sheet.id, attemptsWithoutRepeat, exact, rows, warnings };
+}
+
+/** Merges per-region capacities of a sheet with word problems, taking the tightest region and tagging region-only warnings. */
+function mergeRegionCapacities(perRegion: readonly [string, SheetCapacity][]): SheetCapacity {
+  const shared = (list: readonly string[][], warning: string) => list.every((one) => one.includes(warning));
+  const mergeWarnings = (list: readonly [string, readonly string[]][]): string[] => {
+    const all = list.map(([, w]) => [...w]);
+    const out: string[] = [];
+    for (const [region, warnings] of list) {
+      for (const warning of warnings) {
+        const line = shared(all, warning) ? warning : `Region "${region}": ${warning}`;
+        if (!out.includes(line)) out.push(line);
       }
     }
-    return { sheet: sheet.id, attemptsWithoutRepeat, exact, rows, warnings };
+    return out;
+  };
+  const [, first] = perRegion[0];
+  const rows: RowCapacity[] = first.rows.map((row, i) => ({
+    row: row.row,
+    side: row.side,
+    items: row.items,
+    possible: Math.min(...perRegion.map(([, c]) => c.rows[i].possible)),
+    attemptsWithoutRepeat: Math.min(...perRegion.map(([, c]) => c.rows[i].attemptsWithoutRepeat)),
+    warnings: mergeWarnings(perRegion.map(([region, c]) => [region, c.rows[i].warnings])),
+  }));
+  return {
+    sheet: first.sheet,
+    attemptsWithoutRepeat: Math.min(...perRegion.map(([, c]) => c.attemptsWithoutRepeat)),
+    exact: perRegion.every(([, c]) => c.exact),
+    rows,
+    warnings: mergeWarnings(perRegion.map(([region, c]) => [region, c.warnings])),
+  };
+}
+
+/** How many attempts each sheet allows before a row or shared group repeats a question, with warnings under two. */
+export function capacityOf(sheets: ReadonlyMap<string, SnapshotSheet>, stories: StoryBank | null = null): SheetCapacity[] {
+  return [...sheets.values()].map((sheet) => {
+    const hasStory = SIDES.some((side) => sheet[side].rows.some((row) => row.shape.id === STORY_SHAPE_ID));
+    if (!hasStory || !stories || stories.packs.size < 2) return sheetCapacity(sheet);
+    return mergeRegionCapacities([...stories.packs.keys()].map((region) => [region, sheetCapacity(bindSheet(sheet, stories, { interest: DEFAULT_INTEREST, region }))]));
   });
 }
 
@@ -350,5 +391,5 @@ export async function freezeBank(draft: unknown, renderer: Renderer, options: Fr
   if (problems.length > 0) return { ok: false, problems };
   const report = await checkBank(content, renderer, options);
   if (report.problems.length > 0) return { ok: false, problems: report.problems };
-  return { ok: true, snapshot: content, hash: bank.hash, capacity: capacityOf(sheets), checked: report.checked };
+  return { ok: true, snapshot: content, hash: bank.hash, capacity: capacityOf(sheets, bank.snapshot.stories), checked: report.checked };
 }

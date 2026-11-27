@@ -371,6 +371,10 @@ describe("a word problem", () => {
     ["an answer that the formula does not give", 5, ({ answer: { parts }, steps }) => { parts[0].value = String(Number(parts[0].value) + 1); steps[steps.length - 1].text = `${parts[0].value} ${parts[0].unit}`; }, /the answer is "\d+ muffins" by one computation and "\d+" by another/],
     ["a formula in the item that is not the one that was worked", 6, (item) => { story(item).solver = { op: "+", left: { slot: "count" }, right: { number: 1 } }; }, /the answer is "\d+ dollars" by one computation and "\d+" by another/],
     ["worked steps that end with another answer", 5, ({ steps }) => { steps[steps.length - 1].text = "8 boxes"; }, /the answer is "\d+ muffins" by one computation and "8 boxes" by the worked steps/],
+    ["a wrong first worked step", 6, ({ steps }) => { steps[0].text = "2 + 2 = 5"; }, /the worked steps are \["2 \+ 2 = 5".*\] and another computation gives/],
+    ["a first worked step that draws", 6, ({ steps }) => { steps[0].marks = [{ mark: "write", place: 0, digit: "1" }]; }, /a worked step of a word problem must draw nothing/],
+    ["a fraction in the text that disagrees with the formula", 5, (_item, ink) => { flowOf(ink).tokens.push({ kind: "math", pieces: ["¼"] }); }, /the text prints the fractions ¼ and the formula has none/],
+    ["a fraction printed as a word token", 5, (_item, ink) => { flowOf(ink).tokens.push({ kind: "word", pieces: ["½"] }); }, /the text prints a fraction as a word instead of math/],
     ["a last step that draws", 5, ({ steps }) => { steps[steps.length - 1].marks = [{ mark: "write", place: 0, digit: "1" }]; }, /the last worked step is the answer and must draw nothing/],
     ["an answer with no unit", 5, ({ answer: { parts } }) => { Reflect.deleteProperty(parts[0], "unit"); }, /the answer the part "answer" of the kind "quantity" has no unit/],
   ])("%s stops the book", (_name, number, change, problem) => expect(after(number, change)).toMatch(problem));

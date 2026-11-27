@@ -35,12 +35,12 @@ function readSheet(r: FieldReader, raw: unknown, index: number, snapshot: Snapsh
  * says none. An unknown one stops the book, and so does one for a snapshot with no word problems.
  */
 function readStoryChoice(r: FieldReader, fields: Record<string, unknown>, { stories }: Snapshot): StoryChoice | null {
-  const [region, interest] = ["region", "scenario"].map((name) => (Object.hasOwn(fields, name) ? fields[name] : undefined));
+  const [hasRegion, hasScenario] = [Object.hasOwn(fields, "region"), Object.hasOwn(fields, "scenario")];
   if (!stories) {
-    if (region !== undefined || interest !== undefined) r.problem("The book", "the snapshot has no word problems, so the book has no region or scenario");
+    if (hasRegion || hasScenario) r.problem("The book", "the snapshot has no word problems, so the book has no region or scenario");
     return null;
   }
-  const choice = { region: region ?? stories.defaultRegion, interest: interest ?? DEFAULT_INTEREST };
+  const choice = { region: hasRegion ? fields.region : stories.defaultRegion, interest: hasScenario ? fields.scenario : DEFAULT_INTEREST };
   if (typeof choice.region !== "string" || !stories.packs.has(choice.region)) r.problem("The book", `the snapshot has no region pack ${JSON.stringify(choice.region)}`);
   if (typeof choice.interest !== "string" || !interestsOf(stories).includes(choice.interest)) r.problem("The book", `the snapshot has no scenario of the interest ${JSON.stringify(choice.interest)}`);
   return typeof choice.region === "string" && typeof choice.interest === "string" ? { region: choice.region, interest: choice.interest } : null;

@@ -5,7 +5,7 @@ import { FieldReader, isId } from "../bank/fields";
 import { isRecord } from "../shapes/shape";
 import { isPlural, isRegionWord, isScenarioWord, isSingular, PLACEHOLDER } from "./fill";
 import { choiceCount, eachChoice } from "./ranges";
-import { readExpr, solve } from "./solver";
+import { exprFractions, exprHasSlot, readExpr, solve } from "./solver";
 import type { DefinedQuestion, Phrasing, PhrasingToken, SlotRange } from "./types";
 
 /** A defined question has at least this many approved phrasings, so that a child meets it in other words. */
@@ -42,26 +42,33 @@ function readToken(r: FieldReader, at: string, raw: unknown): PhrasingToken | nu
 /** The placeholders of a token in order, and its text outside them. */
 const partsOf = (text: string) => ({ names: [...text.matchAll(PLACEHOLDER)].map((m) => m[1]), outside: text.replace(PLACEHOLDER, "") });
 
-/** What is wrong with the placeholders of a phrasing: each slot one time, only known names, and no digit of its own. */
-function phrasingProblems(tokens: readonly PhrasingToken[], slots: Readonly<Record<string, SlotRange>>): string[] {
+/** What is wrong with the placeholders of a phrasing: each slot one time, only known names, matching fractions, and no digit of its own. */
+function phrasingProblems(tokens: readonly PhrasingToken[], slots: Readonly<Record<string, SlotRange>>, formulaFractions: readonly string[] | null): string[] {
   const problems: string[] = [];
   const seen = new Map<string, number>();
-  tokens.forEach(({ text }, i) => {
+  for (const { kind, text } of tokens) {
     const { names, outside } = partsOf(text);
     if (/\d/.test(outside)) problems.push(`the token "${text}" has a digit, and only a slot prints a number`);
+    if (kind === "word" && /[½¼¾]/.test(outside)) problems.push(`the word "${text}" has a fraction: a fraction must be a math token`);
     if (/[[\]]/.test(outside)) problems.push(`the token "${text}" has a bracket that is not a placeholder`);
     for (const name of names) {
       if (Object.hasOwn(slots, name)) seen.set(name, (seen.get(name) ?? 0) + 1);
       else if (!isScenarioWord(name) && !isRegionWord(name)) problems.push(`the placeholder [${name}] is not known`);
     }
-    // A number and the word after it: "1 boxes" and "4 box" cannot print.
-    const next = tokens[i + 1] ? partsOf(tokens[i + 1].text).names[0] : undefined;
-    const slot = names.length === 1 && text === `[${names[0]}]` && Object.hasOwn(slots, names[0]) ? slots[names[0]] : null;
-    if (slot && next !== undefined && tokens[i + 1].text.startsWith(`[${next}]`)) {
-      if (isPlural(next) && slot.min <= 1 && slot.max >= 1 && slot.multipleOf === 1) problems.push(`the slot "${names[0]}" can be 1 and the word after it is plural, [${next}]`);
-      if (isSingular(next) && (slot.min !== 1 || slot.max !== 1)) problems.push(`the slot "${names[0]}" can be more than 1 and the word after it is singular, [${next}]`);
-    }
-  });
+  }
+  // A number and the word after it, whether across two tokens or inside one math token: "1 boxes" and "4 box" cannot print.
+  const joined = tokens.map((t) => t.text).join(" ");
+  for (const [, first, next] of joined.matchAll(/\[([^[\]]+)\]\s+(?=\[([^[\]]+)\])/g)) {
+    if (!Object.hasOwn(slots, first)) continue;
+    const slot = slots[first];
+    if (isPlural(next) && slot.min <= 1 && slot.max >= 1 && slot.multipleOf === 1) problems.push(`the slot "${first}" can be 1 and the word after it is plural, [${next}]`);
+    if (isSingular(next) && (slot.min !== 1 || slot.max !== 1)) problems.push(`the slot "${first}" can be more than 1 and the word after it is singular, [${next}]`);
+  }
+  if (formulaFractions !== null) {
+    const printed = tokens.flatMap((t) => t.text.match(/[½¼¾]/g) ?? []).sort();
+    const wanted = [...formulaFractions].sort();
+    if (printed.join(", ") !== wanted.join(", ")) problems.push(`the phrasing prints the fractions ${printed.join(", ") || "none"} and the formula has ${wanted.join(", ") || "none"}`);
+  }
   for (const name of Object.keys(slots)) {
     const count = seen.get(name) ?? 0;
     if (count !== 1) problems.push(`the slot "${name}" must be printed one time and it is printed ${count} times`);
@@ -69,7 +76,7 @@ function phrasingProblems(tokens: readonly PhrasingToken[], slots: Readonly<Reco
   return problems;
 }
 
-function readPhrasing(r: FieldReader, place: string, raw: unknown, index: number, slots: Readonly<Record<string, SlotRange>>): Phrasing | null {
+function readPhrasing(r: FieldReader, place: string, raw: unknown, index: number, slots: Readonly<Record<string, SlotRange>>, formulaFractions: readonly string[] | null): Phrasing | null {
   const at = isRecord(raw) && isId(raw.id) ? `${place}, phrasing "${raw.id}"` : `${place}, phrasing ${index + 1}`;
   const fields = r.object(at, raw, ["id", "tokens"]);
   if (!fields) return null;
@@ -77,7 +84,7 @@ function readPhrasing(r: FieldReader, place: string, raw: unknown, index: number
   const list = r.list(at, fields, "tokens").map((token, i) => readToken(r, `${at}, token ${i + 1}`, token));
   const tokens = list.filter((t) => t !== null);
   if (tokens.length !== list.length || id === null) return null;
-  const problems = phrasingProblems(tokens, slots);
+  const problems = phrasingProblems(tokens, slots, formulaFractions);
   for (const problem of problems) r.problem(at, problem);
   return problems.length === 0 && tokens.length > 0 ? { id, tokens } : null;
 }
@@ -105,8 +112,9 @@ export function readQuestion(r: FieldReader, raw: unknown, index: number): Defin
   const before = r.problems.length;
   const id = r.id(place, fields);
   if (!isId(fields.scenarioKind)) r.problem(place, "scenarioKind must use only small letters, digits and dashes");
-  const regions = Object.hasOwn(fields, "regions") ? fields.regions : null;
-  if (regions !== null && (!Array.isArray(regions) || regions.length === 0 || regions.some((g) => typeof g !== "string") || new Set(regions).size !== regions.length)) r.problem(place, "regions must be a list of different region pack ids");
+  const hasRegions = Object.hasOwn(fields, "regions");
+  const regions = hasRegions ? fields.regions : null;
+  if (hasRegions && (!Array.isArray(regions) || regions.length === 0 || regions.some((g) => typeof g !== "string") || new Set(regions).size !== regions.length)) r.problem(place, "regions must be a list of different region pack ids");
   const slotFields = isRecord(fields.slots) ? fields.slots : null;
   if (!slotFields || Object.keys(slotFields).length === 0) r.problem(place, "slots must be an object with 1 slot or more");
   const slots: Record<string, SlotRange> = {};
@@ -120,9 +128,11 @@ export function readQuestion(r: FieldReader, raw: unknown, index: number): Defin
   if (typeof difficulty !== "number" || !Number.isSafeInteger(difficulty) || difficulty < 1) r.problem(place, "difficulty must be a whole number, 1 or more");
   const solver = readExpr(fields.solver, Object.keys(slots));
   if (!solver.ok) r.problem(`${place}, solver`, solver.problem);
+  else if (!exprHasSlot(solver.expr)) r.problem(`${place}, solver`, "the formula must use a slot of the question");
+  const formulaFractions = solver.ok ? exprFractions(solver.expr) : null;
   const list = r.list(place, fields, "phrasings");
   if (list.length > 0 && list.length < MIN_PHRASINGS) r.problem(place, `a question needs at least ${MIN_PHRASINGS} phrasings, and it has ${list.length}`);
-  const phrasings = list.map((p, i) => readPhrasing(r, place, p, i, slots)).filter((p) => p !== null);
+  const phrasings = list.map((p, i) => readPhrasing(r, place, p, i, slots, formulaFractions)).filter((p) => p !== null);
   r.unique("phrasing id", phrasings.map((p) => p.id), place);
   if (r.problems.length > before || id === null || !solver.ok || typeof unit !== "string" || typeof difficulty !== "number") return null;
   const question: DefinedQuestion = { id, scenarioKind: fields.scenarioKind as string, regions: regions as string[] | null, slots, unit, solver: solver.expr, difficulty, phrasings };

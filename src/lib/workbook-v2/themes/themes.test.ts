@@ -27,6 +27,7 @@ describe("the solver of a defined question", () => {
     ["a division by zero", op("÷", slot("a"), slot("b")), { a: 7, b: 0 }, /7 ÷ 0 divides by zero/],
     ["a negative result", op("-", slot("a"), slot("b")), { a: 3, b: 5 }, /3 - 5 is less than zero/],
     ["a negative step inside", op("+", op("-", slot("a"), slot("b")), { number: 9 }), { a: 3, b: 5 }, /3 - 5 is less than zero/],
+    ["a result that is too large to stay exact", op("×", op("×", op("×", op("×", slot("a"), slot("a")), slot("a")), slot("a")), slot("a")), { a: 9999 }, /is too large/],
   ])("refuses %s", (_name, expr, values, problem) => {
     const result = solve(expr, values);
     expect(result.ok).toBe(false);
@@ -45,6 +46,7 @@ describe("the solver of a defined question", () => {
     ["an unknown slot", { slot: "boxes" }, /the slot "boxes" is not a slot of the question/],
     ["an unknown operation", { op: "^", left: { number: 2 }, right: { number: 3 } }, /"\^" is no operation: use \+, -, × or ÷/],
     ["a fraction that the fonts cannot print", { op: "×", left: { fraction: [1, 3] }, right: { slot: "a" } }, /the fraction 1\/3 cannot be printed: use 1\/2, 1\/4 or 3\/4/],
+    ["a fraction of strings", { op: "×", left: { fraction: ["1", "2"] }, right: { slot: "a" } }, /cannot be printed/],
     ["a fraction outside a multiplication", { op: "+", left: { fraction: [1, 2] }, right: { slot: "a" } }, /a fraction may only be multiplied/],
     ["a fraction alone", { fraction: [1, 2] }, /a fraction may only be multiplied/],
     ["a number that is not whole", { op: "+", left: { number: 2.5 }, right: { slot: "a" } }, /a number must be a whole number from 0 to 1000/],

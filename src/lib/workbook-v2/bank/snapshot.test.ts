@@ -293,6 +293,30 @@ describe("the word problems of a snapshot", () => {
     ["an answer that can be 1, beside a plural unit", (s) => { question(s, "ribbon-cut").slots.cut = { min: 5, max: 24 }; }, /^Question "ribbon-cut", solver: with cut 24, length 25 the answer is 1, and the unit beside the answer area is plural\.$/m],
     ["too many choices of numbers to check", (s) => { question(s, "muffin-boxes").slots = { groups: { min: 2, max: 999 }, each: { min: 2, max: 999 } }; }, /^Question "muffin-boxes", solver: the slots allow 996004 choices of numbers and the most is 10000\.$/m],
     ["a number that can be 1 before a plural word", (s) => { question(s, "muffins-left").slots.taken = { min: 1, max: 4 }; }, /phrasing "given": the slot "taken" can be 1 and the word after it is plural, \[things\]/],
+    ["a number that can be 1 before a plural word inside one math token", (s) => {
+      const q = question(s, "muffin-boxes");
+      q.slots.each = { min: 1, max: 4 };
+      const at = q.phrasings[0].tokens.findIndex((t) => "word" in t && t.word === "[each]");
+      q.phrasings[0].tokens.splice(at, 2, { math: "[each] [things]" });
+    }, /phrasing "packs": the slot "each" can be 1 and the word after it is plural, \[things\]/],
+    ["a fraction that disagrees with the formula", (s) => {
+      const token = question(s, "half-of-them").phrasings[0].tokens.find((t) => "math" in t);
+      if (token && "math" in token) token.math = "¼";
+    }, /phrasing "takes": the phrasing prints the fractions ¼ and the formula has ½/],
+    ["a fraction printed as a word token", (s) => {
+      const tokens = question(s, "half-of-them").phrasings[0].tokens;
+      const at = tokens.findIndex((t) => "math" in t);
+      tokens[at] = { word: "½" };
+    }, /phrasing "takes": the word "½" has a fraction: a fraction must be a math token/],
+    ["a formula that uses no slot", (s) => { Object.assign(question(s, "half-of-them"), { solver: { number: 2 } }); }, /^Question "half-of-them", solver: the formula must use a slot of the question\.$/m],
+    ["an explicit null regions list", (s) => { Object.assign(question(s, "half-of-them"), { regions: null }); }, /^Question "half-of-them": regions must be a list of different region pack ids\.$/m],
+    ["a scenario word with a fraction", (s) => { s.scenarios[0].place = "bakery ½"; }, /^Scenario "bakery-boxes": place has a fraction, and only a math token of a phrasing prints a fraction\.$/m],
+    ["a longer answer in a non-default scenario that exceeds the template", (s) => {
+      const q = question(s, "muffins-left");
+      Object.assign(q, { slots: { groups: { min: 99, max: 100 }, each: { min: 99, max: 100 }, taken: { min: 0, max: 2, multipleOf: 2 } } });
+      s.scenarios.find((x) => x.id === "bakery-boxes")!.quantityLimits = { groups: { min: 2, max: 100 }, each: { min: 2, max: 100 }, taken: { min: 2, max: 2 } };
+      s.scenarios.find((x) => x.id === "station-crates")!.quantityLimits = { groups: { min: 2, max: 100 }, each: { min: 2, max: 100 }, taken: { min: 0, max: 2 } };
+    }, /needs 5 characters in an answer and the template "stories-1x3" has 4/],
     // T1: the scenarios.
     ["no default scenario of a kind that a question uses", (s) => { s.scenarios[0].interest = "farm"; }, /^Question "muffin-boxes": no scenario of the kind "groups" has the interest "default"\.$/m],
     ["two scenarios of one interest and kind", (s) => { s.scenarios[1].interest = "default"; }, /^The pair of interest and kind of a scenario "default, groups" is used more than once\.$/m],

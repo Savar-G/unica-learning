@@ -21,6 +21,7 @@ function storyTextProblem(value: unknown): string | null {
   if (typeof value !== "string" || value === "" || value.trim() !== value || value.includes("  ")) return "must be text with one space between words and none at its ends";
   if (!isPrintable(value)) return "has a character that the fonts cannot print";
   if (/\d/.test(value)) return "has a digit, and only a slot prints a number";
+  if (/[½¼¾]/.test(value)) return "has a fraction, and only a math token of a phrasing prints a fraction";
   if (/[[\]]/.test(value)) return "has a bracket";
   return value.length > MAX_WORDS ? `has ${value.length} characters and the limit is ${MAX_WORDS}` : null;
 }

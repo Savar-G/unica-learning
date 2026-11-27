@@ -61,7 +61,7 @@ export function storyItem({ question, scenario, pack }: BoundQuestion, phrasingI
 }
 
 /** The question with the longest answer, so that the answer area is measured with it. */
-function longestAnswer(bound: BoundQuestion): Record<string, number> {
+export function longestAnswer(bound: BoundQuestion): Record<string, number> {
   let best = widestValues(bound.ranges);
   let length = 0;
   eachChoice(bound.ranges, (values) => {

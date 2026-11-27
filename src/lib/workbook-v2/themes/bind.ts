@@ -2,8 +2,9 @@
 // question of other regions is left out of the row; a row with too few questions for a region is a problem of the
 // snapshot, so every sheet can be made for every region pack.
 import type { FieldReader, Fields } from "../bank/fields";
-import { STORY_SHAPE_ID, type BoundQuestion, type StoryLimits } from "../shapes/story";
-import { rangesOf } from "./ranges";
+import { longestAnswer, STORY_SHAPE_ID, storyItem, type BoundQuestion, type StoryLimits, type StoryQuestion } from "../shapes/story";
+import type { Item } from "../shapes/shape";
+import { rangesOf, widestValues } from "./ranges";
 import { DEFAULT_INTEREST, type Scenario, type StoryBank, type StoryChoice } from "./types";
 
 export const isStoryRow = (fields: Fields): boolean => fields.shape === STORY_SHAPE_ID;
@@ -29,6 +30,27 @@ export function bindStory(ids: readonly string[], bank: StoryBank, { interest, r
 
 /** The interests that some scenario has. */
 export const interestsOf = (bank: StoryBank): string[] => [...new Set(bank.scenarios.map((s) => s.interest))];
+
+/**
+ * The widest forms of a story row across every region pack and compatible scenario: widest slot values and longest answer
+ * for each (question, scenario) pair, so a region-specific question or another scenario's longer answer cannot pass fit.
+ */
+export function storyForms(ids: readonly string[], bank: StoryBank): Item<StoryQuestion>[] {
+  const forms: Item<StoryQuestion>[] = [];
+  for (const id of ids) {
+    const question = bank.questions.get(id);
+    if (!question) continue;
+    const pack = [...bank.packs.values()].find((p) => question.regions === null || question.regions.includes(p.id));
+    if (!pack) continue;
+    for (const scenario of bank.scenarios.filter((s) => s.kind === question.scenarioKind)) {
+      const found = rangesOf(question, scenario);
+      if (!("ranges" in found)) continue;
+      const bound: BoundQuestion = { question, scenario, pack, ranges: found.ranges };
+      forms.push(storyItem(bound, 0, widestValues(found.ranges)), storyItem(bound, 0, longestAnswer(bound)));
+    }
+  }
+  return forms;
+}
 
 /**
  * The limits of a story row: the ids of its questions, all known and different. They are bound to the default theme and
