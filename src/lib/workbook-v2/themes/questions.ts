@@ -58,7 +58,7 @@ function phrasingProblems(tokens: readonly PhrasingToken[], slots: Readonly<Reco
     const next = tokens[i + 1] ? partsOf(tokens[i + 1].text).names[0] : undefined;
     const slot = names.length === 1 && text === `[${names[0]}]` && Object.hasOwn(slots, names[0]) ? slots[names[0]] : null;
     if (slot && next !== undefined && tokens[i + 1].text.startsWith(`[${next}]`)) {
-      if (isPlural(next) && slot.min <= 1) problems.push(`the slot "${names[0]}" can be ${slot.min} and the word after it is plural, [${next}]`);
+      if (isPlural(next) && slot.min <= 1 && slot.max >= 1 && slot.multipleOf === 1) problems.push(`the slot "${names[0]}" can be 1 and the word after it is plural, [${next}]`);
       if (isSingular(next) && (slot.min !== 1 || slot.max !== 1)) problems.push(`the slot "${names[0]}" can be more than 1 and the word after it is singular, [${next}]`);
     }
   });

@@ -46,8 +46,8 @@ function stepProblem({ ink: { rect, leading } }: PlacedFlow, before: PlacedPiece
   return near(start.x, rect.x) ? null : "starts a line that is not at the left";
 }
 
-/** What is wrong with the pieces of a flow, each with its token. */
-export function flowProblems(placed: PlacedFlow): string[] {
+/** What is wrong with the pieces of a flow, each with its token. `named` is false for a flow that is measured away from its page. */
+export function flowProblems(placed: PlacedFlow, named = true): string[] {
   const { ink, pieces } = placed;
   const { rect } = ink;
   return pieces.flatMap((piece, i) => {
@@ -61,7 +61,8 @@ export function flowProblems(placed: PlacedFlow): string[] {
       atMost(rect.x, start.x) && atMost(end.x, right(rect)) ? null : "is not inside its place",
       stepProblem(placed, pieces[i - 1] ?? null, piece),
     ];
-    return problems.flatMap((problem) => (problem === null ? [] : [`the token "${tokenText(token)}" of ${regionName(placed.region)} ${problem}`]));
+    const where = named ? ` of ${regionName(placed.region)}` : "";
+    return problems.flatMap((problem) => (problem === null ? [] : [`the token "${tokenText(token)}"${where} ${problem}`]));
   });
 }
 

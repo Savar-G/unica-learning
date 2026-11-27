@@ -340,3 +340,38 @@ describe("a bar model", () => {
     }, /cannot be read as figure\.bar/],
   ])("%s stops the book", (_name, number, change, problem) => expect(after(number, change)).toMatch(problem));
 });
+
+describe("a word problem", () => {
+  // Pages 5 and 6 of the invented book are word problems. The second computation reads the numbers of the text and the unit
+  // beside the answer area from the page, and works the formula again with code of its own.
+  const good = inventedBook();
+  /** The problems after a change of question 1 of a page of word problems: of its item, and of its rectangles on a copy of the page. */
+  const after = (number: 5 | 6, change: (item: BookItem, ink: Ink[]) => unknown): string => {
+    const page = structuredClone(good.pages[number - 1]);
+    const item = structuredClone(good.items.find((i) => i.id === `${page.id}/1`)!);
+    change(item, page.regions.find((r) => r.item === item.id && r.role === "question")!.ink);
+    return checkPrintedAnswers([page], [item], SHAPES).join("\n");
+  };
+  const flowOf = (ink: Ink[]) => ink.find((i): i is Extract<Ink, { kind: "flow" }> => i.kind === "flow")!;
+  const unitOf = (ink: Ink[]) => ink.find((i): i is Extract<Ink, { kind: "text" }> => i.kind === "text")!;
+  const story = (item: BookItem) => item.question as { slots: { name: string; value: number }[]; solver: unknown };
+
+  it("is read from its page and agrees with the item", () => {
+    expect(problemsOf(good)).toEqual([]);
+    expect(good.items.filter((i) => i.face.kind === "story")).toHaveLength(6);
+  });
+
+  it.each<[string, 5 | 6, (item: BookItem, ink: Ink[]) => unknown, RegExp]>([
+    ["a number of the text that is not the number of the question", 5, (_item, ink) => { const flow = flowOf(ink); const at = flow.tokens.findIndex((t) => /^\d+$/.test(t.pieces[0])); flow.tokens[at] = { kind: "word", pieces: [String(Number(flow.tokens[at].pieces[0]) + 1)] }; }, /^Sheet "story-problems-1", front side, question 1 \(\): the text prints the numbers \d+, \d+ and the question has \d+, \d+\.$/],
+    ["the numbers of the question in another order", 5, (item) => { const { slots } = story(item); slots.reverse(); }, /the text prints the numbers [\d, ]+ and the question has [\d, ]+/],
+    ["a number more in the text", 5, (_item, ink) => { flowOf(ink).tokens.push({ kind: "word", pieces: ["7"] }); }, /the text prints the numbers [\d, ]+, 7 and the question has/],
+    ["a unit beside the area that is not the unit of the answer", 5, (_item, ink) => { unitOf(ink).text = "boxes"; }, /the unit beside the answer area is "boxes" and the answer is in "muffins"/],
+    ["no unit beside the area", 5, (_item, ink) => { ink.splice(ink.indexOf(unitOf(ink)), 1); }, /the unit beside the answer area is missing and the answer is in "muffins"/],
+    ["an answer of another unit", 5, ({ answer: { parts }, steps }) => { parts[0].unit = "boxes"; steps[steps.length - 1].text = `${parts[0].value} boxes`; }, /the unit beside the answer area is "muffins" and the answer is in "boxes"/],
+    ["an answer that the formula does not give", 5, ({ answer: { parts }, steps }) => { parts[0].value = String(Number(parts[0].value) + 1); steps[steps.length - 1].text = `${parts[0].value} ${parts[0].unit}`; }, /the answer is "\d+ muffins" by one computation and "\d+" by another/],
+    ["a formula in the item that is not the one that was worked", 6, (item) => { story(item).solver = { op: "+", left: { slot: "count" }, right: { number: 1 } }; }, /the answer is "\d+ dollars" by one computation and "\d+" by another/],
+    ["worked steps that end with another answer", 5, ({ steps }) => { steps[steps.length - 1].text = "8 boxes"; }, /the answer is "\d+ muffins" by one computation and "8 boxes" by the worked steps/],
+    ["a last step that draws", 5, ({ steps }) => { steps[steps.length - 1].marks = [{ mark: "write", place: 0, digit: "1" }]; }, /the last worked step is the answer and must draw nothing/],
+    ["an answer with no unit", 5, ({ answer: { parts } }) => { Reflect.deleteProperty(parts[0], "unit"); }, /the answer the part "answer" of the kind "quantity" has no unit/],
+  ])("%s stops the book", (_name, number, change, problem) => expect(after(number, change)).toMatch(problem));
+});

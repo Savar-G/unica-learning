@@ -18,6 +18,7 @@ import { quickRenderer, skipTypstTests, testAssets } from "../testing/typst";
 import { BANK_SEEDS, checkBank, FIGURE_SAMPLE_SEEDS } from "./check-bank";
 import { capacityOf, contentOf, freezeBank, FULL_LEVEL, UNSEEN_ATTEMPTS } from "./freeze-bank";
 import { validateSnapshot } from "../bank/snapshot";
+import { storyCombos } from "./story-combos";
 import inventedDraft from "../fixtures/draft-invented-topic.json";
 import inventedSnapshot from "../fixtures/snapshot-invented-topic.json";
 import { canonicalJson, sha256 } from "../hash";
@@ -37,6 +38,7 @@ const snapshotWith = (change: (s: Snapshot) => unknown = () => {}): Snapshot => 
 /** The templates with two places on each side, because each place costs three drawings. */
 const SMALL: ReadonlyMap<string, PageTemplate> = new Map([...TEMPLATES].map(([id, t]) => [id, { ...t, sides: { front: { ...t.sides.front, places: t.sides.front.places.slice(0, 2) }, back: { ...t.sides.back, places: t.sides.back.places.slice(0, 2) } } }]));
 const FEW = { seeds: 1, templates: SMALL };
+const QUICK_STORY = { seeds: 1, templates: SMALL };
 const mul = (): Shape => {
   const shape = SHAPES.get("mul.column");
   if (!shape) throw new Error("no shape");
@@ -45,6 +47,24 @@ const mul = (): Shape => {
 const withShape = (change: (shape: Shape) => Partial<Shape>) => ({ ...FEW, shapes: shapeLibrary([{ ...mul(), ...change(mul()) }]) });
 const FRONT = 'Sheet "column-multiplication-1", front side, row "no-carry"';
 const BACK_ROW = rawSnapshot.sheets[0].back.rows[0].id;
+
+type StoryLevel = typeof inventedSnapshot & Record<string, unknown>;
+/** The sheet of word problems alone: one place a side for the questions of each side, and a change. */
+function storyLevel(front: string[], back: string[], change: (s: StoryLevel) => unknown = () => {}): StoryLevel {
+  const s = structuredClone(inventedSnapshot) as StoryLevel;
+  const sheet = s.sheets[2];
+  sheet.front.rows = [{ ...sheet.front.rows[0], items: 1, limits: { questions: front } }];
+  sheet.back.rows = [{ ...sheet.back.rows[0], items: 1, limits: { questions: back } }];
+  Object.assign(s, { sheets: [sheet], topics: [{ ...s.topics[0], sheets: [sheet.id] }] });
+  change(s);
+  return s;
+}
+/** The level with the Canadian region pack only, so that half as much is drawn. */
+const canadaOnly = (s: StoryLevel) => {
+  s.regionPacks = s.regionPacks.filter((p) => p.id === "CA");
+  s.questions = s.questions.filter((q) => (q as { regions?: string[] }).regions?.includes("CA") ?? true);
+};
+const STORY = 'Sheet "story-problems-1"';
 
 /** A copy of a template in which the places of some sides are changed. */
 function templateWith(id: string, change: (place: ItemPlace, index: number, side: "front" | "back") => unknown): ReadonlyMap<string, PageTemplate> {
@@ -232,6 +252,69 @@ describe("a bank of bar models, and the time log", () => {
   });
 });
 
+describe("a bank of word problems", () => {
+  it("lists every phrasing of every question of a row with every scenario and region pack, one time for each text", () => {
+    const bank = validateSnapshot(inventedSnapshot);
+    if (!bank.ok || !bank.snapshot.stories) throw new Error("no stories");
+    const sheet = bank.snapshot.sheets.get("story-problems-1")!;
+    const labels = (side: "front" | "back") => storyCombos(sheet[side].rows[0], bank.snapshot.stories!).map((c) => c.label);
+    // A question with no word of a region prints the same text in both regions, and is drawn one time.
+    expect(labels("front")).toEqual([
+      ...["bakery-boxes", "station-crates"].flatMap((s) => ["packs", "holds"].map((p) => `question "muffin-boxes", phrasing "${p}", scenario "${s}", region "CA"`)),
+      ...["class-stickers", "rocket-snacks"].flatMap((s) => ["takes", "gives"].map((p) => `question "half-of-them", phrasing "${p}", scenario "${s}", region "CA"`)),
+      ...["CA", "US"].flatMap((g) => ["cuts", "bow"].map((p) => `question "ribbon-cut", phrasing "${p}", scenario "craft-ribbon", region "${g}"`)),
+    ]);
+    expect(labels("back")).toEqual([
+      ...["bakery-boxes", "station-crates"].flatMap((s) => ["given", "home"].map((p) => `question "muffins-left", phrasing "${p}", scenario "${s}", region "CA"`)),
+      ...["CA", "US"].flatMap((g) => ["fills", "spills"].map((p) => `question "juice-left", phrasing "${p}", scenario "picnic-juice", region "${g}"`)),
+      ...["saves", "finds"].map((p) => `question "toonie-savings", phrasing "${p}", scenario "piggy-bank", region "CA"`),
+      ...["trades", "jar"].map((p) => `question "nickels-to-pennies", phrasing "${p}", scenario "piggy-bank", region "US"`),
+    ]);
+    // The widest numbers: the largest of each slot inside the limits of the scenario.
+    const crates = storyCombos(sheet.front.rows[0], bank.snapshot.stories!).find((c) => c.label.includes('"station-crates"'))!;
+    expect(crates.item.question.slots).toEqual([{ name: "groups", value: 6 }, { name: "each", value: 10 }]);
+  });
+
+  it("draws each combination at each place of both sides, together and alone, and measures its text with every digit", async () => {
+    const renderer = fakeRenderer();
+    const report = await checkBank(storyLevel(["muffin-boxes", "ribbon-cut"], ["half-of-them"]), renderer, { seeds: 2, templates: SMALL });
+    expect(report.problems).toEqual([]);
+    // 4 + 4 combinations on the front and 4 on the back, each on both pages of its side, and alone at each of its 4 places.
+    expect(report.checked).toMatchObject({ sheets: 1, rows: 2, pages: 24, alone: 48, questions: 2 * 2 * 4 });
+    const flows = pagesOf(renderer.drawn.report).flatMap((p) => p.regions.flatMap((r) => r.ink)).filter((i) => i.kind === "flow");
+    const text = (i: (typeof flows)[number]) => (i.kind === "flow" ? i.tokens.map((t) => t.pieces.join("")).join(" ") : "");
+    const eights = flows.filter((i) => text(i) === "There are 8 boxes at the bakery. Each one holds 88 muffins. How many muffins are there in all?");
+    expect(eights.map((i) => i.rect.w)).toEqual([464 - 0.021 * 12]);
+    expect(new Set(flows.filter((i) => text(i).startsWith("There are ") && text(i).includes(" boxes at the bakery.")).map(text)).size).toBe(10);
+  });
+
+  it("refuses a phrasing that its place cannot hold, with the sheet, the side, the row, the combination and the place", async () => {
+    const long = Array.from({ length: 200 }, () => ({ word: "very" }));
+    const draft = storyLevel(["ribbon-cut"], ["ribbon-cut"], (s) => {
+      canadaOnly(s);
+      const question = s.questions.find((q) => q.id === "ribbon-cut")!;
+      question.phrasings[1].tokens.push(...long);
+    });
+    const result = await freezeBank(draft, fakeRenderer(), { seeds: 1, templates: SMALL });
+    expect(result.ok).toBe(false);
+    const told = result.ok ? "" : result.problems.join("\n");
+    expect(told).toMatch(new RegExp(`^${STORY}, front side, row "one-step", question "ribbon-cut", phrasing "bow", scenario "craft-ribbon", region "CA": Page 385: the token "very" of "question-1" is below its place\\.$`, "m"));
+    expect(told).toMatch(new RegExp(`^${STORY}, back side, row "two-steps", question "ribbon-cut", phrasing "bow", scenario "craft-ribbon", region "CA": Page 386: the token "very" of "question-2" is below its place\\.$`, "m"));
+    expect(told).toMatch(new RegExp(`^${STORY}, front side, row "one-step", question "ribbon-cut", phrasing "bow", scenario "craft-ribbon", region "CA": the flow text of "question-1" of the front side: the token "very" is below its place\\.$`, "m"));
+    expect(told).not.toMatch(/phrasing "cuts"/);
+  });
+
+  it("refuses a placeholder that does not fill, before anything is drawn", async () => {
+    const renderer = fakeRenderer();
+    const draft = storyLevel(["ribbon-cut"], ["ribbon-cut"], (s) => { s.questions.find((q) => q.id === "ribbon-cut")!.phrasings[0].tokens[0] = { word: "[spell.flavour]" }; });
+    expect(await freezeBank(draft, renderer, QUICK_STORY)).toEqual({ ok: false, problems: [
+      'Question "ribbon-cut", scenario "craft-ribbon", region "CA": phrasing "cuts": the region pack "CA" has no [spell.flavour].',
+      'Question "ribbon-cut", scenario "craft-ribbon", region "US": phrasing "cuts": the region pack "US" has no [spell.flavour].',
+    ] });
+    expect(renderer.drawn).toEqual({ render: [], images: [], report: [] });
+  });
+});
+
 describe("a bank with a problem", () => {
   it("that is in the file itself draws nothing", async () => {
     const renderer = fakeRenderer();
@@ -395,6 +478,26 @@ describe.skipIf(skipTypstTests())("with the real Typst", () => {
     expect(problems).toMatch(new RegExp(`^Sheet "column-multiplication-1", front side, row "facts": Page 382: the text "3-20 · ${"W".repeat(44)}" of "heading" is \\d+\\.\\d+ points wide and its place is 443\\.$`, "m"));
   });
 
+  it("draws word problems: the half as one piece, and a text or a unit that its place cannot hold is named with its combination", async () => {
+    const renderer = await typst();
+    const drawnTexts: string[] = [];
+    const watching: Renderer = { ...renderer, render: async (pages) => { const out = await renderer.render(pages); drawnTexts.push(...out.texts.map((t) => t.text)); return out; } };
+    const level = storyLevel(["half-of-them"], ["ribbon-cut"], (s) => {
+      canadaOnly(s);
+      s.questions.find((q) => q.id === "ribbon-cut")!.phrasings[1].tokens.push(...Array.from({ length: 40 }, () => ({ word: "extraordinarily" })));
+      s.regionPacks[0].units.length.many = "extraordinarily long centimetres";
+    });
+    const { problems } = await checkBank(level, watching, { seeds: 1, templates: SMALL });
+    const told = problems.join("\n");
+    expect(told).not.toMatch(/row "one-step"/);
+    expect(drawnTexts.filter((t) => t === "½").length).toBeGreaterThan(0);
+    expect(drawnTexts.filter((t) => t.includes("½") && t !== "½")).toEqual([]);
+    const bow = `${STORY}, back side, row "two-steps", question "ribbon-cut", phrasing "bow", scenario "craft-ribbon", region "CA"`;
+    expect(told).toMatch(new RegExp(`^${bow}: Page 386: the token "extraordinarily" of "question-1" is below its place\\.$`, "m"));
+    expect(told).toMatch(new RegExp(`^${STORY}, back side, row "two-steps", question "ribbon-cut", phrasing "(cuts|bow)", scenario "craft-ribbon", region "CA": Page 386: the text "extraordinarily long centimetres" of "question-2" is \\d+\\.\\d+ points wide and its place is 118\\.$`, "m"));
+    expect(told).not.toMatch(/phrasing "cuts".*the token/);
+  });
+
   it("ink that a drawing puts past the slot of a question is found in the page and in the question that is drawn alone", async () => {
     const source = readFileSync(testAssets().template, "utf8");
     const mark = "      if reports { report(region.id) }";
@@ -428,6 +531,10 @@ describe("the freeze of a draft", () => {
     Object.assign(mul, { basis: [SENTINEL, { deeper: SENTINEL }] });
     Object.assign((bars as { back: object }).back, { basis: { note: SENTINEL } });
     Object.assign((mul as { front: { rows: object[] } }).front.rows[0], { basis: { photo: SENTINEL, page: 12 } });
+    // A question, a scenario and a region pack hold notes of their own.
+    Object.assign(d.questions[1], { basis: { source: SENTINEL } });
+    Object.assign(d.scenarios[2], { basis: SENTINEL });
+    Object.assign(d.regionPacks[1], { basis: [SENTINEL] });
   };
 
   it("copies the content only: no note and no word of a note is in the frozen snapshot", async () => {
@@ -625,6 +732,11 @@ describe("the freeze of a draft", () => {
   it.each<[string, (d: Draft) => unknown, RegExp]>([
     ["a note in the limits of a row", (d) => { Object.assign(d.sheets[1].front.rows[0].limits, { basis: SENTINEL }); }, /The draft has a note "basis" at sheets\[1\]\.front\.rows\[0\]\.limits, where a draft may not have one/],
     ["a note in the level", (d) => { Object.assign(d.level, { basis: SENTINEL }); }, /The draft has a note "basis" at level, where a draft may not have one/],
+    ["a note in a phrasing", (d) => { Object.assign(d.questions[0].phrasings[0], { basis: SENTINEL }); }, /^The draft has a note "basis" at questions\[0\]\.phrasings\[0\], where a draft may not have one: only the level, a topic, a sheet, a side, a row, a question, a scenario and a region pack may\.$/m],
+    ["a note in a token", (d) => { Object.assign(d.questions[2].phrasings[1].tokens[3], { basis: SENTINEL }); }, /The draft has a note "basis" at questions\[2\]\.phrasings\[1\]\.tokens\[3\]/],
+    ["a note in the limits of a scenario", (d) => { Object.assign(d.scenarios[0].quantityLimits, { basis: SENTINEL }); }, /The draft has a note "basis" at scenarios\[0\]\.quantityLimits, where/],
+    ["a note in the units of a region pack", (d) => { Object.assign(d.regionPacks[0].units, { basis: SENTINEL }); }, /The draft has a note "basis" at regionPacks\[0\]\.units, where/],
+    ["a note in a formula", (d) => { Object.assign(d.questions[0].solver, { basis: SENTINEL }); }, /The draft has a note "basis" at questions\[0\]\.solver, where/],
     ["a field that is not a note", (d) => { Object.assign(d.sheets[0], { source: SENTINEL }); }, /Sheet "column-multiplication-1": unknown field "source"\./],
     ["a sheet that does not follow the one before it", (d) => { d.sheets[1].firstPage = 387; }, /^Topic "topic-20": the sheet "equal-groups-1" starts on page 387 and must start on page 383, after the sheet "column-multiplication-1"\.$/],
     ["sheets of a topic in another order than their pages", (d) => { d.topics[0].sheets.reverse(); }, /the sheet "column-multiplication-1" starts on page 381 and must start on page 385/],

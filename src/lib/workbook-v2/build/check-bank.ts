@@ -20,7 +20,7 @@ import { itemRegions } from "../layout/build-pages";
 import { STORY_SHAPE_ID } from "../shapes/story";
 import { interestsOf } from "../themes/bind";
 import { bindSheet } from "../themes/sheets";
-import { DEFAULT_INTEREST, type StoryBank } from "../themes/types";
+import type { StoryBank } from "../themes/types";
 import { sheetItems } from "./items";
 import { rowTexts } from "./row-texts";
 import { eachDigit, storyCombos } from "./story-combos";
@@ -288,7 +288,8 @@ class BankCheck {
       for (const problem of problems) told.push([text, problem]);
     };
     for (const one of placed.texts) tell(one.region, [textProblem(one) ?? []].flat());
-    for (const flow of placed.flows) tell(flow.region, flowProblems(flow));
+    // A measured text stands on a page of its own: the problem names its place on the sheet, not there.
+    for (const flow of placed.flows) tell(flow.region, flowProblems(flow, false));
     return { told: [...told, ...batch.flatMap((text): [Measured, string][] => (found.has(text) ? [] : [[text, "was not drawn as the model says it"]]))] };
   }
 

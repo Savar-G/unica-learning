@@ -390,6 +390,56 @@ describe("the template of bar models", () => {
   });
 });
 
+describe("the template of word problems", () => {
+  // Pages 5 and 6 of the invented book: three word problems a side, each with its flow text, its work area and one area.
+  const book = inventedBook();
+  const [front, back] = book.pages.slice(4);
+  const own = (page: PageModel, number: number, role: RegionRole) => page.regions.filter((r) => r.role === role && r.id.endsWith(`/${role}-${number}`));
+  const flowOf = (page: PageModel, number: number) => own(page, number, "question")[0].ink.find((i) => i.kind === "flow");
+  const unitOf = (page: PageModel, number: number) => own(page, number, "question")[0].ink.find((i) => i.kind === "text");
+
+  it("has three places a side that end above the time log and the QR code, one below the other", () => {
+    expect([front, back].map((p) => p.template)).toEqual(["stories-1x3", "stories-1x3"]);
+    expect(regions(front, "slot").map((s) => s.rect)).toEqual([r(90, 82, 486, 205), r(90, 287, 486, 205), r(90, 492, 486, 205)]);
+    expect(regions(back, "slot").map((s) => s.rect)).toEqual([r(36, 82, 486, 205), r(36, 287, 486, 205), r(36, 492, 486, 205)]);
+    const lowest = Math.max(...regions(front, "slot").map(({ rect }) => rect.y + rect.h));
+    expect(lowest).toBeLessThanOrEqual(one(front, "qr").rect.y);
+    expect(lowest).toBeLessThan(700);
+  });
+
+  it("puts the number beside the first line of the text, the text across the place, the work below it and the unit after the area", () => {
+    for (const [page, x] of [[front, 90], [back, 36]] as const) {
+      [82, 287, 492].forEach((y, i) => {
+        const n = i + 1;
+        expect(own(page, n, "label")[0].rect).toEqual(r(x, y + 8, 20, 15));
+        expect(flowOf(page, n)).toMatchObject({ kind: "flow", rect: r(x + 22, y + 8, 464, 68), size: 12, weight: 400, leading: 5 });
+        expect(own(page, n, "work").map((w) => [w.rect, w.ink])).toEqual([[r(x + 22, y + 82, 220, 104), []]]);
+        expect(own(page, n, "answer")[0].rect).toEqual(r(x + 267.2, y + 91.6, 72, 42));
+        expect(own(page, n, "reach")[0].rect).toEqual(r(x + 248, y + 82, 120, 61.2));
+        expect(unitOf(page, n)).toMatchObject({ kind: "text", rect: r(x + 368, y + 98.6, 118, 28), size: 16, weight: 400, align: "left" });
+        expect(own(page, n, "question")[0].rect).toEqual(r(x + 22, y, 464, 186));
+      });
+    }
+  });
+
+  it("keeps the answer areas in one column, outside the work, and the work outside every reach", () => {
+    for (const page of [front, back]) {
+      expect(new Set(regions(page, "answer").map((a) => a.rect.x)).size).toBe(1);
+      for (const work of regions(page, "work")) for (const reach of regions(page, "reach")) expect(work.rect.x + work.rect.w).toBeLessThan(reach.rect.x);
+    }
+  });
+
+  it("takes word problems only, and no other template takes them", () => {
+    const story = book.items.find((i) => i.face.kind === "story")!;
+    const stack = book.items.find((i) => i.face.kind === "column")!;
+    const stories = TEMPLATES.get("stories-1x3")!;
+    expect(fitProblem(stories, story.face, story.answer)).toBeNull();
+    expect(fitProblem(stories, stack.face, stack.answer)).toBe('is a column question and the template "stories-1x3" has no place for one');
+    for (const template of TEMPLATES.values()) if (template.id !== "stories-1x3") expect(fitProblem(template, story.face, story.answer)).toMatch(/is a story question and the template .* has no place for one/);
+    expect(fitProblem(stories, story.face, { parts: [{ ...story.answer.parts[0], value: "12345" }] })).toBe('needs 5 characters in an answer and the template "stories-1x3" has 4');
+  });
+});
+
 describe("the place of the time log", () => {
   const rectsOf = (place: ItemPlace) => Object.values(place).flatMap((value) => {
     const all = Array.isArray(value) ? value.flatMap((v: unknown) => (v && typeof v === "object" && "x" in v ? [v] : v && typeof v === "object" ? Object.values(v as object) : [])) : [value];
