@@ -368,6 +368,20 @@ describe("a book of word problems", () => {
     expect(planBook(storyBook(change))).toEqual({ ok: false, problems: [problem] });
   });
 
+  it("reads no region, scenario or word problems that an object inherits", () => {
+    const names = ["region", "scenario", "questions", "scenarios", "regionPacks", "defaultRegion", "multipleOf", "regions"];
+    const values: Record<string, unknown> = { region: "US", scenario: "space", questions: [], scenarios: [], regionPacks: [], defaultRegion: "US", multipleOf: 7, regions: ["US"] };
+    for (const name of names) Object.defineProperty(Object.prototype, name, { value: values[name], configurable: true, writable: true });
+    try {
+      const plan = planned(storyBook());
+      expect(plan.items.every((i) => storyOf(i).region === "CA" && !storyOf(i).scenario.includes("station") && !storyOf(i).scenario.includes("rocket"))).toBe(true);
+      const plain = planBook(input());
+      expect(plain.ok).toBe(true);
+    } finally {
+      for (const name of names) Reflect.deleteProperty(Object.prototype, name);
+    }
+  });
+
   it("stops a region or a scenario for a snapshot with no word problems", () => {
     expect(planBook(input((i) => { put(i.book, "region", "CA"); }))).toEqual({ ok: false, problems: ["The book: the snapshot has no word problems, so the book has no region or scenario."] });
   });
