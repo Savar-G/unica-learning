@@ -168,7 +168,11 @@ function byRow(runs: Chosen, places: readonly Place[]): Chosen {
   return chosen;
 }
 
-/** A choice with no question twice and none that is taken, or null when there is none. */
+/**
+ * A choice with no question twice and none that is taken, or null when there is none. Takes the first complete assignment
+ * found under the strictest feasible `bansOf` tier (zero seen items when possible, then oldest-seen fallback) rather than
+ * exhaustively maximizing partial unseen counts across all run combinations.
+ */
 function chooseDifferent(rows: readonly Row[], taken: Keys, stale: Keys, seen: SeenBefore): Chosen | null {
   const ordered = rows.filter((row) => row.runs);
   const mixed = rows.filter((row) => !row.runs);

@@ -55,7 +55,7 @@ describe("the queue of a child", () => {
   });
 
   it("is a pure function: the same history in another order gives the same position", () => {
-    const issued = [issue(1, A, 1), issue(1, B, 1), issue(2, B, 2), issue(2, C, 1)];
+    const issued = [issue(1, A, 1), issue(1, B, 1), issue(2, B, 2, "repeat"), issue(2, C, 1)];
     const results = [result(1, A, 1, "repeat"), result(1, B, 1, "repeat"), result(2, B, 2, "mastered")];
     const one = placed(issued, scans(1, 121), results);
     expect(placed([...issued].reverse(), scans(1, 121), [...results].reverse())).toEqual(one);
@@ -91,7 +91,7 @@ describe.each<[Latest, Coverage, boolean, string]>([
   it(`is ${wanted}`, () => {
     const book = afterRepeat ? 2 : 1;
     const attempt = afterRepeat ? 2 : 1;
-    const issued = [...(afterRepeat ? [issue(1, A, 1), issue(1, E, 1)] : []), issue(book, A, attempt), issue(book, B, 1)];
+    const issued = [...(afterRepeat ? [issue(1, A, 1), issue(1, E, 1)] : []), issue(book, A, attempt, afterRepeat ? "unscanned" : undefined), issue(book, B, 1)];
     const receipts = coverage === "under half" ? scans(book, 121) : scans(book, 121, 124);
     const results = latest === "unmarked" ? [] : [result(book, A, attempt, latest)];
     const p = placed(issued, receipts, results);
@@ -139,7 +139,7 @@ describe("the rules over several books", () => {
   });
 
   it(`nudges Maya after ${NUDGE_AFTER_FAILS} failed attempts, and keeps the sheet due`, () => {
-    const issued = [issue(1, A, 1), issue(1, B, 1), issue(2, A, 2), issue(2, B, 2), issue(3, A, 3), issue(3, C, 1)];
+    const issued = [issue(1, A, 1), issue(1, B, 1), issue(2, A, 2, "repeat"), issue(2, B, 2, "repeat"), issue(3, A, 3, "repeat"), issue(3, C, 1)];
     const twice = placed(issued.slice(0, 4), [], [result(1, A, 1, "repeat"), result(2, A, 2, "repeat")]);
     expect(twice.mayaNudges).toEqual([]);
     const thrice = placed(issued, [], [result(1, A, 1, "repeat"), result(2, A, 2, "repeat"), result(3, A, 3, "repeat")]);
@@ -165,11 +165,12 @@ describe("a history that cannot be right", () => {
     ["an attempt of 0", () => position({ childId: "c" }, [issue(1, A, 0)], [], [], SNAPSHOT), /attempt must be a whole number, 1 or more/],
     ["an unknown issue reason", () => position({ childId: "c" }, [issue(1, A, 1, "manual" as QueueReason)], [], [], SNAPSHOT), /reason must be new, repeat or unscanned/],
     ["attempt 1 issued as unscanned", () => position({ childId: "c" }, [issue(1, A, 1, "unscanned")], [], [], SNAPSHOT), /attempt 1 cannot have reason "unscanned"/],
-    ["attempt 2 issued as new", () => position({ childId: "c" }, [issue(1, A, 1, "new"), issue(2, A, 2, "new")], [], [], SNAPSHOT), /attempt 2 cannot have reason "new"/],
+    ["attempt 2 issued without a reason", () => position({ childId: "c" }, [issue(1, A, 1, "new"), issue(2, A, 2)], [], [], SNAPSHOT), /attempt 2 must have reason "repeat" or "unscanned"/],
+    ["attempt 2 issued as new", () => position({ childId: "c" }, [issue(1, A, 1, "new"), issue(2, A, 2, "new")], [], [], SNAPSHOT), /attempt 2 must have reason "repeat" or "unscanned"/],
     ["an attempt issued twice", () => position({ childId: "c" }, [issue(1, A, 1), issue(2, A, 1)], [], [], SNAPSHOT), /issued more than once/],
     ["a page twice in one book", () => position({ childId: "c" }, [issue(1, A, 1), { ...issue(1, B, 1), pages: [121, 999] }], [], [], SNAPSHOT), /"book-1" has the page 121 more than once/],
     ["a book with two numbers", () => position({ childId: "c" }, [issue(1, A, 1), { ...issue(2, B, 1), bookId: "book-1" }], [], [], SNAPSHOT), /more than one book number/],
-    ["a later attempt in an earlier book", () => position({ childId: "c" }, [issue(2, A, 1), issue(1, A, 2)], [], [], SNAPSHOT), /attempt 2 must be in a later book/],
+    ["a later attempt in an earlier book", () => position({ childId: "c" }, [issue(2, A, 1), issue(1, A, 2, "repeat")], [], [], SNAPSHOT), /attempt 2 must be in a later book/],
     ["a scan of a page that the book did not print", () => position({ childId: "c" }, [issue(1, A, 1)], scans(1, 125), [], SNAPSHOT), /page 125 of the book "book-1" is of no issued page/],
     ["a scan with a string page number", () => position({ childId: "c" }, [issue(1, A, 1)], [{ bookId: "book-1", pageNumber: "121" as unknown as number }], [], SNAPSHOT), /page "121" of the book "book-1" is of no issued page/],
     ["a result of an attempt that is not issued", () => position({ childId: "c" }, [issue(1, A, 1)], [], [result(1, A, 2, "mastered")], SNAPSHOT), /did not issue this attempt/],

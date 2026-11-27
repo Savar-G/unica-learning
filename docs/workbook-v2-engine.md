@@ -240,11 +240,11 @@ A repeat book is the next book of a child: the sheets that failed and the next n
 
 A sheet with no questions, a mastery percent that is not a whole number from 1 to 100, two marks of one question and a mark of an unknown question are refused.
 
-**The position** (`assemble/position.ts`) is computed each time from the issued sheets of all books (with optional `reason` recording why an attempt was issued), the accepted page scans and the sheet results, and never stored. For each sheet from the start sheet on, in the order of its topics and of the sheets in each topic, the latest attempt decides:
+**The position** (`assemble/position.ts`) is computed each time from the issued sheets of all books (attempt 2 and later must carry durable `reason: "repeat" | "unscanned"`; attempt 1 may omit `reason` or pass `"new"`), the accepted page scans and the sheet results, and never stored. For each sheet from the start sheet on, in the order of its topics and of the sheets in each topic, the latest attempt decides:
 
 1. `mastered`: done.
 2. `repeat`: the next attempt is due, also when the result comes after a later book moved on.
-3. `unknown` or no result: when less than half of the pages of that book were scanned, the sheet repeats one time and the team gets a notice. A sheet that already has an `unscanned` repeat (or, when `reason` is omitted, an earlier unproven attempt), or a book with half or more scanned, counts as passed until its marks arrive. So unscanned books never make a loop, even if a late result arrives on an earlier attempt.
+3. `unknown` or no result: when less than half of the pages of that book were scanned, the sheet repeats one time and the team gets a notice. A sheet that already has an `unscanned` repeat, or a book with half or more scanned, counts as passed until its marks arrive. So unscanned books never make a loop, even if a late result arrives on an earlier attempt.
 
 The queue has the repeats first, then the sheets that were never issued, each in the order of the level. A page scanned twice counts one time. A sheet with 3 failed attempts gets a nudge to Maya, which no page prints. An unknown sheet, an attempt below 1, an attempt or a page of a book twice, a later attempt in an earlier book, a scan of a page that no book issued and a result of an attempt that is not issued are refused.
 
