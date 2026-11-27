@@ -2,7 +2,7 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { PRINT_RULES, type PageModel, type Rect, type Region } from "../contract";
 import { drawPage as draw, paint, paintSmooth, toColourPng, toPng, type Canvas } from "../testing/raster";
-import { divisionBook, factsBook, goodPages } from "../testing/sample";
+import { divisionBook, factsBook, goodPages, inventedBook } from "../testing/sample";
 import { flatGrey, inkOutside, strayInk } from "./blank";
 import { checkImages } from "./images";
 import { readPageImage, type PageImage } from "./page-image";
@@ -11,6 +11,8 @@ const pages = goodPages();
 const [front, back] = pages;
 const facts = factsBook().pages;
 const divisions = divisionBook().pages;
+/** The first page starts a day and has the time log; pages 3 and 4 are bar models. */
+const invented = inventedBook().pages;
 /** The drawing of a page, made one time. Each call gives a copy that a test can paint on. */
 const drawn = new Map<PageModel, Canvas>();
 const drawPage = (page: PageModel): Canvas => {
@@ -34,7 +36,7 @@ const square = (x: number, y: number, side = 1): Rect => ({ x, y, w: side, h: si
 const middle = ({ x, y, w, h }: Rect): Rect => square(x + w / 2, y + h / 2);
 
 it("the example pages have no ink but that of their models", () => {
-  for (const page of [...pages, ...facts, ...divisions]) expect(strayInk(page, imageOf(drawPage(page)))).toEqual([]);
+  for (const page of [...pages, ...facts, ...divisions, ...invented]) expect(strayInk(page, imageOf(drawPage(page)))).toEqual([]);
 });
 
 describe("a black square of one point", () => {
@@ -73,6 +75,11 @@ describe("a black square of one point", () => {
     ["in the reach of a quotient", divisions[6], square(named(divisions[6], "reach-1-quotient").rect.x + 2, named(divisions[6], "reach-1-quotient").rect.y + 2), '"reach-1-quotient"'],
     ["in the work area of a bracket", divisions[13], middle(named(divisions[13], "work-2").rect), '"work-2"'],
     ["at the top of the work area of a bracket", divisions[13], square(named(divisions[13], "work-3").rect.x + 90, named(divisions[13], "work-3").rect.y), '"work-3"'],
+    ["in the start box of the time log", invented[0], middle(invented[0].captures[0].fields[0].rect), 'the box "start" of the time-log'],
+    ["in the finish box of the time log, near its border", invented[0], square(invented[0].captures[0].fields[1].rect.x + 1, invented[0].captures[0].fields[1].rect.y + 1), 'the box "finish" of the time-log'],
+    ["in the clear space of the start box", invented[0], square(invented[0].captures[0].fields[0].reach.x + 0.5, invented[0].captures[0].fields[0].reach.y + 0.5), 'the reach of the box "start" of the time-log'],
+    ["in the clear space of the finish box, on the right", invented[0], square(invented[0].captures[0].fields[1].reach.x + 80, invented[0].captures[0].fields[1].reach.y + 18), 'the reach of the box "finish" of the time-log'],
+    ["inside a bar of a bar model", invented[2], square(named(invented[2], "question-1").ink[0].rect.x + 2, named(invented[2], "question-1").ink[0].rect.y + 2), '"question-1"'],
   ])("%s is found", (_name, page, rect, place) => {
     // A pixel on an edge has its middle on one side of it, so the square can be in the place beside it too.
     const places = placesWith(page, rect);

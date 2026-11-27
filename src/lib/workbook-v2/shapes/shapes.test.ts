@@ -6,6 +6,7 @@ import { ANSWER_KINDS, FACE_KINDS, REGION_ROLES } from "../contract";
 import divisionSnapshot from "../fixtures/snapshot-division.json";
 import factsSnapshot from "../fixtures/snapshot-facts.json";
 import placesSnapshot from "../fixtures/snapshot-place-value.json";
+import inventedSnapshot from "../fixtures/snapshot-invented-topic.json";
 import rawSnapshot from "../fixtures/snapshot.json";
 import { canonicalJson, pick, seedFrom } from "../hash";
 import { fitProblem, TEMPLATES } from "../layout/templates";
@@ -15,6 +16,7 @@ import { checkShapes, SAMPLE_SEED, SEEDS } from "../testing/shape-harness";
 import { SHAPE_REGISTRATIONS } from "../testing/shape-registrations";
 import { skipTypstTests, testAssets } from "../testing/typst";
 import { SHAPES } from "./index";
+import { figureBar, type FigureBarLimits } from "./figure-bar";
 import { placeValue, type PlaceValueLimits } from "./place-value";
 
 describe("registered shapes", () => {
@@ -41,8 +43,9 @@ describe("registered shapes", () => {
 
   // Product rule: a child writes every answer. A true or false, tick or circle question would need another face, kind or rectangle.
   it("ask for a written answer: no face, answer kind or rectangle is a choice to tick, circle or call true", () => {
-    expect([FACE_KINDS, ANSWER_KINDS]).toEqual([["column", "equation", "sequence", "bracket", "fields"], ["whole-number", "digit"]]);
-    expect(REGION_ROLES.filter((role) => !["heading", "instruction", "footer", "qr", "scan-mark", "slot", "label", "question"].includes(role))).toEqual(["answer", "reach", "work"]);
+    expect([FACE_KINDS, ANSWER_KINDS]).toEqual([["column", "equation", "sequence", "bracket", "fields", "figure"], ["whole-number", "digit"]]);
+    // A capture is writing that is never scored, such as the time of a day: no answer and no choice.
+    expect(REGION_ROLES.filter((role) => !["heading", "instruction", "footer", "qr", "scan-mark", "slot", "label", "question", "capture"].includes(role))).toEqual(["answer", "reach", "work"]);
     for (const { id, cases } of SHAPE_REGISTRATIONS) {
       const shape = SHAPES.get(id);
       if (!shape) throw new Error("no shape");
@@ -56,7 +59,7 @@ describe("registered shapes", () => {
   });
 
   it("are checked with the limits of every row of the example books", () => {
-    const rows = [...rawSnapshot.sheets, ...factsSnapshot.sheets, ...divisionSnapshot.sheets, ...placesSnapshot.sheets].flatMap((s) => [...s.front.rows, ...s.back.rows]);
+    const rows = [...rawSnapshot.sheets, ...factsSnapshot.sheets, ...divisionSnapshot.sheets, ...placesSnapshot.sheets, ...inventedSnapshot.sheets].flatMap((s) => [...s.front.rows, ...s.back.rows]);
     const registered = SHAPE_REGISTRATIONS.flatMap(({ id, cases }) => cases.map((c) => `${id} ${canonicalJson(c.limits)}`));
     for (const { shape, limits } of rows) expect(registered).toContain(`${shape} ${canonicalJson(limits)}`);
   });
@@ -158,4 +161,78 @@ describe("place.value", () => {
       }
     }
   });
+});
+
+describe("figure.bar", () => {
+  const r = (min: number, max: number) => ({ min, max });
+  const WIDE: FigureBarLimits = { groups: r(2, 6), size: r(2, 99), product: r(4, 594) };
+  /** Every question of some limits, by hand: the groups, then the size, rising. */
+  const inside = (l: FigureBarLimits) => {
+    const out: { groups: number; size: number }[] = [];
+    for (let groups = l.groups.min; groups <= l.groups.max; groups++) for (let size = l.size.min; size <= l.size.max; size++) if (groups * size >= l.product.min && groups * size <= l.product.max) out.push({ groups, size });
+    return out;
+  };
+  const range = (min: number, max: number) => fc.tuple(fc.integer({ min, max }), fc.integer({ min, max })).map(([a, b]) => r(Math.min(a, b), Math.max(a, b)));
+  const limits: fc.Arbitrary<FigureBarLimits> = fc.record({ groups: range(2, 6), size: fc.oneof(fc.constant(r(2, 99)), range(2, 99)), product: fc.oneof(fc.constant(r(4, 594)), range(4, 594)) });
+
+  it("counts each question of the limits, and the seed alone picks its place in the rising list", () => {
+    let full = 0;
+    fc.assert(fc.property(limits, fc.nat(), (l, n) => {
+      const all = inside(l);
+      expect(figureBar.count(l)).toBe(all.length);
+      if (all.length === 0) return;
+      full++;
+      const seed = seedFrom("bar", n);
+      expect(figureBar.generate(l, seed).question).toEqual(all[pick(seed, all.length)]);
+    }), { numRuns: 150, seed: 140 });
+    expect(full).toBeGreaterThan(40);
+    expect(figureBar.count(WIDE)).toBe(490);
+  });
+
+  it("gives the widest question of each count of bars, and the question with most bars and the largest size as the worst case", () => {
+    const l = { ...WIDE, product: r(4, 100) };
+    expect(figureBar.forms?.(l).map((f) => f.question)).toEqual([{ groups: 2, size: 50 }, { groups: 3, size: 33 }, { groups: 4, size: 25 }, { groups: 5, size: 20 }, { groups: 6, size: 16 }]);
+    expect(figureBar.worstCase(l).question).toEqual({ groups: 6, size: 16 });
+    expect(figureBar.forms?.({ ...WIDE, groups: r(3, 4) }).map((f) => f.question)).toEqual([{ groups: 3, size: 99 }, { groups: 4, size: 99 }]);
+  });
+
+  it("prints a bar for each group with the size in it, a question mark for the total and the prompt, and adds the parts again", () => {
+    const { question, answer } = figureBar.generate({ ...WIDE, groups: r(4, 4), size: r(15, 15) }, "one");
+    expect(figureBar.face(question)).toEqual({ kind: "figure", figure: { kind: "bar-model", parts: ["15", "15", "15", "15"], totalLabel: "?" }, prompt: "Total =", blank: "answer" });
+    expect(answer).toEqual({ parts: [{ name: "answer", kind: "whole-number", value: "60" }] });
+    expect(figureBar.solveAgain(["15 | 15 | 15 | 15", "? | Total = | □"])).toEqual({ question: { groups: 4, size: 15 }, answer });
+    expect(figureBar.steps(question)).toEqual(["15 + 15 + 15 + 15 = 60", "4 × 15 = 60", "60"].map((text) => ({ text, marks: [] })));
+  });
+
+  it.each<[string, string[]]>([
+    ["parts that differ", ["15 | 15 | 16 | 15", "? | Total = | □"]],
+    ["one bar", ["15", "? | Total = | □"]],
+    ["seven bars", ["2 | 2 | 2 | 2 | 2 | 2 | 2", "? | Total = | □"]],
+    ["a zero in front", ["05 | 05", "? | Total = | □"]],
+    ["a part of 1", ["1 | 1 | 1", "? | Total = | □"]],
+    ["a part of 100", ["100 | 100", "? | Total = | □"]],
+    ["no question mark", ["15 | 15", "Total = | □"]],
+    ["another label of the total", ["15 | 15", "30 | Total = | □"]],
+    ["no prompt", ["15 | 15", "? | □"]],
+    ["no blank", ["15 | 15", "? | Total ="]],
+    ["a third row", ["15 | 15", "? | Total = | □", "15"]],
+    ["parts with no separator", ["1515", "? | Total = | □"]],
+    ["an empty part", ["15 |  | 15", "? | Total = | □"]],
+  ])("reads no question from %s", (_name, rows) => expect(figureBar.solveAgain(rows)).toBeNull());
+
+  it.each<[string, FigureBarLimits, string]>([
+    ["bars of 99 with a small total", { ...WIDE, size: r(99, 99), product: r(4, 100) }, "a wider size or product has some"],
+    ["6 bars with a total under 12", { ...WIDE, groups: r(6, 6), product: r(4, 11) }, "a wider groups or product has some"],
+    ["6 bars of 2 to 3 with a total from 19", { groups: r(6, 6), size: r(2, 3), product: r(19, 594) }, "a wider size or product has some"],
+  ])("names the narrow limits when no question meets them: %s", (_name, l, named) => {
+    expect(figureBar.readLimits(l)).toEqual({ ok: false, problem: `no question meets these limits (${named})` });
+  });
+
+  it.each<[string, unknown, string]>([
+    ["one bar", { ...WIDE, groups: r(1, 6) }, "groups must be from 2 to 6"],
+    ["a size of 100", { ...WIDE, size: r(2, 100) }, "size must be from 2 to 99"],
+    ["a total over 594", { ...WIDE, product: r(4, 600) }, "product must be from 4 to 594"],
+    ["no product", { groups: WIDE.groups, size: WIDE.size }, "product must have min and max"],
+    ["a limit it does not know", { ...WIDE, colour: "red" }, 'unknown limit "colour"'],
+  ])("refuses limits with %s", (_name, raw, problem) => expect(figureBar.readLimits(raw)).toEqual({ ok: false, problem }));
 });

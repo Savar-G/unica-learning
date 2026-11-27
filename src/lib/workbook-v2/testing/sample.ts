@@ -7,6 +7,8 @@ import rawBook from "../fixtures/book.json";
 import divisionRequest from "../fixtures/book-division.json";
 import factsRequest from "../fixtures/book-facts.json";
 import placesRequest from "../fixtures/book-place-value.json";
+import inventedRequest from "../fixtures/book-invented-topic.json";
+import inventedSnapshot from "../fixtures/snapshot-invented-topic.json";
 import divisionSnapshot from "../fixtures/snapshot-division.json";
 import factsSnapshot from "../fixtures/snapshot-facts.json";
 import placesSnapshot from "../fixtures/snapshot-place-value.json";
@@ -41,6 +43,8 @@ export const factsBook = (): GoodBook => plannedBook({ snapshot: factsSnapshot, 
 export const divisionBook = (): GoodBook => plannedBook({ snapshot: divisionSnapshot, book: divisionRequest });
 /** The example book of place value, with both templates of fields. */
 export const placesBook = (): GoodBook => plannedBook({ snapshot: placesSnapshot, book: placesRequest });
+/** The example book of the invented topic: a sheet of stacks that starts a day, with the time log, and a sheet of bar models. */
+export const inventedBook = (): GoodBook => plannedBook({ snapshot: inventedSnapshot, book: inventedRequest });
 
 export const goodBook = (): GoodBook => bookOf();
 export const goodPages = (): PageModel[] => goodBook().pages;

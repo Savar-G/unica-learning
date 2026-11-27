@@ -3,12 +3,17 @@
 // spine zone is on the left of a front page and on the right of a back page, and everything moves with it.
 import { answerLine, BRACKET_SIGN, PAPER, PRINT_RULES, type Answer, type Face, type FaceToken, type Rect, type Side } from "../contract";
 
+/** The time log of the first page of a day: its band, and each field with its label, its box and the clear space round the box. */
+export interface TimeLogPlace { rect: Rect; fields: { name: string; label: string; labelRect: Rect; box: Rect; reach: Rect }[] }
+
 export interface PageFrame {
   heading: Rect;
   instruction: Rect;
   footer: Rect;
   qr: Rect;
   marks: { tl: Rect; tr: Rect; br: Rect; bl: Rect };
+  /** Only a front page has a place for it: the first page of a day is a front page. */
+  timeLog: TimeLogPlace | null;
 }
 
 /** The area that an answer is written in, and the clear space around it. */
@@ -47,7 +52,14 @@ export interface BracketPlace extends PlaceFrame { above: TokenCell[]; outside: 
  */
 export interface FieldsPlace extends PlaceFrame { prompt: Rect; fields: { label: Rect; area: AnswerArea }[]; promptSize: number; labelSize: number; rule: Rect | null }
 
-export type ItemPlace = ColumnPlace | TokenPlace | BracketPlace | FieldsPlace;
+/**
+ * A place for one drawn figure, with no work area. `frame` is the outer frame of the bars, which share its width; below it
+ * stand the bracket of the total in `bracket`, the label of the total in `totalLabel`, and the prompt in `prompt`, right
+ * before the reach of the answer area.
+ */
+export interface FigurePlace extends PlaceFrame, AnswerArea { frame: Rect; bracket: Rect; totalLabel: Rect; prompt: Rect; textSize: number }
+
+export type ItemPlace = ColumnPlace | TokenPlace | BracketPlace | FieldsPlace | FigurePlace;
 
 /** How large a question is, in each way that a template cares about. */
 export type Needs = Readonly<Record<string, number>>;
@@ -69,6 +81,23 @@ const QR = 57.6;
 const LIVE = PAPER.w - PRINT_RULES.spineZone - PRINT_RULES.outerMargin;
 const liveLeft = (side: Side) => (side === "front" ? PRINT_RULES.spineZone : PRINT_RULES.outerMargin);
 
+const TIME_LOG = PRINT_RULES.timeLog;
+
+/** The band between the questions and the footer, from the left end of the footer: a label and a box for each field. */
+function timeLogAt(left: number): TimeLogPlace {
+  const reach = { w: TIME_LOG.box.w + 2 * TIME_LOG.reach, h: TIME_LOG.box.h + 2 * TIME_LOG.reach };
+  const pitch = TIME_LOG.label.w + TIME_LOG.labelGap + reach.w + TIME_LOG.gap;
+  const fields = TIME_LOG.fields.map((name, i) => {
+    const x = left + i * pitch;
+    const around = rect(x + TIME_LOG.label.w + TIME_LOG.labelGap, TIME_LOG.top + (TIME_LOG.h - reach.h) / 2, reach.w, reach.h);
+    return {
+      name, label: TIME_LOG.labels[i], labelRect: rect(x, around.y + TIME_LOG.reach, TIME_LOG.label.w, TIME_LOG.box.h),
+      box: rect(around.x + TIME_LOG.reach, around.y + TIME_LOG.reach, TIME_LOG.box.w, TIME_LOG.box.h), reach: around,
+    };
+  });
+  return { rect: rect(left, TIME_LOG.top, TIME_LOG.fields.length * pitch - TIME_LOG.gap, TIME_LOG.h), fields };
+}
+
 function frame(side: Side): PageFrame {
   const left = liveLeft(side);
   const right = left + LIVE;
@@ -86,6 +115,7 @@ function frame(side: Side): PageFrame {
       br: rect(right - MARK, BOTTOM - MARK, MARK, MARK),
       bl: rect(left, BOTTOM - MARK, MARK, MARK),
     },
+    timeLog: side === "front" ? timeLogAt(textLeft) : null,
   };
 }
 
@@ -309,6 +339,35 @@ function fieldsTemplate(id: string, down: number): PageTemplate<FieldsPlace> {
   return { id, faces: ["fields"], holds, sides: bothSides(2 * down, place) };
 }
 
+/** Where the figures start, their height together, and the room above the frame of the bars. */
+const FIGURES = { top: 82, height: 616, above: 12 };
+const FIGURE = PRINT_RULES.figure;
+
+/**
+ * Figures down the page, one in each row: the bars at the top, the bracket below them, and in the line below that the label
+ * of the total under the middle of the bars, the prompt and the answer area at the right end, so that a side has one column
+ * of areas. The bars stand in a line of their own, so that no text of them is read with the line of the answer.
+ */
+function figuresTemplate(id: string, rows: number): PageTemplate<FigurePlace> {
+  const height = FIGURES.height / rows;
+  const place = (s: Side, i: number): FigurePlace => {
+    const x = liveLeft(s);
+    const y = FIGURES.top + i * height;
+    const left = x + LABEL;
+    const frame = rect(left, y + FIGURES.above, FIGURE.width, FIGURE.bar);
+    const bracket = rect(left, frame.y + FIGURE.bar + FIGURE.gap, FIGURE.width, FIGURE.tick);
+    const area = areaAt(rect(x + LIVE - CLEAR_WIDTH + PRINT_RULES.reach.left, bracket.y + FIGURE.tick + FIGURE.gap, AREA.w, AREA.h));
+    const line = area.answer.y + (AREA.h - TEXT_HEIGHT) / 2;
+    const totalLabel = rect(left + (FIGURE.width - FIGURE.totalLabel) / 2, line, FIGURE.totalLabel, TEXT_HEIGHT);
+    const promptLeft = totalLabel.x + totalLabel.w;
+    return {
+      slot: rect(x, y, LIVE, height), label: rect(x, frame.y + (FIGURE.bar - TEXT_HEIGHT) / 2, PRINT_RULES.label.w, TEXT_HEIGHT),
+      question: rect(left, y, LIVE - LABEL, height), frame, bracket, totalLabel, prompt: rect(promptLeft, line, area.reach.x - promptLeft, TEXT_HEIGHT), textSize: FIGURE.size, ...area,
+    };
+  };
+  return { id, faces: ["figure"], holds: { bars: 6 }, sides: bothSides(rows, place) };
+}
+
 const ALL: readonly PageTemplate[] = [
   columns2x4, columns2x4Wide,
   endBlank("facts-2x10", 2, FACT_LINE, WIDE_FACT.gap, TWO.w, 3, 18),
@@ -320,6 +379,7 @@ const ALL: readonly PageTemplate[] = [
   brackets("brackets-2x6", 2, 6), brackets("brackets-2x4", 2, 4), brackets("brackets-2x3", 2, 3),
   brackets("brackets-1x4", 1, 4), brackets("brackets-1x3", 1, 3),
   fieldsTemplate("places-2x2", 2), fieldsTemplate("places-2x3", 3),
+  figuresTemplate("figures-1x4", 4),
 ];
 export const TEMPLATES: ReadonlyMap<string, PageTemplate> = new Map(ALL.map((t) => [t.id, t]));
 
@@ -328,6 +388,9 @@ export function needsOf(face: Face, { parts }: Answer): Needs {
   const answer = parts.reduce((most, p) => Math.max(most, p.value.length), 0);
   if (face.kind === "column") return { "digit places": Math.max(face.top.length, face.sign.length + face.bottom.length, answer) };
   if (face.kind === "bracket") return { "characters outside": face.outside.length, "characters inside": face.inside.length, "characters in an answer": answer, "lines of work": face.workLines };
+  // A figure asks only for its bars, so that the question with the most bars is the largest one: each bar holds any number
+  // that a shape prints there, and the bank check measures each one. The page rules check the width of the answer area.
+  if (face.kind === "figure") return { bars: face.figure.parts.length };
   if (face.kind === "fields") return { rows: face.rows.length, "characters in the prompt": face.prompt.length, "characters in a label": face.rows.reduce((most, r) => Math.max(most, r.label.length), 0), "characters in an answer": answer };
   const characters = face.tokens.reduce((most, t) => ("text" in t ? Math.max(most, t.text.length) : most), answer);
   return face.kind === "equation" ? { "places in its line": face.tokens.length, "characters in a number": characters } : { terms: face.tokens.length, "characters in a number": characters };
@@ -346,6 +409,7 @@ const isAt = (cell: TokenCell, token: FaceToken): boolean => ("text" in token ? 
 
 /** The tokens of a face: of its line, of what stands above its bracket, or its prompt and each label with its blank. A stack has none. */
 export function tokensOf(face: Face): readonly FaceToken[] {
+  if (face.kind === "figure") return [...face.figure.parts.map((text) => ({ text })), { text: face.figure.totalLabel }, { text: face.prompt }, { blank: face.blank }];
   if (face.kind === "fields") return [{ text: face.prompt }, ...face.rows.flatMap((row): FaceToken[] => [{ text: row.label }, { blank: row.blank }])];
   return face.kind === "column" ? [] : face.kind === "bracket" ? face.above : face.tokens;
 }
@@ -355,6 +419,7 @@ function hasCells(place: ItemPlace, face: Face): boolean {
   const tokens = tokensOf(face);
   if (face.kind === "column") return "topCells" in place;
   if (face.kind === "fields") return "fields" in place && face.rows.length <= place.fields.length;
+  if (face.kind === "figure") return "frame" in place;
   if (face.kind === "bracket") return "above" in place && place.above.length === tokens.length && tokens.every((token, i) => isAt(place.above[i], token));
   return "forms" in place && cellsFor(place, tokens) !== null;
 }

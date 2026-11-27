@@ -1,6 +1,6 @@
 # Workbook engine v2
 
-The v2 engine turns a bank snapshot file into a book: page models, answers, a PDF, page images and the position of each rectangle. It is in `src/lib/workbook-v2/`, apart from the v1 generator, and it is not connected to the app yet. It holds fourteen shapes (addition, subtraction and multiplication in columns, the facts of +, -, × and ÷, repeated addition, skip counting, a missing factor, a missing addend, division with a remainder, long division and place value), fifteen page templates and invented sheets of all of them.
+The v2 engine turns a bank snapshot file into a book: page models, answers, a PDF, page images and the position of each rectangle. It is in `src/lib/workbook-v2/`, apart from the v1 generator, and it is not connected to the app yet. It holds fifteen shapes (addition, subtraction and multiplication in columns, the facts of +, -, × and ÷, repeated addition, skip counting, a missing factor, a missing addend, division with a remainder, long division, place value and a bar model of equal groups), sixteen page templates and invented sheets of all of them. It also freezes a draft of a level into a snapshot.
 
 ## Use it
 
@@ -8,15 +8,16 @@ The v2 engine turns a bank snapshot file into a book: page models, answers, a PD
 npm run typst:install    # once for each computer
 npm run workbook:v2 -- --snapshot src/lib/workbook-v2/fixtures/snapshot.json --book src/lib/workbook-v2/fixtures/book.json --out /tmp/example-book
 npm run workbook:v2:check -- --snapshot src/lib/workbook-v2/fixtures/snapshot.json    # every sheet and row of a level
+npm run workbook:v2:freeze -- --draft src/lib/workbook-v2/fixtures/draft-invented-topic.json --out /tmp/frozen.json
 ```
 
 Run them from the repository root. No command uses the network, apart from the install. The output folder of a book must be new or empty. It gets `book.pdf`, `page-1.png` and up (150 pixels an inch), `pages.json` (page models), `positions.json` (what Typst reports), `answers.json` and `record.json` (the engine, snapshot and input, the version of Typst, and the SHA-256 of its program on this computer, of the drawing file and of each font). A book that fails writes nothing and lists each problem with its place.
 
 The command writes the whole book into a hidden folder beside the output folder and renames it in one step. The system refuses that step when the output folder holds something: of two processes one wins and the other stops. An error removes the hidden folder; a process that is killed can leave one (`.workbook-v2-*`), which is safe to delete.
 
-`snapshot-4-digits.json` and `book-4-digits.json` in the same folder are a sheet of the wide template. `snapshot-add-sub.json` and `book-add-sub.json` are a sheet of `add.column` and one of `sub.column`, each with a side of both column templates. `snapshot-facts.json` and `book-facts.json` are five sheets of facts, equations with a blank inside and sequences. `snapshot-division.json` and `book-division.json` are seven sheets of divisions, in lines and in brackets. `snapshot-place-value.json` and `book-place-value.json` are two sheets of place value, one of each template of fields.
+`snapshot-4-digits.json` and `book-4-digits.json` in the same folder are a sheet of the wide template. `snapshot-add-sub.json` and `book-add-sub.json` are a sheet of `add.column` and one of `sub.column`, each with a side of both column templates. `snapshot-facts.json` and `book-facts.json` are five sheets of facts, equations with a blank inside and sequences. `snapshot-division.json` and `book-division.json` are seven sheets of divisions, in lines and in brackets. `snapshot-place-value.json` and `book-place-value.json` are two sheets of place value, one of each template of fields. `draft-invented-topic.json` is the draft of an invented topic (3-20) with notes: the sheet of stacks and a sheet of bar models. `snapshot-invented-topic.json` is what it freezes to, and a test keeps the two the same. In `book-invented-topic.json` the first sheet starts a day, so its front page has the time log.
 
-The snapshot file holds the content of one level. The book file holds the book id, the child id, and for each sheet the attempt and the text of the two QR codes. The caller makes all of these; the engine makes none. Both must be plain JSON data: the build reads a copy, and the hashes cover exactly that copy. An inherited, hidden or computed value is refused. A level name is a number, and a page number and the next one must be exact whole numbers.
+The snapshot file holds the content of one level. The book file holds the book id, the child id, and for each sheet the attempt, the text of the two QR codes and, if the sheet is the first of a day, `"startsDay": true` (any other value than true or false is refused; no value is false). The caller makes all of these; the engine makes none. Both must be plain JSON data: the build reads a copy, and the hashes cover exactly that copy. An inherited, hidden or computed value is refused. A level name is a number, and a page number and the next one must be exact whole numbers.
 
 ## Modules
 
@@ -29,7 +30,7 @@ The snapshot file holds the content of one level. The book file holds the book i
 | Checks | before the drawing: `checkPrintedAnswers(pages, items, shapes)`, `checkPage(page, items)`; after it: `checkDrawing(pages, items, drawn)`, which is `checkRendering`, `checkPositions`, `placeTexts`, `checkFit`, `checkPlaces`, `checkImages` and `checkPdf` | `checks/` |
 | Renderer | the interface to a typesetter: `render(pages)`, and `images(pages)` and `report(pages)` for a part of it | `renderer.ts` |
 | Render | the only module that calls Typst; fonts, pins, install | `render/` |
-| Build | `buildBook(input, renderer)`: the book with its notices, or a list of problems; `planBook(input)`: the pages and items of the book before the drawing, as `{ ok: true, ... }`, or `{ ok: false, problems }`; `checkBank(snapshot, renderer)`: the problems of a level, with sheet, side and row | `build/` |
+| Build | `buildBook(input, renderer)`: the book with its notices, or a list of problems; `planBook(input)`: the pages and items of the book before the drawing, as `{ ok: true, ... }`, or `{ ok: false, problems }`; `checkBank(snapshot, renderer)`: the problems of a level, with sheet, side and row; `freezeBank(draft, renderer)`: the snapshot of a draft with its capacity, or every problem | `build/` |
 
 ## Rules
 
@@ -76,7 +77,7 @@ A square of 1 point is found at each place of a zone, also in the grey of 244 an
 - In the images: a stray mark inside the rectangle of a text, a missing middle letter, a grey from 3 to 71 in lines that are less than 3 pixels wide, and an area lighter than 245 that is less than 3 pixels wide. The PDF check sees all of them.
 - In the PDF: the shapes of the letters in its fonts, that each letter name in it is the letter that is drawn, and a letter that is moved inside the bound of the kerning. What a printer makes of it is for the physical run (UNI-145).
 
-**The bank check** (`build/check-bank.ts`, for the freeze of a level, UNI-140) reads a snapshot and lists its problems with sheet, side and row:
+**The bank check** (`build/check-bank.ts`, which the freeze runs) reads a snapshot and lists its problems with sheet, side and row:
 
 - 200 seeds make each sheet, with every check that needs no drawing. The first seed that fails is named, and the rows that fail alone.
 - **Every text that the limits of a row admit is measured in its place**, at each place of both sides of its template (`build/row-texts.ts`), and not only what the seeds print. The widest question of a shape has the most digits and not the widest digits: "20" is wider than "10".
@@ -84,6 +85,8 @@ A square of 1 point is found at each place of a zone, also in the grey of 244 an
   - A shape with no list: the texts of the widest question of each form, with every digit 0 to 9 in the place of its digits, and with as many digits as the longest number of that question, plus 0.021 of the size between two digits (the most that the fonts add). A stack fills all of its digit places in both lines; a bracket prints as many digits as its widest question. This is at least as wide as each question of the limits, as long as the shape gives each form and no question needs more than the widest one of its form; the shape harness checks both with its seeds.
   - Each text that the seeds print, with the heading, the instruction and the footer. A text that does not fit names every row that prints it.
 - A shape that gives no form, or a row for which nothing is drawn, is a problem (also in `validateSnapshot` and in the shape harness).
+- A row of figures has its questions of 5 sampled seeds drawn as its widest ones are (see "Drawn figures").
+- Any sheet can start a day, so the front page of each sheet is made and drawn with the time log.
 - The widest question of each form of each row is drawn at every place of its template on both sides, with every check of a book, and one time alone (layer 2). Questions that two rows share are drawn alone one time.
 - A drawing that Typst cannot make is made again row by row, question by question or text by text, and a shape that throws names its sheet, side and row. When the parts can only not be drawn together, the problem names all of their rows.
 
@@ -117,6 +120,7 @@ A face is what a question looks like. The layout knows no math in it.
 | `sequence` | terms and blanks, one below the other | in the ladder of terms, with no work area |
 | `bracket` | a number inside a bracket and one outside it (`6)438`), with tokens above | the first one over the number inside, so that a digit can stand over each digit; the next one after a printed text in the same line |
 | `fields` | a prompt, and below it a row for each blank: a label, then its area | one in each row, after its label, with no work area |
+| `figure` | a drawn figure (`FigureData`; now only `bar-model`: parts and the label of the total), and below it a prompt | one, in the line below the figure, after the prompt, with no work area |
 
 The sign of a bracket is a printed text, so the rows of a question are `□R□` and `6)438`: the two numbers never run together. A bracket says how many lines of work it needs (`workLines`): `checkPage` wants a work area directly below it, under the sign and the whole area of the quotient, with `PRINT_RULES.workLine` (18 points) for each line, and none when it is worked in the head. The work area of a stack has at least `PRINT_RULES.stackWork`.
 
@@ -137,6 +141,7 @@ A place of a token template has fixed cells. A cell holds a text, an answer area
 | `brackets-2x6`, `-2x4`, `-2x3` | 12, 8, 6 | brackets with one area and room for no, three or six lines of work, two columns |
 | `brackets-1x4`, `-1x3` | 4, 3 | brackets with two areas and room for three or six lines of work, two columns |
 | `places-2x2`, `-2x3` | 4, 6 | fields with up to four or two rows, the areas at the right end of two columns |
+| `figures-1x4` | 4 | a bar model of 2 to 6 bars in a frame of 288 points, one answer column at the right end |
 
 - A row is an answer area of the smallest size with its reach: 61.2 points. Ten rows fit between the instruction and the QR code; eleven or twelve do not.
 - A sequence goes down the page. On one line, five blanks need 600 points and there are 486; on a grid of lines the blanks stand in four columns, and a side may have two. Down the page each blank has its own area and reach, and all blanks of a side are in two columns.
@@ -146,6 +151,41 @@ A place of a token template has fixed cells. A cell holds a text, an answer area
 - A question of fields has a prompt of up to 4 characters at 22 points and labels of up to 9 characters at 16 points, right of the label of the question and left of the reach. A row is an area with its reach (61.2 points): 4 rows fit in a place of `places-2x2` and 2 in one of `places-2x3`. A question with fewer rows takes the first ones. Only the templates of fields take fields, and they take nothing else. Both prompt and labels are measured by the fit check (`checks/fit.ts`) and `checkBank`.
 - `needsOf` says how large a question is, and `holds` how large a place is. `placeProblem` compares them for one place and looks for a form: the layout asks it for each question at the place where it is drawn. `fitProblem` asks it for all places of both sides; the bank check and the harness use it for the widest question of each form of a row (`formsOf`). A shape whose blanks can stand in more than one place gives the forms.
 - The child must be able to tell the rule of a sequence, so the instruction of a side with sequences says that the step stays the same ("The step stays the same. Write the missing numbers."). It is content of the bank: nothing checks it.
+
+## Drawn figures
+
+`figure.bar` asks for the total of equal groups. Its face has a part for each group (`parts`, each the size of a group), `totalLabel` "?", the prompt "Total =" and one blank. The layout knows no math in it: in `figures-1x4` the bars share the width of a fixed frame (`PRINT_RULES.figure`, 288 points), each an outline with its part in the middle, 4 points from its border. Below them stands the bracket of the total: a tick at each end and a line between, all fills. In the line of the answer area stand the label of the total, under the middle of the frame, and the prompt, at the right, up to the reach. The bars are in a line of their own, so that no part is read in the line of the area.
+
+`checkPage` wants each outline, part, line, label and prompt at the place that the area and `PRINT_RULES.figure` give (`checks/face-print.ts`), so a bar that is wider than the others, or a part in another bar, stops the page. A text may stand inside an outline, but not on its border. A part, the label and the prompt must not be empty. The number of the question stands beside the bars. Only `figures-1x4` takes figures, and it takes nothing else.
+
+The limits of `figure.bar` are `groups` (2 to 6), `size` (2 to 99) and `product` (4 to 594). There are 490 questions at most: `count` sums one range of sizes for each count of bars, and `pick` gives a place in the list by count of bars, then by size. More bars are harder, then a larger size (which is also a larger total at one count of bars): 3 bars of 99 are easier than 4 bars of 2. Each count of bars is a form, fitted with its largest size; `worstCase` is the most bars with their largest size. `needsOf` asks only for the bars, so that the question with the most bars is the largest one; the page rules check the width of the answer area. The steps say the sum (`15 + 15 + 15 + 15 = 60`), then the product (`4 × 15 = 60`), then the answer, in `lines`.
+
+### What drawn figures need that plain items do not
+
+- **Rows read apart:** the second computation reads the rows of a question. The parts of a bar model stand side by side, so joined with nothing two bars of 15 would read as 1515. For a figure `questionRows` puts `" | "` between the texts of a row: `15 | 15 | 15 | 15` and `? | Total = | □`. The other faces read as before. `solveAgain` of `figure.bar` parses the parts and adds them one by one; the first computation multiplies.
+- **A layout from data, inside fixed bounds:** the number of bars decides the width of each one, so the rectangles of a figure come from its data. The frame, the bar height and the lines are fixed, and `holds` gives the most bars that a place has. The page rules derive every rectangle again from the area and the print rules, never from the template.
+- **Sampled seeds at the freeze:** the widest question of each form fits, but a figure has more than its widest numbers: other counts of bars give other widths. So the bank check also draws the questions of `FIGURE_SAMPLE_SEEDS` (5) seeds of each figure row (the option `figureSamples` changes the number, for tests), each one time, at every place of both sides, with all checks of a book, and alone (`checked.samples` counts them). `rowTexts` measures every digit 0 to 9 at the largest count of digits in the bar of each count of bars.
+- **Vector primitives:** a figure prints only outlines, fills and texts, which the PDF check and the image check already read back. Rectangles and straight lines are enough for bars, brackets, arrays and number lines. A curve (a circle, an arc, a clock face) needs a new kind of ink, a drawer in `page.typ`, a reader in `checks/pdf-file.ts` (which now refuses curves) and a check of its pixels: a later ticket.
+
+## The time log
+
+A sheet that starts a day (`startsDay` in the book) has the time log on its front page: a capture with the id `<page id>/time-log`, the kind `time-log` and the fields `start` and `finish`, in reading order (`captures` in the page model, beside `regions`). A capture is what a child writes that is not an answer: it is never scored, it is not in `answers.json` and it is no answer column. The region with the role `capture` and the same id prints it: the label "Start" and an outlined box of 72 by 26 points, then "Finish" and its box (`PRINT_RULES.timeLog`). It stands in the band between the questions and the footer (from 700 to 736 points), from the left end of the footer, apart from the QR code and outside the spine zone; a test proves that it touches no rectangle of the front of any of the 16 templates. A back page has none.
+
+`checkPage` wants the band, the boxes, their clear space (5 points) and the labels where the live part of the page and the print rules put them, with no other ink in the clear space of a box, and at most one time log a page. The image check treats each box and its clear space as a zone that holds only the border of the box. A page with no time log is as before: its captures are `[]`, and its PDF and images are the same bytes. Marking reads the two times later (B6).
+
+## The freeze
+
+`freezeBank(draft, renderer, options)` (`build/freeze-bank.ts`) turns a draft of a level into a snapshot. A draft is a snapshot in which the level, a topic, a sheet, a side and a row may also hold `basis`: a note about a source. The freeze copies the content only: it removes each note, and refuses a note at any other place (in limits, say) before it reads more. Then it refuses each of these, with the place in plain words, and gives no snapshot:
+
+- every problem of `validateSnapshot`;
+- a row whose shape has an answer kind that is not in `ANSWER_KINDS`;
+- a sheet of a topic that does not start two pages after the sheet before it, in the order of the topic;
+- with `requireFullLevel: true`, a level that is not 20 topics of 10 sheets (one topic can be frozen alone to try it);
+- every problem of `checkBank` (200 seeds, forms, row texts, sampled seeds of figures, the time log on every front page, and the drawings).
+
+The drawings wait until the rest has no problem. A good draft gives the snapshot, its hash and a capacity report: for each row its places (`items`), the questions that its limits allow (`possible`) and `attemptsWithoutRepeat` (possible divided by items, rounded down), and for each sheet the smallest of these. A row with fewer than 2 attempts warns: the next attempt of its sheet repeats a question. A warning does not refuse.
+
+`npm run workbook:v2:freeze -- --draft FILE --out FILE` refuses an output file that is there already, before it starts. It writes nothing on a problem. It writes the snapshot into a hidden folder beside the file and links it to the name of the file in one step, which the system refuses when the name is taken, so a reader never sees a part of a file. It reads the file back and compares its hash. It prints the sheets, the rows, the hash, the attempts of each sheet and each warning. The invented topic freezes in about 2.5 seconds.
 
 ## Rows in order and swapped forms
 
@@ -271,6 +311,7 @@ The harness (`testing/shape-harness.ts`, with the step checks in `shape-steps.ts
 
 ## Where the next parts connect
 
-- The freeze of a level (UNI-140) calls `checkBank`. Story text (UNI-139) prints the `flow` ink.
+- The freeze of a level is `freezeBank`; the bank tables and the admin tool (B1, B8) call it. Story text (UNI-139) prints the `flow` ink.
+- Marking reads the captures of a page (B6): the time log is the first.
 - The book job (UNI-260): see "In a Vercel function".
 - More shapes: follow "Adding a shape" above. A new look of a question is a new `Face` and a template that takes it.

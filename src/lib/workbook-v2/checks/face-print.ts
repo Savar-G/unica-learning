@@ -1,13 +1,14 @@
 // What a question must print: each text and each line of its face, at its place and in its size. The places follow from the
 // answer areas of the question and the print rules, never from a template, so a template that leaves a part out fails.
 // The image check looks for all that the model prints, so a part of a face is on the paper too.
-import { BRACKET_SIGN, PRINT_RULES, type BracketFace, type ColumnFace, type Face, type FaceToken, type FieldsFace, type Ink, type Rect, type Region } from "../contract";
+import { BRACKET_SIGN, PRINT_RULES, type BracketFace, type ColumnFace, type Face, type FaceToken, type FieldsFace, type FigureFace, type Ink, type Rect, type Region } from "../contract";
 import { bottom, EPSILON, near, right } from "./rects";
 
 const { cell: CELL, line: LINE, textHeight: TEXT_HEIGHT, questionSize: SIZE, bracket: BRACKET } = PRINT_RULES;
 
 /** The tokens of a face: of its line, of its sequence, of what stands above its bracket, or its prompt and each label with its blank. A stack has none. */
 export function faceTokens(face: Face): readonly FaceToken[] {
+  if (face.kind === "figure") return [...face.figure.parts.map((text) => ({ text })), { text: face.figure.totalLabel }, { text: face.prompt }, { blank: face.blank }];
   if (face.kind === "fields") return [{ text: face.prompt }, ...face.rows.flatMap((row): FaceToken[] => [{ text: row.label }, { blank: row.blank }])];
   return face.kind === "column" ? [] : face.kind === "bracket" ? face.above : face.tokens;
 }
@@ -22,13 +23,15 @@ export function faceText(face: Face): string {
 /** The parts that the blanks of a face name. A stack has no blanks. */
 export const faceBlanks = (face: Face): string[] | null => (face.kind === "column" ? null : faceTokens(face).flatMap((t) => ("blank" in t ? [t.blank] : [])));
 
-/** One part of a face on the page. A line has no text. */
-interface Print { text: string | null; rect: Rect; align?: "left" | "center" | "right" }
+/** One part of a face on the page. A line has no text, and an outline is a line round its rectangle with this width. */
+interface Print { text: string | null; rect: Rect; align?: "left" | "center" | "right"; outline?: number }
 export interface Area { answer: Rect; reach: Rect }
 
 const middle = (r: Rect): number => r.y + r.h / 2;
 const text = (value: string, x: number, y: number, w: number, h: number, align?: Print["align"]): Print => ({ text: value, rect: { x, y, w, h }, align });
 const line = (x: number, y: number, w: number): Print => ({ text: null, rect: { x, y, w, h: LINE.height } });
+/** A filled rectangle of any shape, such as the tick of a bracket. */
+const filled = (rect: Rect): Print => ({ text: null, rect });
 /** A text of one line that stands in the line of an area. */
 const beside = (value: string, x: number, w: number, area: Rect, align?: Print["align"]): Print => text(value, x, middle(area) - TEXT_HEIGHT / 2, w, TEXT_HEIGHT, align);
 
@@ -105,15 +108,47 @@ function fieldsPrint({ prompt, rows }: FieldsFace, areas: ReadonlyMap<string, Ar
   return [...(isBelow ? [line(question.x, question.y, question.w)] : []), text(prompt, question.x, first.reach.y - TEXT_HEIGHT, question.w, TEXT_HEIGHT, "left"), ...labels];
 }
 
+const FIGURE = PRINT_RULES.figure;
+
+/**
+ * A bar model stands above its answer area, from the left end of the question: the bars share the width of the frame, each
+ * outlined with its part in the middle and away from its border. The bracket of the total is below them: a tick at each end
+ * and a line between. In the line of the area: the label of the total under the middle of the bars, then the prompt at the
+ * right, up to the reach.
+ */
+function figurePrint({ figure: { parts, totalLabel }, prompt, blank }: FigureFace, areas: ReadonlyMap<string, Area>, question: Rect): Print[] {
+  const area = areas.get(blank);
+  if (!area || parts.length === 0) return [];
+  const { answer, reach } = area;
+  const tickTop = answer.y - FIGURE.gap - FIGURE.tick;
+  const barTop = tickTop - FIGURE.gap - FIGURE.bar;
+  const [left, width] = [question.x, FIGURE.width / parts.length];
+  const bars = parts.flatMap((part, i): Print[] => {
+    const x = left + i * width;
+    return [{ text: null, rect: { x, y: barTop, w: width, h: FIGURE.bar }, outline: FIGURE.outline }, text(part, x + FIGURE.inset, barTop + (FIGURE.bar - TEXT_HEIGHT) / 2, width - 2 * FIGURE.inset, TEXT_HEIGHT, "center")];
+  });
+  const labelLeft = left + (FIGURE.width - FIGURE.totalLabel) / 2;
+  return [
+    ...bars,
+    filled({ x: left, y: tickTop, w: LINE.height, h: FIGURE.tick }),
+    filled({ x: left + FIGURE.width - LINE.height, y: tickTop, w: LINE.height, h: FIGURE.tick }),
+    line(left, tickTop + FIGURE.tick - LINE.height, FIGURE.width),
+    beside(totalLabel, labelLeft, FIGURE.totalLabel, answer, "center"),
+    beside(prompt, labelLeft + FIGURE.totalLabel, reach.x - labelLeft - FIGURE.totalLabel, answer, "right"),
+  ];
+}
+
 function facePrint(face: Face, question: Region, areas: ReadonlyMap<string, Area>, isBelow: boolean): Print[] {
   if (face.kind === "column") return columnPrint(face, question.rect);
   if (face.kind === "fields") return fieldsPrint(face, areas, question.rect, isBelow);
   if (face.kind === "bracket") return bracketPrint(face, areas);
+  if (face.kind === "figure") return figurePrint(face, areas, question.rect);
   return face.kind === "equation" ? equationPrint(face.tokens, areas, question.ink) : sequencePrint(face.tokens, areas, question.rect, isBelow);
 }
 
-const isPrint = ({ text: wanted, rect, align }: Print, ink: Ink): boolean => {
-  const isKind = wanted === null ? ink.kind === "fill" : ink.kind === "text" && ink.text === wanted && ink.size >= SIZE.min && ink.size <= SIZE.max && (align === undefined || ink.align === align);
+const isPrint = ({ text: wanted, rect, align, outline }: Print, ink: Ink): boolean => {
+  const isLine = outline === undefined ? ink.kind === "fill" : ink.kind === "outline" && near(ink.width, outline);
+  const isKind = wanted === null ? isLine : ink.kind === "text" && ink.text === wanted && ink.size >= SIZE.min && ink.size <= SIZE.max && (align === undefined || ink.align === align);
   return isKind && near(ink.rect.x, rect.x) && near(ink.rect.y, rect.y) && near(ink.rect.w, rect.w) && near(ink.rect.h, rect.h);
 };
 const round = (n: number) => Math.round(n * 100) / 100;
@@ -125,7 +160,8 @@ export function printProblems(face: Face, question: Region, areas: ReadonlyMap<s
     const found = left.findIndex((ink) => isPrint(wanted, ink));
     if (found >= 0) left.splice(found, 1);
     const { x, y, w, h } = wanted.rect;
-    return found >= 0 ? [] : [`must print ${wanted.text === null ? "a line" : `"${wanted.text}"`} at (${[x, y].map(round).join(", ")}, ${round(w)} by ${round(h)})`];
+    const what = wanted.text !== null ? `"${wanted.text}"` : wanted.outline === undefined ? "a line" : "an outline";
+    return found >= 0 ? [] : [`must print ${what} at (${[x, y].map(round).join(", ")}, ${round(w)} by ${round(h)})`];
   });
-  return [...missing, ...left.map((ink) => `prints ${ink.kind === "text" ? `"${ink.text}"` : ink.kind === "flow" ? "flow text" : "a line"} that its face does not have there`)];
+  return [...missing, ...left.map((ink) => `prints ${ink.kind === "text" ? `"${ink.text}"` : ink.kind === "flow" ? "flow text" : ink.kind === "outline" ? "an outline" : "a line"} that its face does not have there`)];
 }

@@ -29,17 +29,18 @@ function writeShort(): void {
 const WHOLE = "scripts/workbook-v2.mjs";
 /** The same command with a bundle that is made one time for this file: what npm runs, without its first step. */
 let bundled = "";
-/** The bank check in the same way. */
+/** The bank check and the freeze in the same way. */
 let bundledCheck = "";
+let bundledFreeze = "";
 beforeAll(async () => {
   folder = mkdtempSync(join(tmpdir(), "workbook-v2-cli-"));
   writeShort();
   const make = join(folder, "make.mjs");
   const runner = JSON.stringify(pathToFileURL(resolve("scripts/run-script.mjs")).href);
   const bundle = (script: string) => join(folder, `${script}-bundle.mjs`);
-  const scripts = ["workbook-v2", "workbook-v2-check"];
+  const scripts = ["workbook-v2", "workbook-v2-check", "workbook-v2-freeze"];
   writeFileSync(make, `import { bundleScript } from ${runner}; ${scripts.map((s) => `await bundleScript("scripts/${s}.ts", ${JSON.stringify(bundle(s))});`).join(" ")}`);
-  [bundled, bundledCheck] = scripts.map((s) => {
+  [bundled, bundledCheck, bundledFreeze] = scripts.map((s) => {
     const file = join(folder, `${s}.mjs`);
     writeFileSync(file, `import { runBundle } from ${runner}; await runBundle(${JSON.stringify(bundle(s))});`);
     return file;
@@ -83,6 +84,93 @@ describe.concurrent("the bank check command, before it checks", () => {
     const { code, output } = await command(args, {}, "", bundledCheck);
     expect(code).toBe(1);
     expect(output).toMatch(message);
+  });
+});
+
+/**
+ * A draft of one sheet of long counts with one question a side, in a template of two places, so that little is drawn: the
+ * invented level, a topic and a made-up source in a note of the sheet and of a row.
+ */
+function writeSmallDraft(name: string, change: (draft: Record<string, unknown>) => unknown = () => {}): string {
+  const counts = factsSnapshot.sheets[4];
+  const sideOf = (side: typeof counts.front, id: string) => ({ ...side, rows: [{ ...side.rows[0], id, items: 1, limits: { ...side.rows[0].limits, blanks: { min: 1, max: 1 }, places: { min: 3, max: 3 } } }] });
+  const sheet = { ...counts, basis: "made-up-source-cli: page 9", front: sideOf(counts.front, "one"), back: { ...sideOf(counts.back, "two"), basis: { page: 9, source: "made-up-source-cli" } } };
+  const draft: Record<string, unknown> = { ...factsSnapshot, basis: "made-up-source-cli", topics: [{ ...factsSnapshot.topics[0], sheets: [counts.id] }], sheets: [sheet] };
+  change(draft);
+  const file = join(folder, name);
+  writeFileSync(file, JSON.stringify(draft));
+  return file;
+}
+const freeze = (args: string[]) => command(args, {}, "", bundledFreeze);
+
+describe.concurrent("the freeze command, before it checks", () => {
+  // Its arguments are read as those of the other commands; one case says that they are read.
+  it("stops with no output file", async () => expect(await freeze(["--draft", "a.json"])).toEqual({ code: 1, output: "Usage: npm run workbook:v2:freeze -- --draft FILE --out FILE\n" }));
+
+  it("does not replace a file that is there, and does not start", async () => {
+    const out = join(folder, "taken.json");
+    writeFileSync(out, "an older snapshot");
+    const { code, output } = await freeze(["--draft", "README.md", "--out", out]);
+    expect({ code, output }).toEqual({ code: 1, output: `The file ${out} is there already.\n` });
+    expect(readFileSync(out, "utf8")).toBe("an older snapshot");
+  });
+});
+
+describe.skipIf(skipTypstTests()).concurrent("the freeze command, with the real Typst", () => {
+  it("writes nothing for a draft with a problem, and lists the problems", async () => {
+    const bad = writeSmallDraft("bad-draft.json", (d) => { Reflect.set(d, "sheets", [{ ...(d.sheets as object[])[0], firstPage: 2 }]); });
+    const out = join(folder, "never.json");
+    const { code, output } = await freeze(["--draft", bad, "--out", out]);
+    expect(code).toBe(1);
+    expect(output).toBe('Sheet "long-counts": firstPage must be odd, because the front of a sheet is a right-hand page.\n1 problem. Nothing was written.\n');
+    expect(existsSync(out)).toBe(false);
+    expect(readdirSync(folder).filter((f) => f.startsWith(".workbook-v2-freeze-"))).toEqual([]);
+  });
+
+  it("writes the snapshot with no note, says what it froze, and leaves nothing beside it", async () => {
+    const draft = writeSmallDraft("small-draft.json");
+    const out = join(folder, "frozen", "small.json");
+    mkdirSync(join(folder, "frozen"));
+    const { code, output } = await freeze(["--draft", draft, "--out", out]);
+    expect(code).toBe(0);
+    expect(output).toMatch(/^Frozen 1 sheets and 2 rows in \d+\.\d s: .*small\.json, SHA-256 [0-9a-f]{64}\.\nSheet "long-counts": \d+ attempts before a row repeats a question\.\n$/);
+    const text = readFileSync(out, "utf8");
+    expect(text).not.toContain("basis");
+    expect(text).not.toContain("made-up-source-cli");
+    expect(JSON.parse(text)).toMatchObject({ id: factsSnapshot.id, sheets: [{ id: "long-counts", front: { rows: [{ id: "one" }] } }] });
+    expect(readdirSync(join(folder, "frozen"))).toEqual(["small.json"]);
+  });
+
+  it("verifies the staged file before linking it, and leaves no output file on a hash mismatch", async () => {
+    const draft = writeSmallDraft("corrupt-draft.json");
+    const dir = join(folder, "corrupt");
+    mkdirSync(dir);
+    const out = join(dir, "snapshot.json");
+    const tamper = hookOn("writeFile", 'if (String(args[0]).endsWith("/snapshot.json")) args[1] = "{}";');
+    const { code, output } = await command(["--draft", draft, "--out", out], {}, tamper, bundledFreeze);
+    expect(code).toBe(1);
+    expect(output).toMatch(/does not hold the snapshot that was checked/);
+    expect(readdirSync(dir)).toEqual([]);
+  });
+
+  it("two processes that freeze into one output file at the same time: one wins, the other stops, and the file stays whole", async () => {
+    const draftA = writeSmallDraft("race-a.json", (d) => { d.id = "race-snapshot-a"; });
+    const draftB = writeSmallDraft("race-b.json", (d) => { d.id = "race-snapshot-b"; });
+    const dir = join(folder, "freeze-race");
+    mkdirSync(dir);
+    const out = join(dir, "snapshot.json");
+    const meet = (me: string, peer: string) =>
+      hookOn("link", `if (String(args[1]).endsWith("/snapshot.json")) { writeFileSync(${JSON.stringify(join(folder, `freeze-${me}`))}, ""); for (let i = 0; i < 1000 && !existsSync(${JSON.stringify(join(folder, `freeze-${peer}`))}); i++) await new Promise((r) => setTimeout(r, 10)); }`);
+    const both = await Promise.all([
+      command(["--draft", draftA, "--out", out], {}, meet("a", "b"), bundledFreeze),
+      command(["--draft", draftB, "--out", out], {}, meet("b", "a"), bundledFreeze),
+    ]);
+    expect(both.map((b) => b.code).sort()).toEqual([0, 1]);
+    const [winner, loser] = both[0].code === 0 ? [0, 1] : [1, 0];
+    expect(both[loser].output).toMatch(/is there already/);
+    expect(existsSync(join(folder, "freeze-a")) && existsSync(join(folder, "freeze-b"))).toBe(true);
+    expect(readdirSync(dir)).toEqual(["snapshot.json"]);
+    expect(JSON.parse(readFileSync(out, "utf8"))).toMatchObject({ id: ["race-snapshot-a", "race-snapshot-b"][winner] });
   });
 });
 

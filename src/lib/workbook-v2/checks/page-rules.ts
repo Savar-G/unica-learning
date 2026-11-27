@@ -1,8 +1,8 @@
 // The layout rules of a page. They read the page model and the items, never the templates, so a wrong template fails.
 import { isPrintable, PAPER, partRegionName, PRINT_RULES, tokenText, wordToken, type AnswerPart, type BookItem, type FlowToken, type Ink, type PageModel, type Rect, type Region, type RegionRole } from "../contract";
 import { faceBlanks, faceText, printProblems, type Area } from "./face-print";
-import { framePrintProblems, labelProblems } from "./frame-print";
-import { bottom, EPSILON, inside, near, overlaps, right } from "./rects";
+import { framePrintProblems, labelProblems, timeLogProblems } from "./frame-print";
+import { bottom, EPSILON, inside, near, outlineLines, overlaps, right } from "./rects";
 
 const { spineZone, outerMargin, qrMin, reach: CLEAR, answer: ANSWER } = PRINT_RULES;
 
@@ -63,7 +63,9 @@ function checkInk(page: PageModel, tell: Tell): void {
       const printed = textOf(ink);
       if (printed === null) return;
       if (!isPrintable(printed)) tell(`${regionName(region)} has the text "${printed}", which the fonts cannot print`);
-      if (region.ink.some((other, j) => j !== i && overlaps(ink.rect, other.rect))) tell(`the text "${printed}" of ${regionName(region)} is over other ink`);
+      // An outline inks only its border, so a text may stand inside it, as the part of a bar does.
+      const isOver = (other: Ink) => (other.kind === "outline" ? outlineLines(other.rect, other.width) : [other.rect]).some((rect) => overlaps(ink.rect, rect));
+      if (region.ink.some((other, j) => j !== i && isOver(other))) tell(`the text "${printed}" of ${regionName(region)} is over other ink`);
     });
     checkFlows(region, tell);
     const mustBeEmpty = region.role === "answer" ? region.ink.some((i) => i.kind !== "outline") : (region.role === "reach" || region.role === "work" || region.role === "slot") && region.ink.length > 0;
@@ -204,7 +206,7 @@ function checkParts(page: PageModel, item: BookItem, question: Region | undefine
   if (parts.length === 0) tell(`question ${item.number} has no answer part`);
   if (new Set(names).size < names.length) tell(`question ${item.number} has two answer parts with one name`);
   const blanks = faceBlanks(item.face);
-  if (blanks && blanks.join() !== names.join()) tell(`question ${item.number} has the blanks ${blanks.join(", ")} and the answer parts ${names.join(", ")}`);
+  if (blanks && (blanks.length !== names.length || blanks.some((b, i) => b !== names[i]))) tell(`question ${item.number} has the blanks ${blanks.join(", ")} and the answer parts ${names.join(", ")}`);
   const own = page.regions.filter((r) => r.item === item.id);
   const areas: Region[] = [];
   const byPart = new Map<string, Area>();
@@ -236,17 +238,37 @@ const ITEM_ROLES = ["slot", "label", "question"] as const;
 
 function checkItem(page: PageModel, item: BookItem, tell: Tell): void {
   const parts = new Map<RegionRole, Region>();
-  // A stack and a bracket with lines of work are worked on the page. All other questions are worked in the head.
+  // A stack and a bracket with lines of work are worked on the page. Other brackets may still sit in a template with a work area; all other faces are worked in the head and have none.
   const workLines = item.face.kind === "bracket" ? item.face.workLines : 0;
-  for (const role of item.face.kind === "column" || workLines > 0 ? [...ITEM_ROLES, "work" as const] : ITEM_ROLES) {
+  const needsWork = item.face.kind === "column" || workLines > 0;
+  const mayHaveWork = item.face.kind === "column" || item.face.kind === "bracket";
+  for (const role of needsWork ? [...ITEM_ROLES, "work" as const] : ITEM_ROLES) {
     const found = page.regions.filter((r) => r.item === item.id && r.role === role);
     if (found.length === 0) tell(`question ${item.number} has no "${role}" rectangle`);
     else if (found.length > 1) tell(`question ${item.number} has ${found.length} "${role}" rectangles`);
     else parts.set(role, found[0]);
   }
+  if (!needsWork) {
+    const works = page.regions.filter((r) => r.item === item.id && r.role === "work");
+    if (!mayHaveWork && works.length > 0) tell(`question ${item.number} is worked in the head and must have no "work" rectangle`);
+    else if (works.length > 1) tell(`question ${item.number} has ${works.length} "work" rectangles`);
+    else if (works.length === 1) parts.set("work", works[0]);
+  }
   const [slot, label, question] = ITEM_ROLES.map((role) => parts.get(role));
   if (slot) for (const part of page.regions.filter((r) => r.item === item.id)) if (!inside(part.rect, slot.rect)) tell(`${regionName(part)} is not inside ${regionName(slot)}`);
   if (label && texts(label.ink).join("") !== String(item.number)) tell(`question ${item.number} has the label "${texts(label.ink).join("")}"`);
+  if (item.face.kind === "figure") {
+    const { figure: { parts, totalLabel }, prompt } = item.face;
+    if (parts.length === 0) tell(`question ${item.number} has a figure with no bar`);
+    parts.forEach((part, i) => {
+      if (part.trim() === "") tell(`question ${item.number} has an empty part in bar ${i + 1}`);
+      if (part.includes("|")) tell(`question ${item.number} has "|" in bar ${i + 1}`);
+    });
+    if (totalLabel.trim() === "") tell(`question ${item.number} has an empty label of the total`);
+    if (totalLabel.includes("|")) tell(`question ${item.number} has "|" in the label of the total`);
+    if (prompt.trim() === "") tell(`question ${item.number} has an empty prompt`);
+    if (prompt.includes("|")) tell(`question ${item.number} has "|" in the prompt`);
+  }
   if (item.face.kind === "fields") {
     if (item.face.prompt.trim() === "") tell(`question ${item.number} has an empty prompt`);
     for (const { label, blank } of item.face.rows) if (label.trim() === "") tell(`question ${item.number} has an empty label in the row of "${blank}"`);
@@ -276,6 +298,8 @@ function checkIds(page: PageModel, items: ReadonlyMap<string | null, BookItem>, 
       return item ? partRegionName(region.role, item.number, region.part) : regionName(region).slice(1, -1);
     }
     if (region.item !== null || region.part !== null) tell(`${regionName(region)} must belong to no question`);
+    // A capture is named by its kind, as its id in the captures of the page.
+    if (region.role === "capture") return page.captures.find((c) => c.id === region.id)?.kind ?? region.role;
     return region.role === "scan-mark" ? regionName(region).slice(1, -1) : region.role;
   };
   for (const region of page.regions) {
@@ -286,10 +310,11 @@ function checkIds(page: PageModel, items: ReadonlyMap<string | null, BookItem>, 
   }
 }
 
-function checkColumns(page: PageModel, tell: Tell): void {
+function checkColumns(page: PageModel, onPage: readonly BookItem[], tell: Tell): void {
   const lefts: number[] = [];
   for (const { rect } of page.regions.filter((r) => r.role === "answer")) if (!lefts.some((x) => near(x, rect.x))) lefts.push(rect.x);
-  if (lefts.length > PRINT_RULES.maxAnswerColumns) tell(`there are ${lefts.length} answer columns and the limit is ${PRINT_RULES.maxAnswerColumns}`);
+  const limit = onPage.some((i) => i.face.kind === "figure") ? 1 : PRINT_RULES.maxAnswerColumns;
+  if (lefts.length > limit) tell(`there are ${lefts.length} answer columns and the limit is ${limit}`);
 }
 
 /** The problems of one page, in plain words. `items` may hold the items of other pages too. */
@@ -307,8 +332,9 @@ export function checkPage(page: PageModel, items: readonly BookItem[]): string[]
   checkQr(page, live, tell);
   checkMarks(page, live, tell);
   for (const problem of framePrintProblems(page, live)) tell(problem);
-  checkColumns(page, tell);
+  for (const problem of timeLogProblems(page, live)) tell(problem);
   const onPage = items.filter((i) => i.sheetId === page.sheetId && i.side === page.side && i.id.startsWith(`${page.id}/`));
+  checkColumns(page, onPage, tell);
   checkOverlaps(page, new Set(onPage.filter((i) => i.face.kind !== "column").map((i) => i.id)), tell);
   checkIds(page, new Map(onPage.map((i) => [i.id, i])), tell);
   if (onPage.length === 0) tell("the page has no question");

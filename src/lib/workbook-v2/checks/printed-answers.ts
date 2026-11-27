@@ -1,6 +1,6 @@
 // The second computation of every answer starts from what a child reads: the drawn rows of the question, taken from the
 // rectangles of the page model. A shape that picks, shows or answers a question wrong thus disagrees with itself.
-import { answerLine, type Answer, type BookItem, type Ink, type PageModel, type Rect, type Region } from "../contract";
+import { answerLine, type Answer, type BookItem, type Face, type Ink, type PageModel, type Rect, type Region } from "../contract";
 import { canonicalJson } from "../hash";
 import type { Shape, ShapeLibrary } from "../shapes";
 import { answerProblem } from "./answer-form";
@@ -18,24 +18,35 @@ function sameRow(a: Piece, b: Piece): boolean {
   return shared > Math.min(a.rect.h, b.rect.h) / 2;
 }
 
+/**
+ * What stands between two pieces of one row. A drawn figure has texts that a child reads apart, such as the parts of its
+ * bars and its prompt: joined with nothing, 15 and 15 would read as 1515. The other faces print each row as one line.
+ */
+export const rowSeparator = (face: Face): string => (face.kind === "figure" ? " | " : "");
+
 /** The text of each printed row: rows from top to bottom, and each row from left to right. `blanks` are answer areas. */
-export function printedRows(ink: readonly Ink[], blanks: readonly Rect[] = []): string[] {
+export function printedRows(ink: readonly Ink[], blanks: readonly Rect[] = [], separator = ""): string[] {
   const pieces: Piece[] = [...ink.filter((i): i is Text => i.kind === "text"), ...blanks.map((rect) => ({ rect, text: BLANK }))];
+  const mark = separator.trim();
+  if (mark !== "" && pieces.some((p) => p.text.includes(mark))) return [];
   const rows: Piece[][] = [];
   for (const piece of pieces.sort((a, b) => a.rect.y - b.rect.y)) {
     const row = rows.find(([first]) => sameRow(first, piece));
     if (row) row.push(piece);
     else rows.push([piece]);
   }
-  return rows.map((row) => row.sort((a, b) => a.rect.x - b.rect.x).map((t) => t.text).join(""));
+  return rows.map((row) => row.sort((a, b) => a.rect.x - b.rect.x).map((t) => t.text).join(separator));
 }
 
-/** The printed rows of one question. An answer area is a blank of them when it stands beside or inside the question, and not below it. */
-export function questionRows(regions: readonly Region[]): string[] {
+/**
+ * The printed rows of one question with this face. An answer area is a blank of them when it stands beside or inside the
+ * question, and not below it.
+ */
+export function questionRows(regions: readonly Region[], face: Face): string[] {
   const question = regions.find((r) => r.role === "question");
   if (!question) return [];
   const { rect, ink } = question;
-  return printedRows(ink, regions.filter((r) => r.role === "answer" && r.rect.y < bottom(rect) - EPSILON && bottom(r.rect) > rect.y + EPSILON).map((r) => r.rect));
+  return printedRows(ink, regions.filter((r) => r.role === "answer" && r.rect.y < bottom(rect) - EPSILON && bottom(r.rect) > rect.y + EPSILON).map((r) => r.rect), rowSeparator(face));
 }
 
 const shown = (answer: Answer): string => (answer.parts.length === 1 ? answerLine(answer) : answer.parts.map((p) => `${p.name} ${p.value}`).join(", "));
@@ -83,7 +94,7 @@ export function checkAnswerForms(items: readonly BookItem[], shapes: ShapeLibrar
 export function checkPrintedAnswers(pages: readonly PageModel[], items: readonly BookItem[], shapes: ShapeLibrary): string[] {
   const regions = regionsByItem(pages);
   return items.flatMap((item) => {
-    const rows = questionRows(regions.get(item.id) ?? []);
+    const rows = questionRows(regions.get(item.id) ?? [], item.face);
     const problem = problemOf(item, rows, shapes.get(item.shape));
     return problem ? [`${placeOf(item)} (${rows.join(" ")}): ${problem}.`] : [];
   });

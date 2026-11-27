@@ -3,6 +3,7 @@
 import { IMAGE_PIXELS_PER_INCH, PRINT_RULES, type Ink, type PageModel, type Rect, type Region } from "../contract";
 import type { PageImage } from "./page-image";
 import { regionName } from "./page-rules";
+import { outlineLines } from "./rects";
 
 const SCALE = IMAGE_PIXELS_PER_INCH / 72;
 /** A pixel with a part of its colour below this is ink, also a light grey or a light colour. */
@@ -29,12 +30,6 @@ const inImage = ({ left, top, right, bottom }: Box, { width, height }: PageImage
 /** Where ink may be, and the part of the page that a problem names. */
 export interface Stray { place: string; x: number; y: number }
 
-/** The four lines of an outline, with their corners. */
-function outlineLines({ x, y, w, h }: Rect, line: number): Rect[] {
-  const [left, top, width, height] = [x - line / 2, y - line / 2, w + line, h + line];
-  return [{ x: left, y: top, w: width, h: line }, { x: left, y: y + h - line / 2, w: width, h: line }, { x: left, y: top, w: line, h: height }, { x: x + w - line / 2, y: top, w: line, h: height }];
-}
-
 const inkRects = (ink: Ink): Rect[] => (ink.kind === "outline" ? outlineLines(ink.rect, ink.width) : [ink.rect]);
 
 interface Zone { name: string; rect: Rect; region: Region | null }
@@ -48,8 +43,13 @@ function zonesOf(page: PageModel): Zone[] {
   const front = page.side === "front";
   const edge = (name: string, rect: Rect): Zone => ({ name, rect, region: null });
   const own = ZONE_ROLES.flatMap((role) => page.regions.filter((r) => r.role === role));
+  // A child writes a time in each box of a capture: the box and its reach are blank but for the border of the box.
+  const captured = page.captures.flatMap((capture) => capture.fields.flatMap(({ name, rect, reach }): Zone[] => [
+    { name: `the box "${name}" of the ${capture.kind}`, rect, region: null }, { name: `the reach of the box "${name}" of the ${capture.kind}`, rect: reach, region: null },
+  ]));
   return [
     ...own.map((region) => ({ name: regionName(region), rect: region.rect, region })),
+    ...captured,
     edge("the spine zone", { x: front ? 0 : w - spine, y: 0, w: spine, h }),
     edge("the margin", { x: front ? w - margin : 0, y: 0, w: margin, h }),
     edge("the margin", { x: 0, y: 0, w, h: margin }),
@@ -124,8 +124,9 @@ export function strayInk(page: PageModel, image: PageImage): Stray[] {
   clearInk(page.regions.flatMap((r) => r.ink));
   const zones = zonesOf(page);
   for (const { rect } of zones) left.restore(inner(rect));
-  // A zone holds only its own print: the border of an answer area and the squares of a QR code.
+  // A zone holds only its own print: the border of an answer area or of the box of a capture, and the squares of a QR code.
   for (const region of page.regions) if (region.role === "answer" || region.role === "qr") clearInk(region.role === "qr" ? region.ink : region.ink.filter((i) => i.kind === "outline"));
+  clearInk(page.captures.flatMap((capture) => capture.fields.map(({ rect }): Ink => ({ kind: "outline", rect, color: "black", width: PRINT_RULES.timeLog.box.outline }))));
 
   const places: Zone[] = [
     ...zones,

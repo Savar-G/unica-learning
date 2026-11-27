@@ -1,8 +1,8 @@
 // Puts the content of a sheet into the rectangles of its templates. It decides no position of its own.
 import type { SnapshotSheet } from "../bank/snapshot";
-import { BRACKET_SIGN, PAPER, partRegionName, PRINT_RULES, type BookItem, type FaceToken, type Ink, type PageModel, type Rect, type Region, type RegionRole, type Side } from "../contract";
+import { BRACKET_SIGN, PAPER, partRegionName, PRINT_RULES, type BookItem, type Capture, type FaceToken, type Ink, type PageModel, type Rect, type Region, type RegionRole, type Side } from "../contract";
 import { qrSquares } from "./qr";
-import { cellsFor, placeProblem, tokensOf, type AnswerArea, type BracketPlace, type ColumnPlace, type FieldsPlace, type ItemPlace, type PageFrame, type TokenCell, type TokenPlace } from "./templates";
+import { cellsFor, placeProblem, tokensOf, type AnswerArea, type BracketPlace, type ColumnPlace, type FieldsPlace, type FigurePlace, type ItemPlace, type PageFrame, type TokenCell, type TokenPlace } from "./templates";
 
 export interface PlannedSheet {
   sheet: SnapshotSheet;
@@ -10,6 +10,8 @@ export interface PlannedSheet {
   attempt: number;
   qr: Record<Side, string>;
   items: readonly BookItem[];
+  /** The sheet is the first of a day, so its front page has the time log. */
+  startsDay?: boolean;
 }
 
 export type PagesResult = { ok: true; pages: PageModel[] } | { ok: false; problems: string[] };
@@ -112,8 +114,39 @@ function fieldsRegions(make: MakeRegion, place: FieldsPlace, { face }: LaidOut):
   ];
 }
 
+const FIGURE = PRINT_RULES.figure;
+const outline = (rect: Rect, width: number): Ink => ({ kind: "outline", rect, color: BLACK, width });
+
+/**
+ * The bars share the frame, each outlined with its part in it, away from its border. Below them the bracket of the total:
+ * a tick at each end and a line between them. Then the label of the total, the prompt, and the answer area.
+ */
+function figureRegions(make: MakeRegion, place: FigurePlace, { face, answer }: LaidOut): Region[] {
+  if (face.kind !== "figure" || answer.parts.length !== 1) throw new Error("a figure has one answer area");
+  const { frame, bracket } = place;
+  const { parts, totalLabel } = face.figure;
+  const width = frame.w / parts.length;
+  const bars = parts.flatMap((part, i): Ink[] => {
+    const bar = { ...frame, x: frame.x + i * width, w: width };
+    return [outline(bar, FIGURE.outline), text({ x: bar.x + FIGURE.inset, y: bar.y + (bar.h - PRINT_RULES.textHeight) / 2, w: width - 2 * FIGURE.inset, h: PRINT_RULES.textHeight }, part, place.textSize, REGULAR, "center")];
+  });
+  const line = PRINT_RULES.line.height;
+  return [
+    make("question", place.question, [
+      ...bars,
+      fill({ ...bracket, w: line }),
+      fill({ ...bracket, x: bracket.x + bracket.w - line, w: line }),
+      fill({ ...bracket, y: bracket.y + bracket.h - line, h: line }),
+      text(place.totalLabel, totalLabel, place.textSize, REGULAR, "center"),
+      text(place.prompt, face.prompt, place.textSize, REGULAR, "right"),
+    ]),
+    ...areaRegions(make, place, face.blank),
+  ];
+}
+
 /** The rectangles of a question that the kind of its place decides. */
 function faceRegions(make: MakeRegion, place: ItemPlace, item: LaidOut): Region[] {
+  if ("frame" in place) return figureRegions(make, place, item);
   if ("fields" in place) return fieldsRegions(make, place, item);
   if ("forms" in place) return tokenRegions(make, place, item);
   return "above" in place ? bracketRegions(make, place, item) : columnRegions(make, place, item);
@@ -130,7 +163,19 @@ export function itemRegions(place: ItemPlace, item: LaidOut, at: (name: string) 
   ];
 }
 
-function buildPage({ sheet, levelName, attempt, qr, items }: PlannedSheet, side: Side): PageModel | string {
+/** The time log of a front page: the region that prints it, and the capture that says where a child writes each time. */
+function timeLogOf(frame: PageFrame, id: string): { region: Region; capture: Capture } | string {
+  const place = frame.timeLog;
+  if (!place) return "the template has no place for a time log on this side";
+  const { label, box } = PRINT_RULES.timeLog;
+  const ink = place.fields.flatMap((field): Ink[] => [text(field.labelRect, field.label, label.size, label.weight, "right"), { kind: "outline", rect: field.box, color: BLACK, width: box.outline }]);
+  return {
+    region: { id, role: "capture", rect: place.rect, item: null, part: null, ink },
+    capture: { id, kind: "time-log", rect: place.rect, fields: place.fields.map(({ name, box: rect, reach }) => ({ name, rect, reach })) },
+  };
+}
+
+function buildPage({ sheet, levelName, attempt, qr, items, startsDay = false }: PlannedSheet, side: Side): PageModel | string {
   const { template, instruction } = sheet[side];
   const { frame, places } = template.sides[side];
   const page = side === "front" ? sheet.firstPage : sheet.firstPage + 1;
@@ -145,6 +190,8 @@ function buildPage({ sheet, levelName, attempt, qr, items }: PlannedSheet, side:
     const problem = placeProblem(template, places[i], face, answer);
     if (problem) return `Page ${page}: question ${number} ${problem}.`;
   }
+  const timeLog = startsDay && side === "front" ? timeLogOf(frame, at("time-log")) : null;
+  if (typeof timeLog === "string") return `Page ${page}: ${timeLog}.`;
   const { heading, footer, marks } = frame;
   return {
     id, sheetId: sheet.id, attempt, side, page, levelName, instruction, template: template.id, qr: qr[side],
@@ -156,7 +203,9 @@ function buildPage({ sheet, levelName, attempt, qr, items }: PlannedSheet, side:
       ...onSide.flatMap((item, i) => itemRegions(places[i], item, at)),
       region("footer", "footer", footer, [text(footer, `Level ${levelName} · Page ${page}`, FOOTER.size, FOOTER.weight, side === "front" ? "left" : "right")]),
       region("qr", "qr", frame.qr, squares),
+      ...(timeLog ? [timeLog.region] : []),
     ],
+    captures: timeLog ? [timeLog.capture] : [],
   };
 }
 

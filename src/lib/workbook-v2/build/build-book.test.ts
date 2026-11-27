@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Answer, PageModel } from "../contract";
 import rawBook from "../fixtures/book.json";
 import rawSnapshot from "../fixtures/snapshot.json";
+import inventedBookFixture from "../fixtures/book-invented-topic.json";
+import inventedSnapshotFixture from "../fixtures/snapshot-invented-topic.json";
 import { sha256 } from "../hash";
 import { openRenderer } from "../render/typst";
 import { RenderError, type Renderer, type Rendering } from "../renderer";
@@ -12,7 +14,7 @@ import { fakeRenderer } from "../testing/fake-renderer";
 import { drawPage, paint, pagePng, toPng } from "../testing/raster";
 import { stackOf } from "../testing/sample";
 import { skipTypstTests, testAssets } from "../testing/typst";
-import { buildBook, type BuiltBook } from "./build-book";
+import { buildBook, planBook, type BuiltBook } from "./build-book";
 
 // A hook between the layout and the checks: the layout of the engine makes no wrong page, and one must still stop a book.
 const layout = vi.hoisted(() => ({ change: (pages: PageModel[]) => pages }));
@@ -61,7 +63,7 @@ describe("a good input", () => {
       expect(steps.at(-1)).toEqual({ text: value, marks: [] });
       expect(shapeVersion).toBe(SHAPES.get(shape)?.version);
     }
-    expect(book.record).toMatchObject({ bookId: "example-book", engine: "2.0.0-s8", ...IDENTITY, snapshot: { id: "invented-level-3-v1" } });
+    expect(book.record).toMatchObject({ bookId: "example-book", engine: "2.0.0-s9", ...IDENTITY, snapshot: { id: "invented-level-3-v1" } });
     expect(book.record.snapshot.hash).toMatch(/^[0-9a-f]{64}$/);
     expect(book.record.inputHash).toMatch(/^[0-9a-f]{64}$/);
   });
@@ -99,6 +101,35 @@ describe("a good input", () => {
     expect(hashed(during)).toEqual(hashed(await plain()));
   });
 
+  it("is the same book when a sheet says that it does not start a day, and has a time log on its front page when it does", async () => {
+    // The drawing is made from the page models alone, so the same models are the same book.
+    const one = await plain();
+    const [two, three] = [false, true].map((startsDay) => planBook(input((i) => put(i.book.sheets[0], "startsDay", startsDay))));
+    if (!two.ok || !three.ok) throw new Error("no plan");
+    expect(two.pages).toEqual(one.pages.map((p) => p.model));
+    expect(one.pages.map((p) => p.model.captures)).toEqual([[], []]);
+    expect(three.pages.map((p) => p.captures.map((c) => c.kind))).toEqual([["time-log"], []]);
+    expect(three.pages[1]).toEqual(one.pages[1].model);
+    expect(three.items).toEqual(one.items);
+  });
+
+  it("puts a time log on the front of a figure sheet when it starts a day, and ignores inherited startsDay", () => {
+    const book = structuredClone(inventedBookFixture);
+    book.sheets[1].startsDay = true;
+    const planned = planBook({ snapshot: inventedSnapshotFixture, book });
+    if (!planned.ok) throw new Error(planned.problems.join("\n"));
+    expect(planned.pages.map((p) => p.captures.map((c) => c.kind))).toEqual([["time-log"], [], ["time-log"], []]);
+
+    Object.defineProperty(Object.prototype, "startsDay", { value: true, configurable: true, writable: true });
+    try {
+      const without = planBook(input());
+      if (!without.ok) throw new Error(without.problems.join("\n"));
+      expect(without.pages.map((p) => p.captures)).toEqual([[], []]);
+    } finally {
+      Reflect.deleteProperty(Object.prototype, "startsDay");
+    }
+  });
+
   it.each<[string, (i: Input) => unknown]>([
     ["child", (i) => put(i.book, "childId", "other-child")],
     ["attempt", (i) => put(i.book.sheets[0], "attempt", 2)],
@@ -125,6 +156,9 @@ describe("a build stops, draws nothing and says why", () => {
     ["no QR text", (i) => put(i.book.sheets[0].qr, "back", ""), "The book, sheet 1: the QR text of the back must be printable text with no space."],
     ["a QR text that is too long to scan", (i) => put(i.book.sheets[0].qr, "back", "x".repeat(100)), "Page 382: the QR code for a text of 100 characters needs squares that are too small to scan."],
     ["an unknown field", (i) => put(i.book, "made", "today"), 'The book: unknown field "made".'],
+    ["a sheet that starts a day with a word", (i) => put(i.book.sheets[0], "startsDay", "yes"), "The book, sheet 1: startsDay must be true or false."],
+    ["a sheet that starts a day with a number", (i) => put(i.book.sheets[0], "startsDay", 1), "The book, sheet 1: startsDay must be true or false."],
+    ["a sheet that starts a day with nothing", (i) => put(i.book.sheets[0], "startsDay", null), "The book, sheet 1: startsDay must be true or false."],
     ["an inherited child", (i) => { Reflect.deleteProperty(i.book, "childId"); Object.setPrototypeOf(i.book, { childId: "other-child" }); }, "The book: this must be a plain object."],
     ["an inherited QR text", (i) => { Reflect.deleteProperty(i.book.sheets[0].qr, "front"); Object.setPrototypeOf(i.book.sheets[0].qr, { front: "x" }); }, "The book, sheets[0].qr: this must be a plain object."],
     ["a computed child", (i) => { Object.defineProperty(i.book, "childId", { get: () => "child", enumerable: true }); }, "The book, childId: this must be a plain value."],
@@ -185,6 +219,28 @@ describe("a build stops, draws nothing and says why", () => {
     layout.change = (pages) => pages.map((p) => ({ ...p, regions: p.regions.filter((r) => r.role !== "qr") }));
     const renderer = fake();
     expect(await buildBook(input(), renderer)).toEqual({ status: "failed", problems: ["Page 381: there must be one qr, not 0.", "Page 382: there must be one qr, not 0."] });
+    expect(renderer.drawn).toEqual([]);
+  });
+
+  it("a front page that starts a day whose time log disappears, or one that does not start a day that gains one", async () => {
+    const goodWithLog = planBook(input((i) => put(i.book.sheets[0], "startsDay", true)));
+    if (!goodWithLog.ok) throw new Error("no plan");
+    const [frontWithLog] = goodWithLog.pages;
+    const captureRegion = frontWithLog.regions.find((r) => r.role === "capture")!;
+
+    layout.change = (pages) => pages.map((p) => ({ ...p, captures: [], regions: p.regions.filter((r) => r.role !== "capture") }));
+    const renderer = fake();
+    expect(await buildBook(input((i) => put(i.book.sheets[0], "startsDay", true)), renderer)).toEqual({
+      status: "failed",
+      problems: ["Page 381: the first page of a day must have a time log."],
+    });
+    expect(renderer.drawn).toEqual([]);
+
+    layout.change = (pages) => pages.map((p, i) => (i === 0 ? { ...p, captures: structuredClone(frontWithLog.captures), regions: [...p.regions, structuredClone(captureRegion)] } : p));
+    expect(await buildBook(input(), renderer)).toEqual({
+      status: "failed",
+      problems: ["Page 381: a page that does not start a day must not have a time log."],
+    });
     expect(renderer.drawn).toEqual([]);
   });
 

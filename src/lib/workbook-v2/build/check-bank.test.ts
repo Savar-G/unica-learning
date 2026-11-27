@@ -15,7 +15,12 @@ import { fakeRenderer } from "../testing/fake-renderer";
 import { drawPage, paint, toColourPng, toPng } from "../testing/raster";
 import { stackOf } from "../testing/sample";
 import { quickRenderer, skipTypstTests, testAssets } from "../testing/typst";
-import { BANK_SEEDS, checkBank } from "./check-bank";
+import { BANK_SEEDS, checkBank, FIGURE_SAMPLE_SEEDS } from "./check-bank";
+import { capacityOf, contentOf, freezeBank, FULL_LEVEL, UNSEEN_ATTEMPTS } from "./freeze-bank";
+import { validateSnapshot } from "../bank/snapshot";
+import inventedDraft from "../fixtures/draft-invented-topic.json";
+import inventedSnapshot from "../fixtures/snapshot-invented-topic.json";
+import { canonicalJson, sha256 } from "../hash";
 import { rowTexts } from "./row-texts";
 
 const isWhole = (page: PageModel) => page.regions.some((r) => r.role === "qr");
@@ -60,7 +65,7 @@ describe("a good bank", () => {
     expect(whole.every(isWhole)).toBe(true);
     expect(whole.map((p) => [p.side, p.regions.filter((r) => r.role === "slot").length])).toEqual([["front", 8], ["back", 8], ["front", 8], ["back", 8]]);
     expect(pagesOf(renderer.drawn.images).map((p) => p.regions.filter((r) => r.role === "slot").length)).toEqual(Array(32).fill(1));
-    expect(report.checked).toEqual({ sheets: 1, rows: 2, seeds: 5, questions: 20, pages: whole.length, alone: 32, texts: expect.any(Number) });
+    expect(report.checked).toEqual({ sheets: 1, rows: 2, seeds: 5, questions: 20, pages: whole.length, alone: 32, texts: expect.any(Number), samples: 0 });
     expect(pagesOf(renderer.drawn.report).flatMap((p) => p.regions)).toHaveLength(report.checked.texts);
   });
 
@@ -152,6 +157,78 @@ describe("the texts of a row", () => {
     expect((await checkBank(snapshot, left, { ...FEW, seeds: 1 })).problems).toContain('Sheet "column-multiplication-1", front side, row "row-0": the text "=" of "question-1" of the front side was not drawn as the model says it.');
     const none = fakeRenderer({ report: (out) => { Reflect.set(out, "texts", undefined); } });
     expect((await checkBank(snapshot, none, { ...FEW, seeds: 1 })).problems[0]).toMatch(/^Sheet "column-multiplication-1", front side, row "row-0": the text .*gave no texts of page 1\.$/);
+  });
+});
+
+describe("a bank of bar models, and the time log", () => {
+  const SMALL_BARS = { groups: { min: 2, max: 3 }, size: { min: 2, max: 20 }, product: { min: 4, max: 60 } };
+  const barsOf = (limits: object) => snapshotWith((s) => {
+    for (const [i, side] of [s.sheets[0].front, s.sheets[0].back].entries()) Object.assign(side, { template: "figures-1x4", rows: [{ id: `bars-${i}`, shape: "figure.bar", limits, items: 2 }] });
+  });
+  /** The numbers in the bars of a page. */
+  const barTexts = (page: PageModel) => page.regions.filter((r) => r.role === "question").flatMap((r) => {
+    const bars = r.ink.filter((i) => i.kind === "outline").length;
+    return r.ink.filter((i) => i.kind === "text").slice(0, bars).map((i) => (i.kind === "text" ? i.text : ""));
+  });
+
+  it("draws the widest question of each count of bars and the questions of some seeds, each at every place, together and alone", async () => {
+    expect(FIGURE_SAMPLE_SEEDS).toBe(5);
+    const renderer = fakeRenderer();
+    const report = await checkBank(barsOf(SMALL_BARS), renderer, { seeds: 1, templates: SMALL });
+    expect(report.problems).toEqual([]);
+    const { samples } = report.checked;
+    // Each side: 5 seeds, less those that give a question twice or a widest one (bars of 20).
+    expect(samples).toBeGreaterThanOrEqual(6);
+    expect(samples).toBeLessThanOrEqual(2 * FIGURE_SAMPLE_SEEDS);
+    // Each question is drawn on a front and a back page, with every check of a book: 2 widest questions a side, and the samples.
+    const whole = pagesOf(renderer.drawn.render);
+    expect(whole).toHaveLength(2 * (2 * 2 + samples));
+    const numbers = new Set(whole.flatMap(barTexts));
+    expect(numbers.has("20")).toBe(true);
+    expect([...numbers].filter((n) => n !== "20").length).toBeGreaterThan(2);
+    // A question of a seed is drawn alone too, at each place of its side.
+    expect(pagesOf(renderer.drawn.images).filter((p) => barTexts(p).some((n) => n !== "20")).length).toBeGreaterThan(4);
+  });
+
+  it("draws all five sampled seeds of a figure row when the space is wide enough", async () => {
+    const wide = barsOf({ groups: { min: 2, max: 6 }, size: { min: 2, max: 99 }, product: { min: 4, max: 594 } });
+    const report = await checkBank(wide, fakeRenderer(), { seeds: 1, templates: SMALL });
+    expect(report.problems).toEqual([]);
+    expect(report.checked.samples).toBe(2 * FIGURE_SAMPLE_SEEDS);
+  });
+
+  it("has every digit in each bar, as many as the largest number of each count of bars, on both sides", () => {
+    const shape = SHAPES.get("figure.bar");
+    const template = TEMPLATES.get("figures-1x4");
+    if (!shape || !template) throw new Error("no shape or template");
+    const { texts, problems } = rowTexts({ id: "bars", shape, limits: { groups: { min: 2, max: 6 }, size: { min: 2, max: 99 }, product: { min: 4, max: 594 } }, items: 1 }, template);
+    expect(problems).toEqual([]);
+    for (const side of ["front", "back"] as const) {
+      const shown = texts.filter((t) => t.side === side && t.ink.kind === "text");
+      for (const d of "0123456789") {
+        // One width of a bar for each count of bars, at each of the four places.
+        const widths = new Set(shown.filter((t) => t.ink.kind === "text" && t.ink.text === d.repeat(2)).map((t) => t.ink.rect.w));
+        expect(widths.size).toBe(5);
+      }
+      expect(new Set(shown.map((t) => (t.ink.kind === "text" ? t.ink.text : "")))).toEqual(new Set([..."0123456789"].map((d) => d.repeat(2)).concat(["?", "Total ="])));
+    }
+  });
+
+  it("checks the front page of each sheet with the time log, and finds ink in its boxes", async () => {
+    const marked = fakeRenderer({ render: (out, pages) => { pages.forEach((page, i) => {
+      const [capture] = page.captures;
+      if (!capture) return;
+      const canvas = drawPage(page);
+      const { x, y } = capture.fields[0].rect;
+      paint(canvas, { x: x + 20, y: y + 10, w: 3, h: 3 });
+      out.images[i] = toPng(canvas);
+    }); } });
+    const { problems } = await checkBank(snapshotWith(), marked, FEW);
+    expect(problems.join("\n")).toMatch(/^Sheet "column-multiplication-1", front side, row "no-carry": Page 381: the image has ink that the model does not have, at \(\d+, \d+\) in the box "start" of the time-log\.$/m);
+    // A failed drawing is made again row by row, so the same pages come more than once.
+    expect(new Set(pagesOf(marked.drawn.render).map((p) => `${p.side} ${p.captures.map((c) => c.kind).join()}`))).toEqual(new Set(["front time-log", "back "]));
+    // A question that is drawn alone has no time log.
+    expect(pagesOf(marked.drawn.images).every((p) => p.captures.length === 0 && !p.regions.some((r) => r.role === "capture"))).toBe(true);
   });
 });
 
@@ -328,5 +405,266 @@ describe.skipIf(skipTypstTests())("with the real Typst", () => {
     const problems = (await checkBank(one, await quickRenderer(folder, { ...testAssets(), template }), FEW)).problems.join("\n");
     expect(problems).toMatch(/^Sheet "column-multiplication-1", front side, row "no-carry": Page 381: the image has ink that the model does not have, at \(70, \d+\) in the spine zone\.$/m);
     for (const side of ["front", "back"]) expect(problems).toContain(`${FRONT}: question 2 of the ${side} side, drawn alone: it has ink outside "slot-2".`);
+  });
+});
+
+describe("the freeze of a draft", () => {
+  type Draft = typeof inventedDraft & Record<string, unknown>;
+  const draftWith = (change: (d: Draft) => unknown = () => {}): Draft => {
+    const draft = structuredClone(inventedDraft) as Draft;
+    change(draft);
+    return draft;
+  };
+  /** Both sheets with one row of two questions a side, for the templates of two places: little to draw. */
+  const cut = (d: Draft) => { for (const sheet of d.sheets) for (const side of [sheet.front, sheet.back] as { rows: object[] }[]) side.rows = [{ ...side.rows[0], items: 2 }]; };
+  // The content is what these tests look at: the drawings of sampled seeds have tests of their own.
+  const QUICK = { seeds: 1, figureSamples: 0, templates: SMALL };
+  const SENTINEL = "made-up-source-7f3a: page 12 of an invented book";
+  /** More notes, with a made-up source: at the level, a topic, a sheet, a side and a row. */
+  const notes = (d: Draft) => {
+    const [mul, bars] = d.sheets as Record<string, unknown>[];
+    Object.assign(d, { basis: { source: SENTINEL } });
+    Object.assign(d.topics[0], { basis: SENTINEL });
+    Object.assign(mul, { basis: [SENTINEL, { deeper: SENTINEL }] });
+    Object.assign((bars as { back: object }).back, { basis: { note: SENTINEL } });
+    Object.assign((mul as { front: { rows: object[] } }).front.rows[0], { basis: { photo: SENTINEL, page: 12 } });
+  };
+
+  it("copies the content only: no note and no word of a note is in the frozen snapshot", async () => {
+    const draft = draftWith((d) => { cut(d); notes(d); });
+    expect(JSON.stringify(draft)).toContain(SENTINEL);
+    const result = await freezeBank(draft, fakeRenderer(), QUICK);
+    if (!result.ok) throw new Error(result.problems.join("\n"));
+    const frozen = JSON.stringify(result.snapshot);
+    expect(frozen).not.toContain("basis");
+    expect(frozen).not.toContain(SENTINEL);
+    expect(frozen).not.toContain("made-up-source");
+    const content = draftWith(cut) as Record<string, unknown>;
+    expect(result.snapshot).toEqual(contentOf(content));
+    expect(result.hash).toBe(sha256(canonicalJson(result.snapshot)));
+    expect(result.checked).toMatchObject({ sheets: 2, rows: 4, seeds: 1, samples: 0 });
+  });
+
+  it("makes the checked-in snapshot of the checked-in draft, with its notes", () => {
+    expect(JSON.stringify(inventedDraft)).toContain('"basis"');
+    expect(canonicalJson(contentOf(draftWith()))).toBe(canonicalJson(inventedSnapshot));
+    expect(canonicalJson(contentOf(draftWith(notes)))).toBe(canonicalJson(inventedSnapshot));
+  });
+
+  it("gives the capacity of each sheet and row", () => {
+    const bank = validateSnapshot(inventedSnapshot);
+    if (!bank.ok) throw new Error(bank.problems.join("\n"));
+    const capacity = capacityOf(bank.snapshot.sheets);
+    const bars = capacity.find((c) => c.sheet === "equal-groups-1");
+    // Counted by hand: 2 or 3 bars of 2 to 20 with a total up to 60 are 19 + 19; 4 to 6 bars of 2 to 25 are 3 x 24; and so on.
+    expect(bars?.rows.map(({ row, side, items, possible, attemptsWithoutRepeat }) => [row, side, items, possible, attemptsWithoutRepeat])).toEqual([
+      ["two-or-three-bars", "front", 2, 38, 19], ["four-to-six-bars", "front", 2, 72, 36], ["larger-bars", "back", 2, 123, 61], ["five-or-six-bars", "back", 2, 180, 90],
+    ]);
+    expect(bars).toMatchObject({ attemptsWithoutRepeat: 19, warnings: [] });
+    expect(capacity.map((c) => c.sheet)).toEqual(["column-multiplication-1", "equal-groups-1"]);
+  });
+
+  it("gives the capacity with the snapshot", async () => {
+    const result = await freezeBank(draftWith(cut), fakeRenderer(), QUICK);
+    expect(result.ok && result.capacity.map((c) => [c.sheet, c.rows.length])).toEqual([["column-multiplication-1", 2], ["equal-groups-1", 2]]);
+  });
+
+  it("warns of a row with less than one full unseen repeat", () => {
+    expect(UNSEEN_ATTEMPTS).toBe(2);
+    const draft = draftWith((d) => {
+      const [, sheet] = d.sheets;
+      sheet.front.rows[1].limits = { groups: { min: 6, max: 6 }, size: { min: 98, max: 99 }, product: { min: 4, max: 594 } };
+      sheet.back.rows[0].limits = { groups: { min: 2, max: 2 }, size: { min: 10, max: 13 }, product: { min: 20, max: 200 } };
+      for (const one of [d, d.topics[0], sheet, sheet.front, sheet.front.rows[0]]) Reflect.deleteProperty(one, "basis");
+    });
+    const bank = validateSnapshot(draft);
+    if (!bank.ok) throw new Error(bank.problems.join("\n"));
+    const [, bars] = capacityOf(bank.snapshot.sheets);
+    expect(bars.attemptsWithoutRepeat).toBe(1);
+    expect(bars.warnings).toEqual(['Sheet "equal-groups-1", front side, row "four-to-six-bars": its limits allow 2 questions for 2 places, so the next attempt of the sheet repeats questions of this row.']);
+    expect(bars.rows.find((r) => r.row === "larger-bars")).toMatchObject({ possible: 4, attemptsWithoutRepeat: 2, warnings: [] });
+  });
+
+  it("counts shared questions once across rows of a sheet, whether their limits match or overlap", async () => {
+    const fourA = { groups: { min: 2, max: 2 }, size: { min: 2, max: 5 }, product: { min: 4, max: 20 } };
+    const fourB = { groups: { min: 2, max: 2 }, size: { min: 3, max: 6 }, product: { min: 4, max: 20 } };
+    // Four rows of two places all sharing the same four questions: even one attempt repeats.
+    const shared = draftWith((d) => {
+      d.topics[0].sheets = ["equal-groups-1"];
+      d.sheets = [d.sheets[1]];
+      for (const side of [d.sheets[0].front, d.sheets[0].back]) for (const row of side.rows) row.limits = structuredClone(fourA);
+    });
+    const result = await freezeBank(shared, fakeRenderer(), { seeds: 1, figureSamples: 0 });
+    if (!result.ok) throw new Error(result.problems.join("\n"));
+    expect(result.capacity).toHaveLength(1);
+    expect(result.capacity[0].attemptsWithoutRepeat).toBe(0);
+    expect(result.capacity[0].warnings).toEqual(['Sheet "equal-groups-1", rows "two-or-three-bars", "four-to-six-bars", "larger-bars", "five-or-six-bars": together their limits allow 4 questions for 8 places, so one attempt of the sheet repeats a question across these rows.']);
+
+    // Two rows with different but overlapping limits (4 questions each, 5 in their union) for 4 places -> 1 attempt.
+    const overlap = draftWith((d) => {
+      const [, sheet] = d.sheets;
+      sheet.front.rows = [{ ...sheet.front.rows[0], limits: fourA, items: 2 }];
+      sheet.back.rows = [{ ...sheet.back.rows[0], limits: fourB, items: 2 }];
+    });
+    const bank = validateSnapshot(contentOf(overlap));
+    if (!bank.ok) throw new Error(bank.problems.join("\n"));
+    const [, bars] = capacityOf(bank.snapshot.sheets);
+    expect(bars.attemptsWithoutRepeat).toBe(1);
+    expect(bars.warnings).toEqual(['Sheet "equal-groups-1", rows "two-or-three-bars", "larger-bars": together their limits allow 5 questions for 4 places, so the next attempt of the sheet repeats questions across these rows.']);
+
+    // Listed shapes (fact.mul) share questions across rows too.
+    const listed = structuredClone(factsSnapshot);
+    const factsA = { tables: [3], second: { min: 1, max: 4 }, result: { min: 0, max: 100 }, order: "mixed" };
+    const factsB = { tables: [3], second: { min: 2, max: 5 }, result: { min: 0, max: 100 }, order: "mixed" };
+    listed.sheets[0].front.rows = [{ id: "f", shape: "fact.mul", items: 2, limits: factsA }];
+    listed.sheets[0].back.rows = [{ id: "b", shape: "fact.mul", items: 2, limits: factsB }];
+    listed.topics = [{ ...listed.topics[0], sheets: [listed.sheets[0].id] }];
+    listed.sheets = [listed.sheets[0]];
+    const listedBank = validateSnapshot(listed);
+    if (!listedBank.ok) throw new Error(listedBank.problems.join("\n"));
+    const [facts] = capacityOf(listedBank.snapshot.sheets);
+    expect(facts.attemptsWithoutRepeat).toBe(1);
+    expect(facts.exact).toBe(true);
+    expect(facts.warnings).toEqual(['Sheet "times-facts", rows "f", "b": together their limits allow 5 questions for 4 places, so the next attempt of the sheet repeats questions across these rows.']);
+
+    // Bounded figure.bar pools up to 490 questions are enumerated in full: 490 union / 8 places = 61 exact attempts.
+    const wideBars = draftWith((d) => {
+      const [, sheet] = d.sheets;
+      const mins = [2, 3, 4, 5];
+      [...sheet.front.rows, ...sheet.back.rows].forEach((row, i) => {
+        row.limits = { groups: { min: 2, max: 6 }, size: { min: mins[i], max: 99 }, product: { min: 4, max: 594 } };
+        row.items = 2;
+      });
+    });
+    const wideBank = validateSnapshot(contentOf(wideBars));
+    if (!wideBank.ok) throw new Error(wideBank.problems.join("\n"));
+    const [, wideBarCap] = capacityOf(wideBank.snapshot.sheets);
+    expect(wideBarCap).toMatchObject({ attemptsWithoutRepeat: 61, exact: true, warnings: [] });
+
+    // More than 12 distinct limit groups: exact bipartite solver catches a 3-row bottleneck among 13 groups.
+    const thirteen = structuredClone(factsSnapshot);
+    const makeRow = (id: string, table: number, min: number, max: number) => ({ id, shape: "fact.mul", items: 1, limits: { tables: [table], second: { min, max }, result: { min: 0, max: 100 }, order: "mixed" } });
+    thirteen.sheets[0].front.rows = [
+      makeRow("t1-lo", 1, 1, 5),
+      makeRow("t2-lo", 2, 1, 5),
+      makeRow("t3-a", 3, 1, 4),
+      makeRow("t3-b", 3, 1, 5),
+      makeRow("t3-c", 3, 2, 5),
+      makeRow("t4", 4, 6, 10),
+      makeRow("t6", 6, 6, 10),
+    ];
+    thirteen.sheets[0].back.rows = [
+      makeRow("t1-hi", 1, 6, 10),
+      makeRow("t2-hi", 2, 6, 10),
+      makeRow("t5", 5, 6, 10),
+      makeRow("t7", 7, 6, 10),
+      makeRow("t8", 8, 6, 10),
+      makeRow("t9", 9, 6, 10),
+    ];
+    thirteen.topics = [{ ...thirteen.topics[0], sheets: [thirteen.sheets[0].id] }];
+    thirteen.sheets = [thirteen.sheets[0]];
+    const thirteenBank = validateSnapshot(thirteen);
+    if (!thirteenBank.ok) throw new Error(thirteenBank.problems.join("\n"));
+    const [thirteenCap] = capacityOf(thirteenBank.snapshot.sheets);
+    expect(thirteenCap.attemptsWithoutRepeat).toBe(1);
+    expect(thirteenCap.exact).toBe(true);
+    expect(thirteenCap.warnings).toEqual(['Sheet "times-facts", rows "t3-a", "t3-b", "t3-c": together their limits allow 5 questions for 3 places, so the next attempt of the sheet repeats questions across these rows.']);
+
+    // Huge non-listed overlapping pools (> 500 questions each) report exact: false (upper bound) instead of claiming exact capacity.
+    const huge = structuredClone(wideSnapshot);
+    const bigLimits = (aMin: number) => ({ digits: { min: 4, max: 4 }, a: { min: aMin, max: 9999 }, b: { min: 2, max: 9 }, carries: { min: 0, max: 3 }, carryIntoTens: { min: 0, max: 8 }, carryIntoHundreds: { min: 0, max: 8 }, carryIntoThousands: { min: 0, max: 8 }, product: { min: 2000, max: 89991 }, zeroInProduct: "allowed", wholeTens: "allowed" });
+    huge.sheets[0].front.rows = [{ id: "big-a", shape: "mul.column", items: 2, limits: bigLimits(1000) }];
+    huge.sheets[0].back.rows = [{ id: "big-b", shape: "mul.column", items: 2, limits: bigLimits(1001) }];
+    const hugeBank = validateSnapshot(huge);
+    if (!hugeBank.ok) throw new Error(hugeBank.problems.join("\n"));
+    const [hugeCap] = capacityOf(hugeBank.snapshot.sheets);
+    expect(hugeCap.exact).toBe(false);
+
+    // An overlapping row with its own warning (A: 3 places from 2..6, 1 attempt alone) must not hide a shared conflict between B and C (1 place each from 1..2).
+    const hidden = structuredClone(factsSnapshot);
+    hidden.sheets[0].front.rows = [
+      { id: "b", shape: "fact.mul", items: 1, limits: { tables: [3], second: { min: 1, max: 2 }, result: { min: 0, max: 100 }, order: "mixed" } },
+      { id: "c", shape: "fact.mul", items: 1, limits: { tables: [3], second: { min: 1, max: 2 }, result: { min: 0, max: 100 }, order: "mixed" } },
+    ];
+    hidden.sheets[0].back.rows = [
+      { id: "a", shape: "fact.mul", items: 3, limits: { tables: [3], second: { min: 2, max: 6 }, result: { min: 0, max: 100 }, order: "mixed" } },
+    ];
+    hidden.topics = [{ ...hidden.topics[0], sheets: [hidden.sheets[0].id] }];
+    hidden.sheets = [hidden.sheets[0]];
+    const hiddenBank = validateSnapshot(hidden);
+    if (!hiddenBank.ok) throw new Error(hiddenBank.problems.join("\n"));
+    const [hiddenCap] = capacityOf(hiddenBank.snapshot.sheets);
+    expect(hiddenCap.attemptsWithoutRepeat).toBe(1);
+    expect(hiddenCap.warnings).toEqual([
+      'Sheet "times-facts", back side, row "a": its limits allow 5 questions for 3 places, so the next attempt of the sheet repeats questions of this row.',
+      'Sheet "times-facts", rows "b", "c": together their limits allow 2 questions for 2 places, so the next attempt of the sheet repeats questions across these rows.',
+    ]);
+  });
+
+  it("ignores inherited properties on Object.prototype when copying draft content", async () => {
+    const draft = draftWith((d) => {
+      cut(d);
+      Reflect.deleteProperty(d.sheets[0], "front");
+    });
+    const fakeFront = structuredClone(inventedDraft.sheets[0].front);
+    Object.defineProperty(Object.prototype, "front", { value: fakeFront, configurable: true, writable: true });
+    try {
+      const stripped = contentOf(draft);
+      expect(Object.hasOwn((stripped.sheets as Record<string, unknown>[])[0], "front")).toBe(false);
+      const result = await freezeBank(draft, fakeRenderer(), QUICK);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.problems.join("\n")).toMatch(/front is missing/);
+    } finally {
+      Reflect.deleteProperty(Object.prototype, "front");
+    }
+  });
+
+  it.each<[string, (d: Draft) => unknown, RegExp]>([
+    ["a note in the limits of a row", (d) => { Object.assign(d.sheets[1].front.rows[0].limits, { basis: SENTINEL }); }, /The draft has a note "basis" at sheets\[1\]\.front\.rows\[0\]\.limits, where a draft may not have one/],
+    ["a note in the level", (d) => { Object.assign(d.level, { basis: SENTINEL }); }, /The draft has a note "basis" at level, where a draft may not have one/],
+    ["a field that is not a note", (d) => { Object.assign(d.sheets[0], { source: SENTINEL }); }, /Sheet "column-multiplication-1": unknown field "source"\./],
+    ["a sheet that does not follow the one before it", (d) => { d.sheets[1].firstPage = 385; }, /^Topic "topic-20": the sheet "equal-groups-1" starts on page 385 and must start on page 383, after the sheet "column-multiplication-1"\.$/],
+    ["sheets of a topic in another order than their pages", (d) => { d.topics[0].sheets.reverse(); }, /the sheet "column-multiplication-1" starts on page 381 and must start on page 385/],
+    ["a template that a row does not fit", (d) => { d.sheets[1].front.template = "places-2x2"; }, /Sheet "equal-groups-1", front side, row "two-or-three-bars": the template "places-2x2" has no place for a figure question/],
+    ["a row that asks for more questions than its limits allow", (d) => { d.sheets[1].front.rows[0].limits = { groups: { min: 2, max: 2 }, size: { min: 2, max: 2 }, product: { min: 4, max: 4 } }; }, /row "two-or-three-bars": the row asks for 2 different questions and its limits allow 1/],
+    ["a level of one topic when a full level is asked for", (d) => { Object.assign(d, { full: true }); }, /^The level has 1 topic and a full level has 20\.\nTopic "topic-20" has 2 sheets and a topic of a full level has 10\.$/],
+  ])("refuses %s and gives no snapshot", async (_name, change, problem) => {
+    const draft = draftWith((d) => { cut(d); change(d); });
+    const full = Reflect.get(draft, "full") === true;
+    Reflect.deleteProperty(draft, "full");
+    const renderer = fakeRenderer();
+    const result = await freezeBank(draft, renderer, { ...QUICK, requireFullLevel: full });
+    expect(result.ok).toBe(false);
+    expect("snapshot" in result).toBe(false);
+    if (!result.ok) expect(result.problems.join("\n")).toMatch(new RegExp(problem.source, "m"));
+    expect(renderer.drawn).toEqual({ render: [], images: [], report: [] });
+  });
+
+  it("asks for 20 topics of 10 sheets only for a full level", () => expect(FULL_LEVEL).toEqual({ topics: 20, sheets: 10 }));
+
+  it("refuses a row of an answer kind that marking cannot read", async () => {
+    const shapes = shapeLibrary([...SHAPES.values()].map((shape) => (shape.id === "figure.bar" ? { ...shape, answerKind: "time" as "whole-number" } : shape)));
+    const kind = await freezeBank(draftWith(cut), fakeRenderer(), { ...QUICK, shapes });
+    expect(kind.ok ? [] : kind.problems).toEqual(['Sheet "equal-groups-1", front side, row "two-or-three-bars": the shape "figure.bar" has the answer kind "time", which marking cannot read.', 'Sheet "equal-groups-1", back side, row "larger-bars": the shape "figure.bar" has the answer kind "time", which marking cannot read.']);
+  });
+
+  it("refuses a problem of the bank check, with its sheet, side and row", async () => {
+    // One sheet of one row a side, so that little is drawn.
+    const draft = draftWith((d) => {
+      d.topics[0].sheets = ["column-multiplication-1"];
+      d.sheets = [d.sheets[0]];
+      cut(d);
+    });
+    const blurred = fakeRenderer({ render: (out) => { out.images = out.images.map(() => new Uint8Array([1])); } });
+    const drawn = await freezeBank(draft, blurred, { ...QUICK, templates: SMALL });
+    expect(drawn.ok).toBe(false);
+    expect(drawn.ok ? "" : drawn.problems[0]).toMatch(/^Sheet "column-multiplication-1", front side, row "no-carry": Page 381: /);
+  });
+
+  it("refuses a draft that is no plain data", async () => {
+    expect(await freezeBank([], fakeRenderer(), QUICK)).toEqual({ ok: false, problems: ["The draft must be an object."] });
+    const computed = draftWith(cut);
+    Object.defineProperty(computed, "id", { get: () => "x", enumerable: true });
+    expect(await freezeBank(computed, fakeRenderer(), QUICK)).toEqual({ ok: false, problems: ["The draft, id: this must be a plain value."] });
   });
 });

@@ -2,7 +2,7 @@
 // it, so it imports nothing. All lengths are points (72 to the inch) from the top left corner of the page.
 
 /** Changes when the same input can give other bytes. A book records it, so a replay can tell which part differs. */
-export const ENGINE_VERSION = "2.0.0-s8";
+export const ENGINE_VERSION = "2.0.0-s9";
 
 export interface Rect { x: number; y: number; w: number; h: number }
 
@@ -21,7 +21,7 @@ export interface Answer { parts: AnswerPart[] }
 export const answerLine = ({ parts }: Answer): string => parts.map((p, i) => (i === 0 ? p.value : p.name === "remainder" ? ` R${p.value}` : `, ${p.value}`)).join("");
 
 /** What a question looks like, with no knowledge of its math: the layout draws it, and nothing else reads it. */
-export const FACE_KINDS = ["column", "equation", "sequence", "bracket", "fields"] as const;
+export const FACE_KINDS = ["column", "equation", "sequence", "bracket", "fields", "figure"] as const;
 export interface ColumnFace { kind: "column"; top: string; sign: string; bottom: string }
 /** A printed text, or a blank: the answer area of the part with that name. */
 export type FaceToken = { text: string } | { blank: string };
@@ -38,7 +38,13 @@ export interface BracketFace { kind: "bracket"; above: FaceToken[]; outside: str
 export const BRACKET_SIGN = ")";
 /** A prompt, and below it one row for each blank: a label and the answer area of the part with the name `blank`. */
 export interface FieldsFace { kind: "fields"; prompt: string; rows: { label: string; blank: string }[] }
-export type Face = ColumnFace | EquationFace | SequenceFace | BracketFace | FieldsFace;
+/** A bar model: one outlined bar for each part, side by side, and below them a bracket over all of them with the label of the total. */
+export interface BarModelFigure { kind: "bar-model"; parts: string[]; totalLabel: string }
+/** What a drawn figure shows, as data. The layout draws it from rectangles, lines and texts; it knows no math in it. */
+export type FigureData = BarModelFigure;
+/** A drawn figure, and below it a prompt and the answer area of the part with the name `blank`. */
+export interface FigureFace { kind: "figure"; figure: FigureData; prompt: string; blank: string }
+export type Face = ColumnFace | EquationFace | SequenceFace | BracketFace | FieldsFace | FigureFace;
 
 /**
  * What a step puts on the paper. "write" is a digit of the answer; "carry" is the small digit above the next column.
@@ -75,7 +81,7 @@ export interface BookItem {
 }
 
 /** Every role a printed rectangle can have. `slot` holds the other rectangles of one item; `reach` holds one of its answers. */
-export const REGION_ROLES = ["heading", "instruction", "footer", "qr", "scan-mark", "slot", "label", "question", "answer", "reach", "work"] as const;
+export const REGION_ROLES = ["heading", "instruction", "footer", "qr", "scan-mark", "slot", "label", "question", "answer", "reach", "work", "capture"] as const;
 export type RegionRole = (typeof REGION_ROLES)[number];
 
 /** A token of flow text. A line may end between two pieces of a word and between two tokens, and nowhere else. Math is one piece. */
@@ -122,7 +128,17 @@ export interface PageModel {
   /** The text that the QR code of this page holds. */
   qr: string;
   regions: Region[];
+  /** What a child writes on the page that is not an answer: never scored and never in the answers of a book. */
+  captures: Capture[];
 }
+
+/** The kinds of writing that a page captures beside its answers. A time log is the start and the finish time of a day. */
+export const CAPTURE_KINDS = ["time-log"] as const;
+export type CaptureKind = (typeof CAPTURE_KINDS)[number];
+/** One box of a capture, with the clear space around it. */
+export interface CaptureField { name: string; rect: Rect; reach: Rect }
+/** A capture prints in the region with its id and the role "capture"; its fields are in reading order. */
+export interface Capture { id: string; kind: CaptureKind; rect: Rect; fields: CaptureField[] }
 
 /** Where the typesetter says that it put a region. `sheet` counts the pages of the file from 1. */
 export interface Position { id: string; sheet: number; rect: Rect }
@@ -186,6 +202,16 @@ export const PRINT_RULES = {
   },
   /** The number of a question, at the left end of its slot. The one of a stack has the width of a digit place. */
   label: { w: 20, size: 11, weight: 600 },
+  /**
+   * A bar model: the frame of its bars, their height, the room between a bar and its text, and their outline; below them
+   * the bracket of the total (a line with a tick at each end, `gap` below the bars), and the width of the label of the total.
+   */
+  figure: { width: 288, bar: 36, inset: 4, outline: 1, tick: 10, gap: 4, totalLabel: 40, size: 18 },
+  /**
+   * The time log on the first page of a day: a band above the footer, beside the QR code, from the left end of the footer.
+   * Each field is a label, `labelGap`, and a box with `reach` of clear space round it; `gap` is the room between the fields.
+   */
+  timeLog: { top: 700, h: 36, label: { w: 40, size: 11, weight: 600 }, box: { w: 72, h: 26, outline: 0.75 }, reach: 5, labelGap: 2, gap: 8, fields: ["start", "finish"], labels: ["Start", "Finish"] },
   maxAnswerColumns: 2,
   maxInstructionCharacters: 60,
   maxTitleCharacters: 44,
