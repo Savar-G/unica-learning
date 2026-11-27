@@ -107,13 +107,17 @@ function checkPart(page: PageModel, role: RegionRole, wanted: string | null, tel
   return found[0];
 }
 
+/** The footer of a page: its level and page, and on a repeated sheet its attempt (`#2`). The first attempt has no mark. */
+export const footerText = ({ levelName, page, attempt }: Pick<PageModel, "levelName" | "page" | "attempt">): string =>
+  [`Level ${levelName}`, `Page ${page}`, ...(attempt >= 2 ? [`#${attempt}`] : [])].join(" · ");
+
 function checkFrame(page: PageModel, tell: Tell): void {
   const slots = page.regions.filter((r) => r.role === "slot");
   const firstSlot = Math.min(...slots.map((s) => s.rect.y));
   const lastSlot = Math.max(...slots.map((s) => bottom(s.rect)));
   const heading = checkPart(page, "heading", `${page.topicCode} · ${page.topicTitle}`, tell);
   const instruction = checkPart(page, "instruction", page.instruction, tell);
-  const footer = checkPart(page, "footer", `Level ${page.levelName} · Page ${page.page}`, tell);
+  const footer = checkPart(page, "footer", footerText(page), tell);
   if (heading && bottom(heading.rect) > Math.min(instruction?.rect.y ?? firstSlot, firstSlot) + EPSILON) tell("the heading must be above the instruction and the questions");
   if (instruction) {
     if (bottom(instruction.rect) > firstSlot + EPSILON) tell("the instruction must be above the questions");

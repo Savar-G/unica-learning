@@ -21,7 +21,7 @@ export interface StoryLimits {
   interest: string;
   region: string;
   questions: readonly BoundQuestion[];
-  /** The ids of phrasings that the child has seen: the choice takes another one while there is one. */
+  /** The phrasings that the child has seen, each as `<question>/<phrasing>`: the choice takes another one while there is one. */
   seen: readonly string[];
 }
 
@@ -72,15 +72,23 @@ export function longestAnswer(bound: BoundQuestion): Record<string, number> {
   return best;
 }
 
+function generateBound(bound: BoundQuestion, limits: StoryLimits, seed: string): Item<StoryQuestion> {
+  const values = Object.fromEntries(Object.entries(bound.ranges).sort(([a], [b]) => (a < b ? -1 : 1)).map(([name, range]) => [name, rangeValue(range, pick(seedFrom(seed, "slot", name), rangeCount(range)))]));
+  const prefix = `${bound.question.id}/`;
+  const seen = limits.seen.filter((id) => id.startsWith(prefix)).map((id) => id.slice(prefix.length));
+  return storyItem(bound, choosePhrasing(bound.question, seedFrom(seed, "phrasing"), seen), values);
+}
+
 export const storyShape: Shape<StoryLimits, StoryQuestion> = {
   id: STORY_SHAPE_ID,
   version: 1,
   answerKind: "quantity",
   readLimits: () => ({ ok: false, problem: "a story row is read with the questions of its snapshot" }),
   generate(limits, seed) {
-    const bound = limits.questions[pick(seedFrom(seed, "question"), limits.questions.length)];
-    const values = Object.fromEntries(Object.entries(bound.ranges).sort(([a], [b]) => (a < b ? -1 : 1)).map(([name, range]) => [name, rangeValue(range, pick(seedFrom(seed, "slot", name), rangeCount(range)))]));
-    return storyItem(bound, choosePhrasing(bound.question, seedFrom(seed, "phrasing"), limits.seen), values);
+    return generateBound(limits.questions[pick(seedFrom(seed, "question"), limits.questions.length)], limits, seed);
+  },
+  space(limits) {
+    return { count: limits.questions.length, at: (index, seed) => generateBound(limits.questions[index], limits, seed) };
   },
   answer: answerOf,
   // A story is read again from its page by checks/story-answers.ts, which compares its numbers, its unit and its formula.

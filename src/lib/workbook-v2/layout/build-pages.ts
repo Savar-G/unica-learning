@@ -217,7 +217,8 @@ function buildPage({ sheet, levelName, attempt, qr, items, startsDay = false }: 
       region("heading", "heading", heading, [text(heading, `${sheet.topic.code} · ${sheet.topic.title}`, HEADING.size, HEADING.weight, "left")]),
       region("instruction", "instruction", frame.instruction, [text(frame.instruction, instruction, INSTRUCTION.size, INSTRUCTION.weight, "left")]),
       ...onSide.flatMap((item, i) => itemRegions(places[i], item, at)),
-      region("footer", "footer", footer, [text(footer, `Level ${levelName} · Page ${page}`, FOOTER.size, FOOTER.weight, side === "front" ? "left" : "right")]),
+      // A repeated sheet says its attempt after the page (#2); the first attempt prints as it always did.
+      region("footer", "footer", footer, [text(footer, `Level ${levelName} · Page ${page}${attempt > 1 ? ` · #${attempt}` : ""}`, FOOTER.size, FOOTER.weight, side === "front" ? "left" : "right")]),
       region("qr", "qr", frame.qr, squares),
       ...(timeLog ? [timeLog.region] : []),
     ],

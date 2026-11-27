@@ -3,7 +3,7 @@
 // zero between the first digit and the ones of the product (26 × 4 = 104), not the zero of 15 × 2 = 30.
 import { pick } from "../hash";
 import type { Answer, Step, StepMark } from "../contract";
-import { chooseQuestion, countQuestions, scoreRange, widestQuestion, type Kind, type MulColumnLimits, type MulColumnQuestion } from "./mul-column-count";
+import { chooseQuestion, countQuestions, mulColumnSpace, scoreRange, widestQuestion, type Kind, type MulColumnLimits, type MulColumnQuestion } from "./mul-column-count";
 import { emptyProblem, readLimitFields, wholeNumber, type Item, type Shape } from "./shape";
 
 export type { MulColumnLimits, MulColumnQuestion } from "./mul-column-count";
@@ -101,5 +101,9 @@ export const mulColumn: Shape<MulColumnLimits, MulColumnQuestion> = {
   difficultyRange: (limits) => scoreRange(limits, score),
   worstCase: (limits) => item(widestQuestion(limits)),
   count: countQuestions,
+  space(limits) {
+    const space = mulColumnSpace(limits);
+    return { count: space.count, at: (index) => item(space.at(index)) };
+  },
   face: ({ a, b }) => ({ kind: "column", top: String(a), sign: "×", bottom: String(b) }),
 };

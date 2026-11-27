@@ -300,11 +300,10 @@ const countOf = (whole: Places["whole"]): number => whole.reduce((sum, ends) => 
 
 export const countQuestions = (rules: ColumnRules): number => countOf(placesOf(rules, false).whole);
 
-/** One question: `choose` gets how many there are, and gives a place in their order. */
-export function chooseQuestion(given: ColumnRules, choose: (count: number) => number): ColumnQuestion {
-  const places = placesOf(given, false);
+/** One question at a 0-based place in the order of `places`. */
+function questionAt(places: Places, index: number): ColumnQuestion {
   const { rules, kept, moves, below } = places;
-  let left = choose(countOf(places.whole));
+  let left = index;
   const question = { a: 0, b: 0 };
   /** Takes the digits at a place that make a wanted Low. It gives the Low below them, or NONE when the question is further on. */
   const take = (place: number, isWanted: (move: Move, made: Low) => boolean): Low => {
@@ -335,6 +334,18 @@ export function chooseQuestion(given: ColumnRules, choose: (count: number) => nu
     return question;
   }
   throw new Error("there is no question at this place");
+}
+
+/** Indexed access to every question meeting `given`, built once per row. */
+export function columnSpace(given: ColumnRules): { count: number; at(index: number): ColumnQuestion } {
+  const places = placesOf(given, false);
+  return { count: countOf(places.whole), at: (index) => questionAt(places, index) };
+}
+
+/** One question: `choose` gets how many there are, and gives a place in their order. */
+export function chooseQuestion(given: ColumnRules, choose: (count: number) => number): ColumnQuestion {
+  const space = columnSpace(given);
+  return space.at(choose(space.count));
 }
 
 /** The place of a question in the order of `chooseQuestion`, or -1 when it does not meet the limits. */

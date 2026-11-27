@@ -121,6 +121,10 @@ export const divLong: Shape<DivLongLimits, DivisionQuestion> = {
     return item(all[pick(seed, all.length)], limits);
   },
   count: (limits) => pairsOf(limits).length,
+  space(limits) {
+    const all = pairsOf(limits);
+    return { count: all.length, at: (index) => item(all[index], limits) };
+  },
   difficulty: ({ dividend, divisor }) => scoreOf(dividend, divisor, factsOf(dividend, divisor)),
   difficultyRange(limits) {
     const scores = pairsOf(limits).map((index) => SCORES[index]);

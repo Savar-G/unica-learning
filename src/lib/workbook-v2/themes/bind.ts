@@ -14,8 +14,11 @@ function scenarioFor(bank: StoryBank, interest: string, kind: string): Scenario 
   return bank.scenarios.find((s) => s.interest === interest && s.kind === kind) ?? bank.scenarios.find((s) => s.interest === DEFAULT_INTEREST && s.kind === kind);
 }
 
-/** The questions of a row for one choice of theme and region, in the order of the row. */
-export function bindStory(ids: readonly string[], bank: StoryBank, { interest, region }: StoryChoice): StoryLimits {
+/**
+ * The questions of a row for one choice of theme and region, in the order of the row. `seen` holds the phrasings that the
+ * child has read, each as `<question>/<phrasing>`.
+ */
+export function bindStory(ids: readonly string[], bank: StoryBank, { interest, region }: StoryChoice, seen: readonly string[] = []): StoryLimits {
   const pack = bank.packs.get(region);
   if (!pack) throw new Error(`there is no region pack "${region}"`);
   const questions = ids.flatMap((id): BoundQuestion[] => {
@@ -25,7 +28,7 @@ export function bindStory(ids: readonly string[], bank: StoryBank, { interest, r
     const found = scenario ? rangesOf(question, scenario) : null;
     return scenario && found && "ranges" in found ? [{ question, scenario, pack, ranges: found.ranges }] : [];
   });
-  return { ids, interest, region, questions, seen: [] };
+  return { ids, interest, region, questions, seen };
 }
 
 /** The interests that some scenario has. */

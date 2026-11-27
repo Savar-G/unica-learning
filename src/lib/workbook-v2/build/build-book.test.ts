@@ -4,7 +4,12 @@ import rawBook from "../fixtures/book.json";
 import rawSnapshot from "../fixtures/snapshot.json";
 import inventedBookFixture from "../fixtures/book-invented-topic.json";
 import inventedSnapshotFixture from "../fixtures/snapshot-invented-topic.json";
-import { sha256 } from "../hash";
+import { canonicalJson, sha256 } from "../hash";
+import factsSnapshotFixture from "../fixtures/snapshot-facts.json";
+import { validateSnapshot } from "../bank/snapshot";
+import { historyFromBooks, planNextBook } from "../assemble/plan-book";
+import { levelOrder, position, type SheetResultRecord } from "../assemble/position";
+import { sheetResult, type ItemMark } from "../results/sheet-results";
 import { openRenderer } from "../render/typst";
 import { RenderError, type Renderer, type Rendering } from "../renderer";
 import { SHAPES, shapeLibrary, type Shape } from "../shapes";
@@ -64,7 +69,7 @@ describe("a good input", () => {
       expect(steps.at(-1)).toEqual({ text: value, marks: [] });
       expect(shapeVersion).toBe(SHAPES.get(shape)?.version);
     }
-    expect(book.record).toMatchObject({ bookId: "example-book", engine: "2.0.0-s10", ...IDENTITY, snapshot: { id: "invented-level-3-v1" } });
+    expect(book.record).toMatchObject({ bookId: "example-book", engine: "2.0.0-s11", ...IDENTITY, snapshot: { id: "invented-level-3-v1" } });
     expect(book.record.snapshot.hash).toMatch(/^[0-9a-f]{64}$/);
     expect(book.record.inputHash).toMatch(/^[0-9a-f]{64}$/);
   });
@@ -319,6 +324,52 @@ describe("a build stops, draws nothing and says why", () => {
   });
 });
 
+describe("a book with the history of the child", () => {
+  const empty = { books: [], lastAttempts: [], seenPhrasings: [] };
+
+  it("prints the same questions and pages with an empty history, and the input hash covers the history", () => {
+    const [none, nothing] = [planBook(input()), planBook(input((i) => put(i.book, "history", empty)))];
+    if (!none.ok || !nothing.ok) throw new Error("no plan");
+    expect(nothing.items).toEqual(none.items);
+    expect(nothing.pages).toEqual(none.pages);
+    expect(nothing.inputHash).not.toBe(none.inputHash);
+  });
+
+  it("prints a repeat of a sheet with no question of the attempt before it, when the limits have enough", async () => {
+    const one = await plain();
+    const history = historyFromBooks([one]);
+    const two = planBook(input((i) => { put(i.book.sheets[0], "attempt", 2); put(i.book, "history", history); }));
+    if (!two.ok) throw new Error(two.problems.join("\n"));
+    const seen = new Set(history.books[0].items.map((item) => item.key));
+    expect(two.items.filter((item) => seen.has(canonicalJson(item.question)))).toEqual([]);
+    expect(two.pages.map((p) => p.attempt)).toEqual([2, 2]);
+  });
+
+  it.each<[string, unknown, RegExp]>([
+    ["a history that is no object", "all of it", /The history: this must be an object/],
+    ["a history that is null", null, /The history: this must be an object/],
+    ["an unknown field", { ...empty, extra: 1 }, /The history: unknown field "extra"/],
+    ["a missing list", { books: [], lastAttempts: [] }, /seenPhrasings is missing/],
+    ["books that are no list", { ...empty, books: {} }, /books must be a list/],
+    ["an item with no key", { ...empty, books: [{ bookId: "b", items: [{ shape: "fact.mul" }] }] }, /book 1, item 1: key is missing/],
+    ["an empty key", { ...empty, books: [{ bookId: "b", items: [{ shape: "fact.mul", key: "" }] }] }, /key must be canonical JSON of 1 to 4096 characters/],
+    ["a non-JSON key", { ...empty, books: [{ bookId: "b", items: [{ shape: "fact.mul", key: "???" }] }] }, /key must be canonical JSON of 1 to 4096 characters/],
+    ["a non-canonical JSON key", { ...empty, books: [{ bookId: "b", items: [{ shape: "fact.mul", key: "{\"b\":7,\"a\":5}" }] }] }, /key must be canonical JSON of 1 to 4096 characters/],
+    ["a shape that is no id", { ...empty, books: [{ bookId: "b", items: [{ shape: "Fact Mul", key: "{}" }] }] }, /shape must be the id of a shape/],
+    ["a book twice", { ...empty, books: [{ bookId: "b", items: [] }, { bookId: "b", items: [] }] }, /the book "b" is used more than once/],
+    ["a last attempt on no side", { ...empty, lastAttempts: [{ sheetId: "s", attempt: 1, items: [{ shape: "fact.mul", key: "{}", side: "middle", rowId: "r", form: "{}" }] }] }, /side must be front or back/],
+    ["a last attempt with a non-canonical form", { ...empty, lastAttempts: [{ sheetId: "s", attempt: 1, items: [{ shape: "fact.mul", key: "{}", side: "front", rowId: "r", form: "???" }] }] }, /form must be canonical JSON of 1 to 4096 characters/],
+    ["a last attempt of 0", { ...empty, lastAttempts: [{ sheetId: "s", attempt: 0, items: [] }] }, /attempt must be a whole number, 1 or more/],
+    ["two last attempts of one sheet", { ...empty, lastAttempts: [{ sheetId: "s", attempt: 1, items: [] }, { sheetId: "s", attempt: 2, items: [] }] }, /the sheet of a last attempt "s" is used more than once/],
+    ["a phrasing that is no id", { ...empty, seenPhrasings: [{ question: "q", phrasing: "Long One" }] }, /phrasing must use only small letters/],
+    ["too many books", { ...empty, books: Array.from({ length: 201 }, (_, i) => ({ bookId: `b${i}`, items: [] })) }, /books has 201 entries and the limit is 200/],
+  ])("stops a book with %s", (_name, history, problem) => {
+    const plan = planBook(input((i) => put(i.book, "history", history)));
+    expect(plan.ok).toBe(false);
+    if (!plan.ok) expect(plan.problems.join("\n")).toMatch(problem);
+  });
+});
+
 describe("a book of word problems", () => {
   type StoryInput = { snapshot: typeof inventedSnapshotFixture; book: typeof inventedBookFixture & Record<string, unknown> };
   /** The sheet of word problems alone, for a child, with a change of the book. */
@@ -405,6 +456,22 @@ describe("a book of word problems", () => {
     }
   });
 
+  it("takes the phrasings and the questions that the child has not read first, and is built when the child has read all", () => {
+    // The back row asks for 2 of its 3 questions of the region, so a repeat can print the one that the child has not seen.
+    const twoOfThree = (i: StoryInput) => { i.snapshot = structuredClone(i.snapshot); i.snapshot.sheets[2].back.rows[0].items = 2; return i; };
+    for (const child of children) {
+      const one = planned(twoOfThree(storyBook(() => {}, child)));
+      const history = historyFromBooks([{ record: { bookId: "book-1" }, items: one.items }]);
+      const two = planned(twoOfThree(storyBook((b) => { b.sheets[0].attempt = 2; b.history = history; }, child)));
+      const read = new Set(history.seenPhrasings.map((p) => `${p.question}/${p.phrasing}`));
+      expect(two.items.map((i) => `${storyOf(i).question}/${storyOf(i).phrasing}`).filter((p) => read.has(p))).toEqual([]);
+      const back = (items: typeof one.items) => items.filter((i) => i.side === "back").map((i) => storyOf(i).question);
+      expect(back(two.items)).toContain(["muffins-left", "juice-left", "toonie-savings"].find((q) => !back(one.items).includes(q)));
+      const everything = { ...history, seenPhrasings: [...history.seenPhrasings, ...two.items.map((i) => ({ question: storyOf(i).question, phrasing: storyOf(i).phrasing }))] };
+      expect(planBook(twoOfThree(storyBook((b) => { b.sheets[0].attempt = 3; b.history = everything; }, child))).ok).toBe(true);
+    }
+  });
+
   it("chooses the phrasing from the seed: the same for one child and attempt, both for many children", () => {
     const phrasings = (child: string, attempt = 1) => planned(storyBook((b) => { b.sheets[0].attempt = attempt; }, child)).items.map((i) => `${storyOf(i).question}/${storyOf(i).phrasing}`);
     expect(phrasings("child-1")).toEqual(phrasings("child-1"));
@@ -414,6 +481,58 @@ describe("a book of word problems", () => {
 });
 
 describe.skipIf(skipTypstTests())("with the real Typst", () => {
+  it("builds Book 1, takes invented marks, builds Book 2 from the position with every check, and replays Book 1 to the same bytes", async () => {
+    const renderer = await openRenderer(testAssets());
+    const bank = validateSnapshot(structuredClone(factsSnapshotFixture));
+    if (!bank.ok) throw new Error(bank.problems.join("\n"));
+    const [A, B, C, D, E] = levelOrder(bank.snapshot).map((s) => s.id);
+    const qr = (book: number, sheet: number) => ({ front: `https://unicalearning.com/tutor/p/repeat-${book}-${sheet}-front`, back: `https://unicalearning.com/tutor/p/repeat-${book}-${sheet}-back` });
+    const firstRequest = { bookId: "repeat-book-1", childId: "repeat-child", sheets: [A, B, C, D].map((sheetId, i) => ({ sheetId, attempt: 1, qr: qr(1, i), ...(i % 2 === 0 ? { startsDay: true } : {}) })) };
+    const saved = canonicalJson({ snapshot: factsSnapshotFixture, book: firstRequest });
+    const one = await built(JSON.parse(saved) as Input, renderer);
+    expect(one.pages.map((p) => p.model.attempt)).toEqual(Array(8).fill(1));
+
+    // Invented marks: A all right, B five wrong (of 40: four are allowed), C and D unmarked. Three of the eight pages are scanned.
+    const itemsOf = (sheetId: string) => one.items.filter((i) => i.sheetId === sheetId);
+    const marks: Record<string, ItemMark[]> = {
+      [A]: itemsOf(A).map((i) => ({ itemId: i.id, firstTry: "right" })),
+      [B]: itemsOf(B).slice(0, 5).map((i) => ({ itemId: i.id, firstTry: "wrong", correction: "right" })),
+    };
+    const results = [A, B].map((sheetId): SheetResultRecord => {
+      const outcome = sheetResult(itemsOf(sheetId), marks[sheetId], { masteryPercent: 90 });
+      if (!outcome.ok) throw new Error(outcome.problems.join("\n"));
+      return { bookId: "repeat-book-1", sheetId, attempt: 1, result: outcome.result, itemsScored: outcome.itemsScored, mistakes: outcome.mistakes };
+    });
+    expect(results.map((r) => r.result)).toEqual(["mastered", "repeat"]);
+    const pagesOf = (sheetId: string) => one.pages.filter((p) => p.model.sheetId === sheetId).map((p) => p.model.page) as [number, number];
+    const issued = [A, B, C, D].map((sheetId) => ({ bookId: "repeat-book-1", bookNumber: 1, sheetId, attempt: 1, pages: pagesOf(sheetId) }));
+    const receipts = [...pagesOf(A), pagesOf(B)[0]].map((pageNumber) => ({ bookId: "repeat-book-1", pageNumber }));
+    const where = position({ childId: "repeat-child" }, issued, receipts, results, bank.snapshot);
+    if (!where.ok) throw new Error(where.problems.join("\n"));
+    expect(where.queue.map((q) => `${q.sheetId}#${q.attempt} ${q.reason}`)).toEqual([`${B}#2 repeat`, `${C}#2 unscanned`, `${D}#2 unscanned`, `${E}#1 new`]);
+    expect(where.teamNotices).toHaveLength(2);
+
+    const next = planNextBook({
+      bookId: "repeat-book-2", childId: "repeat-child", snapshot: bank.snapshot, position: where, pagesPerDay: 4, days: 2,
+      qrTokens: [0, 1, 2, 3].flatMap((i) => [qr(2, i).front, qr(2, i).back]), history: historyFromBooks([one]),
+    });
+    if (!next.ok) throw new Error(next.problems.join("\n"));
+    const two = await built({ snapshot: factsSnapshotFixture, book: next.request } as unknown as Input, renderer);
+    expect(two.pages.map((p) => [p.model.sheetId, p.model.attempt])).toEqual([B, B, C, C, D, D, E, E].map((id, i) => [id, i < 6 ? 2 : 1]));
+    expect(two.pages.map((p) => p.model.captures.length)).toEqual([1, 0, 0, 0, 1, 0, 0, 0]);
+    const footer = (p: PageModel) => p.regions.find((r) => r.role === "footer")?.ink.flatMap((i) => (i.kind === "text" ? [i.text] : []));
+    expect(footer(two.pages[0].model)).toEqual([`Level 2 · Page ${pagesOf(B)[0]} · #2`]);
+    expect(footer(two.pages[6].model)).toEqual([`Level 2 · Page ${two.pages[6].model.page}`]);
+    // The repeat of B prints questions that B did not print, where its rows have them.
+    const printed = (book: BuiltBook, sheetId: string) => book.items.filter((i) => i.sheetId === sheetId).map((i) => `${i.shape} ${canonicalJson(i.question)}`);
+    expect(printed(two, B).filter((k) => printed(one, B).includes(k)).length).toBeLessThan(printed(two, B).length / 2);
+
+    const again = await built(JSON.parse(saved) as Input, renderer);
+    expect(Buffer.compare(again.pdf, one.pdf)).toBe(0);
+    expect(again.pages.map((p, i) => Buffer.compare(p.image, one.pages[i].image))).toEqual(Array(8).fill(0));
+    expect(again.record).toEqual(one.record);
+  });
+
   it("the same input gives the same bytes, and another child's book has other bytes", async () => {
     const renderer = await openRenderer(testAssets());
     const few = (childId: string) => input((i) => { put(i.book, "childId", childId); for (const side of [i.snapshot.sheets[0].front, i.snapshot.sheets[0].back]) put(side, "rows", [{ ...side.rows[0], items: 2 }]); });

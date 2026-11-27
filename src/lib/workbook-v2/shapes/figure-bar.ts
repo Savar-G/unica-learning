@@ -59,18 +59,29 @@ function steps({ groups, size }: FigureBarQuestion): Step[] {
   return [`${parts.join(" + ")} = ${total}`, `${groups} × ${size} = ${total}`, String(total)].map((text) => ({ text, marks: [] }));
 }
 
+function itemAt(counts: readonly { groups: number; low: number; high: number }[], index: number): Item<FigureBarQuestion> {
+  let at = index;
+  for (const { groups, low, high } of counts) {
+    if (at <= high - low) return item({ groups, size: low + at });
+    at -= high - low + 1;
+  }
+  throw new Error("no question meets these limits");
+}
+
 export const figureBar: Shape<FigureBarLimits, FigureBarQuestion> = {
   id: "figure.bar",
   version: 1,
   answerKind: "whole-number",
   readLimits,
   generate(limits, seed) {
-    let at = pick(seed, count(limits));
-    for (const { groups, low, high } of countsOf(limits)) {
-      if (at <= high - low) return item({ groups, size: low + at });
-      at -= high - low + 1;
-    }
-    throw new Error("no question meets these limits");
+    const counts = countsOf(limits);
+    const total = counts.reduce((sum, { low, high }) => sum + high - low + 1, 0);
+    return itemAt(counts, pick(seed, total));
+  },
+  space(limits) {
+    const counts = countsOf(limits);
+    const total = counts.reduce((sum, { low, high }) => sum + high - low + 1, 0);
+    return { count: total, at: (index) => itemAt(counts, index) };
   },
   answer,
   solveAgain(rows) {

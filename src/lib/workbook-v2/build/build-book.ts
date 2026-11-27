@@ -13,6 +13,7 @@ import { TEMPLATES } from "../layout/templates";
 import { RenderError, type Renderer, type Rendering } from "../renderer";
 import { SHAPES, type ShapeLibrary } from "../shapes";
 import { bindSheet } from "../themes/sheets";
+import { seenPhrasingIds, sheetHistory } from "./book-history";
 import { readBookRequest } from "./book-input";
 import { repeatNotices, sheetItems } from "./items";
 
@@ -97,9 +98,11 @@ export function planBook(input: BuildInput, shapes: ShapeLibrary = SHAPES, templ
   if (Array.isArray(book)) return stop(book);
 
   const { stories } = bank.snapshot;
+  const { history } = book;
+  const seen = seenPhrasingIds(history);
   const sheets = book.sheets.map((s) => {
-    const sheet = stories && book.stories ? bindSheet(s.sheet, stories, book.stories) : s.sheet;
-    return { ...s, sheet, items: sheetItems(sheet, book.childId, s.attempt), levelName: bank.snapshot.level.name };
+    const sheet = stories && book.stories ? bindSheet(s.sheet, stories, book.stories, seen) : s.sheet;
+    return { ...s, sheet, items: sheetItems(sheet, book.childId, s.attempt, history && sheetHistory(history, s.sheet.id)), levelName: bank.snapshot.level.name };
   });
   const layout = planPages(sheets, shapes);
   if (!layout.ok) return layout;
