@@ -55,6 +55,7 @@
     "workbook:v2": "node scripts/workbook-v2.mjs",
     "workbook:v2:check": "node scripts/workbook-v2-check.mjs",
     "workbook:v2:freeze": "node scripts/workbook-v2-freeze.mjs",
+    "workbook:v2:bank:import": "node scripts/workbook-v2-bank-import.mjs",
     "workbook:v2:replay": "node scripts/workbook-v2-replay.mjs",
     "workbook:v2:fingerprints": "node scripts/shape-fingerprints.mjs"
   },

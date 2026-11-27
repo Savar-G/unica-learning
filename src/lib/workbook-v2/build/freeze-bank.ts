@@ -83,6 +83,10 @@ function notesIn(value: unknown, place: string): string[] {
   return Object.entries(value).flatMap(([key, one]) => (key === BASIS ? [place] : notesIn(one, place === "" ? key : `${place}.${key}`)));
 }
 
+/** A problem for each note that `contentOf` left in the content: a note in a place where a draft may not have one. */
+export const misplacedNotes = (content: Record<string, unknown>): string[] =>
+  notesIn(content, "").map((place) => `The draft has a note "${BASIS}" at ${place}, where a draft may not have one: only the level, a topic, a sheet, a side, a row, a question, a scenario and a region pack may.`);
+
 /** The pages of the sheets of each topic follow one another, in the order of the topic. */
 function pageProblems(content: Record<string, unknown>, sheets: ReadonlyMap<string, SnapshotSheet>): string[] {
   const topics = Array.isArray(content.topics) ? content.topics.filter(isRecord) : [];
@@ -381,8 +385,8 @@ export async function freezeBank(draft: unknown, renderer: Renderer, options: Fr
   const plain = plainCopy("The draft", draft);
   if (!plain.ok) return plain;
   const content = contentOf(plain.value as Record<string, unknown>);
-  const left = notesIn(content, "");
-  if (left.length > 0) return { ok: false, problems: left.map((place) => `The draft has a note "${BASIS}" at ${place}, where a draft may not have one: only the level, a topic, a sheet, a side, a row, a question, a scenario and a region pack may.`) };
+  const left = misplacedNotes(content);
+  if (left.length > 0) return { ok: false, problems: left };
   const bank = validateSnapshot(content, shapes, templates);
   if (!bank.ok) return bank;
   const { sheets } = bank.snapshot;

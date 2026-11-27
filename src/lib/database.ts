@@ -34,6 +34,7 @@ import type { PageGate } from "@/lib/workbook-page-gates";
 import type { GateOutcome } from "@/lib/workbook-run-gates";
 import type { AnswerKind, AnswerPart, Step } from "@/lib/workbook-v2/contract";
 import type { AllocationRecord, TimeLogReadingState, WorkbookGenerator } from "@/lib/workbook-v2-publish/types";
+import type { BankItemStatus, BankLevelStatus, BankSheetKind, JsonObject, SheetBasis } from "@/lib/workbook-v2-bank/types";
 
 export type { Json };
 
@@ -50,6 +51,12 @@ type ColumnTypes = KnownColumns<{
   answers: { answer_changes: AnswerChange[] | null };
   assessment_facts: { test: FactsTest };
   assessments: { status: AttemptStatus; province: Province; route: Route | null; stage3_route: Stage3Route | null; help: HelpAnswer | null; test: StoredTest; placement: Placement | null; device: TestDevice | null };
+  bank_levels: { status: BankLevelStatus; config: JsonObject; basis: JsonObject | null };
+  bank_topics: { status: BankItemStatus; basis: JsonObject | null };
+  bank_sheets: { status: BankItemStatus; kind: BankSheetKind; content: JsonObject; basis: SheetBasis };
+  bank_questions: { status: BankItemStatus; slots: JsonObject; phrasings: Json[]; basis: JsonObject | null };
+  bank_scenarios: { status: BankItemStatus; content: JsonObject; basis: JsonObject | null };
+  bank_region_packs: { status: BankItemStatus; units: JsonObject; coins: JsonObject; spelling: JsonObject; grade_names: JsonObject | null; basis: JsonObject | null };
   card_setups: { plan: PlanId };
   child_plan_states: { kind: KnownPlan["kind"] };
   children: { province: Province; math_help: MathHelp | null };

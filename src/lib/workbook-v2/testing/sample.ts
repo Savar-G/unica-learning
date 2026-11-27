@@ -8,6 +8,7 @@ import divisionRequest from "../fixtures/book-division.json";
 import factsRequest from "../fixtures/book-facts.json";
 import placesRequest from "../fixtures/book-place-value.json";
 import inventedRequest from "../fixtures/book-invented-topic.json";
+import inventedDraftFile from "../fixtures/draft-invented-topic.json";
 import inventedSnapshot from "../fixtures/snapshot-invented-topic.json";
 import divisionSnapshot from "../fixtures/snapshot-division.json";
 import factsSnapshot from "../fixtures/snapshot-facts.json";
@@ -45,6 +46,9 @@ export const divisionBook = (): GoodBook => plannedBook({ snapshot: divisionSnap
 export const placesBook = (): GoodBook => plannedBook({ snapshot: placesSnapshot, book: placesRequest });
 /** The example book of the invented topic: a sheet of stacks that starts a day, with the time log, and a sheet of bar models. */
 export const inventedBook = (): GoodBook => plannedBook({ snapshot: inventedSnapshot, book: inventedRequest });
+
+/** A copy of the draft of the invented topic, with its notes: what the freeze and the bank import read. */
+export const inventedDraft = (): Record<string, unknown> => structuredClone(inventedDraftFile);
 
 export const goodBook = (): GoodBook => bookOf();
 export const goodPages = (): PageModel[] => goodBook().pages;

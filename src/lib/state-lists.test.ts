@@ -24,6 +24,7 @@ import { TOPIC_METHOD_STATUSES } from "@/lib/reference-method/types";
 import { LEARNING_EVENT_ASSISTANCE } from "@/lib/learning-events";
 import { ANSWER_KINDS } from "@/lib/workbook-v2/contract";
 import { TIME_LOG_READING_STATES, WORKBOOK_GENERATORS } from "@/lib/workbook-v2-publish/types";
+import { BANK_ITEM_STATUSES, BANK_LEVEL_STATUSES, BANK_SHEET_KINDS } from "@/lib/workbook-v2-bank/types";
 
 const LISTS: { name: string; list: readonly string[]; table: string; column: string }[] = [
   { name: "CUSTOMER_ACTIVITY_KINDS", list: CUSTOMER_ACTIVITY_KINDS, table: "customer_activity", column: "event" },
@@ -68,6 +69,10 @@ const LISTS: { name: string; list: readonly string[]; table: string; column: str
   { name: "TIME_LOG_READING_STATES", list: TIME_LOG_READING_STATES, table: "workbook_time_logs", column: "reading_state" },
   { name: "ANSWER_KINDS", list: ANSWER_KINDS, table: "workbook_item_answers", column: "answer_kind" },
   { name: "LEARNING_EVENT_ASSISTANCE", list: LEARNING_EVENT_ASSISTANCE, table: "learning_events", column: "assistance" },
+  // UNI-241: the working copy of the bank (migration 20261127191913_bank_working_copy).
+  { name: "BANK_LEVEL_STATUSES", list: BANK_LEVEL_STATUSES, table: "bank_levels", column: "status" },
+  ...(["bank_topics", "bank_sheets", "bank_questions", "bank_scenarios", "bank_region_packs"] as const).map((table) => ({ name: "BANK_ITEM_STATUSES", list: BANK_ITEM_STATUSES, table, column: "status" })),
+  { name: "BANK_SHEET_KINDS", list: BANK_SHEET_KINDS, table: "bank_sheets", column: "kind" },
 ];
 
 // Grandfathered enum-like SQL checks not yet wired to an exported TS `as const` list.
