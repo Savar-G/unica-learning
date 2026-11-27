@@ -153,6 +153,19 @@ describe("the v2 book job", () => {
     expect(d.opened()).toBe(0);
   });
 
+  it.each<[string, Parameters<typeof request>[0], number]>([
+    // At 2 pages a day, days of 1, 1 and 2 sheets: the last day takes one more sheet so that the book has an even number.
+    ["a last day with one more sheet", { sheets: request().sheets.map((s, i) => ({ ...s, startsDay: i < 3, day: Math.min(i, 2) + 1 })) }, 2],
+    // A book of one day: 1 sheet a day and one more, which only the pages a day that the request sets can say.
+    ["a book of one day with one more sheet", { pagesPerDay: 2, sheets: request().sheets.slice(0, 2).map((s, i) => ({ ...s, startsDay: i === 0, day: 1 })) }, 2],
+  ])("publishes %s, and saves the pages a day of the request", async (_case, change, pagesPerDay) => {
+    const { store, files } = memory();
+    const result = await publishV2Book(deps(store, files), request(change));
+    expect(result.status).toBe("published");
+    expect(store.tables.allocations.map((a) => a.allocation.pagesPerDay)).toEqual([pagesPerDay]);
+    expect(store.tables.books.map((b) => b.payload.workbook.pagesPerDay)).toEqual([pagesPerDay]);
+  });
+
   it.each([
     ["a request key that is too short", { requestKey: "short" }, /request key/],
     ["pages that are not a multiple of 4", { sheets: request().sheets.slice(0, 3) }, /multiple of 4/],
@@ -160,6 +173,8 @@ describe("the v2 book job", () => {
     ["a sheet the snapshot does not have", { sheets: request().sheets.map((s, i) => (i === 0 ? { ...s, sheetId: "no-such-sheet" } : s)) }, /no sheet/],
     // 60 sheets are 120 pages, and with the 4 of the cover 124: more than a book has.
     ["more than 120 pages with the cover", { sheets: Array.from({ length: 30 }, (_, d) => request().sheets.slice(0, 2).map((s, i) => ({ ...s, startsDay: i === 0, day: d + 1 }))).flat() }, /the pages of a book and the 4 of its cover are a multiple of 4, up to 120, and this book has 124/],
+    ["a middle day with more sheets than the pages a day set for the book", { pagesPerDay: 2, sheets: request().sheets.map((s, i) => ({ ...s, startsDay: i === 0 || i === 2, day: i < 2 ? 1 : 2 })) }, /^day 1 has 2 sheets, and at 2 pages a day each day has 1 \(the last day may have one more/m],
+    ["pages a day that are not even", { pagesPerDay: 3 }, /pages a day is an even whole number from 2 to 20, and this book has 3/],
     ["new sheets out of the level order", { sheets: request().sheets.map((s, i, all) => ({ ...all[[1, 0, 2, 3][i]], startsDay: s.startsDay, day: s.day })) }, /^Level check, sheet "times-facts", page 1, slot "page": this new sheet comes after a new sheet that is later in the level\.$/m],
   ])("refuses %s before anything is written", async (_case, change, problem) => {
     const { store, files } = memory();

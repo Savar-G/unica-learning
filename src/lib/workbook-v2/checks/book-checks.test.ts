@@ -1,7 +1,9 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { COVER_PAGES, MAX_SHEETS, MAX_TOTAL_PAGES } from "../assemble/plan-book";
 import { bookCheckInput, PART_OF_BOOK, planBook, wholeBook } from "../build/build-book";
-import type { BookItem, PageModel, Region } from "../contract";
+import { tokenText, wordToken, type BookItem, type FlowToken, type PageModel, type Region } from "../contract";
+import inventedBookFixture from "../fixtures/book-invented-topic.json";
+import inventedSnapshotFixture from "../fixtures/snapshot-invented-topic.json";
 import { openRenderer } from "../render/typst";
 import type { Rendering } from "../renderer";
 import { SHAPES } from "../shapes";
@@ -130,6 +132,28 @@ describe("the source check", () => {
     const bad = withItems(weak, (items) => { items[2].answer = { parts: [{ ...items[2].answer.parts[0], value: String(Number(items[2].answer.parts[0].value) + 1) }] }; });
     const finding = named(BOOK_CHECK_STEPS.source(bad), "source", "answer-twice", { sheet: weak.items[2].sheetId, slot: "slot-3" });
     expect(finding.message).toMatch(/by one computation and ".+" by another/);
+  });
+
+  it("stops a word problem whose page asks another question than the frozen phrasing filled for its question and numbers", async () => {
+    // The sheet of word problems alone: the ribbon problem asks how long the ribbon is now, and the key is the length left.
+    const book = { ...structuredClone(inventedBookFixture), childId: "story-child", sheets: [structuredClone(inventedBookFixture.sheets[2])] };
+    const plan = planBook({ snapshot: inventedSnapshotFixture, book });
+    if (!plan.ok) throw new Error(plan.problems.join("\n"));
+    const input = bookCheckInput(plan, await fakeRenderer().render(plan.pages), PART_OF_BOOK, SHAPES);
+    expect(checkBook(input)).toEqual([]);
+    const item = input.items.find((i) => i.face.kind === "story")!;
+    const asks = (tokens: FlowToken[]): FlowToken[] => {
+      const at = tokens.findLastIndex((t) => tokenText(t) === "How");
+      return [...tokens.slice(0, at), ...["How", "much", "was", "cut", "off?"].map(wordToken)];
+    };
+    // The same numbers and unit, so the second computation of the answer still agrees: only the question changed.
+    const pages = input.pages.map((page) => ({
+      ...page,
+      regions: page.regions.map((r) => (r.item === item.id && r.role === "question" ? { ...r, ink: r.ink.map((i) => (i.kind === "flow" ? { ...i, tokens: asks(i.tokens) } : i)) } : r)),
+    }));
+    const finding = named(BOOK_CHECK_STEPS.source({ ...input, pages }), "source", "story-text", { sheet: item.sheetId, page: pageOf(input, item).page, slot: `slot-${item.number}` });
+    expect(finding.message).toMatch(/the page prints ".*How much was cut off\?", and the frozen phrasing ".+" filled for this question prints ".+"/);
+    expect(BOOK_CHECK_STEPS.source({ ...input, pages }).map((f) => f.rule)).toEqual(["story-text"]);
   });
 
   it("stops a repeat that prints a seen question while its row has unseen ones", () => {
@@ -338,6 +362,35 @@ describe("the repeat rule on a large space and on a row in order", () => {
     expect(repeats(ordered.sheet, 2, printed(ordered.row, 2, fives), seenIn(ordered.row, fives))).toEqual([expect.objectContaining({ rule: "unseen-first", slot: "slot-1" })]);
     expect(repeats(ordered.sheet, 2, printed(ordered.row, 2, fives), seenIn(ordered.row, [...fives, ...sixes]))).toEqual([]);
     expect(repeats(ordered.sheet, 2, printed(ordered.row, 2, sixes), seenIn(ordered.row, fives))).toEqual([]);
+  });
+
+  it("stops a repeat of a row in order whose run has more seen questions than another legal run", () => {
+    // Both tables were seen in part: 3 questions of the 5s and 1 of the 6s. The 6s are the better choice.
+    const history = seenIn(ordered.row, [...fives.slice(0, 3), sixes[0]]);
+    expect(repeats(ordered.sheet, 2, printed(ordered.row, 2, fives), history)).toEqual([expect.objectContaining({ rule: "unseen-first", slot: "slot-1" })]);
+    expect(repeats(ordered.sheet, 2, printed(ordered.row, 2, sixes), history)).toEqual([]);
+  });
+
+  it("stops a repeat of a row in order that prints the run of the last attempt when another run is no worse", () => {
+    const shape = ordered.row.shape;
+    const lastOf = (questions: unknown[]): BookHistory => ({
+      books: [{ bookId: "book-1", items: [...fives, ...sixes].map((q) => ({ shape: shape.id, key: questionKey(shape, q) })) }],
+      lastAttempts: [{ sheetId: "sheet-1", attempt: 1, items: questions.map((q) => ({ shape: shape.id, key: questionKey(shape, q), side: "front" as const, rowId: ordered.row.id, form: JSON.stringify(q) })) }],
+      seenPhrasings: [],
+    });
+    expect(repeats(ordered.sheet, 2, printed(ordered.row, 2, fives), lastOf(fives))).toEqual([expect.objectContaining({ rule: "new-order", slot: "slot-1" })]);
+    expect(repeats(ordered.sheet, 2, printed(ordered.row, 2, sixes), lastOf(fives))).toEqual([]);
+  });
+
+  it("stops a sheet whose rows in order print one table on both sides while another table is free", () => {
+    // The same row of the 5s and 6s on the front and on the back: the back must print the other table.
+    const both: SnapshotSheet = { ...ordered.sheet, back: { ...ordered.sheet.back, rows: [ordered.row] } };
+    const onBack = (questions: unknown[]) => printed(ordered.row, 1, questions).map((item, i) => ({ ...item, id: `sheet-1/1/back/${i + 10}`, side: "back" as const, number: i + 10 }));
+    const same = [...printed(ordered.row, 1, fives), ...onBack(fives)];
+    const found = repeats(both, 1, same, null);
+    expect(found).toEqual([expect.objectContaining({ rule: "no-repeat", slot: "slot-10" })]);
+    expect(found[0].message).toBe('the row "row-1" in order prints questions that another row in order of the sheet prints, and its table has a run with fewer of them');
+    expect(repeats(both, 1, [...printed(ordered.row, 1, fives), ...onBack(sixes)], null)).toEqual([]);
   });
 });
 

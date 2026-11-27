@@ -53,7 +53,9 @@ export async function POST(request: Request) {
     const deps = serverDeps();
     if (!deps) return new Response("Not configured", { status: 503 });
     const sheets = fullBookPlan(body.sheets);
-    const result = await publishV2Book(deps, { requestKey: body.requestKey, childId: body.childId, snapshot: structuredClone(FULL_BOOK_SNAPSHOT), sheets });
+    // The days of the plan have 6 sheets, or all the sheets of a book of one day (2, 4 or 6).
+    const pagesPerDay = 2 * Math.min(body.sheets, 6);
+    const result = await publishV2Book(deps, { requestKey: body.requestKey, childId: body.childId, snapshot: structuredClone(FULL_BOOK_SNAPSHOT), sheets, pagesPerDay });
     switch (result.status) {
       case "published": case "existing": return Response.json(result.record, { status: result.record.httpStatus });
       case "refused": return Response.json({ error: result.detail, reason: result.reason }, { status: result.reason === "not-test-family" ? 403 : 422 });

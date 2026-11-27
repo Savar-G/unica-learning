@@ -131,14 +131,15 @@ export async function publishV2Book(deps: JobDeps, request: PublishRequest): Pro
     const allocate = deps.clock() - started;
     return { status: "existing", record: record("existing", existing, NO_COUNTS, 0, 0, 0, { allocate, build: 0, upload: 0, publish: 0 }) };
   }
-  const saved: SavedInput = { format: 1, snapshot: request.snapshot, book: allocation.allocation.book };
+  const checks = wholeBook(allocation.allocation.pagesPerDay);
+  const saved: SavedInput = { format: 1, snapshot: request.snapshot, book: allocation.allocation.book, checks };
   const input = new TextEncoder().encode(canonicalJson(saved));
   await deps.files.put({ path: allocation.inputPath, contentType: "application/json", bytes: input });
   const allocate = deps.clock() - started;
 
   const buildStart = deps.clock();
   // A published book is a whole book: its page count, order and days are checked at the pages a day of its allocation.
-  const built = await buildBook({ snapshot: request.snapshot, book: allocation.allocation.book }, await deps.renderer(), wholeBook(allocation.allocation.pagesPerDay));
+  const built = await buildBook({ snapshot: request.snapshot, book: allocation.allocation.book }, await deps.renderer(), checks);
   if (built.status === "failed") return { status: "failed", problems: built.problems };
   if (built.record.inputHash !== allocation.inputHash) return { status: "failed", problems: ["the built book is not the book of its allocation"] };
   const build = deps.clock() - buildStart;

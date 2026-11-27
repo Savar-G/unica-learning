@@ -94,20 +94,26 @@ function slotValues(bound: BoundQuestion, slots: unknown): Record<string, number
 }
 
 /**
- * Whether data is a word problem of the row for this book: one of its bound questions with one of its phrasings and
- * numbers that the ranges of its scenario hold, filled again from these and the same in every field.
+ * The word problem that the row of a book prints for data that names one of its bound questions, one of its phrasings and
+ * numbers that the ranges of its scenario hold: filled again from these alone, or null.
  */
-function containsStory(question: unknown, limits: StoryLimits): boolean {
-  if (!isRecord(question)) return false;
+export function storyRendering(question: unknown, limits: StoryLimits): StoryQuestion | null {
+  if (!isRecord(question)) return null;
   const bound = limits.questions.find((b) => b.question.id === question.question);
   const phrasing = bound ? bound.question.phrasings.findIndex((p) => p.id === question.phrasing) : -1;
   const values = bound && phrasing >= 0 ? slotValues(bound, question.slots) : null;
-  if (!bound || !values) return false;
+  if (!bound || !values) return null;
   try {
-    return isExactly(question, storyItem(bound, phrasing, values).question);
+    return storyItem(bound, phrasing, values).question;
   } catch {
-    return false;
+    return null;
   }
+}
+
+/** Whether data is a word problem of the row for this book: its rendering filled again (`storyRendering`) is the same in every field. */
+function containsStory(question: unknown, limits: StoryLimits): boolean {
+  const rendering = storyRendering(question, limits);
+  return rendering !== null && isExactly(question, rendering);
 }
 
 export const storyShape: Shape<StoryLimits, StoryQuestion> = {

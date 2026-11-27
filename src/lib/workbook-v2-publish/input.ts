@@ -2,10 +2,9 @@
 // workbook id, a QR token for each page and the time, with the engine's input hash. The engine makes no id, token or date;
 // this adapter does, from the clock and random source the job is given.
 import { isUuid } from "@/lib/workbook-content";
-import { COVER_PAGES, MAX_TOTAL_PAGES } from "@/lib/workbook-v2/assemble/plan-book";
+import { COVER_PAGES, dayLengths, MAX_TOTAL_PAGES, wrongDay } from "@/lib/workbook-v2/assemble/plan-book";
 import { formatFinding } from "@/lib/workbook-v2/checks/findings";
-import { planBook, wholeBookFindings } from "@/lib/workbook-v2/build/build-book";
-import type { PlannedBookSheet } from "./full-book";
+import { planBook, wholeBookFindings, type BookCheckOptions } from "@/lib/workbook-v2/build/build-book";
 import type { AllocationCandidate, AllocationRecord, BookInputJson, PublishRequest } from "./types";
 
 /** The most pages a book may have, and the count a book's pages are a multiple of (architecture 11.3). */
@@ -45,17 +44,20 @@ export function requestProblem(r: PublishRequest): string | null {
     if (s.startsDay !== (s.day !== day) || (s.startsDay && s.day !== day + 1)) return `sheet ${i + 1}: each day starts with its first sheet, and the days follow in order`;
     day = s.day;
   }
-  const perDay = new Set(countBy(r.sheets).values());
-  if (perDay.size !== 1) return "every day has the same number of sheets";
-  if ([...perDay][0] > 10) return "a day has at most 10 sheets (20 pages)";
+  const pagesPerDay = pagesPerDayOf(r);
+  if (!isWhole(pagesPerDay, 2, MOST_PAGES_A_DAY) || pagesPerDay % 2 !== 0) return `pages a day is an even whole number from 2 to ${MOST_PAGES_A_DAY}, and this book has ${pagesPerDay}`;
+  // The rule of a day is the planner's (assemble/plan-book.ts): pagesPerDay / 2 sheets, and the last day may have one more for an even book.
+  const lengths = dayLengths(r.sheets.map((s) => s.startsDay));
+  const wrong = wrongDay(lengths, pagesPerDay);
+  if (wrong >= 0) return `day ${wrong + 1} has ${lengths[wrong]} ${lengths[wrong] === 1 ? "sheet" : "sheets"}, and at ${pagesPerDay} pages a day each day has ${pagesPerDay / 2} (the last day may have one more, so that the book has an even number of sheets)`;
   return null;
 }
 
-function countBy(sheets: readonly PlannedBookSheet[]): Map<number, number> {
-  const counts = new Map<number, number>();
-  for (const s of sheets) counts.set(s.day, (counts.get(s.day) ?? 0) + 1);
-  return counts;
-}
+/** A day has at most 10 sheets (20 pages). */
+const MOST_PAGES_A_DAY = 20;
+
+/** The pages a day of a request: the number that it sets, or else twice the sheets of its first day. */
+export const pagesPerDayOf = (r: PublishRequest): number => r.pagesPerDay ?? 2 * r.sheets.filter((s) => s.day === 1).length;
 
 /** The levels of a snapshot: its level name as a number, U1 to U30. */
 function levelsOf(levelName: string): number[] | null {
@@ -81,7 +83,7 @@ export function allocationOf(request: PublishRequest, source: AllocationSource):
   const snapshot = request.snapshot as { level: { name: string } };
   const levels = levelsOf(snapshot.level.name);
   if (!levels) return { ok: false, problems: ["the level of the snapshot is not U1 to U30"] };
-  const pagesPerDay = 2 * request.sheets.filter((s) => s.day === 1).length;
+  const pagesPerDay = pagesPerDayOf(request);
   // A published book is a whole book: one that breaks its page count, order or days is refused before it is allocated.
   const whole = wholeBookFindings(plan, pagesPerDay);
   if (whole.length > 0) return { ok: false, problems: [...new Set(whole.map(formatFinding))] };
@@ -98,5 +100,9 @@ export function allocationOf(request: PublishRequest, source: AllocationSource):
   };
 }
 
-/** The saved input of a book: the snapshot and the book request, as canonical JSON. Replay builds from it. */
-export interface SavedInput { format: 1; snapshot: unknown; book: BookInputJson }
+/**
+ * The saved input of a book: the snapshot and the book request, as canonical JSON, and what the book is for its checks
+ * (a whole book with its pages a day). Replay builds from it. An input saved before `checks` was kept has none, and is
+ * checked as a part of a book.
+ */
+export interface SavedInput { format: 1; snapshot: unknown; book: BookInputJson; checks?: BookCheckOptions }

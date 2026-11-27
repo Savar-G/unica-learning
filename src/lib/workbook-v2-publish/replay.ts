@@ -5,7 +5,7 @@
 // the saved input, its plan, the snapshot, the input hash, the engine, the renderer, the fonts, the build, the page count,
 // any page model, then any page's pixels, and last the PDF, so a later difference that only follows from an earlier one is
 // never reported as the cause.
-import { buildBook, PART_OF_BOOK, planBook } from "@/lib/workbook-v2/build/build-book";
+import { buildBook, PART_OF_BOOK, planBook, wholeBook, type BookCheckOptions } from "@/lib/workbook-v2/build/build-book";
 import { ENGINE_VERSION } from "@/lib/workbook-v2/contract";
 import { canonicalJson, sha256 } from "@/lib/workbook-v2/hash";
 import type { Renderer } from "@/lib/workbook-v2/renderer";
@@ -43,11 +43,24 @@ const isPlainObject = (v: unknown): v is Record<string, unknown> => {
   return proto === Object.prototype || proto === null;
 };
 
-/** The saved input of a book, or why it is not one. */
+/** What a saved input says its book is for the checks, or undefined when it says nothing (an input saved before it was kept). */
+function readChecks(raw: unknown): BookCheckOptions | undefined | string {
+  if (raw === undefined) return undefined;
+  if (isPlainObject(raw) && raw.book === "part" && Object.keys(raw).length === 1) return PART_OF_BOOK;
+  if (isPlainObject(raw) && raw.book === "whole" && Object.keys(raw).length === 2 && Number.isSafeInteger(raw.pagesPerDay)) return wholeBook(raw.pagesPerDay as number);
+  return 'the checks of the saved input are not { "book": "part" } or { "book": "whole", "pagesPerDay": a whole number }';
+}
+
+/** The saved input of a book, or why it is not one. An input with no checks is read as before, as a part of a book. */
 export function readSavedInput(raw: unknown): SavedInput | string {
   if (!isPlainObject(raw) || raw.format !== 1 || !isPlainObject(raw.book) || raw.snapshot === undefined) return "the saved input is not a v2 book input of format 1";
-  return raw as unknown as SavedInput;
+  const checks = readChecks(raw.checks);
+  if (typeof checks === "string") return checks;
+  return { ...(raw as unknown as SavedInput), ...(checks ? { checks } : {}) };
 }
+
+/** What the checks of a saved input's book are: its own, or a part of a book for an input saved before they were kept. */
+export const checksOf = (saved: Pick<SavedInput, "checks">): BookCheckOptions => saved.checks ?? PART_OF_BOOK;
 
 const isNonEmptyString = (v: unknown): v is string => typeof v === "string" && v !== "";
 
@@ -127,8 +140,8 @@ export async function replayBook(raw: unknown, rawExpected: ReplayExpected, rend
   if (causes.length > 0) return differ(firstOf(causes), causes.map((c) => c.message));
 
   const started = clock();
-  // A replay reproduces the book and its findings; the saved input does not keep the pages a day, so it is checked as a part of a book.
-  const built = await buildBook({ snapshot: saved.snapshot, book: saved.book }, renderer, PART_OF_BOOK);
+  // A replay reproduces the book and its findings with the checks that it was built with: a published book is a whole book.
+  const built = await buildBook({ snapshot: saved.snapshot, book: saved.book }, renderer, checksOf(saved));
   if (built.status === "failed") return differ({ kind: "build", message: "the book does not build again" }, ["the book does not build again:", ...built.problems]);
   const buildMs = Math.round(clock() - started);
   const pdfSha256 = sha256(built.pdf);

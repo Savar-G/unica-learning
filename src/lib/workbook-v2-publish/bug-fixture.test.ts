@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { buildBook, PART_OF_BOOK, planBook } from "@/lib/workbook-v2/build/build-book";
+import { buildBook, PART_OF_BOOK, planBook, wholeBook } from "@/lib/workbook-v2/build/build-book";
 import { ENGINE_VERSION } from "@/lib/workbook-v2/contract";
 import { sha256 } from "@/lib/workbook-v2/hash";
 import { openRenderer } from "@/lib/workbook-v2/render/typst";
@@ -89,6 +89,24 @@ describe("a bug fixture", () => {
     expect(made.actual).toMatch(/^pdf: the PDF differs/);
     const good = await expectedOf(input);
     await expect(createBugFixture(request(fixtures, { name: "replay-good", expect: { kind: "replays" }, expected: good }), fakeRenderer())).rejects.toThrow(/passes today/);
+  });
+
+  it("keeps the checks of a whole book, so that a fixture reproduces a failure of a whole book only", async () => {
+    const { fixtures } = places();
+    // The weak child's Book 2 with its new sheet before its repeat: a whole book is refused, a part of a book builds.
+    const input = invented() as ReturnType<typeof invented> & { book: { sheets: { sheetId: string; attempt: number }[] } };
+    const [a, b] = input.book.sheets;
+    [input.book.sheets[0], input.book.sheets[1]] = [{ ...a, sheetId: b.sheetId, attempt: b.attempt }, { ...b, sheetId: a.sheetId, attempt: a.attempt }];
+    const made = await createBugFixture(request(fixtures, { name: "new-before-repeat", expect: { kind: "builds" }, input: { ...input, checks: wholeBook(4) } }), fakeRenderer());
+    expect(made.actual).toMatch(/^the book does not build: Level check, sheet ".+", page \d+, slot "page": attempt 2 of this sheet comes after a new sheet, and repeats come first\./);
+    const fixture = readBugFixture(JSON.parse(readFileSync(made.file, "utf8")));
+    if (typeof fixture === "string") throw new Error(fixture);
+    expect(fixture.input.checks).toEqual(wholeBook(4));
+    expect(await runBugFixture(fixture, fakeRenderer())).toMatchObject({ ok: false });
+    // A fixture of a file written before it kept checks is a part of a book, as before.
+    const older = { ...fixture.input };
+    Reflect.deleteProperty(older, "checks");
+    expect(await runBugFixture({ ...fixture, input: older }, fakeRenderer())).toEqual({ ok: true, actual: "the book builds" });
   });
 
   it("extracts word-problem flow text for both page-text and no-page-text expectations", async () => {

@@ -184,7 +184,7 @@ export function planNextBook(input: NextBookInput): NextBook {
   const read = readBookRequest(plain.value, input.snapshot);
   if (Array.isArray(read)) return { ok: false, problems: read };
   const layout = buildPages(read.sheets.map((s) => ({ ...s, items: [], levelName: input.snapshot.level.name })));
-  if (!layout.ok) return layout;
+  if (!layout.ok) return { ok: false, problems: layout.problems };
   const sheetsById = new Map(read.sheets.map((s) => [s.sheet.id, s.sheet]));
   const layoutProblems = layout.pages.flatMap((page) => {
     const places = sheetsById.get(page.sheetId)?.[page.side].template.sides[page.side].places ?? [];

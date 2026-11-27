@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { buildBook, PART_OF_BOOK, planBook } from "@/lib/workbook-v2/build/build-book";
+import { buildBook, PART_OF_BOOK, planBook, wholeBook } from "@/lib/workbook-v2/build/build-book";
 import { canonicalJson, sha256 } from "@/lib/workbook-v2/hash";
 import { RenderError } from "@/lib/workbook-v2/renderer";
 import { fakeRenderer } from "@/lib/workbook-v2/testing/fake-renderer";
@@ -58,6 +58,26 @@ describe("replay", () => {
     changed.snapshot.id = "another-snapshot";
     const result = await replayBook(changed, expected, fakeRenderer());
     expect(!result.ok && result.differences[0]).toMatch(/the input hash differs/);
+  });
+
+  it("checks a published input as the whole book that it was built as, and an input saved with no checks as a part of a book", async () => {
+    expect((saved as { checks: unknown }).checks).toEqual(wholeBook(4));
+    // The same sheets with the first two new sheets out of the level order: a part of a book builds, a whole book does not.
+    const swapped = structuredClone(saved) as { format: 1; snapshot: unknown; book: { sheets: { sheetId: string; attempt: number }[] }; checks?: unknown };
+    const [a, b] = swapped.book.sheets;
+    [swapped.book.sheets[0], swapped.book.sheets[1]] = [{ ...a, sheetId: b.sheetId, attempt: b.attempt }, { ...b, sheetId: a.sheetId, attempt: a.attempt }];
+    const renderer = fakeRenderer();
+    const part = await buildBook({ snapshot: swapped.snapshot, book: swapped.book }, renderer, PART_OF_BOOK);
+    if (part.status !== "built") throw new Error(part.problems.join("\n"));
+    const same: ReplayExpected = { ...expected, inputHash: part.record.inputHash, pdfSha256: sha256(part.pdf), pageSha256s: part.pages.map((p) => sha256(p.image)) };
+    const whole = await replayBook(swapped, same, fakeRenderer());
+    expect(whole).toMatchObject({ ok: false, firstDifference: { kind: "build" } });
+    expect(!whole.ok && whole.differences.join("\n")).toMatch(/^Level check, sheet ".+", page \d+, slot "page": this new sheet comes after a new sheet that is later in the level\.$/m);
+    const older = { ...swapped };
+    Reflect.deleteProperty(older, "checks");
+    expect(await replayBook(older, same, fakeRenderer())).toMatchObject({ ok: true });
+    const bad = { ...swapped, checks: { book: "whole" } };
+    expect(await replayBook(bad, same, fakeRenderer())).toMatchObject({ ok: false, firstDifference: { kind: "input-format", message: expect.stringMatching(/^the checks of the saved input are not/) } });
   });
 });
 

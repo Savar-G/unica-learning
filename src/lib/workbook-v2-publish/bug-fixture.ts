@@ -5,13 +5,14 @@
 // and child ids, and no id or email of a person anywhere in it), or nothing is written.
 import { existsSync, linkSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { buildBook, PART_OF_BOOK } from "@/lib/workbook-v2/build/build-book";
+import { buildBook } from "@/lib/workbook-v2/build/build-book";
 import { tokenText } from "@/lib/workbook-v2/contract";
 import { canonicalJson, sha256 } from "@/lib/workbook-v2/hash";
 import type { Renderer } from "@/lib/workbook-v2/renderer";
 import { gitRepoOf, resolvedPath } from "@/lib/workbook-v2/testing/git-repo";
 import { KNOWN_SYNTHETIC_SNAPSHOT_HASHES } from "@/lib/workbook-v2/testing/golden-books";
-import { readReplayExpected, readSavedInput, replayBook, type ReplayExpected } from "./replay";
+import type { SavedInput } from "./input";
+import { checksOf, readReplayExpected, readSavedInput, replayBook, type ReplayExpected } from "./replay";
 
 export const BUG_FIXTURES_DIR = "src/lib/workbook-v2-publish/bug-fixtures";
 
@@ -30,7 +31,8 @@ export interface BugFixture {
   name: string;
   failure: string;
   renderer: "fake" | "typst";
-  input: { format: 1; snapshot: unknown; book: unknown };
+  /** The book input; `checks` says when it is a whole book (a published book, or a whole planned one), and else it is a part of a book. */
+  input: { format: 1; snapshot: unknown; book: unknown; checks?: SavedInput["checks"] };
   expected?: ReplayExpected;
   expect: BugExpectation;
 }
@@ -134,8 +136,8 @@ export async function runBugFixture(fixture: BugFixture, renderer: Renderer): Pr
     const replay = await replayBook(fixture.input, fixture.expected, renderer);
     return replay.ok ? { ok: true, actual: "the replay is the same" } : { ok: false, actual: `${replay.firstDifference.kind}: ${replay.firstDifference.message}` };
   }
-  // A fixture is often a few sheets of a book, so it is checked as a part of a book.
-  const built = await buildBook({ snapshot: fixture.input.snapshot, book: fixture.input.book }, renderer, PART_OF_BOOK);
+  // A fixture is often a few sheets of a book, checked as a part of a book; a fixture of a whole book keeps its checks.
+  const built = await buildBook({ snapshot: fixture.input.snapshot, book: fixture.input.book }, renderer, checksOf(fixture.input));
   if (expect.kind === "builds") return built.status === "built" ? { ok: true, actual: "the book builds" } : { ok: false, actual: `the book does not build: ${built.problems.join("; ")}` };
   if (expect.kind === "refused") {
     if (built.status === "built") return { ok: false, actual: "the book builds, and it must be refused" };
@@ -180,7 +182,7 @@ export function readBugFixture(raw: unknown): BugFixture | string {
     name: raw.name,
     failure: raw.failure,
     renderer: raw.renderer,
-    input: { format: 1, snapshot: input.snapshot, book: input.book },
+    input: { format: 1, snapshot: input.snapshot, book: input.book, ...(input.checks ? { checks: input.checks } : {}) },
     ...(expected ? { expected } : {}),
     expect,
   };
@@ -214,13 +216,13 @@ export async function createBugFixture(request: BugFixtureRequest, renderer: Ren
   if (!NAME.test(request.name)) throw new Error(`The fixture name ${JSON.stringify(request.name)} must be 3 to 64 small letters, digits and dashes, starting with a letter.`);
   if (request.failure.trim() === "") throw new Error("Say what is wrong: the failure must not be empty.");
   const raw = isObject(request.input) ? request.input : {};
-  const input = readSavedInput({ format: 1, snapshot: raw.snapshot, book: raw.book });
+  const input = readSavedInput({ format: 1, snapshot: raw.snapshot, book: raw.book, ...(raw.checks === undefined ? {} : { checks: raw.checks }) });
   if (typeof input === "string") throw new Error(`The input is not a book input: ${input}.`);
   const safeOutDir = resolvedPath(request.outDir);
   const safeFile = resolvedPath(join(safeOutDir, `${request.name}.json`));
   const fixture: BugFixture = {
     format: 1, name: request.name, failure: request.failure, renderer: request.renderer,
-    input: { format: 1, snapshot: input.snapshot, book: input.book }, ...(request.expected ? { expected: request.expected } : {}), expect: request.expect,
+    input: { format: 1, snapshot: input.snapshot, book: input.book, ...(input.checks ? { checks: input.checks } : {}) }, ...(request.expected ? { expected: request.expected } : {}), expect: request.expect,
   };
   const checked = readBugFixture(JSON.parse(JSON.stringify(fixture)));
   if (typeof checked === "string") throw new Error(`The fixture is not valid: ${checked}.`);

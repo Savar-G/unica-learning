@@ -4,7 +4,7 @@
 // A row in order prints one whole run of its table. It decides from the items, the rows and the history alone, with no code
 // of the build that chose the questions.
 import type { SnapshotRow } from "../bank/snapshot";
-import { historyKey, sheetHistory, type LastAttempt } from "../build/book-history";
+import { historyKey, sheetHistory, type BookHistory, type LastAttempt } from "../build/book-history";
 import type { BookItem, Side } from "../contract";
 import { canonicalJson } from "../hash";
 import type { Shape } from "../shapes";
@@ -108,6 +108,53 @@ function byRow(printed: readonly Printed[]): Map<string, Printed[]> {
   return rows;
 }
 
+/** How a run of a row in order compares with the other legal runs of its table: each number is better when it is less. */
+interface RunCost { twice: number; seen: number; last: number }
+const RUN_RULES: readonly { cost: keyof RunCost; rule: string; says: string }[] = [
+  { cost: "twice", rule: "no-repeat", says: "prints questions that another row in order of the sheet prints, and its table has a run with fewer of them" },
+  { cost: "seen", rule: "unseen-first", says: "prints questions from an earlier book, and its table has a run with fewer of them" },
+  { cost: "last", rule: "new-order", says: "prints the run of the last attempt, and its table has another run" },
+];
+
+/**
+ * A row in order prints a whole legal run of its table (`runsOf`), and none that another legal run beats: one that is
+ * no worse on every count and better on one. The counts are the questions that the other rows in order of its side (and
+ * of the front, for a row of the back) print too; on a repeat with the child's history, the questions that the child
+ * has seen; and whether the run is the one that the row printed in the last attempt. The rest of the sheet stays as it
+ * is printed, so a run that the check prefers fits the sheet as well as the printed one.
+ */
+function orderedRunFindings(checked: CheckedSheet, rows: ReadonlyMap<string, Printed[]>, history: BookHistory | null, placeOf: (item: BookItem) => Place): BookFinding[] {
+  const found: BookFinding[] = [];
+  const tell = finder("source", found);
+  const own = history && checked.attempt >= 2 ? sheetHistory(history, checked.sheet.id) : null;
+  const seen = (key: string) => own?.recency.has(key) === true;
+  for (const run of rows.values()) {
+    const [first] = run;
+    const runs = runsOf(first.row);
+    const printedKeys = run.map((p) => p.key);
+    if (!runs || !runs.some((r) => r.keys.join("\n") === printedKeys.join("\n"))) continue;
+    const side = first.item.side;
+    const others = new Set<string>();
+    for (const [id, other] of rows) {
+      const otherSide = other[0].item.side;
+      if (id !== `${side}/${first.row.id}` && runsOf(other[0].row) && (otherSide === side || otherSide === "front")) for (const { key } of other) others.add(key);
+    }
+    const lastKeys = own?.last?.items.filter((i) => i.side === side && i.rowId === first.row.id).map((i) => historyKey(i.shape, i.key)).join("\n");
+    const costOf = (keys: readonly string[]): RunCost => ({
+      twice: keys.filter((key) => others.has(key)).length,
+      seen: keys.filter(seen).length,
+      last: lastKeys !== undefined && lastKeys !== "" && keys.join("\n") === lastKeys ? 1 : 0,
+    });
+    const now = costOf(printedKeys);
+    const costs = runs.map((r) => costOf(r.keys));
+    const beats = (cost: RunCost) => RUN_RULES.every(({ cost: c }) => cost[c] <= now[c]) && RUN_RULES.some(({ cost: c }) => cost[c] < now[c]);
+    const better = costs.filter(beats);
+    const broken = RUN_RULES.find(({ cost }) => better.some((b) => b[cost] < now[cost]));
+    if (broken) tell(broken.rule, placeOf(first.item), `the row "${first.row.id}" in order ${broken.says}`);
+  }
+  return found;
+}
+
 /** What the repeat rule finds wrong with the sheets of a book. */
 export function repeatFindings({ sheets, items, history }: Pick<BookCheckData, "sheets" | "items" | "history">, placeOf: (item: BookItem) => Place, has: RowHas): BookFinding[] {
   const found: BookFinding[] = [];
@@ -125,6 +172,8 @@ export function repeatFindings({ sheets, items, history }: Pick<BookCheckData, "
       const forms = own.map((p) => p.form).join("\n");
       if (runs && !runs.some((run) => run.forms === forms)) tell("ordered-run", placeOf(own[0].item), `the row "${own[0].row.id}" is in the order of its table, and it prints no run of the table`);
     }
+
+    for (const finding of orderedRunFindings(checked, rows, history, placeOf)) found.push(finding);
 
     // A question twice on a sheet only when its row has no question that the sheet does not print.
     const met = new Set<string>();
@@ -147,15 +196,6 @@ export function repeatFindings({ sheets, items, history }: Pick<BookCheckData, "
       const swappedFrom = turnedKey(one);
       if (swappedFrom !== null && before.has(swappedFrom)) continue;
       if (hasOther(pool, onSheet, (key) => !seen(key), own.recency.keys())) tell("unseen-first", placeOf(one.item), `question ${one.item.number} was in an earlier book, and its row "${one.row.id}" has questions that the child has not seen`);
-    }
-    // A row in order prints a run with a seen question only when no run of its table is all unseen and free of the rest of the sheet.
-    for (const run of rows.values()) {
-      const runs = runsOf(run[0].row);
-      if (!runs || !run.some((p) => seen(p.key))) continue;
-      const rest = new Map(onSheet);
-      for (const { key } of run) rest.set(key, (rest.get(key) ?? 1) - 1);
-      const free = runs.some((other) => other.keys.every((key) => !seen(key) && !((rest.get(key) ?? 0) > 0)));
-      if (free) tell("unseen-first", placeOf(run[0].item), `the row "${run[0].row.id}" prints questions from an earlier book, and its table has a run that the child has not seen`);
     }
     if (!own.last) continue;
 

@@ -88,11 +88,17 @@ export function regionsByItem(pages: readonly PageModel[]): Map<string, Region[]
 const placeOf = (item: BookItem): string => `Sheet "${item.sheetId}", ${item.side} side, question ${item.number}`;
 
 /** What is wrong with the form of the first computation. The layout reads these answers, so the build asks before it. */
+/** What is wrong with the form of an item's answer ("the answer ..."), or null. */
+export function answerFormProblem(item: BookItem, shapes: ShapeLibrary): string | null {
+  const shape = shapeOf(shapes, item.shape);
+  const problem = shape && answerProblem(item.answer, shape.answerKind);
+  return problem ? `the answer ${problem}` : null;
+}
+
 export function checkAnswerForms(items: readonly BookItem[], shapes: ShapeLibrary): string[] {
   return items.flatMap((item) => {
-    const shape = shapeOf(shapes, item.shape);
-    const problem = shape && answerProblem(item.answer, shape.answerKind);
-    return problem ? [`${placeOf(item)}: the answer ${problem}.`] : [];
+    const problem = answerFormProblem(item, shapes);
+    return problem ? [`${placeOf(item)}: ${problem}.`] : [];
   });
 }
 

@@ -9,7 +9,7 @@ import { finder, itemPlaces, pagePlace, placeNamer, withoutPage } from "../check
 import { pageCountFindings } from "../checks/layout-check";
 import { checkLevel } from "../checks/level-check";
 import { checkPage } from "../checks/page-rules";
-import { checkAnswerForms, checkPrintedAnswers, printedAnswerProblem, regionsByItem } from "../checks/printed-answers";
+import { answerFormProblem, checkAnswerForms, checkPrintedAnswers, printedAnswerProblem, regionsByItem } from "../checks/printed-answers";
 import { ENGINE_VERSION, type BookItem, type PageModel, type Position, type Side } from "../contract";
 import { canonicalJson, sha256 } from "../hash";
 import { buildPages, type PlannedSheet } from "../layout/build-pages";
@@ -104,13 +104,27 @@ function pageFindings(pages: readonly PageModel[], items: readonly BookItem[], s
   return found;
 }
 
+/** An answer of a wrong form, as a finding of the source check at the place that its question has on the page. */
+function answerFormFindings(sheets: readonly PlannedSheet[], shapes: ShapeLibrary): BookFinding[] {
+  const found: BookFinding[] = [];
+  for (const { sheet, items } of sheets) {
+    for (const item of items) {
+      const problem = answerFormProblem(item, shapes);
+      if (!problem) continue;
+      const page = item.side === "front" ? sheet.firstPage : sheet.firstPage + 1;
+      finder("source", found)("answer-form", { sheet: sheet.id, page, slot: `slot-${item.number}` }, `question ${item.number}: ${problem}`);
+    }
+  }
+  return found;
+}
+
 /** The page models of some sheets with their questions, with every check that needs no drawing. `sides` are the sides to look at. */
 export function planPages(sheets: readonly PlannedSheet[], shapes: ShapeLibrary, sides: readonly Side[] = ["front", "back"]): PagePlan {
   const items = sheets.flatMap((s) => s.items);
   const formless = checkAnswerForms(items, shapes);
-  if (formless.length > 0) return { ok: false, problems: formless };
+  if (formless.length > 0) return { ok: false, problems: formless, findings: answerFormFindings(sheets, shapes) };
   const layout = buildPages(sheets);
-  if (!layout.ok) return layout;
+  if (!layout.ok) return { ok: false, problems: layout.problems, findings: layout.failures.map(({ problem, ...place }) => ({ check: "layout" as const, rule: "fit", ...place, message: withoutPage(problem) })) };
   const pages = layout.pages.filter((page) => sides.includes(page.side));
   const startsDay = new Map(sheets.map((s) => [`${s.sheet.id}/${s.attempt}`, s.startsDay === true]));
   const logProblems = pages.flatMap((page) => {

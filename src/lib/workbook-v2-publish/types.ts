@@ -14,6 +14,11 @@ export interface PublishRequest {
   childId: string;
   snapshot: unknown;
   sheets: PlannedBookSheet[];
+  /**
+   * The pages a day set for this book (product spec 7.2). Each day has half as many sheets, and the last day may have one
+   * more so that the book has an even number of sheets. When absent, it is twice the sheets of day 1.
+   */
+  pagesPerDay?: number;
   /** The region pack and the interest of the word problems; the snapshot's defaults when absent. */
   region?: string;
   scenario?: string;

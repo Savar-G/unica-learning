@@ -161,7 +161,6 @@ describe("a build stops, draws nothing and says why", () => {
     ["the same sheet and attempt twice", (i) => i.book.sheets.push({ ...structuredClone(i.book.sheets[0]), qr: { front: "a", back: "b" } }), 'The book: the sheet and attempt "column-multiplication-1, attempt 1" is used more than once.'],
     ["one QR text on both sides", (i) => put(i.book.sheets[0].qr, "back", i.book.sheets[0].qr.front), 'The book: the QR text "https://unicalearning.com/tutor/p/example-front-381" is used more than once.'],
     ["no QR text", (i) => put(i.book.sheets[0].qr, "back", ""), "The book, sheet 1: the QR text of the back must be printable text with no space."],
-    ["a QR text that is too long to scan", (i) => put(i.book.sheets[0].qr, "back", "x".repeat(100)), "Page 382: the QR code for a text of 100 characters needs squares that are too small to scan."],
     ["an unknown field", (i) => put(i.book, "made", "today"), 'The book: unknown field "made".'],
     ["a sheet that starts a day with a word", (i) => put(i.book.sheets[0], "startsDay", "yes"), "The book, sheet 1: startsDay must be true or false."],
     ["a sheet that starts a day with a number", (i) => put(i.book.sheets[0], "startsDay", 1), "The book, sheet 1: startsDay must be true or false."],
@@ -173,6 +172,18 @@ describe("a build stops, draws nothing and says why", () => {
     const renderer = fake();
     const result = await buildBook(input(change), renderer, PART_OF_BOOK);
     expect(result).toEqual({ status: "failed", problems: expect.arrayContaining([problem]) });
+    expect(renderer.drawn).toEqual([]);
+  });
+
+  it("a QR text that is too long to scan, with the sheet, page and QR slot of the layout check", async () => {
+    const renderer = fake();
+    const result = await buildBook(input((i) => put(i.book.sheets[0].qr, "back", "x".repeat(100))), renderer, PART_OF_BOOK);
+    const message = "the QR code for a text of 100 characters needs squares that are too small to scan.";
+    expect(result).toEqual({
+      status: "failed",
+      problems: [`Layout check, sheet "column-multiplication-1", page 382, slot "qr": ${message}`],
+      findings: [{ check: "layout", rule: "fit", sheet: "column-multiplication-1", page: 382, slot: "qr", message }],
+    });
     expect(renderer.drawn).toEqual([]);
   });
 
@@ -215,8 +226,12 @@ describe("a build stops, draws nothing and says why", () => {
     const shape: Shape = { ...mul, generate: (l, seed) => bad(mul.generate(l, seed)), solveAgain: (rows) => { const r = mul.solveAgain(rows); return r && bad(r); } };
     const result = await buildBook(input(), renderer, PART_OF_BOOK, shapeLibrary([shape]));
     if (result.status !== "failed") throw new Error("the book was built");
+    // Each one names the source check, the sheet, the page and the slot of its question, before a page is made.
+    expect(result.findings).toHaveLength(16);
+    expect(result.findings?.[0]).toMatchObject({ check: "source", rule: "answer-form", sheet: "column-multiplication-1", page: 381, slot: "slot-1" });
+    expect(result.findings?.at(-1)).toMatchObject({ page: 382, slot: "slot-8" });
     expect(result.problems).toHaveLength(16);
-    expect(result.problems[0]).toMatch(/^Sheet "column-multiplication-1", front side, question 1: the answer /);
+    expect(result.problems[0]).toMatch(/^Source check, sheet "column-multiplication-1", page 381, slot "slot-1": question 1: the answer /);
     for (const text of result.problems) expect(text).toMatch(problem);
     expect(renderer.drawn).toEqual([]);
   });

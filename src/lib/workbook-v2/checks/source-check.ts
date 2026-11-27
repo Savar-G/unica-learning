@@ -2,9 +2,9 @@
 // of the row's canonical content and shape version) and is one of that row's questions, every answer is computed a second
 // time from the printed page and agrees, and the repeat rule of 9.3 holds.
 import type { Snapshot, SnapshotRow } from "../bank/snapshot";
-import type { BookItem, Side } from "../contract";
+import { tokenText, type BookItem, type Region, type Side } from "../contract";
 import { canonicalJson, sha256 } from "../hash";
-import { STORY_SHAPE_ID, type StoryLimits } from "../shapes/story";
+import { STORY_SHAPE_ID, storyRendering, type StoryLimits } from "../shapes/story";
 import { bindStory } from "../themes/bind";
 import type { BookCheckData, CheckedSheet } from "./book-input";
 import { attemptOf, finder, itemPlaces, NONE, pagePlace, type BookFinding } from "./findings";
@@ -51,6 +51,24 @@ function frozenLimits(snapshot: Snapshot, frozen: SnapshotRow, own: SnapshotRow)
   }
 }
 
+/**
+ * What is wrong with the printed text of a word problem, or null: the page must print the frozen phrasing filled for the
+ * question and numbers that its item holds, word for word, with the unit of that filling beside its answer area. The
+ * answer key is worked from the item, so a page that asks another question than the key answers is stopped here.
+ */
+function printedStoryProblem(item: BookItem, limits: unknown, own: readonly Region[]): string | null {
+  const rendering = storyRendering(item.question, limits as StoryLimits);
+  if (!rendering) return "its question cannot be filled again from the frozen phrasing";
+  const ink = own.find((r) => r.role === "question")?.ink ?? [];
+  const flow = ink.find((i) => i.kind === "flow");
+  const printed = flow?.kind === "flow" ? flow.tokens : [];
+  if (canonicalJson(printed) !== canonicalJson(rendering.tokens)) {
+    return `the page prints "${printed.map(tokenText).join(" ")}", and the frozen phrasing "${rendering.phrasing}" filled for this question prints "${rendering.tokens.map(tokenText).join(" ")}"`;
+  }
+  const units = ink.flatMap((i) => (i.kind === "text" ? [i.text] : []));
+  return units.length === 1 && units[0] === rendering.unit ? null : `the unit beside the answer area is ${units.map((u) => `"${u}"`).join(", ") || "missing"}, and the frozen phrasing filled for this question has "${rendering.unit}"`;
+}
+
 /** What the source check finds wrong with a book. */
 export function checkSource(input: BookCheckData): BookFinding[] {
   const { snapshot, sheets, items, pages, shapes } = input;
@@ -60,6 +78,7 @@ export function checkSource(input: BookCheckData): BookFinding[] {
   const hashes = snapshotRowHashes(snapshot);
   const has = rowMembership();
   const ofBook = new Map<string, CheckedSheet>(sheets.map((s) => [`${s.sheet.id}/${s.attempt}`, s]));
+  const regions = regionsByItem(pages);
 
   for (const item of items) {
     const key = sourceKey(item.sheetId, item.side, item.rowId);
@@ -77,8 +96,13 @@ export function checkSource(input: BookCheckData): BookFinding[] {
       tell("snapshot-item", placeOf(item), `question ${item.number} has the row hash ${hash.slice(0, 12)} (shape "${item.shape}" version ${item.shapeVersion}), and the snapshot row "${key}" has ${wanted.slice(0, 12)} (shape "${frozen.shape.id}" version ${frozen.shape.version})`);
       continue;
     }
-    const member = has({ shape: frozen.shape, limits: frozenLimits(snapshot, frozen, own) }, item.question);
-    if (member === true) continue;
+    const limits = frozenLimits(snapshot, frozen, own);
+    const member = has({ shape: frozen.shape, limits }, item.question);
+    if (member === true) {
+      const story = frozen.shape.id === STORY_SHAPE_ID ? printedStoryProblem(item, limits, regions.get(item.id) ?? []) : null;
+      if (story) tell("story-text", placeOf(item), `question ${item.number}: ${story}`);
+      continue;
+    }
     tell("snapshot-item", placeOf(item), member === false
       ? `question ${item.number} (${canonicalJson(item.question).slice(0, 80)}) is not a question of the snapshot row "${key}" (shape "${frozen.shape.id}" version ${frozen.shape.version})`
       : `question ${item.number} cannot be proved a question of the snapshot row "${key}": the shape "${frozen.shape.id}" cannot read a question back`);
@@ -98,7 +122,6 @@ export function checkSource(input: BookCheckData): BookFinding[] {
   }
 
   // The second computation of every answer reads the printed rows of the page model, with code apart from the first.
-  const regions = regionsByItem(pages);
   for (const item of items) {
     const problem = printedAnswerProblem(item, regions.get(item.id) ?? [], shapes);
     if (problem) tell("answer-twice", placeOf(item), `question ${item.number} (${problem.rows.join(" ")}): ${problem.problem}`);
