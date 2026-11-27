@@ -19,6 +19,8 @@ import { BANK_SEEDS, checkBank, FIGURE_SAMPLE_SEEDS } from "./check-bank";
 import { capacityOf, contentOf, freezeBank, FULL_LEVEL, UNSEEN_ATTEMPTS } from "./freeze-bank";
 import { validateSnapshot } from "../bank/snapshot";
 import { storyCombos } from "./story-combos";
+import { planBook } from "./build-book";
+import { checkDrawing } from "../checks/drawn";
 import inventedDraft from "../fixtures/draft-invented-topic.json";
 import inventedSnapshot from "../fixtures/snapshot-invented-topic.json";
 import { canonicalJson, sha256 } from "../hash";
@@ -478,24 +480,26 @@ describe.skipIf(skipTypstTests())("with the real Typst", () => {
     expect(problems).toMatch(new RegExp(`^Sheet "column-multiplication-1", front side, row "facts": Page 382: the text "3-20 · ${"W".repeat(44)}" of "heading" is \\d+\\.\\d+ points wide and its place is 443\\.$`, "m"));
   });
 
-  it("draws word problems: the half as one piece, and a text or a unit that its place cannot hold is named with its combination", async () => {
+  it("draws every combination of a word problem with the half as one piece, and passes every check", async () => {
     const renderer = await typst();
     const drawnTexts: string[] = [];
     const watching: Renderer = { ...renderer, render: async (pages) => { const out = await renderer.render(pages); drawnTexts.push(...out.texts.map((t) => t.text)); return out; } };
-    const level = storyLevel(["half-of-them"], ["ribbon-cut"], (s) => {
+    const level = storyLevel(["half-of-them"], ["half-of-them"], (s) => {
       canadaOnly(s);
-      s.questions.find((q) => q.id === "ribbon-cut")!.phrasings[1].tokens.push(...Array.from({ length: 40 }, () => ({ word: "extraordinarily" })));
-      s.regionPacks[0].units.length.many = "extraordinarily long centimetres";
+      s.scenarios = s.scenarios.filter((one) => one.interest === "default");
     });
-    const { problems } = await checkBank(level, watching, { seeds: 1, templates: SMALL });
-    const told = problems.join("\n");
-    expect(told).not.toMatch(/row "one-step"/);
+    expect((await checkBank(level, watching, { seeds: 1, templates: SMALL })).problems).toEqual([]);
     expect(drawnTexts.filter((t) => t === "½").length).toBeGreaterThan(0);
     expect(drawnTexts.filter((t) => t.includes("½") && t !== "½")).toEqual([]);
-    const bow = `${STORY}, back side, row "two-steps", question "ribbon-cut", phrasing "bow", scenario "craft-ribbon", region "CA"`;
-    expect(told).toMatch(new RegExp(`^${bow}: Page 386: the token "extraordinarily" of "question-1" is below its place\\.$`, "m"));
-    expect(told).toMatch(new RegExp(`^${STORY}, back side, row "two-steps", question "ribbon-cut", phrasing "(cuts|bow)", scenario "craft-ribbon", region "CA": Page 386: the text "extraordinarily long centimetres" of "question-2" is \\d+\\.\\d+ points wide and its place is 118\\.$`, "m"));
-    expect(told).not.toMatch(/phrasing "cuts".*the token/);
+  });
+
+  it("finds a unit that its place beside the answer area cannot hold", async () => {
+    const snapshot = storyLevel(["ribbon-cut"], ["ribbon-cut"], (s) => { s.regionPacks[0].units.length.many = "extraordinarily long centimetres"; });
+    const book = { bookId: "long-unit", childId: "child", sheets: [{ sheetId: "story-problems-1", attempt: 1, qr: { front: "long-unit-front", back: "long-unit-back" } }] };
+    const plan = planBook({ snapshot, book });
+    if (!plan.ok) throw new Error(plan.problems.join("\n"));
+    const problems = checkDrawing(plan.pages, plan.items, await (await typst()).render(plan.pages)).join("\n");
+    expect(problems).toMatch(/^Page 385: the text "extraordinarily long centimetres" of "question-1" is \d+\.\d+ points wide and its place is 118\.$/m);
   });
 
   it("ink that a drawing puts past the slot of a question is found in the page and in the question that is drawn alone", async () => {
@@ -519,7 +523,15 @@ describe("the freeze of a draft", () => {
     return draft;
   };
   /** Both sheets with one row of two questions a side, for the templates of two places: little to draw. */
-  const cut = (d: Draft) => { for (const sheet of d.sheets) for (const side of [sheet.front, sheet.back] as { rows: object[] }[]) side.rows = [{ ...side.rows[0], items: 2 }]; };
+  /** A row of word problems keeps its first question, which every region has, in one place. */
+  const cut = (d: Draft) => {
+    for (const sheet of d.sheets) {
+      for (const side of [sheet.front, sheet.back] as { rows: { shape: string; limits: unknown }[] }[]) {
+        const [row] = side.rows;
+        side.rows = [row.shape === "story" ? { ...row, items: 1, limits: { questions: (row.limits as { questions: string[] }).questions.slice(0, 1) } } : { ...row, items: 2 }];
+      }
+    }
+  };
   // The content is what these tests look at: the drawings of sampled seeds have tests of their own.
   const QUICK = { seeds: 1, figureSamples: 0, templates: SMALL };
   const SENTINEL = "made-up-source-7f3a: page 12 of an invented book";

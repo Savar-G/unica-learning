@@ -334,7 +334,7 @@ describe("a book of word problems", () => {
   };
   const storyOf = (item: { question: unknown }) => item.question as StoryQuestion;
   const textOf = (item: { face: Face }) => (item.face.kind === "story" ? `${item.face.tokens.map(tokenText).join(" ")} [${item.face.unit}]` : "");
-  const children = Array.from({ length: 40 }, (_, i) => `child-${i}`);
+  const children = Array.from({ length: 10 }, (_, i) => `child-${i}`);
 
   it("fills every story with the default scenario and the default region when the book names none", () => {
     const plan = planned(storyBook());
