@@ -125,6 +125,23 @@ describe.each(adapters)("sheet results on the %s store", (_name, make) => {
     expect((await placed(w)).done).toEqual([A, C]);
   });
 
+  it.each(["selected", "duplicate"] as const)("infers a legacy retry reason with a result from the %s issuance", async (resultSource) => {
+    const w = await world(make);
+    const retryBook = crypto.randomUUID();
+    await w.seeder.seed({ ...w.family, books: [
+      { workbookId: w.book2, number: 2, printedRevision: REV, levels: [3], sheets: [{ sheetId: A, attempt: 1, items: ITEMS }] },
+      { workbookId: retryBook, number: 3, printedRevision: REV, levels: [3], sheets: [{ sheetId: A, attempt: 2, items: ITEMS }] },
+    ] });
+    expect(await w.store.writeSheetResults(w.family.childId, 1, [{
+      workbookId: resultSource === "selected" ? w.book1 : w.book2,
+      printedRevision: REV, sheetId: A, attempt: 1, itemsTotal: ITEMS, itemsScored: ITEMS, mistakes: 4, result: "repeat",
+    }])).toMatchObject({ status: "written", written: 1 });
+    const progress = await placed(w);
+    expect(progress.queue.filter((q) => q.sheetId === A)).toEqual(
+      resultSource === "selected" ? [{ sheetId: A, attempt: 3, reason: "unscanned" }] : [],
+    );
+  });
+
   it("under half of a book scanned: the unknown sheets repeat one time, with a notice for the team", async () => {
     const w = await world(make);
     const marks = memoryMarks();

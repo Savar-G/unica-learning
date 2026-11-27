@@ -32,18 +32,19 @@ export async function childHistory(books: BookStore, childId: string, snapshot: 
     const scannedPages = new Set(scans.filter((r) => r.workbookId === book.workbookId && validPages.has(r.pageNumber)).map((r) => r.pageNumber)).size;
     bookCoverage.set(book.workbookId, { issuedPages: bookSheets.length * 2, scannedPages });
   }
-  const resultOf = (sheetId: string, attempt: number) => stored.find((r) => r.sheetId === sheetId && r.attempt === attempt)?.result;
-  const issued = firstIssuedAttempts(allSheets, own).filter((s) => snapshot.sheets.has(s.sheetId)).map((s): IssuedSheet => {
+  const selected = firstIssuedAttempts(allSheets, own).filter((s) => snapshot.sheets.has(s.sheetId));
+  const issuedAttempt = new Set(selected.map((s) => `${s.workbookId} ${s.sheetId} ${s.attempt}`));
+  const selectedResults = stored.filter((r) => issuedAttempt.has(`${r.workbookId} ${r.sheetId} ${r.attempt}`));
+  const resultOf = (sheetId: string, attempt: number) => selectedResults.find((r) => r.sheetId === sheetId && r.attempt === attempt)?.result;
+  const issued = selected.map((s): IssuedSheet => {
     const reason: QueueReason = s.reason ?? (s.attempt === 1 ? "new" : resultOf(s.sheetId, s.attempt - 1) === "repeat" ? "repeat" : "unscanned");
     return { bookId: s.workbookId, bookNumber: numberOf.get(s.workbookId) ?? 0, sheetId: s.sheetId, attempt: s.attempt, pages: [s.frontPage, s.backPage], reason };
   });
   const pages = new Set(issued.flatMap((s) => s.pages.map((p) => `${s.bookId} ${p}`)));
-  const issuedAttempt = new Set(issued.map((s) => `${s.bookId} ${s.sheetId} ${s.attempt}`));
   return {
     issued,
     receipts: scans.filter((r) => pages.has(`${r.workbookId} ${r.pageNumber}`)).map((r) => ({ bookId: r.workbookId, pageNumber: r.pageNumber })),
-    results: stored.filter((r) => issuedAttempt.has(`${r.workbookId} ${r.sheetId} ${r.attempt}`))
-      .map((r) => ({ bookId: r.workbookId, sheetId: r.sheetId, attempt: r.attempt, result: r.result, itemsScored: r.itemsScored, mistakes: r.mistakes })),
+    results: selectedResults.map((r) => ({ bookId: r.workbookId, sheetId: r.sheetId, attempt: r.attempt, result: r.result, itemsScored: r.itemsScored, mistakes: r.mistakes })),
     bookCoverage,
   };
 }
