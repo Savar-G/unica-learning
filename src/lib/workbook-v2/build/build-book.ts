@@ -20,9 +20,10 @@ import { repeatNotices, sheetItems } from "./items";
 /**
  * Both parts are data from a file or a store; the build reads and checks them. `whole` is given only when `snapshot` is
  * the part of a stored snapshot that one book needs, read and checked item by item against that snapshot: it is the id
- * and hash of the whole snapshot, so the book records the same snapshot as a book built from the whole file.
+ * and hash of the whole snapshot, so the book records the same snapshot as a book built from the whole file, and
+ * `partHash` is the hash of the part that was checked. Any other part (a changed instruction, say) is refused.
  */
-export interface BuildInput { snapshot: unknown; book: unknown; whole?: { id: string; hash: string } }
+export interface BuildInput { snapshot: unknown; book: unknown; whole?: { id: string; hash: string; partHash: string } }
 
 /** What made a book. A replay compares it. */
 export type BookRecord = Renderer["identity"] & {
@@ -102,6 +103,7 @@ export function planBook(input: BuildInput, shapes: ShapeLibrary = SHAPES, templ
   if (Array.isArray(book)) return stop(book);
   const { whole } = input;
   if (whole && (whole.id !== bank.snapshot.id || !/^[0-9a-f]{64}$/.test(whole.hash))) return stop([`The part of snapshot "${bank.snapshot.id}" names another whole snapshot.`]);
+  if (whole && whole.partHash !== bank.hash) return stop([`The part of snapshot "${bank.snapshot.id}" is not the part that was read and checked against it.`]);
   const snapshot = whole ? { id: whole.id, hash: whole.hash } : { id: bank.snapshot.id, hash: bank.hash };
 
   const { stories } = bank.snapshot;

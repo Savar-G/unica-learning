@@ -7,7 +7,7 @@ import { plainCopy } from "@/lib/workbook-v2/bank/plain";
 import { BASIS, contentOf } from "@/lib/workbook-v2/build/freeze-bank";
 import { canonicalJson, sha256 } from "@/lib/workbook-v2/hash";
 import { draftFromRows } from "./draft";
-import type { JsonObject, LevelRows, SnapshotItemKind, SnapshotItemRow, SnapshotMeta } from "./types";
+import type { JsonObject, LevelRows, SnapshotItemKind, SnapshotItemRow, SnapshotManifestEntry, SnapshotMeta, SnapshotWrite } from "./types";
 
 type Rec = Record<string, unknown>;
 const isRec = (value: unknown): value is Rec => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -89,46 +89,87 @@ export function itemsThatDiffer(expected: readonly SnapshotItemRow[], given: rea
   return [...differ, ...[...wanted.keys()].filter((key) => !seen.has(key))];
 }
 
-const inOrder = (items: readonly SnapshotItemRow[]): SnapshotItemRow[] =>
+const inOrder = <T extends SnapshotManifestEntry>(items: readonly T[]): T[] =>
   [...items].sort((a, b) => (KIND_ORDER.get(a.kind) ?? 9) - (KIND_ORDER.get(b.kind) ?? 9) || a.position - b.position);
 
+const named = (items: readonly SnapshotManifestEntry[]): string => items.map((item) => `${item.kind} "${item.key}"`).join(", ");
+
 /** The hash of the list of items: each kind, key, position and hash, in order. */
-export const manifestHash = (items: readonly SnapshotItemRow[]): string =>
+export const manifestHash = (items: readonly SnapshotManifestEntry[]): string =>
   hashOf(inOrder(items).map(({ kind, key, position, hash }) => ({ kind, key, position, hash })));
+
+/** The snapshot that items hold: the level header with its lists, the word-problem lists only with a default region. */
+function snapshotOf(items: readonly SnapshotItemRow[], header: SnapshotItemRow): Rec {
+  const listOf = (kind: SnapshotItemKind): Json[] => items.filter((item) => item.kind === kind).map((item) => item.content);
+  const hasStories = Object.hasOwn(header.content, "defaultRegion");
+  const lists = Object.fromEntries(LISTS.filter(([list]) => !STORY_LISTS.has(list) || hasStories).map(([list, kind]) => [list, listOf(kind)]));
+  return { ...header.content, ...lists };
+}
+
+/**
+ * Why the hashes of a snapshot write are not true, or null: each item's hash must be the hash of its content, the
+ * manifest hash the hash of its items, and the content hash the hash of the snapshot they hold. bank_freeze_level checks
+ * the same in SQL (bank_canonical_json), with the same words.
+ */
+export function snapshotWriteProblem(write: SnapshotWrite): string | null {
+  const items = inOrder(write.items);
+  const wrong = items.filter((item) => hashOf(item.content) !== item.hash);
+  if (wrong.length > 0) return `the hash of these snapshot items is not the hash of their content: ${named(wrong)}`;
+  if (manifestHash(items) !== write.manifestHash) return "the manifest hash is not the hash of the snapshot items";
+  const header = items.find((item) => item.kind === "level");
+  if (!header || hashOf(snapshotOf(items, header)) !== write.contentHash) return "the content hash is not the hash of the snapshot";
+  return null;
+}
 
 export type Assembled = { ok: true; snapshot: Rec } | { ok: false; problem: string };
 
+/** The part of a snapshot that one book reads: its sheets, and the manifest of the whole snapshot to check them against. */
+export interface SnapshotPart { sheetIds: readonly string[]; manifest: readonly SnapshotManifestEntry[] }
+
+/** Each given item that the manifest does not list as it is, and each item that is not a sheet and was not given. */
+function offManifest(meta: SnapshotMeta, items: readonly SnapshotItemRow[], manifest: readonly SnapshotManifestEntry[]): string | null {
+  const bad = `Snapshot ${meta.name}: its items do not match its manifest.`;
+  if (manifest.length !== meta.item_count || manifestHash(manifest) !== meta.manifest_hash) return bad;
+  const listed = new Map(manifest.map((entry) => [`${entry.kind}/${entry.key}`, entry]));
+  if (listed.size !== manifest.length) return bad;
+  const seen = new Set<string>();
+  for (const item of items) {
+    const key = `${item.kind}/${item.key}`;
+    const entry = listed.get(key);
+    if (!entry || seen.has(key) || entry.position !== item.position || entry.hash !== item.hash) return bad;
+    seen.add(key);
+  }
+  return manifest.some((entry) => entry.kind !== "sheet" && !seen.has(`${entry.kind}/${entry.key}`)) ? bad : null;
+}
+
 /**
- * The snapshot that items hold. With no `sheetIds` it is the whole snapshot, checked against the manifest hash and the
- * content hash of `meta`. With `sheetIds` it holds only those sheets, in level order, and the topics that name them; the
- * items that are not sheets and the sheets that the topics name must add up to the item count of `meta`, so an item
- * that was added after the freeze is refused. Every item's content must still match its hash.
+ * The snapshot that items hold. With no `part` it is the whole snapshot, checked against the manifest hash and the
+ * content hash of `meta`. With a `part` it holds only those sheets, in level order, and the topics that name them: every
+ * item must be listed as it is in the manifest, the manifest must match the manifest hash of `meta`, and every item that
+ * is not a sheet must be there, so the part is bound to the whole snapshot of `meta`. Every item's content must still
+ * match its hash.
  */
-export function assembleSnapshot(meta: SnapshotMeta, given: readonly SnapshotItemRow[], sheetIds?: readonly string[]): Assembled {
-  const changed = given.filter((item) => hashOf(item.content) !== item.hash).map((item) => `${item.kind} "${item.key}"`);
-  if (changed.length > 0) return { ok: false, problem: `Snapshot ${meta.name}: the content of ${changed.join(", ")} does not match its hash.` };
+export function assembleSnapshot(meta: SnapshotMeta, given: readonly SnapshotItemRow[], part?: SnapshotPart): Assembled {
+  const changed = given.filter((item) => hashOf(item.content) !== item.hash);
+  if (changed.length > 0) return { ok: false, problem: `Snapshot ${meta.name}: the content of ${named(changed)} does not match its hash.` };
   const items = inOrder(given);
   const [header, ...more] = items.filter((item) => item.kind === "level");
   if (!header || more.length > 0) return { ok: false, problem: `Snapshot ${meta.name}: it must have one level header.` };
   if (header.content.id !== meta.name) return { ok: false, problem: `Snapshot ${meta.name}: its level header names another snapshot.` };
-  const listOf = (kind: SnapshotItemKind): Json[] => items.filter((item) => item.kind === kind).map((item) => item.content);
-  const hasStories = Object.hasOwn(header.content, "defaultRegion");
-  const lists = Object.fromEntries(LISTS.filter(([list]) => !STORY_LISTS.has(list) || hasStories).map(([list, kind]) => [list, listOf(kind)]));
-  const snapshot: Rec = { ...header.content, ...lists };
-  if (!sheetIds) {
+  const snapshot = snapshotOf(items, header);
+  if (!part) {
     if (items.length !== meta.item_count || manifestHash(items) !== meta.manifest_hash) return { ok: false, problem: `Snapshot ${meta.name}: its items do not match its manifest.` };
     if (hashOf(snapshot) !== meta.content_hash) return { ok: false, problem: `Snapshot ${meta.name}: the snapshot does not match its hash.` };
     return { ok: true, snapshot };
   }
-  const named = recs(snapshot.topics).flatMap((topic) => (Array.isArray(topic.sheets) ? topic.sheets.map(String) : []));
-  const notSheets = items.filter((item) => item.kind !== "sheet").length;
-  if (notSheets + named.length !== meta.item_count || new Set(named).size !== named.length) return { ok: false, problem: `Snapshot ${meta.name}: its items do not match its manifest.` };
-  const wanted = new Set(sheetIds);
-  const found = new Set(recs(snapshot.sheets).map((sheet) => String(sheet.id)).filter((id) => named.includes(id)));
+  const problem = offManifest(meta, items, part.manifest);
+  if (problem) return { ok: false, problem };
+  const wanted = new Set(part.sheetIds);
+  const found = new Set(recs(snapshot.sheets).map((sheet) => String(sheet.id)));
   const missing = [...wanted].filter((id) => !found.has(id));
   if (missing.length > 0) return { ok: false, problem: `Snapshot ${meta.name} has no sheet ${missing.map((id) => `"${id}"`).join(", ")}.` };
   const topics = recs(snapshot.topics)
     .map((topic) => ({ ...topic, sheets: (Array.isArray(topic.sheets) ? topic.sheets : []).filter((id) => wanted.has(String(id))) }))
     .filter((topic) => topic.sheets.length > 0);
-  return { ok: true, snapshot: { ...snapshot, topics, sheets: recs(snapshot.sheets).filter((sheet) => wanted.has(String(sheet.id)) && found.has(String(sheet.id))) } };
+  return { ok: true, snapshot: { ...snapshot, topics, sheets: recs(snapshot.sheets).filter((sheet) => wanted.has(String(sheet.id))) } };
 }

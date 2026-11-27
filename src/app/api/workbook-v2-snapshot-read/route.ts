@@ -8,7 +8,7 @@ import { timedBookRead } from "@/lib/workbook-v2-bank/snapshot-read";
 // round trip: { httpStatus, snapshotId, sheetCount, rowCount, payloadBytes, totalMs, parts }, where the parts add up to
 // totalMs. Call it with "Authorization: Bearer <CRON_SECRET>" and the body {"snapshotId": "<uuid>", "sheetIds": [...]}
 // (1 to 60 different sheet ids). It writes nothing. It is off in production unless WORKBOOK_V2_TEST_PUBLISH=on. A body
-// over 8 KB is refused before it is parsed, and a read that takes more than 10 seconds answers 504.
+// over 8 KB is refused before it is parsed, and a read that takes more than 10 seconds is aborted and answers 504.
 
 const SHEET_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const MAX_SHEETS = 60;
@@ -76,9 +76,13 @@ export async function POST(request: Request) {
 
   const store = bankServerStore();
   if (!store) return new Response("Not configured", { status: 503 });
+  // At the deadline the reads are aborted: the request that runs stops, and no further page is read.
+  const stop = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const deadline = new Promise<"late">((resolve) => { timer = setTimeout(() => resolve("late"), READ_DEADLINE_MS); });
-  const read = await Promise.race([timedBookRead(store, body.snapshotId, body.sheetIds, () => performance.now()), deadline]).finally(() => clearTimeout(timer));
+  const deadline = new Promise<"late">((resolve) => { timer = setTimeout(() => { stop.abort(); resolve("late"); }, READ_DEADLINE_MS); });
+  const reading = timedBookRead(store, body.snapshotId, body.sheetIds, () => performance.now(), stop.signal);
+  reading.catch(() => {}); // an aborted read rejects after the 504 is sent
+  const read = await Promise.race([reading, deadline]).finally(() => clearTimeout(timer));
   if (read === "late") return Response.json({ error: `The read took more than ${READ_DEADLINE_MS / 1000} seconds.` }, { status: 504 });
   if (!read.ok) return Response.json({ error: read.problem }, { status: read.httpStatus });
   return Response.json(read.record, { status: read.record.httpStatus });

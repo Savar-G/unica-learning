@@ -4,7 +4,7 @@
 // PostgREST (with its 1,000-row cap). The live tables are probed in a rolled-back transaction (docs/workbook-v2-bank.md).
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { buildBook, type BuildResult } from "@/lib/workbook-v2/build/build-book";
+import { buildBook, planBook, type BuildResult } from "@/lib/workbook-v2/build/build-book";
 import { canonicalJson } from "@/lib/workbook-v2/hash";
 import { openRenderer } from "@/lib/workbook-v2/render/typst";
 import type { Renderer } from "@/lib/workbook-v2/renderer";
@@ -171,7 +171,8 @@ function runFreezeContract(name: string, makeStore: () => ContractStore) {
 
     it("never lets an approval or a snapshot cover content that was not reviewed", async () => {
       const { store, tables } = makeStore();
-      const draft = await importedLevel(store, freshTag(), { topics: 1 });
+      const tag = freshTag();
+      const draft = await importedLevel(store, tag, { topics: 1 });
       const levelId = levelOf(draft);
       let rows = await store.readLevel(levelId);
       if (!rows.level) throw new Error("no level");
@@ -204,6 +205,11 @@ function runFreezeContract(name: string, makeStore: () => ContractStore) {
       for (const [kind, change] of swapped) {
         expect(await store.writeSnapshot(tampered(write, kind, change))).toMatchObject({ ok: false, problem: expect.stringContaining("is not the approved working copy") });
       }
+      // The exact items with a false hash are refused: an item hash, the manifest hash and the content hash.
+      const falseItem = { ...write, items: write.items.map((item, i) => (i === 1 ? { ...item, hash: "b".repeat(64) } : item)) };
+      expect(await store.writeSnapshot(falseItem)).toMatchObject({ ok: false, problem: expect.stringContaining(`the hash of these snapshot items is not the hash of their content: ${write.items[1].kind} "${write.items[1].key}"`) });
+      expect(await store.writeSnapshot({ ...write, manifestHash: "c".repeat(64) })).toMatchObject({ ok: false, problem: expect.stringContaining("the manifest hash is not the hash of the snapshot items") });
+      expect(await store.writeSnapshot({ ...write, contentHash: "a".repeat(64) })).toMatchObject({ ok: false, problem: expect.stringContaining("the content hash is not the hash of the snapshot") });
       expect(await store.readSnapshots(levelId)).toEqual([]);
       const first = await store.writeSnapshot(write);
       if (!first.ok) throw new Error(first.problem);
@@ -216,8 +222,23 @@ function runFreezeContract(name: string, makeStore: () => ContractStore) {
 
       // A book read refuses items added to a snapshot after its freeze (the database refuses the insert itself).
       const sheetIds = [sheet.sheet_id];
-      expect(await readBookSnapshot(store, first.snapshotId, sheetIds)).toMatchObject({ ok: true, whole: { id: write.name, hash: write.contentHash } });
+      const part = await readBookSnapshot(store, first.snapshotId, sheetIds);
+      if (!part.ok) throw new Error(part.problem);
+      expect(part.whole).toEqual({ id: write.name, hash: write.contentHash, partHash: hashOf(part.snapshot) });
+
+      // The book of that part records the whole snapshot; a part changed after the read is refused, though it names it.
+      const book = { bookId: `book-${tag}`, childId: "invented-child", sheets: [{ sheetId: sheet.sheet_id, attempt: 1, startsDay: true, qr: { front: "invented-front", back: "invented-back" } }] };
+      expect(planBook({ snapshot: part.snapshot, book, whole: part.whole })).toMatchObject({ ok: true, snapshot: { id: write.name, hash: write.contentHash } });
+      const changedPart = structuredClone(part.snapshot);
+      (recs(changedPart.sheets)[0].front as Rec).instruction = "Changed after the read.";
+      expect(planBook({ snapshot: changedPart, book, whole: part.whole })).toEqual({ ok: false, problems: [`The part of snapshot "${write.name}" is not the part that was read and checked against it.`] });
+
       const frozenRows = tables.snapshotItems.get(first.snapshotId) ?? [];
+      // A changed item with a true hash of its own is not the item that the manifest lists.
+      const question = frozenRows.find((item) => item.kind === "question")!;
+      const changedQuestion = { ...question, content: { ...question.content, difficulty: 9 }, hash: hashOf({ ...question.content, difficulty: 9 }) };
+      tables.snapshotItems.set(first.snapshotId, frozenRows.map((item) => (item === question ? changedQuestion : item)));
+      expect(await readBookSnapshot(store, first.snapshotId, sheetIds)).toMatchObject({ ok: false, problem: expect.stringContaining("do not match its manifest") });
       const pack = frozenRows.find((item) => item.kind === "region_pack");
       if (!pack) throw new Error("no region pack");
       const extraPack = { ...pack, key: "XX", position: 9, content: { ...pack.content, id: "XX" }, hash: hashOf({ ...pack.content, id: "XX" }) };
@@ -227,7 +248,9 @@ function runFreezeContract(name: string, makeStore: () => ContractStore) {
       extraSheet.content = { ...extraSheet.content, id: "added-later" };
       extraSheet.hash = hashOf(extraSheet.content);
       tables.snapshotItems.set(first.snapshotId, [...frozenRows, extraSheet]);
-      expect(await readBookSnapshot(store, first.snapshotId, ["added-later"])).toMatchObject({ ok: false, problem: expect.stringContaining('has no sheet "added-later"') });
+      expect(await readBookSnapshot(store, first.snapshotId, ["added-later"])).toMatchObject({ ok: false, problem: expect.stringContaining("do not match its manifest") });
+      tables.snapshotItems.set(first.snapshotId, frozenRows);
+      expect(await readBookSnapshot(store, first.snapshotId, ["no-such-sheet"])).toMatchObject({ ok: false, problem: expect.stringContaining('has no sheet "no-such-sheet"') });
 
       // A deleted row that comes back must take a revision above every review of its key.
       const levelNow = await store.readLevel(levelId);
@@ -263,8 +286,16 @@ describe("snapshot reads past the PostgREST row cap", () => {
     if (!part.ok) throw new Error(part.problem);
     expect(recs(part.snapshot.questions)).toHaveLength(recs(whole.snapshot.questions).length);
     expect(recs(part.snapshot.questions).map((q) => q.id)).toContain("extra-1000");
-    expect(part.whole).toEqual({ id: write.name, hash: write.contentHash });
-    expect(fake.calls.filter((call) => call.startsWith("GET /rest/v1/bank_snapshot_items?1000"))).toHaveLength(2);
+    expect(part.whole).toEqual({ id: write.name, hash: write.contentHash, partHash: hashOf(part.snapshot) });
+    // The second page of the whole read, of the book's items that are not sheets, and of the manifest.
+    expect(fake.calls.filter((call) => call.startsWith("GET /rest/v1/bank_snapshot_items?1000"))).toHaveLength(3);
+
+    // An aborted read stops before its next page.
+    fake.calls.length = 0;
+    const stop = new AbortController();
+    fake.onRequest = (call) => { if (call.startsWith("GET /rest/v1/bank_snapshot_items")) stop.abort(); };
+    await expect(store.readSnapshotItems(written.snapshotId, undefined, stop.signal)).rejects.toThrow();
+    expect(fake.calls.filter((call) => call.startsWith("GET /rest/v1/bank_snapshot_items"))).toHaveLength(1);
   }, 120_000);
 });
 

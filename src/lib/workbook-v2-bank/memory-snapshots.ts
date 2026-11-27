@@ -1,11 +1,11 @@
-// Reviews and snapshots in memory, with the rules of migrations 20261127205833_bank_freeze_snapshots and
-// 20261127224116_bank_freeze_review_repair: every table is insert only, a snapshot item never holds `basis`, a review
-// names the current revision of a live item, and a snapshot write is refused (and writes nothing) for a stale read, a
-// version that is not the next one, an item that is not approved at its current revision, or items that are not exactly
-// the items of the working copy. Each write checks and writes with no await in between, as the level lock of
+// Reviews and snapshots in memory, with the rules of migrations 20261127205833_bank_freeze_snapshots,
+// 20261127224116_bank_freeze_review_repair and 20261127225904_bank_freeze_integrity: every table is insert only, a
+// snapshot item never holds `basis`, a review names the current revision of a live item, and a snapshot write is refused
+// (and writes nothing) for a stale read, a version that is not the next one, an item that is not approved at its current
+// revision, items that are not exactly the items of the working copy, or a hash that is not the hash of the content. Each write checks and writes with no await in between, as the level lock of
 // bank_freeze_level does, so two concurrent writes cannot both take one version.
 import { latestReview, liveItems } from "./reviews";
-import { frozenItems, holdsBasis, itemsThatDiffer } from "./snapshot-items";
+import { frozenItems, holdsBasis, itemsThatDiffer, snapshotWriteProblem } from "./snapshot-items";
 import type { BankStore, LevelRows, NewReview, ReviewKind, ReviewResult, ReviewRow, SnapshotItemRow, SnapshotMeta, SnapshotWrite, SnapshotWriteResult } from "./types";
 
 export interface MemorySnapshotTables {
@@ -14,7 +14,7 @@ export interface MemorySnapshotTables {
   snapshotItems: Map<string, readonly SnapshotItemRow[]>;
 }
 
-type SnapshotMethods = Pick<BankStore, "readReviews" | "addReview" | "readSnapshots" | "readSnapshotMeta" | "readSnapshotItems" | "writeSnapshot">;
+type SnapshotMethods = Pick<BankStore, "readReviews" | "addReview" | "readSnapshots" | "readSnapshotMeta" | "readSnapshotItems" | "readSnapshotManifest" | "writeSnapshot">;
 
 const copy = <T>(value: T): T => structuredClone(value);
 /** A frozen copy: what goes into an insert-only table can never change. */
@@ -61,6 +61,8 @@ export function memorySnapshotStore(tables: MemorySnapshotTables, { rowsOf, vers
     if (write.items.some((item) => holdsBasis(item.content))) throw new Error('new row for relation "bank_snapshot_items" violates check constraint "bank_snapshot_items_content_check"');
     const differ = itemsThatDiffer(frozenItems(rows, write.name) ?? [], write.items);
     if (differ.length > 0) return { ok: false, problem: `bank level ${levelId}: the content of these snapshot items is not the approved working copy: ${differ.join(", ")}` };
+    const hashes = snapshotWriteProblem(write);
+    if (hashes) return { ok: false, problem: `bank level ${levelId}: ${hashes}` };
     const keys = new Set(write.items.map((item) => `${item.kind}/${item.key}`));
     if (keys.size !== write.items.length) throw new Error('duplicate key value violates unique constraint "bank_snapshot_items_pkey"');
     if ([...tables.snapshots.values()].some((s) => s.name === write.name)) throw new Error('duplicate key value violates unique constraint "bank_snapshots_name_key"');
@@ -92,6 +94,7 @@ export function memorySnapshotStore(tables: MemorySnapshotTables, { rowsOf, vers
       const wanted = sheetIds ? new Set(sheetIds) : null;
       return items.filter((item) => !wanted || NON_SHEET.has(item.kind) || wanted.has(item.key)).map(copy);
     },
+    readSnapshotManifest: async (snapshotId) => (tables.snapshotItems.get(snapshotId) ?? []).map(({ kind, key, position, hash }) => ({ kind, key, position, hash })),
     writeSnapshot,
   };
 }

@@ -164,6 +164,9 @@ export interface SnapshotItemRow {
   hash: string;
 }
 
+/** One line of a snapshot's manifest: an item without its content. The manifest hash covers the whole list. */
+export type SnapshotManifestEntry = Pick<SnapshotItemRow, "kind" | "key" | "position" | "hash">;
+
 /** One frozen level (bank_snapshots). `name` is the snapshot id inside the content, such as `level-3-v2`. */
 export interface SnapshotMeta {
   id: string;
@@ -214,16 +217,20 @@ export interface BankStore {
   addReview(review: NewReview): Promise<ReviewResult>;
   /** The snapshots of the level, the oldest version first. */
   readSnapshots(levelId: string): Promise<SnapshotMeta[]>;
-  readSnapshotMeta(snapshotId: string): Promise<SnapshotMeta | null>;
+  /** `signal` stops the reads of a caller that no longer waits (the snapshot read check passes its deadline). */
+  readSnapshotMeta(snapshotId: string, signal?: AbortSignal): Promise<SnapshotMeta | null>;
   /**
    * The items of a snapshot, in pages past the PostgREST row cap: all of them, or with `sheetIds` the header, topics,
    * questions, scenarios and region packs and only those sheets.
    */
-  readSnapshotItems(snapshotId: string, sheetIds?: readonly string[]): Promise<SnapshotItemRow[]>;
+  readSnapshotItems(snapshotId: string, sheetIds?: readonly string[], signal?: AbortSignal): Promise<SnapshotItemRow[]>;
+  /** The manifest of a snapshot: every item without its content, in pages. A book's part is checked against it. */
+  readSnapshotManifest(snapshotId: string, signal?: AbortSignal): Promise<SnapshotManifestEntry[]>;
   /**
    * Writes a snapshot and all its items in one step, or nothing (bank_freeze_level). Refuses a stale `expected`, a version
-   * that is not the next one, an item not approved at its current revision, and items that are not exactly the items of
-   * the working copy (frozenItems). No item can be added to a snapshot later.
+   * that is not the next one, an item not approved at its current revision, items that are not exactly the items of the
+   * working copy (frozenItems), and an item, manifest or content hash that is not the hash of the canonical JSON. Only
+   * this write adds snapshot rows, and no item can be added to a snapshot later.
    */
   writeSnapshot(write: SnapshotWrite): Promise<SnapshotWriteResult>;
 }

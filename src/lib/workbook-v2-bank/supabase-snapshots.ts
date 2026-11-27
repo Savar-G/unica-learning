@@ -1,16 +1,18 @@
-// Reviews and snapshots in Supabase (migration 20261127205833_bank_freeze_snapshots). The tables are insert only and
-// service-only; bank_freeze_level writes a snapshot in one transaction. Item reads page past PostgREST's 1,000-row cap.
+// Reviews and snapshots in Supabase (migrations 20261127205833_bank_freeze_snapshots, 20261127225904_bank_freeze_integrity).
+// The tables are insert only and service-only; the service role only reads snapshots, and bank_freeze_level writes one in
+// one transaction. Item reads page past PostgREST's 1,000-row cap, and a caller's signal stops them.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/database";
-import type { BankStore, JsonObject, ReviewDecision, ReviewKind, ReviewRow, SnapshotItemKind, SnapshotItemRow, SnapshotWriteResult } from "./types";
+import type { BankStore, JsonObject, ReviewDecision, ReviewKind, ReviewRow, SnapshotItemKind, SnapshotItemRow, SnapshotManifestEntry, SnapshotWriteResult } from "./types";
 import { REVIEW_DECISIONS, REVIEW_KINDS, SNAPSHOT_ITEM_KINDS } from "./types";
 
-type SnapshotMethods = Pick<BankStore, "readReviews" | "addReview" | "readSnapshots" | "readSnapshotMeta" | "readSnapshotItems" | "writeSnapshot">;
+type SnapshotMethods = Pick<BankStore, "readReviews" | "addReview" | "readSnapshots" | "readSnapshotMeta" | "readSnapshotItems" | "readSnapshotManifest" | "writeSnapshot">;
 type Page<T> = (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>;
-type AllPages = <T>(what: string, page: Page<T>) => Promise<T[]>;
+type AllPages = <T>(what: string, page: Page<T>, signal?: AbortSignal) => Promise<T[]>;
 
 const SNAPSHOT_COLUMNS = "id, level_id, version, name, content_hash, manifest_hash, min_engine_version, item_count, frozen_by, frozen_at";
 const ITEM_COLUMNS = "kind, key, position, content, hash";
+const MANIFEST_COLUMNS = "kind, key, position, hash";
 const NON_SHEET_KINDS = SNAPSHOT_ITEM_KINDS.filter((kind) => kind !== "sheet");
 
 /**
@@ -31,6 +33,11 @@ function itemOf(row: ItemRecord): SnapshotItemRow {
   if (!isObject(row.content)) throw new Error(`bank read: snapshot item ${row.kind} "${row.key}" is not an object`);
   return { kind: oneOf<SnapshotItemKind>(SNAPSHOT_ITEM_KINDS, row.kind, "item kind"), key: row.key, position: row.position, content: row.content, hash: row.hash };
 }
+const entryOf = (row: Omit<ItemRecord, "content">): SnapshotManifestEntry =>
+  ({ kind: oneOf<SnapshotItemKind>(SNAPSHOT_ITEM_KINDS, row.kind, "item kind"), key: row.key, position: row.position, hash: row.hash });
+
+/** The query with the caller's signal, so an abort stops the request that is running. */
+const stoppable = <Q extends { abortSignal(signal: AbortSignal): Q }>(query: Q, signal?: AbortSignal): Q => (signal ? query.abortSignal(signal) : query);
 
 interface ReviewRecord { id: number; level_id: string; item_kind: string; item_key: string; revision: number; reviewer: string; decision: string; comment: string | null; created_at: string }
 const reviewOf = (row: ReviewRecord): ReviewRow => ({
@@ -56,21 +63,24 @@ export function supabaseSnapshotStore(db: SupabaseClient<Database>, allPages: Al
     readSnapshots: async (levelId) => allPages("snapshots", (from, to) => db.from("bank_snapshots")
       .select(SNAPSHOT_COLUMNS).eq("level_id", levelId).order("version").range(from, to)),
 
-    readSnapshotMeta: async (snapshotId) => {
-      const { data, error } = await db.from("bank_snapshots").select(SNAPSHOT_COLUMNS).eq("id", snapshotId).maybeSingle();
+    readSnapshotMeta: async (snapshotId, signal) => {
+      const { data, error } = await stoppable(db.from("bank_snapshots").select(SNAPSHOT_COLUMNS).eq("id", snapshotId), signal).maybeSingle();
       if (error) throw new Error(`bank read snapshot: ${error.message}`);
       return data;
     },
 
-    readSnapshotItems: async (snapshotId, sheetIds) => {
+    readSnapshotItems: async (snapshotId, sheetIds, signal) => {
       const items = () => db.from("bank_snapshot_items").select(ITEM_COLUMNS).eq("snapshot_id", snapshotId);
-      if (!sheetIds) return (await allPages("snapshot items", (from, to) => items().order("kind").order("key").range(from, to))).map(itemOf);
+      if (!sheetIds) return (await allPages("snapshot items", (from, to) => stoppable(items().order("kind").order("key").range(from, to), signal), signal)).map(itemOf);
       const [rest, sheets] = await Promise.all([
-        allPages("snapshot items", (from, to) => items().in("kind", NON_SHEET_KINDS).order("kind").order("key").range(from, to)),
-        sheetIds.length === 0 ? Promise.resolve([]) : allPages("snapshot sheets", (from, to) => items().eq("kind", "sheet").in("key", [...sheetIds]).order("key").range(from, to)),
+        allPages("snapshot items", (from, to) => stoppable(items().in("kind", NON_SHEET_KINDS).order("kind").order("key").range(from, to), signal), signal),
+        sheetIds.length === 0 ? Promise.resolve([]) : allPages("snapshot sheets", (from, to) => stoppable(items().eq("kind", "sheet").in("key", [...sheetIds]).order("key").range(from, to), signal), signal),
       ]);
       return [...rest, ...sheets].map(itemOf);
     },
+
+    readSnapshotManifest: async (snapshotId, signal) => (await allPages("snapshot manifest", (from, to) =>
+      stoppable(db.from("bank_snapshot_items").select(MANIFEST_COLUMNS).eq("snapshot_id", snapshotId).order("kind").order("key").range(from, to), signal), signal)).map(entryOf),
 
     writeSnapshot: async (write): Promise<SnapshotWriteResult> => {
       // The items are plain JSON already; the round trip drops nothing.

@@ -77,10 +77,15 @@ it("refuses a body over 8 KB before it parses it, and answers 504 when the read 
   expect((await call({ ...BODY, padding: "x".repeat(9000) })).status).toBe(413);
   vi.useFakeTimers();
   try {
-    f.store = { ...storeWithSnapshot(), readSnapshotMeta: () => new Promise(() => {}) };
+    let signal: AbortSignal | undefined;
+    f.store = { ...storeWithSnapshot(), readSnapshotMeta: (_id, stop) => { signal = stop; return new Promise(() => {}); } };
     const pending = call(BODY);
-    await vi.advanceTimersByTimeAsync(10_001);
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(signal?.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(2);
     expect((await pending).status).toBe(504);
+    // The read is stopped too, not left running after the answer.
+    expect(signal?.aborted).toBe(true);
   } finally {
     vi.useRealTimers();
   }
