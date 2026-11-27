@@ -3,16 +3,18 @@ import { describe, expect, it } from "vitest";
 import { validateSnapshot } from "../bank/snapshot";
 import rawSnapshot from "../fixtures/snapshot-facts.json";
 import type { SheetResultKind } from "../results/sheet-results";
-import { levelOrder, NUDGE_AFTER_FAILS, position, type ChildPosition, type IssuedSheet, type PositionOutcome, type ScanReceipt, type SheetResultRecord } from "./position";
+import { levelOrder, NUDGE_AFTER_FAILS, position, type ChildPosition, type IssuedSheet, type PositionOutcome, type QueueReason, type ScanReceipt, type SheetResultRecord } from "./position";
 
 const bank = validateSnapshot(structuredClone(rawSnapshot));
 if (!bank.ok) throw new Error(bank.problems.join("\n"));
 const SNAPSHOT = bank.snapshot;
-/** The five invented sheets of the level, in the order of their pages (121 to 130). */
+/** The five invented sheets of the level, in topic order. */
 const [A, B, C, D, E] = levelOrder(SNAPSHOT).map((s) => s.id);
 const PAGES = new Map(levelOrder(SNAPSHOT).map((s) => [s.id, [s.firstPage, s.firstPage + 1] as [number, number]]));
 
-const issue = (book: number, sheetId: string, attempt: number): IssuedSheet => ({ bookId: `book-${book}`, bookNumber: book, sheetId, attempt, pages: PAGES.get(sheetId) ?? [0, 0] });
+const issue = (book: number, sheetId: string, attempt: number, reason?: QueueReason): IssuedSheet => ({
+  bookId: `book-${book}`, bookNumber: book, sheetId, attempt, pages: PAGES.get(sheetId) ?? [0, 0], ...(reason ? { reason } : {}),
+});
 const scans = (book: number, ...pages: number[]): ScanReceipt[] => pages.map((pageNumber) => ({ bookId: `book-${book}`, pageNumber }));
 const result = (book: number, sheetId: string, attempt: number, kind: SheetResultKind): SheetResultRecord => ({ bookId: `book-${book}`, sheetId, attempt, result: kind, itemsScored: 10, mistakes: kind === "mastered" ? 0 : 3 });
 
@@ -35,6 +37,21 @@ describe("the queue of a child", () => {
     expect(queueOf(p)).toEqual([`${B}#2 repeat`, `${D}#2 repeat`, `${E}#1 new`]);
     expect(p.done).toEqual([A]);
     expect(p.assumedPassed).toEqual([{ sheetId: C, attempt: 1, bookId: "book-1" }]);
+  });
+
+  it("follows topic-and-sheet order rather than page numbers, including startSheetId", () => {
+    const raw = structuredClone(rawSnapshot);
+    // Two topics whose declared order (topic-8 then topic-7, with sheets reversed inside topic-8) differs from firstPage (121..129).
+    raw.topics = [
+      { id: "topic-8", code: "2-8", title: "Later pages first", sheets: [E, D] },
+      { id: "topic-7", code: "2-7", title: "Number facts", sheets: [A, B, C] },
+    ];
+    const reordered = validateSnapshot(raw);
+    if (!reordered.ok) throw new Error(reordered.problems.join("\n"));
+    expect(levelOrder(reordered.snapshot).map((s) => s.id)).toEqual([E, D, A, B, C]);
+    const p = position({ childId: "child-1", startSheetId: D }, [], [], [], reordered.snapshot);
+    if (!p.ok) throw new Error(p.problems.join("\n"));
+    expect(queueOf(p)).toEqual([`${D}#1 new`, `${A}#1 new`, `${B}#1 new`, `${C}#1 new`]);
   });
 
   it("is a pure function: the same history in another order gives the same position", () => {
@@ -104,11 +121,21 @@ describe("the rules over several books", () => {
     const counts: number[] = [];
     for (let book = 1; book <= 6; book++) {
       const p = placed(issued);
-      issued = [...issued, ...p.queue.slice(0, 2).map((q) => issue(book, q.sheetId, q.attempt))];
+      issued = [...issued, ...p.queue.slice(0, 2).map((q) => issue(book, q.sheetId, q.attempt, q.reason))];
       counts.push(issued.filter((s) => s.sheetId === A).length);
     }
     expect(Math.max(...counts)).toBe(2);
     expect(issued.filter((s) => s.sheetId === A).map((s) => s.attempt)).toEqual([1, 2]);
+  });
+
+  it("does not issue a second unscanned repeat when a late fail lands on attempt 1 after an unscanned repeat was already issued", () => {
+    const issued = [issue(1, A, 1, "new"), issue(1, B, 1, "new"), issue(2, A, 2, "unscanned"), issue(2, C, 1, "new")];
+    const p = placed(issued, [], [result(1, A, 1, "repeat")]);
+    expect(p.queue.filter((q) => q.sheetId === A)).toEqual([]);
+    expect(p.assumedPassed).toContainEqual({ sheetId: A, attempt: 2, bookId: "book-2" });
+    // By contrast, when attempt 2 was issued for a fail (not unscanned), an unmarked attempt 2 in an unscanned book still gets its one unscanned repeat.
+    const afterFail = placed([issue(1, A, 1, "new"), issue(1, B, 1, "new"), issue(2, A, 2, "repeat"), issue(2, C, 1, "new")], [], [result(1, A, 1, "repeat")]);
+    expect(afterFail.queue.filter((q) => q.sheetId === A)).toEqual([{ sheetId: A, attempt: 3, reason: "unscanned" }]);
   });
 
   it(`nudges Maya after ${NUDGE_AFTER_FAILS} failed attempts, and keeps the sheet due`, () => {
@@ -136,11 +163,15 @@ describe("a history that cannot be right", () => {
     ["a child id with a space", () => position({ childId: "a b" }, [], [], [], SNAPSHOT), /child id/],
     ["an unknown sheet", () => position({ childId: "c" }, [issue(1, "no-sheet", 1)], [], [], SNAPSHOT), /"no-sheet", attempt 1: the level has no such sheet/],
     ["an attempt of 0", () => position({ childId: "c" }, [issue(1, A, 0)], [], [], SNAPSHOT), /attempt must be a whole number, 1 or more/],
+    ["an unknown issue reason", () => position({ childId: "c" }, [issue(1, A, 1, "manual" as QueueReason)], [], [], SNAPSHOT), /reason must be new, repeat or unscanned/],
+    ["attempt 1 issued as unscanned", () => position({ childId: "c" }, [issue(1, A, 1, "unscanned")], [], [], SNAPSHOT), /attempt 1 cannot have reason "unscanned"/],
+    ["attempt 2 issued as new", () => position({ childId: "c" }, [issue(1, A, 1, "new"), issue(2, A, 2, "new")], [], [], SNAPSHOT), /attempt 2 cannot have reason "new"/],
     ["an attempt issued twice", () => position({ childId: "c" }, [issue(1, A, 1), issue(2, A, 1)], [], [], SNAPSHOT), /issued more than once/],
     ["a page twice in one book", () => position({ childId: "c" }, [issue(1, A, 1), { ...issue(1, B, 1), pages: [121, 999] }], [], [], SNAPSHOT), /"book-1" has the page 121 more than once/],
     ["a book with two numbers", () => position({ childId: "c" }, [issue(1, A, 1), { ...issue(2, B, 1), bookId: "book-1" }], [], [], SNAPSHOT), /more than one book number/],
     ["a later attempt in an earlier book", () => position({ childId: "c" }, [issue(2, A, 1), issue(1, A, 2)], [], [], SNAPSHOT), /attempt 2 must be in a later book/],
     ["a scan of a page that the book did not print", () => position({ childId: "c" }, [issue(1, A, 1)], scans(1, 125), [], SNAPSHOT), /page 125 of the book "book-1" is of no issued page/],
+    ["a scan with a string page number", () => position({ childId: "c" }, [issue(1, A, 1)], [{ bookId: "book-1", pageNumber: "121" as unknown as number }], [], SNAPSHOT), /page "121" of the book "book-1" is of no issued page/],
     ["a result of an attempt that is not issued", () => position({ childId: "c" }, [issue(1, A, 1)], [], [result(1, A, 2, "mastered")], SNAPSHOT), /did not issue this attempt/],
     ["two results of one attempt", () => position({ childId: "c" }, [issue(1, A, 1)], [], [result(1, A, 1, "mastered"), result(1, A, 1, "repeat")], SNAPSHOT), /more than one result/],
     ["an unknown result", () => position({ childId: "c" }, [issue(1, A, 1)], [], [{ ...result(1, A, 1, "mastered"), result: "passed" as SheetResultKind }], SNAPSHOT), /mastered, repeat or unknown/],
@@ -163,7 +194,7 @@ describe("properties of every history", () => {
       let [issued, receipts, results]: [IssuedSheet[], ScanReceipt[], SheetResultRecord[]] = [[], [], []];
       books.forEach(({ take, scanned, results: kinds }, i) => {
         const book = i + 1;
-        const next = placed(issued, receipts, results).queue.slice(0, take).map((q) => issue(book, q.sheetId, q.attempt));
+        const next = placed(issued, receipts, results).queue.slice(0, take).map((q) => issue(book, q.sheetId, q.attempt, q.reason));
         issued = [...issued, ...next];
         receipts = [...receipts, ...next.flatMap((s, j) => s.pages.filter((_, k) => scanned[(2 * j + k) % 6]).map((pageNumber) => ({ bookId: s.bookId, pageNumber })))];
         results = [...results, ...next.flatMap((s, j) => (kinds[j] ? [result(book, s.sheetId, s.attempt, kinds[j])] : []))];

@@ -1,12 +1,14 @@
 // The request of a child's next book: the first sheets of the queue, an even number of them, each day starting on its
 // first sheet, with a QR text for each page and the child's history. Pure: the caller gives the ids and the QR texts, and
 // the result is plain JSON for `planBook` and `buildBook`.
+import { plainCopy } from "../bank/plain";
 import type { Snapshot } from "../bank/snapshot";
 import type { BookHistory, HistoryItem, LastAttempt, SeenPhrasing } from "../build/book-history";
 import { readBookRequest } from "../build/book-input";
 import type { BuiltBook } from "../build/build-book";
 import type { BookItem } from "../contract";
 import { canonicalJson } from "../hash";
+import { qrSquares } from "../layout/qr";
 import { SHAPES, type Shape, type ShapeLibrary } from "../shapes";
 import { questionKey } from "../shapes/shape";
 import { STORY_SHAPE_ID, storyShape, type StoryQuestion } from "../shapes/story";
@@ -22,7 +24,8 @@ export interface BookRequestJson { bookId: string; childId: string; sheets: Book
 export interface BookSize {
   /** Pages a day: an even number, so that a day is whole sheets. */
   pagesPerDay: number;
-  days: number;
+  /** Days in the book. Optional when `sheetsCount` is given; when both are given, they must agree. */
+  days?: number;
   /** The sheets of the book, when the caller gives them; else pagesPerDay × days / 2. */
   sheetsCount?: number;
 }
@@ -43,23 +46,39 @@ export type NextBook = { ok: true; request: BookRequestJson; sheets: QueueEntry[
 
 const isCount = (n: unknown, min: number): n is number => typeof n === "number" && Number.isSafeInteger(n) && n >= min;
 
+/** Validates book size inputs and returns `{ wanted, days }` or the list of problems. */
+function readBookSize({ pagesPerDay, days, sheetsCount }: BookSize): { wanted: number; days: number } | string[] {
+  const problems: string[] = [];
+  if (!isCount(pagesPerDay, 2) || pagesPerDay % 2 !== 0) problems.push(`Pages a day must be an even whole number, 2 or more, not ${JSON.stringify(pagesPerDay)}.`);
+  if (days !== undefined && !isCount(days, 1)) problems.push(`Days must be a whole number, 1 or more, not ${JSON.stringify(days)}.`);
+  if (sheetsCount !== undefined && !isCount(sheetsCount, 1)) problems.push(`The sheets of a book must be a whole number, 1 or more, not ${JSON.stringify(sheetsCount)}.`);
+  if (days === undefined && sheetsCount === undefined) problems.push("Either days or sheetsCount must be given.");
+  if (problems.length > 0) return problems;
+  const perDay = pagesPerDay / 2;
+  if (days !== undefined && sheetsCount !== undefined && sheetsCount !== perDay * days) {
+    return [`The sheets of a book (${sheetsCount}) must match pagesPerDay × days / 2 (${perDay * days}).`];
+  }
+  if (days === undefined && sheetsCount !== undefined && sheetsCount % perDay !== 0) {
+    return [`The sheets of a book (${sheetsCount}) must be a multiple of ${perDay} (${pagesPerDay} pages a day).`];
+  }
+  const wanted = sheetsCount ?? perDay * (days as number);
+  if (wanted > MAX_SHEETS) return [`A book has at most ${MAX_SHEETS} sheets (${2 * MAX_SHEETS} pages), and this one asks for ${wanted}.`];
+  return { wanted, days: days ?? wanted / perDay };
+}
+
 /**
  * The sheets of the next book: the first of the queue, up to the size. A book has an even number of sheets, so that its
  * pages and the 4 pages of its cover are a multiple of 4 with no blank page: an odd count takes one more sheet of the
- * queue, or one fewer when the queue has no more.
+ * queue, and refuses when the queue has no more sheets to make an even book.
  */
-export function nextBookSheets(position: ChildPosition, { pagesPerDay, days, sheetsCount }: BookSize): QueueEntry[] | string[] {
-  const problems: string[] = [];
-  if (!isCount(pagesPerDay, 2) || pagesPerDay % 2 !== 0) problems.push(`Pages a day must be an even whole number, 2 or more, not ${JSON.stringify(pagesPerDay)}.`);
-  if (!isCount(days, 1)) problems.push(`Days must be a whole number, 1 or more, not ${JSON.stringify(days)}.`);
-  if (sheetsCount !== undefined && !isCount(sheetsCount, 1)) problems.push(`The sheets of a book must be a whole number, 1 or more, not ${JSON.stringify(sheetsCount)}.`);
-  if (problems.length > 0) return problems;
-  const wanted = sheetsCount ?? (pagesPerDay / 2) * days;
-  if (wanted > MAX_SHEETS) return [`A book has at most ${MAX_SHEETS} sheets (${2 * MAX_SHEETS} pages), and this one asks for ${wanted}.`];
-  const taken = position.queue.slice(0, wanted);
-  const even = taken.length % 2 === 0 ? taken : position.queue.length > taken.length ? position.queue.slice(0, taken.length + 1) : taken.slice(0, -1);
-  if (even.length === 0) return [`The queue has ${position.queue.length} ${position.queue.length === 1 ? "sheet" : "sheets"}, and a book needs an even number of sheets, 2 or more.`];
-  return even;
+export function nextBookSheets(position: ChildPosition, size: BookSize): QueueEntry[] | string[] {
+  const parsed = readBookSize(size);
+  if (Array.isArray(parsed)) return parsed;
+  const taken = position.queue.slice(0, parsed.wanted);
+  if (taken.length === 0) return ["The queue has 0 sheets, and a book needs an even number of sheets, 2 or more."];
+  if (taken.length % 2 === 0) return taken;
+  if (position.queue.length > taken.length && taken.length + 1 <= MAX_SHEETS) return position.queue.slice(0, taken.length + 1);
+  return [`The queue has ${position.queue.length} ${position.queue.length === 1 ? "sheet" : "sheets"}, and a book needs an even number of sheets, 2 or more.`];
 }
 
 /**
@@ -68,8 +87,10 @@ export function nextBookSheets(position: ChildPosition, { pagesPerDay, days, she
  */
 const startsDay = (index: number, pagesPerDay: number, days: number): boolean => index % (pagesPerDay / 2) === 0 && index / (pagesPerDay / 2) < days;
 
-/** The request of the next book, which `readBookRequest` accepts, or every problem. */
+/** The request of the next book, which `planBook` accepts, or every problem. */
 export function planNextBook(input: NextBookInput): NextBook {
+  const size = readBookSize(input);
+  if (Array.isArray(size)) return { ok: false, problems: size };
   const sheets = nextBookSheets(input.position, input);
   if (typeof sheets[0] === "string") return { ok: false, problems: sheets as string[] };
   const chosen = sheets as QueueEntry[];
@@ -78,20 +99,33 @@ export function planNextBook(input: NextBookInput): NextBook {
     return { ok: false, problems: [`The book has ${chosen.length} sheets, so it needs exactly ${2 * chosen.length} QR texts, and it has ${Array.isArray(tokens) ? tokens.length : 0}.`] };
   }
   if (input.position.childId !== input.childId) return { ok: false, problems: [`The position is of the child "${input.position.childId}", not "${input.childId}".`] };
-  const request: BookRequestJson = {
+  const raw: BookRequestJson = {
     bookId: input.bookId,
     childId: input.childId,
     sheets: chosen.map((entry, i) => ({
       sheetId: entry.sheetId, attempt: entry.attempt, qr: { front: tokens[2 * i], back: tokens[2 * i + 1] },
-      ...(startsDay(i, input.pagesPerDay, input.days) ? { startsDay: true as const } : {}),
+      ...(startsDay(i, input.pagesPerDay, size.days) ? { startsDay: true as const } : {}),
     })),
     ...(input.region === undefined ? {} : { region: input.region }),
     ...(input.scenario === undefined ? {} : { scenario: input.scenario }),
     ...(input.history === undefined ? {} : { history: input.history }),
   };
-  // The engine reads the request as any other: a book that it would refuse is refused here, with the same words.
-  const read = readBookRequest(request, input.snapshot);
-  return Array.isArray(read) ? { ok: false, problems: read } : { ok: true, request, sheets: chosen };
+  // The engine reads only a plain copy and checks QR fit and time-log slots, so anything `planBook` would refuse is refused here.
+  const plain = plainCopy("The book", raw);
+  if (!plain.ok) return plain;
+  const read = readBookRequest(plain.value, input.snapshot);
+  if (Array.isArray(read)) return { ok: false, problems: read };
+  const layoutProblems: string[] = [];
+  for (const { sheet, qr, startsDay: starts } of read.sheets) {
+    for (const side of ["front", "back"] as const) {
+      const page = side === "front" ? sheet.firstPage : sheet.firstPage + 1;
+      const frame = sheet[side].template.sides[side].frame;
+      const squares = qrSquares(frame.qr, qr[side]);
+      if (typeof squares === "string") layoutProblems.push(`Page ${page}: ${squares}.`);
+      if (starts && side === "front" && !frame.timeLog) layoutProblems.push(`Page ${page}: the template has no place for a time log on this side.`);
+    }
+  }
+  return layoutProblems.length > 0 ? { ok: false, problems: layoutProblems } : { ok: true, request: plain.value as BookRequestJson, sheets: chosen };
 }
 
 function shapeOf(id: string, shapes: ShapeLibrary): Shape {

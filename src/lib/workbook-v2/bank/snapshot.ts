@@ -169,7 +169,7 @@ function readLevel(r: FieldReader, fields: Fields): Snapshot["level"] | null {
   return id !== null && name !== null ? { id, name } : null;
 }
 
-/** Joins each sheet to its topic. Every sheet is in exactly one. */
+/** Joins each sheet to its topic, in the order of the topics and of each topic's sheets. Every sheet is in exactly one. */
 function joinTopics(r: FieldReader, topics: readonly ReadTopic[], sheets: readonly ReadSheet[], knownSheets: ReadonlySet<string>): Map<string, SnapshotSheet> {
   const owners = new Map<string, SnapshotTopic[]>();
   for (const { sheets: ids, ...topic } of topics) {
@@ -178,12 +178,18 @@ function joinTopics(r: FieldReader, topics: readonly ReadTopic[], sheets: readon
       owners.set(id, [...(owners.get(id) ?? []), topic]);
     }
   }
-  const joined = new Map<string, SnapshotSheet>();
+  const byId = new Map(sheets.map((sheet) => [sheet.id, sheet]));
   for (const sheet of sheets) {
     const [topic, second] = owners.get(sheet.id) ?? [];
     if (!topic) r.problem(sheetPlace(sheet.id), "no topic names this sheet");
     else if (second) r.problem(sheetPlace(sheet.id), "more than one topic names this sheet");
-    else joined.set(sheet.id, { ...sheet, topic });
+  }
+  const joined = new Map<string, SnapshotSheet>();
+  for (const { sheets: ids, ...topic } of topics) {
+    for (const id of ids) {
+      const sheet = byId.get(id);
+      if (sheet && owners.get(id)?.length === 1) joined.set(id, { ...sheet, topic });
+    }
   }
   return joined;
 }

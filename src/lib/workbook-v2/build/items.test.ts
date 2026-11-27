@@ -546,4 +546,61 @@ describe("a repeat with the history of the child", () => {
       expect(three).toEqual(one);
     }, 30);
   });
+
+  it("finds the single remaining unseen or uniquely oldest item in a 900-item place.value space and in figure.bar", () => {
+    const pvLimits = { digits: { min: 3, max: 3 }, number: { min: 100, max: 999 }, zeros: { min: 0, max: 3 }, zeroInOnes: "allowed", zeroInTens: "allowed", zeroInHundreds: "allowed" };
+    const pvSheet = sheetOf([{ id: "one", items: 1, limits: pvLimits, shape: "place.value" }], [OTHER]);
+    const seenExcept961 = Array.from({ length: 900 }, (_, i) => 100 + i).filter((n) => n !== 961).map((n) => ({ shape: "place.value", key: canonicalJson({ number: n }) }));
+    const oneUnseen: BookHistory = { books: [{ bookId: "book-1", items: seenExcept961 }], lastAttempts: [], seenPhrasings: [] };
+    const oldest961: BookHistory = {
+      books: [{ bookId: "book-1", items: [{ shape: "place.value", key: canonicalJson({ number: 961 }) }] }, { bookId: "book-2", items: seenExcept961 }],
+      lastAttempts: [], seenPhrasings: [],
+    };
+    for (const child of ["child-a", "child-b", "child-c", "child-d"]) {
+      expect(sheetItems(pvSheet, child, 2, sheetHistory(oneUnseen, SHEET.id)).find((i) => i.rowId === "one")?.question).toEqual({ number: 961 });
+      expect(sheetItems(pvSheet, child, 3, sheetHistory(oldest961, SHEET.id)).find((i) => i.rowId === "one")?.question).toEqual({ number: 961 });
+    }
+    const barLimits = { groups: { min: 2, max: 6 }, size: { min: 2, max: 99 }, product: { min: 4, max: 594 } };
+    const barSheet = sheetOf([{ id: "bar", items: 1, limits: barLimits, shape: "figure.bar" }], [OTHER]);
+    const barShape = SHAPES.get("figure.bar")!;
+    const allBars = Array.from({ length: barShape.count(barLimits) }, (_, i) => barShape.space!(barLimits).at(i, "seed").question as { groups: number; size: number });
+    const targetBar = { groups: 6, size: 99 };
+    const otherBars = allBars.filter((q) => !(q.groups === targetBar.groups && q.size === targetBar.size)).map((q) => ({ shape: "figure.bar", key: canonicalJson(q) }));
+    const barHistory: BookHistory = { books: [{ bookId: "book-1", items: otherBars }], lastAttempts: [], seenPhrasings: [] };
+    for (const child of ["child-a", "child-b", "child-c"]) {
+      expect(sheetItems(barSheet, child, 2, sheetHistory(barHistory, SHEET.id)).find((i) => i.rowId === "bar")?.question).toEqual(targetBar);
+    }
+  });
+
+  it("picks an ordered run that leaves an unseen item for a mixed row, and avoids repeating the last run after another book prints the remaining item", () => {
+    // Mixed [0, 1] (items=1) + ordered up [1, 2, 3] (items=2), with 0 already seen: must choose [1] and [2, 3], never [0] and [1, 2].
+    const joint = sheetOf([
+      { id: "mix", items: 1, limits: { tables: [0], second: { min: 0, max: 1 }, result: { min: 0, max: 20 }, order: "mixed" }, shape: "fact.add" },
+      { id: "ord", items: 2, limits: { tables: [0], second: { min: 1, max: 3 }, result: { min: 0, max: 20 }, order: "up" }, shape: "fact.add" },
+    ], [OTHER]);
+    const seenZero: BookHistory = { books: [{ bookId: "book-1", items: [{ shape: "fact.add", key: canonicalJson({ a: 0, b: 0 }) }] }], lastAttempts: [], seenPhrasings: [] };
+    for (let i = 0; i < 40; i++) {
+      const front = sheetItems(joint, `child-${i}`, 2, sheetHistory(seenZero, SHEET.id)).filter((item) => item.side === "front");
+      expect(front.map((item) => [item.rowId, (item.question as { b: number }).b])).toEqual([["mix", 1], ["ord", 2], ["ord", 3]]);
+    }
+
+    // Ordered up [1, 2, 3] (items=2): book 1 printed [1, 2] (last attempt), book 2 printed 3 on another sheet -> book 3 must choose [2, 3].
+    const orderedOnly = sheetOf([{ id: "ord", items: 2, limits: { tables: [0], second: { min: 1, max: 3 }, result: { min: 0, max: 20 }, order: "up" }, shape: "fact.add" }], [OTHER]);
+    const k = (b: number) => canonicalJson({ a: 0, b });
+    const afterIntervening: BookHistory = {
+      books: [
+        { bookId: "book-1", items: [{ shape: "fact.add", key: k(1) }, { shape: "fact.add", key: k(2) }] },
+        { bookId: "book-2", items: [{ shape: "fact.add", key: k(3) }] },
+      ],
+      lastAttempts: [{
+        sheetId: SHEET.id, attempt: 1,
+        items: [1, 2].map((b) => ({ shape: "fact.add", key: k(b), side: "front" as const, rowId: "ord", form: k(b) })),
+      }],
+      seenPhrasings: [],
+    };
+    for (let i = 0; i < 40; i++) {
+      const front = sheetItems(orderedOnly, `child-${i}`, 2, sheetHistory(afterIntervening, SHEET.id)).filter((item) => item.side === "front");
+      expect(front.map((item) => (item.question as { b: number }).b)).toEqual([2, 3]);
+    }
+  });
 });

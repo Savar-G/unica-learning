@@ -4,14 +4,15 @@ import type { Snapshot, SnapshotSheet } from "../bank/snapshot";
 import { SHEET_RESULTS, type SheetResultKind } from "../results/sheet-results";
 
 export interface ChildState { childId: string; startSheetId?: string }
-/** One attempt of a sheet in a book. `pages` are its front and back page numbers in that book. */
-export interface IssuedSheet { bookId: string; bookNumber: number; sheetId: string; attempt: number; pages: [number, number] }
+/** One attempt of a sheet in a book. `pages` are its front and back page numbers in that book; `reason` records why it was issued when known. */
+export interface IssuedSheet { bookId: string; bookNumber: number; sheetId: string; attempt: number; pages: [number, number]; reason?: QueueReason }
 /** A page of a book whose scan was accepted. The same page scanned again counts one time. */
 export interface ScanReceipt { bookId: string; pageNumber: number }
 export interface SheetResultRecord { bookId: string; sheetId: string; attempt: number; result: SheetResultKind; itemsScored: number; mistakes: number }
 
 /** "repeat": a proven fail. "unscanned": a sheet with no result whose book came back with less than half of its pages. */
 export type QueueReason = "repeat" | "unscanned" | "new";
+const QUEUE_REASONS: readonly QueueReason[] = ["repeat", "unscanned", "new"];
 export interface QueueEntry { sheetId: string; attempt: number; reason: QueueReason }
 /** A sheet with no result that counts as passed until its marks arrive. */
 export interface AssumedPass { sheetId: string; attempt: number; bookId: string }
@@ -36,8 +37,8 @@ export const NUDGE_AFTER_FAILS = 3;
 const isName = (value: unknown): value is string => typeof value === "string" && /^[A-Za-z0-9-]{1,64}$/.test(value);
 const isCount = (value: unknown, min: number): value is number => typeof value === "number" && Number.isSafeInteger(value) && value >= min;
 
-/** The sheets of a level in the order of its pages, which is the order of its topics and of the sheets in each one. */
-export const levelOrder = (snapshot: Snapshot): SnapshotSheet[] => [...snapshot.sheets.values()].sort((a, b) => a.firstPage - b.firstPage);
+/** The sheets of a level in the order of its topics and of the sheets in each topic. */
+export const levelOrder = (snapshot: Snapshot): SnapshotSheet[] => [...snapshot.sheets.values()];
 
 /** Each problem of the history, or none. */
 function problemsOf(state: ChildState, issued: readonly IssuedSheet[], receipts: readonly ScanReceipt[], results: readonly SheetResultRecord[], snapshot: Snapshot): string[] {
@@ -55,6 +56,9 @@ function problemsOf(state: ChildState, issued: readonly IssuedSheet[], receipts:
     if (!isCount(s.bookNumber, 1)) tell(`${at}: the book number must be a whole number, 1 or more.`);
     if (!snapshot.sheets.has(s.sheetId)) tell(`${at}: the level has no such sheet.`);
     if (!isCount(s.attempt, 1)) tell(`${at}: the attempt must be a whole number, 1 or more.`);
+    if (s.reason !== undefined && !QUEUE_REASONS.includes(s.reason)) tell(`${at}: reason must be new, repeat or unscanned.`);
+    else if (s.attempt === 1 && s.reason !== undefined && s.reason !== "new") tell(`${at}: attempt 1 cannot have reason ${JSON.stringify(s.reason)}.`);
+    else if (isCount(s.attempt, 2) && s.reason === "new") tell(`${at}: attempt ${s.attempt} cannot have reason "new".`);
     const pair = Array.isArray(s.pages) && s.pages.length === 2 && s.pages.every((p) => isCount(p, 1)) && s.pages[0] !== s.pages[1];
     if (!pair) tell(`${at}: pages must be two different page numbers.`);
     if (numberOf.has(s.bookId) && numberOf.get(s.bookId) !== s.bookNumber) tell(`The book "${s.bookId}" has more than one book number.`);
@@ -74,7 +78,11 @@ function problemsOf(state: ChildState, issued: readonly IssuedSheet[], receipts:
     const own = issued.filter((s) => s.sheetId === sheet).sort((a, b) => a.attempt - b.attempt);
     own.forEach((s, i) => { if (i > 0 && !(s.bookNumber > own[i - 1].bookNumber)) tell(`The sheet "${sheet}": attempt ${s.attempt} must be in a later book than attempt ${own[i - 1].attempt}.`); });
   }
-  for (const r of receipts) if (!pages.has(`${r.bookId} ${r.pageNumber}`)) tell(`The scan of page ${JSON.stringify(r.pageNumber)} of the book ${JSON.stringify(r.bookId)} is of no issued page.`);
+  for (const r of receipts) {
+    if (!isName(r.bookId) || !isCount(r.pageNumber, 1) || !pages.has(`${r.bookId} ${r.pageNumber}`)) {
+      tell(`The scan of page ${JSON.stringify(r.pageNumber)} of the book ${JSON.stringify(r.bookId)} is of no issued page.`);
+    }
+  }
   const resulted = new Set<string>();
   for (const r of results) {
     const at = `The result of the sheet ${JSON.stringify(r.sheetId)}, attempt ${JSON.stringify(r.attempt)}`;
@@ -123,8 +131,8 @@ export function position(state: ChildState, issued: readonly IssuedSheet[], rece
     if (result === "mastered") outcome.done.push(id);
     else if (result === "repeat") outcome.queue.push({ sheetId: id, attempt: latest.attempt + 1, reason: "repeat" });
     else {
-      // An earlier attempt with no proven result was followed by another one only because of this rule.
-      const repeatedOnce = attempts.slice(0, -1).some((s) => !proven(resultOf(id, s.attempt)));
+      // A recorded "unscanned" issuance is durable even if a late mark later lands on the earlier attempt; without a recorded reason, infer from an earlier unproven attempt.
+      const repeatedOnce = attempts.slice(1).some((s, i) => s.reason === "unscanned" || (s.reason === undefined && !proven(resultOf(id, attempts[i].attempt))));
       const [scanned, pages] = [scannedPages(latest.bookId), issuedPages(latest.bookId)];
       if (scanned * 2 < pages && !repeatedOnce) {
         outcome.queue.push({ sheetId: id, attempt: latest.attempt + 1, reason: "unscanned" });

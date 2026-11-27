@@ -11,6 +11,9 @@ export const wholeNumber = (value: number | string): Answer => ({ parts: [{ name
 /** The same question turned round, such as 7 × 5 for 5 × 7. */
 export interface Swapped<Q> { question: Q; inLimits: boolean }
 
+/** Indexed access to the space of a non-listed shape, built once per row for exact repeat selection. */
+export interface ShapeSpace<Q> { count: number; at(index: number, seed: string): Item<Q> }
+
 export interface Shape<L = unknown, Q = unknown> {
   id: string;
   /** Whole number starting at 1. Bump whenever output changes. */
@@ -41,6 +44,8 @@ export interface Shape<L = unknown, Q = unknown> {
   identity?(question: Q): unknown;
   /** Every question of the limits. Only a shape whose whole space is small has it. */
   list?(limits: L): Q[];
+  /** Indexed access to the limits' space without materialising every question. Used for history-aware selection on non-listed shapes. */
+  space?(limits: L): ShapeSpace<Q>;
   /** The widest question of each form: each place that a blank can have. Without it, all questions have the form of `worstCase`. */
   forms?(limits: L): Item<Q>[];
   /** Every row of this length in the order of its table, for limits that ask for one. Null for limits that mix the questions. A shape with it has a list. */

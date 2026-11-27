@@ -2,10 +2,10 @@
 // history of the child, a question that the child has not seen comes first, then one seen longest ago; a question of the
 // last attempt prints in its swapped form when its limits allow it, and a side does not print in the order of last time.
 import type { BookItem, Side } from "../contract";
-import { canonicalJson, seedFrom } from "../hash";
+import { canonicalJson, pick, seedFrom } from "../hash";
 import type { SnapshotRow, SnapshotSheet } from "../bank/snapshot";
 import type { Item, Shape } from "../shapes";
-import { questionKey } from "../shapes/shape";
+import { questionKey, type ShapeSpace } from "../shapes/shape";
 import { historyKey, type LastAttempt, type SheetHistory } from "./book-history";
 import { chooseQuestions, NOTHING_SEEN, type AskedRow, type SeenBefore } from "./row-questions";
 
@@ -16,6 +16,8 @@ const SIDES: readonly Side[] = ["front", "back"];
  * questions than that, most tries succeed; a row that has none left uses one again.
  */
 const TRIES = 500;
+/** Spaces up to this size are scanned exhaustively when history is present so an unseen or oldest-seen item is never missed. */
+const EXHAUSTIVE_LIMIT = 20_000;
 
 /** The seed of one place of a row, and of each next try for that place. */
 export const itemSeed = (sheetSeed: string, side: Side, rowId: string, place: number, attempt: number): string => seedFrom(sheetSeed, side, rowId, place, attempt);
@@ -70,10 +72,55 @@ function nextItem({ shape, limits }: SnapshotRow, seedOf: (attempt: number) => s
   return best.item;
 }
 
-function triedItems(row: SnapshotRow, seedOf: AskedRow["seedOf"], sheetUsed: Set<string>, sideUsed: Set<string>, met: Met, penalty: Penalty): Item<unknown>[] {
+function gcd(a: number, b: number): number {
+  let [x, y] = [a, b];
+  while (y !== 0) [x, y] = [y, x % y];
+  return x;
+}
+
+function coprimeStride(seed: string, total: number): number {
+  if (total <= 1) return 1;
+  let stride = 1 + pick(seedFrom(seed, "stride"), total - 1);
+  while (gcd(stride, total) !== 1) stride = stride + 1 < total ? stride + 1 : 1;
+  return stride;
+}
+
+/**
+ * History-aware selection on a non-listed shape with indexed space access: walks distinct indices with a deterministic
+ * coprime stride so unseen items (score 0) are found immediately and small spaces always find the exact oldest-seen item.
+ */
+function nextSpaceItem(
+  shape: Shape,
+  space: ShapeSpace<unknown>,
+  seed: string,
+  used: Used,
+  penalty: Penalty,
+  historySize: number,
+): Item<unknown> {
+  const uses = (key: string) => used.filter((on) => on.has(key)).length * penalty.weight + penalty.of(key);
+  const total = space.count;
+  const start = pick(seed, total);
+  const stride = coprimeStride(seed, total);
+  const limit = total <= EXHAUSTIVE_LIMIT ? total : Math.min(total, historySize + used[0].size + 1);
+  let index = start;
+  let best: { item: Item<unknown>; uses: number } | null = null;
+  for (let k = 0; k < limit; k++) {
+    const item = space.at(index, seed);
+    const score = uses(keyOf(shape, item.question));
+    if (score === 0) return item;
+    if (!best || score < best.uses) best = { item, uses: score };
+    index = (index + stride) % total;
+  }
+  return best!.item;
+}
+
+function triedItems(row: SnapshotRow, seedOf: AskedRow["seedOf"], sheetUsed: Set<string>, sideUsed: Set<string>, met: Met, penalty: Penalty, historySize: number): Item<unknown>[] {
   const used: Used = [sheetUsed, sideUsed, new Set()];
+  const space = penalty !== NO_PENALTY && row.shape.space ? row.shape.space(row.limits) : null;
   return Array.from({ length: row.items }, (_, place) => {
-    const { question, answer } = nextItem(row, (attempt) => seedOf(place, attempt), used, met, penalty);
+    const { question, answer } = space
+      ? nextSpaceItem(row.shape, space, seedOf(place, 0), used, penalty, historySize)
+      : nextItem(row, (attempt) => seedOf(place, attempt), used, met, penalty);
     for (const on of used) on.add(keyOf(row.shape, question));
     return { question, answer };
   });
@@ -130,6 +177,7 @@ function sheetRows(sheet: SnapshotSheet, seed: string, history: SheetHistory | n
   const sheetUsed = new Set<string>();
   const metOf = new Map<string, Met>();
   const penalty = penaltyOf(history);
+  const historySize = history?.recency.size ?? 0;
   for (const side of SIDES) {
     const sideUsed = new Set<string>();
     for (const one of rows[side].filter(({ row }) => !row.shape.list)) {
@@ -137,7 +185,7 @@ function sheetRows(sheet: SnapshotSheet, seed: string, history: SheetHistory | n
       const key = `${shape.id} ${canonicalJson(limits)}`;
       const met = metOf.get(key) ?? { keys: new Set(), count: null };
       metOf.set(key, met);
-      one.items = triedItems(one.row, one.asked.seedOf, sheetUsed, sideUsed, met, penalty);
+      one.items = triedItems(one.row, one.asked.seedOf, sheetUsed, sideUsed, met, penalty, historySize);
     }
   }
   if (history?.last) swapRepeats(rows, history.last);

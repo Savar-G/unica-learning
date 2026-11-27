@@ -148,9 +148,14 @@ function find(all: readonly Questions[], index: number): MulColumnQuestion {
 export const countQuestions = (limits: MulColumnLimits): number => countFrom(questionsOf(limits), ...ALL);
 
 /** One question: `choose` gets how many there are, and gives a place in the order. */
-export function chooseQuestion(limits: MulColumnLimits, choose: (count: number) => number): MulColumnQuestion {
+export function mulColumnSpace(limits: MulColumnLimits): { count: number; at(index: number): MulColumnQuestion } {
   const all = questionsOf(limits);
-  return find(all, choose(countFrom(all, ...ALL)));
+  return { count: countFrom(all, ...ALL), at: (index) => find(all, index) };
+}
+
+export function chooseQuestion(limits: MulColumnLimits, choose: (count: number) => number): MulColumnQuestion {
+  const space = mulColumnSpace(limits);
+  return space.at(choose(space.count));
 }
 
 /** The scores of the easiest and the hardest question. */

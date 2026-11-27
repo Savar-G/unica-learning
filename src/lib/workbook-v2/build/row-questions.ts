@@ -74,27 +74,34 @@ function canAllDiffer(rows: readonly Row[], taken: Keys): boolean {
 
 /**
  * The runs of a row from the one that its seed names: those with the fewest stale questions first, then the fewest seen
- * ones, then those seen longest ago, and the run of the last attempt of the row after every other.
+ * ones, then runs different from the last attempt of the row, then those seen longest ago.
  */
 function runsInOrder({ id, runs, seedOf }: Row, stale: Keys, seen: SeenBefore): Question[][] {
   if (!runs) return [];
   const start = pick(seedOf(0, 0), runs.length);
   const turned = [...runs.slice(start), ...runs.slice(0, start)];
-  if (stale.size === 0 && seen.recency.size === 0) return turned;
   const last = seen.lastOfRow.get(id)?.join("\n");
+  if (stale.size === 0 && seen.recency.size === 0 && last === undefined) return turned;
   const scoreOf = (run: Question[]) => [
     count(run, stale),
     run.filter((q) => seen.recency.has(q.key)).length,
-    run.reduce((sum, q) => sum + (seen.recency.get(q.key) ?? -1) + 1, 0),
     last !== undefined && run.map((q) => q.key).join("\n") === last ? 1 : 0,
+    run.reduce((sum, q) => sum + (seen.recency.get(q.key) ?? -1) + 1, 0),
   ];
   const before = (a: number[], b: number[]) => a.findIndex((n, i) => n !== b[i]);
   return turned.map((run) => ({ run, score: scoreOf(run) })).sort((a, b) => { const i = before(a.score, b.score); return i < 0 ? 0 : a.score[i] - b.score[i]; }).map(({ run }) => run);
 }
 
-/** The first choice of runs that share no question and leave a complete assignment for the mixed rows, or null. */
-function chooseRuns(ordered: readonly Row[], mixed: readonly Row[], taken: Keys, stale: Keys, seen: SeenBefore): Chosen | null {
-  const candidates = ordered.map((row) => runsInOrder(row, stale, seen));
+/** The first choice of runs that share no question, respect `ban` (and optionally avoid the last attempt's exact run), and leave a complete assignment for the mixed rows, or null. */
+function chooseRuns(ordered: readonly Row[], mixed: readonly Row[], taken: Keys, stale: Keys, seen: SeenBefore, ban: Keys, avoidLast: boolean): Chosen | null {
+  const blocked = ban.size === 0 ? taken : new Set([...taken, ...ban]);
+  const isLast = (row: Row, run: readonly Question[]) => {
+    const last = seen.lastOfRow.get(row.id)?.join("\n");
+    return last !== undefined && run.map((q) => q.key).join("\n") === last;
+  };
+  const candidates = ordered.map((row) => runsInOrder(row, stale, seen).filter((run) => (!avoidLast || !isLast(row, run)) && count(run, blocked) === 0));
+  if (candidates.some((runs) => runs.length === 0)) return null;
+  if (!canAllDiffer([...ordered, ...mixed], blocked)) return null;
   const failed = new Set<string>();
   let tries = 0;
   const search = (index: number, used: Keys): Chosen | null => {
@@ -106,7 +113,7 @@ function chooseRuns(ordered: readonly Row[], mixed: readonly Row[], taken: Keys,
       if (count(run, used) > 0) continue;
       const next = new Set([...used, ...run.map((q) => q.key)]);
       const rest = candidates.slice(index + 1);
-      // Each row in order that is left must have a free run, and all rows that are left enough questions.
+      // Each row in order that is left must have a free run, and all rows that are left enough questions outside `blocked`.
       if (!rest.every((runs) => runs.some((other) => count(other, next) === 0)) || !canAllDiffer([...ordered.slice(index + 1), ...mixed], next)) continue;
       const found = search(index + 1, next);
       if (found) return found.set(ordered[index], run);
@@ -114,7 +121,7 @@ function chooseRuns(ordered: readonly Row[], mixed: readonly Row[], taken: Keys,
     failed.add(state);
     return null;
   };
-  return canAllDiffer([...ordered, ...mixed], taken) ? search(0, taken) : null;
+  return search(0, blocked);
 }
 
 interface Place { row: Row; index: number; question: Question | null }
@@ -163,9 +170,17 @@ function byRow(runs: Chosen, places: readonly Place[]): Chosen {
 
 /** A choice with no question twice and none that is taken, or null when there is none. */
 function chooseDifferent(rows: readonly Row[], taken: Keys, stale: Keys, seen: SeenBefore): Chosen | null {
+  const ordered = rows.filter((row) => row.runs);
   const mixed = rows.filter((row) => !row.runs);
-  const runs = chooseRuns(rows.filter((row) => row.runs), mixed, taken, stale, seen);
-  return runs && byRow(runs, assignMixed(mixed, new Set([...taken, ...keysOf(runs)]), stale, seen));
+  if (ordered.length === 0) return canAllDiffer(mixed, taken) ? byRow(new Map(), assignMixed(mixed, taken, stale, seen)) : null;
+  const hasLast = ordered.some((row) => seen.lastOfRow.has(row.id));
+  for (const avoidLast of hasLast ? [true, false] : [false]) {
+    for (const ban of bansOf(stale, seen)) {
+      const runs = chooseRuns(ordered, mixed, taken, stale, seen, ban, avoidLast);
+      if (runs) return byRow(runs, assignMixed(mixed, new Set([...taken, ...keysOf(runs)]), stale, seen));
+    }
+  }
+  return null;
 }
 
 /** The rows of a side that cannot all be different: each row has no question twice, and as few are repeated as it finds. */

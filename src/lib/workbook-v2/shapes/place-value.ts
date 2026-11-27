@@ -66,6 +66,15 @@ function spanOf(l: PlaceValueLimits): Span {
 }
 /** How many numbers of the span are n or less. */
 const upTo = ({ patterns, low }: Span, n: number): number => (n < low ? 0 : patterns.reduce((sum, p) => sum + UP_TO[p * SIZE + n] - UP_TO[p * SIZE + low - 1], 0));
+function numberAt(span: Span, place: number): number {
+  let [low, high] = [span.low, span.high];
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (upTo(span, middle) > place) high = middle;
+    else low = middle + 1;
+  }
+  return low;
+}
 function count(limits: PlaceValueLimits): number {
   const span = spanOf(limits);
   return upTo(span, span.high);
@@ -139,14 +148,11 @@ export const placeValue: Shape<PlaceValueLimits, PlaceValueQuestion> = {
   /** The number at the place that the seed picks in the rising list: the first one with more numbers up to it than that place. */
   generate(limits, seed) {
     const span = spanOf(limits);
-    const place = pick(seed, upTo(span, span.high));
-    let [low, high] = [span.low, span.high];
-    while (low < high) {
-      const middle = Math.floor((low + high) / 2);
-      if (upTo(span, middle) > place) high = middle;
-      else low = middle + 1;
-    }
-    return item({ number: low });
+    return item({ number: numberAt(span, pick(seed, upTo(span, span.high))) });
+  },
+  space(limits) {
+    const span = spanOf(limits);
+    return { count: upTo(span, span.high), at: (place) => item({ number: numberAt(span, place) }) };
   },
   answer,
   solveAgain,

@@ -51,18 +51,21 @@ describe("the next book", () => {
     expect(outcome.request.sheets.map((s) => [s.sheetId, s.startsDay ?? false])).toEqual([[IDS[0], true], [IDS[1], true], [IDS[2], true], [IDS[3], false]]);
   });
 
-  it("takes one fewer when the queue has no more, and refuses a queue of one sheet", () => {
-    expect(nextBookSheets(positionOf(newSheets(3)), { pagesPerDay: 8, days: 1 })).toEqual(newSheets(2));
+  it("refuses an odd queue that cannot round up to an even book, and refuses an empty queue", () => {
+    expect(nextBookSheets(positionOf(newSheets(3)), { pagesPerDay: 8, days: 1 })).toEqual([expect.stringMatching(/has 3 sheets, and a book needs an even number of sheets/)]);
     expect(nextBookSheets(positionOf(newSheets(1)), { pagesPerDay: 8, days: 1 })).toEqual([expect.stringMatching(/has 1 sheet, and a book needs an even number of sheets/)]);
     expect(nextBookSheets(positionOf([]), { pagesPerDay: 8, days: 1 })).toEqual([expect.stringMatching(/has 0 sheets/)]);
   });
 
-  it(`has at most ${MAX_SHEETS} sheets, also when an odd count rounds up`, () => {
+  it(`has at most ${MAX_SHEETS} sheets, also when an odd count rounds up, and derives day starts from sheetsCount`, () => {
     expect(nextBookSheets(positionOf(longQueue(100)), { pagesPerDay: 20, days: 6 })).toHaveLength(60);
     expect(nextBookSheets(positionOf(longQueue(100)), { pagesPerDay: 2, days: 59 })).toHaveLength(60);
     expect(nextBookSheets(positionOf(longQueue(100)), { pagesPerDay: 20, days: 7 })).toEqual([expect.stringMatching(/at most 60 sheets \(120 pages\), and this one asks for 70/)]);
-    expect(nextBookSheets(positionOf(longQueue(100)), { pagesPerDay: 2, days: 1, sheetsCount: 61 })).toEqual([expect.stringMatching(/asks for 61/)]);
-    expect(nextBookSheets(positionOf(longQueue(100)), { pagesPerDay: 2, days: 1, sheetsCount: 6 })).toHaveLength(6);
+    expect(nextBookSheets(positionOf(longQueue(100)), { pagesPerDay: 2, sheetsCount: 61 })).toEqual([expect.stringMatching(/asks for 61/)]);
+    expect(nextBookSheets(positionOf(longQueue(100)), { pagesPerDay: 2, sheetsCount: 6 })).toHaveLength(6);
+    const byCount = planNextBook(input({ pagesPerDay: 2, days: undefined, sheetsCount: 4, qrTokens: tokens(8) }));
+    if (!byCount.ok) throw new Error(byCount.problems.join("\n"));
+    expect(byCount.request.sheets.map((s) => s.startsDay ?? false)).toEqual([true, true, true, true]);
   });
 
   it("carries the region, the scenario and the history as plain JSON, and none of them when the input has none", () => {
@@ -85,30 +88,39 @@ describe("the next book", () => {
     ["too many QR texts", { qrTokens: tokens(9) }, /needs exactly 8 QR texts, and it has 9/],
     ["a QR text twice", { qrTokens: [...tokens(7), tokens(1)[0]] }, /QR text .* is used more than once/],
     ["a QR text with a space", { qrTokens: [...tokens(7), "a b"] }, /must be printable text with no space/],
+    ["a QR text that is too long to scan", { qrTokens: [...tokens(7), "x".repeat(100)] }, /needs squares that are too small to scan/],
     ["pages a day of 0", { pagesPerDay: 0 }, /Pages a day must be an even whole number, 2 or more, not 0/],
     ["an odd number of pages a day", { pagesPerDay: 3 }, /not 3/],
     ["pages a day that are not whole", { pagesPerDay: 2.5 }, /not 2.5/],
     ["0 days", { days: 0 }, /Days must be a whole number, 1 or more, not 0/],
+    ["neither days nor sheetsCount", { days: undefined, sheetsCount: undefined }, /Either days or sheetsCount must be given/],
     ["a sheet count of 0", { sheetsCount: 0 }, /sheets of a book must be a whole number/],
+    ["contradictory days and sheetsCount", { pagesPerDay: 2, days: 1, sheetsCount: 4 }, /must match pagesPerDay × days \/ 2/],
+    ["a sheet count not divisible by pagesPerDay / 2", { pagesPerDay: 4, days: undefined, sheetsCount: 5 }, /must be a multiple of 2/],
     ["the position of another child", { position: { ...positionOf(newSheets(5)), childId: "child-2" } }, /position is of the child "child-2"/],
     ["a bad book id", { bookId: "book 2" }, /bookId must use only letters/],
     ["a malformed history", { history: { books: [{ bookId: "b", items: [{ shape: "fact.mul" }] }], lastAttempts: [], seenPhrasings: [] } as unknown as NextBookInput["history"] }, /key is missing/],
+    ["a non-plain history instance", { history: Object.assign(Object.create({ inherited: true }), { books: [], lastAttempts: [], seenPhrasings: [] }) as NextBookInput["history"] }, /must be a plain object/],
+    ["a sparse history list", { history: { books: new Array(1), lastAttempts: [], seenPhrasings: [] } as unknown as NextBookInput["history"] }, /must be a plain list/],
   ])("refuses %s", (_name, change, problem) => {
     expect(problemsOf(planNextBook(input(change)))).toMatch(problem);
   });
 
-  it("always has an even count of at most 60 sheets, in the order of the queue, and each day starts on its first sheet", () => {
+  it("always has an even count of at most 60 sheets, in the order of the queue, and never shortens an odd queue", () => {
     fc.assert(fc.property(fc.integer({ min: 0, max: 80 }), fc.integer({ min: 1, max: 10 }), fc.integer({ min: 1, max: 12 }), (queued, perDay, days) => {
       const queue = longQueue(queued);
       const sheets = nextBookSheets(positionOf(queue), { pagesPerDay: 2 * perDay, days });
-      if (perDay * days > MAX_SHEETS || queued < 2) {
+      const wanted = perDay * days;
+      const taken = Math.min(wanted, queued);
+      const canRoundUp = taken % 2 === 1 && queued > taken && taken + 1 <= MAX_SHEETS;
+      if (wanted > MAX_SHEETS || taken === 0 || (taken % 2 === 1 && !canRoundUp)) {
         expect(typeof sheets[0]).toBe("string");
         return;
       }
       const chosen = sheets as QueueEntry[];
       expect(chosen.length % 2).toBe(0);
       expect(chosen.length).toBeLessThanOrEqual(MAX_SHEETS);
-      expect(Math.abs(chosen.length - Math.min(perDay * days, queued))).toBeLessThanOrEqual(1);
+      expect(chosen.length).toBe(taken % 2 === 0 ? taken : taken + 1);
       expect(chosen).toEqual(queue.slice(0, chosen.length));
     }));
   });

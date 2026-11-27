@@ -4,12 +4,13 @@
 import type { FieldReader } from "../bank/fields";
 import { isId } from "../bank/fields";
 import type { Side } from "../contract";
+import { canonicalJson } from "../hash";
 
-/** One printed question: its shape and its key (`questionKey`), which two forms of one question share. */
+/** One printed question: its shape and canonical-JSON `questionKey` (e.g. 35 ÷ 7 in a line and in a bracket share a key, while 35 ÷ 5 has a different key). */
 export interface HistoryItem { shape: string; key: string }
 /** One earlier book of the child, with its questions in printed order. */
 export interface HistoryBook { bookId: string; items: HistoryItem[] }
-/** A question of the last attempt of a sheet. `form` is the printed question itself (canonical JSON), so a swapped form differs. */
+/** A question of the last attempt of a sheet. `form` is the canonical JSON of the printed question itself, distinguishing both presentation and swapped operands. */
 export interface LastAttemptItem extends HistoryItem { side: Side; rowId: string; form: string }
 /** The last attempt of a sheet: its questions, each side in printed order. */
 export interface LastAttempt { sheetId: string; attempt: number; items: LastAttemptItem[] }
@@ -28,13 +29,29 @@ const MOST = { books: 200, items: 10_000, text: 4096 } as const;
 const SHAPE_ID = /^[a-z][a-z0-9.-]{0,63}$/;
 const isName = (value: unknown): value is string => typeof value === "string" && /^[A-Za-z0-9-]{1,64}$/.test(value);
 const isText = (value: unknown): value is string => typeof value === "string" && value.length >= 1 && value.length <= MOST.text;
+function isCanonicalJson(value: unknown): value is string {
+  if (!isText(value)) return false;
+  try {
+    return canonicalJson(JSON.parse(value)) === value;
+  } catch {
+    return false;
+  }
+}
 
-/** A list of up to `most` entries, which may be empty. */
+/** A dense list of up to `most` entries, which may be empty. */
 function listOf(r: FieldReader, place: string, fields: Record<string, unknown>, name: string, most: number): unknown[] {
   const value = fields[name];
   if (!Array.isArray(value)) r.problem(place, `${name} must be a list`);
   else if (value.length > most) r.problem(place, `${name} has ${value.length} entries and the limit is ${most}`);
-  else return value;
+  else {
+    for (let i = 0; i < value.length; i++) {
+      if (!Object.hasOwn(value, i)) {
+        r.problem(place, `${name} must not have empty slots`);
+        return [];
+      }
+    }
+    return value;
+  }
   return [];
 }
 
@@ -42,13 +59,16 @@ function readItem(r: FieldReader, place: string, raw: unknown, last: boolean): L
   const fields = r.object(place, raw, last ? ["shape", "key", "side", "rowId", "form"] : ["shape", "key"]);
   if (!fields) return null;
   const { shape, key, side, rowId, form } = fields;
-  if (typeof shape !== "string" || !SHAPE_ID.test(shape)) r.problem(place, "shape must be the id of a shape");
-  if (!isText(key)) r.problem(place, `key must be text of 1 to ${MOST.text} characters`);
-  if (!last) return typeof shape === "string" && SHAPE_ID.test(shape) && isText(key) ? { shape, key } : null;
+  const validShape = typeof shape === "string" && SHAPE_ID.test(shape);
+  const validKey = isCanonicalJson(key);
+  if (!validShape) r.problem(place, "shape must be the id of a shape");
+  if (!validKey) r.problem(place, `key must be canonical JSON of 1 to ${MOST.text} characters`);
+  if (!last) return validShape && validKey ? { shape, key } : null;
+  const validForm = isCanonicalJson(form);
   if (side !== "front" && side !== "back") r.problem(place, "side must be front or back");
   if (!isId(rowId)) r.problem(place, "rowId must use only small letters, digits and dashes");
-  if (!isText(form)) r.problem(place, `form must be text of 1 to ${MOST.text} characters`);
-  const good = typeof shape === "string" && SHAPE_ID.test(shape) && isText(key) && (side === "front" || side === "back") && isId(rowId) && isText(form);
+  if (!validForm) r.problem(place, `form must be canonical JSON of 1 to ${MOST.text} characters`);
+  const good = validShape && validKey && (side === "front" || side === "back") && isId(rowId) && validForm;
   return good ? { shape, key, side, rowId, form } : null;
 }
 
