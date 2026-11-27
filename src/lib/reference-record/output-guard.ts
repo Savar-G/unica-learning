@@ -101,7 +101,8 @@ function looksLikeBareGitRepo(dir: string): boolean {
   }
 }
 
-function findGitAncestor(candidatePath: string): string | null {
+/** The nearest folder above the path (after links are followed) that is a git repository or worktree, or null. */
+export function findGitAncestor(candidatePath: string): string | null {
   let cursor = resolveRealPath(candidatePath);
   while (true) {
     try {

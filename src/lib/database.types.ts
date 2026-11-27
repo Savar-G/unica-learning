@@ -522,6 +522,104 @@ export type Database = {
           },
         ]
       }
+      bank_levels: {
+        Row: {
+          basis: Json | null
+          config: Json
+          created_at: string
+          default_region: string | null
+          display_name: string
+          id: string
+          position: number
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          basis?: Json | null
+          config?: Json
+          created_at?: string
+          default_region?: string | null
+          display_name: string
+          id: string
+          position: number
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          basis?: Json | null
+          config?: Json
+          created_at?: string
+          default_region?: string | null
+          display_name?: string
+          id?: string
+          position?: number
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      bank_questions: {
+        Row: {
+          basis: Json | null
+          created_at: string
+          difficulty: number
+          id: string
+          level_id: string
+          phrasings: Json
+          position: number
+          regions: string[] | null
+          revision: number
+          scenario_kind: string
+          slots: Json
+          solver: Json
+          status: string
+          unit: string
+          updated_at: string
+        }
+        Insert: {
+          basis?: Json | null
+          created_at?: string
+          difficulty: number
+          id: string
+          level_id: string
+          phrasings: Json
+          position: number
+          regions?: string[] | null
+          revision?: number
+          scenario_kind: string
+          slots: Json
+          solver: Json
+          status?: string
+          unit: string
+          updated_at?: string
+        }
+        Update: {
+          basis?: Json | null
+          created_at?: string
+          difficulty?: number
+          id?: string
+          level_id?: string
+          phrasings?: Json
+          position?: number
+          regions?: string[] | null
+          revision?: number
+          scenario_kind?: string
+          slots?: Json
+          solver?: Json
+          status?: string
+          unit?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_questions_level_id_fkey"
+            columns: ["level_id"]
+            isOneToOne: false
+            referencedRelation: "bank_levels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bank_reference_images: {
         Row: {
           created_at: string
@@ -593,6 +691,221 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      bank_region_packs: {
+        Row: {
+          basis: Json | null
+          clock_format: string | null
+          coins: Json
+          created_at: string
+          date_format: string | null
+          grade_names: Json | null
+          id: string
+          level_id: string
+          position: number
+          revision: number
+          spelling: Json
+          status: string
+          units: Json
+          updated_at: string
+        }
+        Insert: {
+          basis?: Json | null
+          clock_format?: string | null
+          coins: Json
+          created_at?: string
+          date_format?: string | null
+          grade_names?: Json | null
+          id: string
+          level_id: string
+          position: number
+          revision?: number
+          spelling: Json
+          status?: string
+          units: Json
+          updated_at?: string
+        }
+        Update: {
+          basis?: Json | null
+          clock_format?: string | null
+          coins?: Json
+          created_at?: string
+          date_format?: string | null
+          grade_names?: Json | null
+          id?: string
+          level_id?: string
+          position?: number
+          revision?: number
+          spelling?: Json
+          status?: string
+          units?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_region_packs_level_id_fkey"
+            columns: ["level_id"]
+            isOneToOne: false
+            referencedRelation: "bank_levels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bank_scenarios: {
+        Row: {
+          basis: Json | null
+          content: Json
+          created_at: string
+          id: string
+          interest: string
+          kind: string
+          level_band: string | null
+          level_id: string
+          position: number
+          revision: number
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          basis?: Json | null
+          content: Json
+          created_at?: string
+          id: string
+          interest: string
+          kind: string
+          level_band?: string | null
+          level_id: string
+          position: number
+          revision?: number
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          basis?: Json | null
+          content?: Json
+          created_at?: string
+          id?: string
+          interest?: string
+          kind?: string
+          level_band?: string | null
+          level_id?: string
+          position?: number
+          revision?: number
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_scenarios_level_id_fkey"
+            columns: ["level_id"]
+            isOneToOne: false
+            referencedRelation: "bank_levels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bank_sheets: {
+        Row: {
+          basis: Json
+          content: Json
+          created_at: string
+          first_page: number
+          kind: string
+          level_id: string
+          position: number
+          revision: number
+          sheet_id: string
+          status: string
+          topic_id: string
+          updated_at: string
+        }
+        Insert: {
+          basis?: Json
+          content: Json
+          created_at?: string
+          first_page: number
+          kind: string
+          level_id: string
+          position: number
+          revision?: number
+          sheet_id: string
+          status?: string
+          topic_id: string
+          updated_at?: string
+        }
+        Update: {
+          basis?: Json
+          content?: Json
+          created_at?: string
+          first_page?: number
+          kind?: string
+          level_id?: string
+          position?: number
+          revision?: number
+          sheet_id?: string
+          status?: string
+          topic_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_sheets_level_id_topic_id_fkey"
+            columns: ["level_id", "topic_id"]
+            isOneToOne: false
+            referencedRelation: "bank_topics"
+            referencedColumns: ["level_id", "id"]
+          },
+        ]
+      }
+      bank_topics: {
+        Row: {
+          basis: Json | null
+          child_title: string | null
+          code: string
+          created_at: string
+          id: string
+          level_id: string
+          position: number
+          standards_tags: string[]
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          basis?: Json | null
+          child_title?: string | null
+          code: string
+          created_at?: string
+          id: string
+          level_id: string
+          position: number
+          standards_tags?: string[]
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          basis?: Json | null
+          child_title?: string | null
+          code?: string
+          created_at?: string
+          id?: string
+          level_id?: string
+          position?: number
+          standards_tags?: string[]
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_topics_level_id_fkey"
+            columns: ["level_id"]
+            isOneToOne: false
+            referencedRelation: "bank_levels"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       booking_family_links: {
         Row: {
@@ -10239,6 +10552,7 @@ export type Database = {
         Args: { p_child: string; p_number: number; p_shipping: boolean }
         Returns: undefined
       }
+      bank_write_level: { Args: { p_write: Json }; Returns: Json }
       beat_workbook_worker: {
         Args: {
           p_build: string
