@@ -23,7 +23,7 @@ const call = (body: unknown, authorization: string | null = "Bearer test-secret"
 /** A memory store that holds the invented topic as a frozen snapshot, put straight into its tables. */
 function storeWithSnapshot(): MemoryBankStore {
   const store = memoryBankStore();
-  const snapshot = contentOf(inventedDraft());
+  const snapshot = contentOf({ ...inventedDraft(), id: "level-3-v1" });
   const items = snapshotItems(snapshot);
   store.tables.snapshots.set(SNAPSHOT_ID, {
     id: SNAPSHOT_ID, level_id: "level-3", version: 1, name: "level-3-v1", content_hash: sha256(canonicalJson(snapshot)), manifest_hash: manifestHash(items),
@@ -68,7 +68,22 @@ it.each([
   ["the same sheet twice", { ...BODY, sheetIds: [SHEETS[0], SHEETS[0]] }],
   ["an unknown field", { ...BODY, levelId: "level-3" }],
 ])("answers 400 for %s", async (_case, body) => {
-  expect((await call(body)).status).toBe(400);
+  const res = await call(body);
+  expect(res.status).toBe(400);
+  expect(JSON.stringify(await res.json())).not.toContain("levelId");
+});
+
+it("refuses a body over 8 KB before it parses it, and answers 504 when the read passes its deadline", async () => {
+  expect((await call({ ...BODY, padding: "x".repeat(9000) })).status).toBe(413);
+  vi.useFakeTimers();
+  try {
+    f.store = { ...storeWithSnapshot(), readSnapshotMeta: () => new Promise(() => {}) };
+    const pending = call(BODY);
+    await vi.advanceTimersByTimeAsync(10_001);
+    expect((await pending).status).toBe(504);
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 it("answers 404 for a snapshot that is not there, and 422 for a sheet that the snapshot does not have", async () => {

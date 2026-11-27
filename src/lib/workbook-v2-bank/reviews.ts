@@ -2,7 +2,7 @@
 // scenario or region pack. An edit makes a new revision (import-draft.ts), which needs a new approval. A freeze needs the
 // latest review of the current revision of every item that is not retired to be an approval. bank_freeze_level checks
 // the same rule again inside its transaction.
-import type { BankStore, LevelRows, NewReview, ReviewKind, ReviewRow } from "./types";
+import type { BankStore, LevelRows, NewReview, ReviewKind, ReviewResult, ReviewRow } from "./types";
 import { REVIEW_DECISIONS, REVIEW_KINDS } from "./types";
 
 /** An item that a freeze copies, at its current revision. */
@@ -53,11 +53,10 @@ export function approvalProblems(rows: LevelRows, reviews: readonly ReviewRow[])
   });
 }
 
-export type ReviewResult = { ok: true; review: ReviewRow } | { ok: false; problem: string };
-
 /**
  * Records a review of one item. It refuses an item that the level does not have, a retired item, and a revision that is
- * not the current one: an approval of an old revision would never count.
+ * not the current one: an approval of an old revision would never count. The store checks the same rule again under the
+ * lock of the level, so an edit between this read and the write cannot make the review count for other content.
  */
 export async function reviewItem(store: BankStore, review: NewReview): Promise<ReviewResult> {
   if (!(REVIEW_KINDS as readonly string[]).includes(review.item_kind)) return { ok: false, problem: `"${review.item_kind}" is not a kind of item that is reviewed.` };
@@ -72,5 +71,5 @@ export async function reviewItem(store: BankStore, review: NewReview): Promise<R
   const item = liveItems(rows).find((one) => one.kind === review.item_kind && one.key === review.item_key);
   if (!item) return { ok: false, problem: `${name} is not an item of level "${review.level_id}" that is not retired.` };
   if (item.revision !== review.revision) return { ok: false, problem: `${name} is at revision ${item.revision}, not revision ${review.revision}: review the current revision.` };
-  return { ok: true, review: await store.addReview({ ...review, reviewer }) };
+  return store.addReview({ ...review, reviewer });
 }

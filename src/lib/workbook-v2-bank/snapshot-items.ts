@@ -1,10 +1,13 @@
 // A frozen snapshot as rows of bank_snapshot_items, both ways (architecture spec 9.2): one row per item, so a book reads
 // only the sheets it needs and two versions compare item by item. Display codes ("3-11", page 205) come from positions at
-// the freeze. Every item carries the hash of its content, and a read checks each one.
+// the freeze. Every item carries the hash of its content, and a read checks each one. A snapshot write must hold exactly
+// the items that the working copy gives (frozenItems): bank_freeze_level builds the same items in SQL and compares them.
 import type { Json } from "@/lib/database";
-import { BASIS } from "@/lib/workbook-v2/build/freeze-bank";
+import { plainCopy } from "@/lib/workbook-v2/bank/plain";
+import { BASIS, contentOf } from "@/lib/workbook-v2/build/freeze-bank";
 import { canonicalJson, sha256 } from "@/lib/workbook-v2/hash";
-import type { JsonObject, SnapshotItemKind, SnapshotItemRow, SnapshotMeta } from "./types";
+import { draftFromRows } from "./draft";
+import type { JsonObject, LevelRows, SnapshotItemKind, SnapshotItemRow, SnapshotMeta } from "./types";
 
 type Rec = Record<string, unknown>;
 const isRec = (value: unknown): value is Rec => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -37,11 +40,15 @@ export function withDisplayCodes(draft: Rec, levelName: string): Rec {
   return { ...draft, topics, sheets };
 }
 
-const hashOf = (content: unknown): string => sha256(canonicalJson(content));
+export const hashOf = (content: unknown): string => sha256(canonicalJson(content));
+
+/** True when a property named `basis` is anywhere in the value. A text value "basis" is content, not a note. */
+export const holdsBasis = (value: unknown): boolean =>
+  Array.isArray(value) ? value.some(holdsBasis) : isRec(value) && Object.entries(value).some(([key, one]) => key === BASIS || holdsBasis(one));
 
 /** The items of a frozen snapshot. Refuses (throws) a snapshot that still holds a note: the freeze copies content only. */
 export function snapshotItems(snapshot: Rec): SnapshotItemRow[] {
-  if (JSON.stringify(snapshot).includes(`"${BASIS}"`)) throw new Error(`A frozen snapshot may not hold "${BASIS}".`);
+  if (holdsBasis(snapshot)) throw new Error(`A frozen snapshot may not hold "${BASIS}".`);
   const level = snapshot.level as Rec;
   const header = Object.fromEntries(Object.entries(snapshot).filter(([key]) => !LISTS.some(([list]) => list === key)));
   const items: SnapshotItemRow[] = [{ kind: "level", key: String(level.id), position: 0, content: object(header), hash: hashOf(header) }];
@@ -49,6 +56,37 @@ export function snapshotItems(snapshot: Rec): SnapshotItemRow[] {
     recs(snapshot[list]).forEach((content, position) => items.push({ kind, key: String(content.id), position, content: object(content), hash: hashOf(content) }));
   }
   return items;
+}
+
+/**
+ * The snapshot named `name` that these working-copy rows give: the rows that are not retired, as a draft, with the
+ * display codes of their positions and no note. Null when there is no level or the rows are not plain data.
+ */
+export function frozenSnapshot(rows: LevelRows, name: string): Rec | null {
+  const draft = draftFromRows(rows);
+  if (!draft || !rows.level) return null;
+  const plain = plainCopy("The snapshot", withDisplayCodes({ ...draft, id: name }, rows.level.display_name));
+  return plain.ok ? contentOf(plain.value as Rec) : null;
+}
+
+/** The items of frozenSnapshot: what a snapshot write of these rows must hold, item for item. */
+export function frozenItems(rows: LevelRows, name: string): SnapshotItemRow[] | null {
+  const snapshot = frozenSnapshot(rows, name);
+  return snapshot ? snapshotItems(snapshot) : null;
+}
+
+/** Each item that is missing, extra, or at another place or with other content than the items of the working copy. */
+export function itemsThatDiffer(expected: readonly SnapshotItemRow[], given: readonly SnapshotItemRow[]): string[] {
+  const keyOf = (item: SnapshotItemRow) => `${item.kind} "${item.key}"`;
+  const wanted = new Map(expected.map((item) => [keyOf(item), item]));
+  const seen = new Set<string>();
+  const differ = given.flatMap((item) => {
+    const key = keyOf(item);
+    const one = wanted.get(key);
+    seen.add(key);
+    return one && one.position === item.position && canonicalJson(one.content) === canonicalJson(item.content) ? [] : [key];
+  });
+  return [...differ, ...[...wanted.keys()].filter((key) => !seen.has(key))];
 }
 
 const inOrder = (items: readonly SnapshotItemRow[]): SnapshotItemRow[] =>
@@ -62,8 +100,9 @@ export type Assembled = { ok: true; snapshot: Rec } | { ok: false; problem: stri
 
 /**
  * The snapshot that items hold. With no `sheetIds` it is the whole snapshot, checked against the manifest hash and the
- * content hash of `meta`. With `sheetIds` it holds only those sheets, in level order, and the topics that name them.
- * Every item's content must still match its hash.
+ * content hash of `meta`. With `sheetIds` it holds only those sheets, in level order, and the topics that name them; the
+ * items that are not sheets and the sheets that the topics name must add up to the item count of `meta`, so an item
+ * that was added after the freeze is refused. Every item's content must still match its hash.
  */
 export function assembleSnapshot(meta: SnapshotMeta, given: readonly SnapshotItemRow[], sheetIds?: readonly string[]): Assembled {
   const changed = given.filter((item) => hashOf(item.content) !== item.hash).map((item) => `${item.kind} "${item.key}"`);
@@ -71,6 +110,7 @@ export function assembleSnapshot(meta: SnapshotMeta, given: readonly SnapshotIte
   const items = inOrder(given);
   const [header, ...more] = items.filter((item) => item.kind === "level");
   if (!header || more.length > 0) return { ok: false, problem: `Snapshot ${meta.name}: it must have one level header.` };
+  if (header.content.id !== meta.name) return { ok: false, problem: `Snapshot ${meta.name}: its level header names another snapshot.` };
   const listOf = (kind: SnapshotItemKind): Json[] => items.filter((item) => item.kind === kind).map((item) => item.content);
   const hasStories = Object.hasOwn(header.content, "defaultRegion");
   const lists = Object.fromEntries(LISTS.filter(([list]) => !STORY_LISTS.has(list) || hasStories).map(([list, kind]) => [list, listOf(kind)]));
@@ -80,12 +120,15 @@ export function assembleSnapshot(meta: SnapshotMeta, given: readonly SnapshotIte
     if (hashOf(snapshot) !== meta.content_hash) return { ok: false, problem: `Snapshot ${meta.name}: the snapshot does not match its hash.` };
     return { ok: true, snapshot };
   }
+  const named = recs(snapshot.topics).flatMap((topic) => (Array.isArray(topic.sheets) ? topic.sheets.map(String) : []));
+  const notSheets = items.filter((item) => item.kind !== "sheet").length;
+  if (notSheets + named.length !== meta.item_count || new Set(named).size !== named.length) return { ok: false, problem: `Snapshot ${meta.name}: its items do not match its manifest.` };
   const wanted = new Set(sheetIds);
-  const found = new Set(recs(snapshot.sheets).map((sheet) => String(sheet.id)));
+  const found = new Set(recs(snapshot.sheets).map((sheet) => String(sheet.id)).filter((id) => named.includes(id)));
   const missing = [...wanted].filter((id) => !found.has(id));
   if (missing.length > 0) return { ok: false, problem: `Snapshot ${meta.name} has no sheet ${missing.map((id) => `"${id}"`).join(", ")}.` };
   const topics = recs(snapshot.topics)
     .map((topic) => ({ ...topic, sheets: (Array.isArray(topic.sheets) ? topic.sheets : []).filter((id) => wanted.has(String(id))) }))
     .filter((topic) => topic.sheets.length > 0);
-  return { ok: true, snapshot: { ...snapshot, topics, sheets: recs(snapshot.sheets).filter((sheet) => wanted.has(String(sheet.id))) } };
+  return { ok: true, snapshot: { ...snapshot, topics, sheets: recs(snapshot.sheets).filter((sheet) => wanted.has(String(sheet.id)) && found.has(String(sheet.id))) } };
 }

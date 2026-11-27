@@ -4,7 +4,16 @@
 import { assembleSnapshot } from "./snapshot-items";
 import type { BankStore, SnapshotMeta } from "./types";
 
-export type SnapshotRead = { ok: true; meta: SnapshotMeta; snapshot: Record<string, unknown>; hash: string } | { ok: false; problem: string; notFound?: true };
+/**
+ * `whole` is the id and hash of the whole stored snapshot. Pass it to buildBook with a book's part, so the book records
+ * the same snapshot and input hash as a book built from the whole snapshot.
+ */
+export type SnapshotRead =
+  | { ok: true; meta: SnapshotMeta; snapshot: Record<string, unknown>; hash: string; whole: { id: string; hash: string } }
+  | { ok: false; problem: string; notFound?: true };
+
+const found = (meta: SnapshotMeta, snapshot: Record<string, unknown>): SnapshotRead =>
+  ({ ok: true, meta, snapshot, hash: meta.content_hash, whole: { id: meta.name, hash: meta.content_hash } });
 
 const missing = (snapshotId: string): SnapshotRead => ({ ok: false, problem: `There is no snapshot "${snapshotId}".`, notFound: true });
 
@@ -13,18 +22,18 @@ export async function readSnapshot(store: BankStore, snapshotId: string): Promis
   const meta = await store.readSnapshotMeta(snapshotId);
   if (!meta) return missing(snapshotId);
   const assembled = assembleSnapshot(meta, await store.readSnapshotItems(snapshotId));
-  return assembled.ok ? { ok: true, meta, snapshot: assembled.snapshot, hash: meta.content_hash } : assembled;
+  return assembled.ok ? found(meta, assembled.snapshot) : assembled;
 }
 
 /**
  * The part of a snapshot that one book reads: its sheets, in level order, with the topics that name them and all word
- * problems. `hash` is the hash of the whole snapshot that the items came from.
+ * problems. `hash` is the hash of the whole snapshot that the items came from; build the book with `whole`.
  */
 export async function readBookSnapshot(store: BankStore, snapshotId: string, sheetIds: readonly string[]): Promise<SnapshotRead> {
   const meta = await store.readSnapshotMeta(snapshotId);
   if (!meta) return missing(snapshotId);
   const assembled = assembleSnapshot(meta, await store.readSnapshotItems(snapshotId, sheetIds), sheetIds);
-  return assembled.ok ? { ok: true, meta, snapshot: assembled.snapshot, hash: meta.content_hash } : assembled;
+  return assembled.ok ? found(meta, assembled.snapshot) : assembled;
 }
 
 /** The record of one timed read. The parts add up to `totalMs`: each rounds down, the total up, and `overheadMs` is the rest. */

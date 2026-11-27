@@ -15,11 +15,12 @@ import { approveAll, editSheet, fullLevelDraft, LOW_CAPACITY_AT, QUICK_FREEZE, S
 import { importDraft } from "./import-draft";
 import { memoryBankStore } from "./memory-store";
 import { approvalProblems, reviewItem } from "./reviews";
-import { displayCode, frontPage, manifestHash, snapshotItems, withDisplayCodes } from "./snapshot-items";
+import type { MemoryBankTables } from "./memory-store";
+import { displayCode, frontPage, frozenItems, frozenSnapshot, hashOf, manifestHash, snapshotItems, withDisplayCodes } from "./snapshot-items";
 import { readBookSnapshot, readSnapshot } from "./snapshot-read";
 import { fakeBankSupabase, withExtraQuestions } from "./store.fixtures";
 import { supabaseBankStore } from "./supabase-store";
-import type { BankStore, SnapshotItemKind } from "./types";
+import type { BankStore, LevelRows, SnapshotItemKind, SnapshotItemRow, SnapshotWrite } from "./types";
 
 type Rec = Record<string, unknown>;
 const recs = (value: unknown) => value as Rec[];
@@ -60,10 +61,35 @@ async function importedLevel(store: BankStore, tag: string, options?: { topics?:
   return draft;
 }
 
-function runFreezeContract(name: string, makeStore: () => BankStore) {
+/** A snapshot write of exactly the items that the rows give, with true hashes. */
+function writeOf(rows: LevelRows, version: number, name = snapshotName(String(rows.level?.id), version)): SnapshotWrite {
+  const snapshot = frozenSnapshot(rows, name);
+  const items = frozenItems(rows, name);
+  if (!snapshot || !items || !rows.level) throw new Error("no level");
+  return {
+    levelId: rows.level.id, expected: String(rows.version), version, name, frozenBy: "Test admin", minEngineVersion: "test",
+    contentHash: hashOf(snapshot), manifestHash: manifestHash(items), items,
+  };
+}
+
+/** The write with one item changed (and its hash made true again, so only the content check can refuse it). */
+function tampered(write: SnapshotWrite, kind: SnapshotItemKind, change: (item: SnapshotItemRow) => SnapshotItemRow): SnapshotWrite {
+  let done = false;
+  const items = write.items.map((item) => {
+    if (done || item.kind !== kind) return item;
+    done = true;
+    const changed = change(structuredClone(item));
+    return { ...changed, hash: hashOf(changed.content) };
+  });
+  return { ...write, items };
+}
+
+interface ContractStore { store: BankStore; tables: MemoryBankTables; calls?: string[] }
+
+function runFreezeContract(name: string, makeStore: () => ContractStore) {
   describe(`a freeze on the ${name} store`, () => {
     it("refuses until each edited item is approved at its new revision, then freezes content only and builds the same book from the stored snapshot", async () => {
-      const store = makeStore();
+      const { store } = makeStore();
       const tag = freshTag();
       const draft = await importedLevel(store, tag);
       const levelId = levelOf(draft);
@@ -123,8 +149,10 @@ function runFreezeContract(name: string, makeStore: () => BankStore) {
       const drawer = await bookRenderer();
       const fromFile = built(await buildBook({ snapshot: structuredClone(frozen.snapshot), book: request }, drawer));
       const fromStore = built(await buildBook({ snapshot: whole.snapshot, book: request }, drawer));
-      const fromBookRows = built(await buildBook({ snapshot: part.snapshot, book: request }, drawer));
+      const fromBookRows = built(await buildBook({ snapshot: part.snapshot, book: request, whole: part.whole }, drawer));
       expect(fromStore.record).toEqual(fromFile.record);
+      // The book built from one book's rows records the whole snapshot: the same snapshot hash and input hash.
+      expect(fromBookRows.record).toEqual(fromFile.record);
       expect(fromFile.record.snapshot.hash).toBe(frozen.hash);
       expect(part.hash).toBe(fromFile.record.snapshot.hash);
       for (const other of [fromStore, fromBookRows]) {
@@ -140,11 +168,105 @@ function runFreezeContract(name: string, makeStore: () => BankStore) {
       expect(await store.writeSnapshot({ ...write, version: 2, expected: "2000-01-01T00:00:00+00:00" })).toMatchObject({ ok: false, problem: expect.stringContaining("changed since it was read") });
       expect(await store.readSnapshots(levelId)).toHaveLength(1);
     }, 120_000);
+
+    it("never lets an approval or a snapshot cover content that was not reviewed", async () => {
+      const { store, tables } = makeStore();
+      const draft = await importedLevel(store, freshTag(), { topics: 1 });
+      const levelId = levelOf(draft);
+      let rows = await store.readLevel(levelId);
+      if (!rows.level) throw new Error("no level");
+      const [sheet] = [...rows.sheets].sort((a, b) => a.position - b.position);
+      const changed = structuredClone(sheet.content) as Rec;
+      (changed.front as Rec).instruction = "Changed after the approval.";
+      const edit = (sheets: typeof rows.sheets) => store.writeLevel({ expected: rows.version, level: rows.level!, topics: [], questions: [], scenarios: [], regionPacks: [], sheets });
+
+      // An edit that keeps its revision, or takes a lower one, is refused; a change of state alone is not.
+      expect(await edit([{ ...sheet, content: changed as typeof sheet.content }])).toMatchObject({ ok: false, problem: expect.stringContaining("an edit needs a new revision") });
+      expect(await edit([{ ...sheet, revision: 0 }])).toMatchObject({ ok: false, problem: expect.stringContaining("would go back from revision 1 to 0") });
+      // A review of a revision the item is not at is refused by the store too, not only by reviewItem.
+      const future = { level_id: levelId, item_kind: "sheet" as const, item_key: sheet.sheet_id, revision: 2, reviewer: "Test reviewer", decision: "approved" as const, comment: null };
+      expect(await store.addReview(future)).toMatchObject({ ok: false, problem: expect.stringContaining("is not a live item at revision 2") });
+      expect((await store.readReviews(levelId)).some((r) => r.revision === 2)).toBe(false);
+
+      // A snapshot write must be the approved working copy, item for item: sheets, word problems, topics and the header.
+      rows = await store.readLevel(levelId);
+      const write = writeOf(rows, 1);
+      const other = write.items.filter((item) => item.kind === "sheet")[1];
+      const swapped: [SnapshotItemKind, (item: SnapshotItemRow) => SnapshotItemRow][] = [
+        ["sheet", (item) => ({ ...item, content: { ...other.content, id: item.key } })],
+        ["question", (item) => ({ ...item, content: { ...item.content, difficulty: 9 } })],
+        ["scenario", (item) => ({ ...item, content: { ...item.content, place: "a changed place" } })],
+        ["region_pack", (item) => ({ ...item, content: { ...item.content, spelling: {} } })],
+        ["topic", (item) => ({ ...item, content: { ...item.content, title: "A changed title" } })],
+        ["level", (item) => ({ ...item, content: { ...item.content, level: { id: levelId, name: "4" } } })],
+        ["sheet", (item) => ({ ...item, position: item.position + 1 })],
+      ];
+      for (const [kind, change] of swapped) {
+        expect(await store.writeSnapshot(tampered(write, kind, change))).toMatchObject({ ok: false, problem: expect.stringContaining("is not the approved working copy") });
+      }
+      expect(await store.readSnapshots(levelId)).toEqual([]);
+      const first = await store.writeSnapshot(write);
+      if (!first.ok) throw new Error(first.problem);
+
+      // Two concurrent writes of the next version: one is written, the other is refused.
+      const both = await Promise.all([store.writeSnapshot(writeOf(rows, 2)), store.writeSnapshot(writeOf(rows, 2, `${levelId}-v2b`))]);
+      expect(both.filter((one) => one.ok)).toHaveLength(1);
+      expect(both.find((one) => !one.ok)).toMatchObject({ problem: expect.stringContaining("version 2 is taken") });
+      expect((await store.readSnapshots(levelId)).map((s) => s.version)).toEqual([1, 2]);
+
+      // A book read refuses items added to a snapshot after its freeze (the database refuses the insert itself).
+      const sheetIds = [sheet.sheet_id];
+      expect(await readBookSnapshot(store, first.snapshotId, sheetIds)).toMatchObject({ ok: true, whole: { id: write.name, hash: write.contentHash } });
+      const frozenRows = tables.snapshotItems.get(first.snapshotId) ?? [];
+      const pack = frozenRows.find((item) => item.kind === "region_pack");
+      if (!pack) throw new Error("no region pack");
+      const extraPack = { ...pack, key: "XX", position: 9, content: { ...pack.content, id: "XX" }, hash: hashOf({ ...pack.content, id: "XX" }) };
+      tables.snapshotItems.set(first.snapshotId, [...frozenRows, extraPack]);
+      expect(await readBookSnapshot(store, first.snapshotId, sheetIds)).toMatchObject({ ok: false, problem: expect.stringContaining("do not match its manifest") });
+      const extraSheet = { ...frozenRows.find((item) => item.kind === "sheet")!, key: "added-later", position: 99 };
+      extraSheet.content = { ...extraSheet.content, id: "added-later" };
+      extraSheet.hash = hashOf(extraSheet.content);
+      tables.snapshotItems.set(first.snapshotId, [...frozenRows, extraSheet]);
+      expect(await readBookSnapshot(store, first.snapshotId, ["added-later"])).toMatchObject({ ok: false, problem: expect.stringContaining('has no sheet "added-later"') });
+
+      // A deleted row that comes back must take a revision above every review of its key.
+      const levelNow = await store.readLevel(levelId);
+      tables.sheets.delete(sheet.sheet_id);
+      const back = await store.writeLevel({ expected: levelNow.version, level: levelNow.level!, topics: [], questions: [], scenarios: [], regionPacks: [], sheets: [{ ...sheet, content: changed as typeof sheet.content }] });
+      expect(back).toMatchObject({ ok: false, problem: expect.stringContaining("comes back at revision 1") });
+    }, 60_000);
   });
 }
 
-runFreezeContract("memory", memoryBankStore);
-runFreezeContract("Supabase (fake PostgREST)", () => supabaseBankStore(fakeBankSupabase().db));
+runFreezeContract("memory", () => { const store = memoryBankStore(); return { store, tables: store.tables }; });
+runFreezeContract("Supabase (fake PostgREST)", () => { const fake = fakeBankSupabase(); return { store: supabaseBankStore(fake.db), tables: fake.memory.tables, calls: fake.calls }; });
+
+describe("snapshot reads past the PostgREST row cap", () => {
+  it("reads a snapshot of more than 1,000 items whole and for one book, with a question from the second page", async () => {
+    const fake = fakeBankSupabase();
+    const store = supabaseBankStore(fake.db);
+    const draft = withExtraQuestions(fullLevelDraft(freshTag(), { topics: 1 }), 1000);
+    const imported = await importDraft(draft, store);
+    if (!imported.ok) throw new Error(imported.problems.join("\n"));
+    const levelId = levelOf(draft);
+    await approveAll(store, levelId);
+    const write = writeOf(await store.readLevel(levelId), 1);
+    expect(write.items.length).toBeGreaterThan(1000);
+    const written = await store.writeSnapshot(write);
+    if (!written.ok) throw new Error(written.problem);
+    fake.calls.length = 0;
+    const whole = await readSnapshot(store, written.snapshotId);
+    if (!whole.ok) throw new Error(whole.problem);
+    expect(recs(whole.snapshot.questions).map((q) => q.id)).toContain("extra-1000");
+    const sheetId = String(recs(draft.sheets)[0].id);
+    const part = await readBookSnapshot(store, written.snapshotId, [sheetId]);
+    if (!part.ok) throw new Error(part.problem);
+    expect(recs(part.snapshot.questions)).toHaveLength(recs(whole.snapshot.questions).length);
+    expect(recs(part.snapshot.questions).map((q) => q.id)).toContain("extra-1000");
+    expect(part.whole).toEqual({ id: write.name, hash: write.contentHash });
+    expect(fake.calls.filter((call) => call.startsWith("GET /rest/v1/bank_snapshot_items?1000"))).toHaveLength(2);
+  }, 120_000);
+});
 
 describe("the checks of a freeze", () => {
   it("refuses a level of 19 topics in plain words, before anything is drawn", async () => {
@@ -194,6 +316,19 @@ describe("the checks of a freeze", () => {
     level.row.display_name = "Calc 1";
     expect(await freezeLevel(store, levelOf(draft), options)).toEqual({ ok: false, problems: [`Level "${levelOf(draft)}" is named "Calc 1", and a level name must be a number from 1 to 99.`] });
   });
+
+  it("freezes a topic whose title is the word basis: only a property named basis is a note", async () => {
+    const store = memoryBankStore();
+    const tag = freshTag();
+    const draft = withSentinelNotes(fullLevelDraft(tag));
+    recs(draft.topics)[0].title = "basis";
+    expect(await importDraft(draft, store)).toMatchObject({ ok: true });
+    await approveAll(store, levelOf(draft));
+    const frozen = await freezeLevel(store, levelOf(draft), { renderer: fakeRenderer(), frozenBy: "Test admin", checks: QUICK_FREEZE });
+    if (!frozen.ok) throw new Error(frozen.problems.join("\n"));
+    expect(recs(frozen.snapshot.topics)[0].title).toBe("basis");
+    expect(JSON.stringify(frozen.snapshot)).not.toContain(SENTINEL);
+  }, 60_000);
 
   it("computes display codes from positions: topic 11, sheet 3 is \"3-11\" on page 205", () => {
     expect(displayCode("3", 11)).toBe("3-11");
@@ -247,6 +382,8 @@ describe("snapshot items", () => {
     expect(items.map((i) => [i.kind, i.key, i.position])).toEqual([["level", "x", 0], ["topic", "t", 0], ["sheet", "s", 0]]);
     expect(manifestHash([...items].reverse())).toBe(manifestHash(items));
     expect(() => snapshotItems({ ...snapshot, sheets: [{ id: "s", firstPage: 1, basis: { note: SENTINEL } }] })).toThrow(/may not hold "basis"/);
+    expect(() => snapshotItems({ ...snapshot, sheets: [{ id: "s", firstPage: 1, front: { rows: [{ id: "r", limits: { basis: "x" } }] } }] })).toThrow(/may not hold "basis"/);
+    expect(snapshotItems({ ...snapshot, topics: [{ id: "t", code: "3-1", title: "basis", sheets: ["s"] }] })).toHaveLength(3);
   });
 
   it("refuses an item with a note in the memory store, as the database check does", async () => {

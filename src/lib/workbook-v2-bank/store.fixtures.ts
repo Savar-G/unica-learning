@@ -98,7 +98,7 @@ export function fakeBankSupabase(): FakeBankSupabase {
     if (method === "POST" && path === "/rest/v1/rpc/bank_write_level") {
       const written = await memory.writeLevel(JSON.parse(String(init?.body)).p_write);
       if (written.ok) return json(200, { version: written.version });
-      return json(400, { code: written.problem.includes("changed since") ? "PT409" : "23505", message: written.problem });
+      return json(400, { code: written.problem.includes("belong to another level") ? "23505" : "PT409", message: written.problem });
     }
     if (method === "POST" && path === "/rest/v1/rpc/bank_freeze_level") {
       try {
@@ -109,8 +109,9 @@ export function fakeBankSupabase(): FakeBankSupabase {
       }
     }
     if (method === "POST" && path === "/rest/v1/bank_reviews") {
-      const row = await memory.addReview(JSON.parse(String(init?.body)));
-      return json(201, new Headers(init?.headers).get("accept") === "application/vnd.pgrst.object+json" ? row : [row]);
+      const added = await memory.addReview(JSON.parse(String(init?.body)));
+      if (!added.ok) return json(400, { code: "PT409", message: added.problem });
+      return json(201, new Headers(init?.headers).get("accept") === "application/vnd.pgrst.object+json" ? added.review : [added.review]);
     }
     const table = path.replace("/rest/v1/", "");
     const all = tables();

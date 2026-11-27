@@ -13,7 +13,10 @@ const SNAPSHOT_COLUMNS = "id, level_id, version, name, content_hash, manifest_ha
 const ITEM_COLUMNS = "kind, key, position, content, hash";
 const NON_SHEET_KINDS = SNAPSHOT_ITEM_KINDS.filter((kind) => kind !== "sheet");
 
-/** A refusal of bank_freeze_level: a stale read, a taken version, an item not approved, or items that do not match. */
+/**
+ * A refusal of bank_freeze_level (a stale read, a taken version, an item not approved, or items that are not the working
+ * copy) or of a review insert (an item that is not live at that revision).
+ */
 const REFUSED = "PT409";
 
 function oneOf<T extends string>(list: readonly T[], value: string, what: string): T {
@@ -42,8 +45,12 @@ export function supabaseSnapshotStore(db: SupabaseClient<Database>, allPages: Al
     addReview: async (review) => {
       const { data, error } = await db.from("bank_reviews").insert(review)
         .select("id, level_id, item_kind, item_key, revision, reviewer, decision, comment, created_at").single();
-      if (error) throw new Error(`bank review: ${error.message}`);
-      return reviewOf(data);
+      if (error) {
+        // bank_review_current_revision: the item is retired, unknown or at another revision under the level lock.
+        if (error.code === REFUSED) return { ok: false, problem: error.message };
+        throw new Error(`bank review: ${error.message}`);
+      }
+      return { ok: true, review: reviewOf(data) };
     },
 
     readSnapshots: async (levelId) => allPages("snapshots", (from, to) => db.from("bank_snapshots")

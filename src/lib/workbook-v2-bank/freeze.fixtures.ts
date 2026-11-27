@@ -88,7 +88,10 @@ export function withSentinelNotes(draft: Rec): Rec {
 export async function approveAll(store: BankStore, levelId: string, reviewer = "Test reviewer"): Promise<number> {
   const items = liveItems(await store.readLevel(levelId));
   // The store directly: reviewItem reads the whole level for each review, and its rules have tests of their own.
-  for (const item of items) await store.addReview({ level_id: levelId, item_kind: item.kind, item_key: item.key, revision: item.revision, reviewer, decision: "approved", comment: null });
+  for (const item of items) {
+    const added = await store.addReview({ level_id: levelId, item_kind: item.kind, item_key: item.key, revision: item.revision, reviewer, decision: "approved", comment: null });
+    if (!added.ok) throw new Error(added.problem);
+  }
   return items.length;
 }
 
