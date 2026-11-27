@@ -1,4 +1,4 @@
--- UNI-242 second review repair: hosted probe of 20261127225904_bank_freeze_integrity. Run as postgres (Management API).
+-- UNI-242 second review repair: hosted probe of 20261127231335_bank_freeze_integrity. Run as postgres (Management API).
 -- Everything runs in ONE DO block that always ends by raising UNI242_INTEGRITY_PROBE with the results, so the whole
 -- transaction rolls back and no synthetic row (insert-only or not) is left. Synthetic level id: synth-test-probe242
 -- (invented data, the same as bank_freeze_hosted.sql). Every value in "steps" must be "pass"; "fail:<detail>" names a
@@ -34,10 +34,19 @@ begin
     and has_function_privilege('service_role', 'public.bank_freeze_level(jsonb)', 'execute') and not has_function_privilege('anon', 'public.bank_freeze_level(jsonb)', 'execute')
     and not has_function_privilege('authenticated', 'public.bank_canonical_json(jsonb)', 'execute') then 'pass' else 'fail:grants' end);
 
+  v_steps := v_steps || jsonb_build_object('0_retain_working_copy', case when not exists (
+    select 1 from unnest(array['bank_levels', 'bank_topics', 'bank_sheets', 'bank_questions', 'bank_scenarios', 'bank_region_packs']) t(name)
+    where has_table_privilege('service_role', 'public.' || t.name, 'delete, truncate')
+  ) then 'pass' else 'fail:working-copy removal privilege' end);
+
   -- 1. bank_canonical_json gives the text of canonicalJson (src/lib/workbook-v2/hash.ts) for this value, computed there.
   v_steps := v_steps || jsonb_build_object('1_canonical_json', case when public.bank_canonical_json(
     $j${"b":1,"a":[true,null,"x\"y\n\u0001é/"],"10":2,"2":{"Z":0.5,"_":-3,"a":0.001},"":"empty","4294967295":"not an index"}$j$::jsonb)
     = $t${"2":{"Z":0.5,"_":-3,"a":0.001},"10":2,"":"empty","4294967295":"not an index","a":[true,null,"x\"y\n\u0001é/"],"b":1}$t$ then 'pass' else 'fail:canonical text' end);
+
+  v_steps := v_steps || jsonb_build_object('1_canonical_number_and_keys', case when public.bank_canonical_json(
+    $j${"\uE000":2.5000,"\uD83D\uDE80":1.000,"\uD7FF":-0.000}$j$::jsonb)
+    = '{"퟿":0,"🚀":1,"":2.5}' then 'pass' else 'fail:number scale or UTF-16 order' end);
 
   -- 2. Import and approve every live item.
   v_ver := public.bank_write_level(v_write)->>'version';
@@ -95,6 +104,14 @@ begin
     v_snapshot := (v_res->>'snapshotId')::uuid;
     v_steps := v_steps || jsonb_build_object('5_service_role_freeze', case when (v_res->>'version')::integer = 1 and current_user = 'service_role' then 'pass' else 'fail:' || v_res::text || ' as ' || current_user end);
     v_steps := v_steps || jsonb_build_object('5_flag_restored', case when coalesce(current_setting('unica.in_bank_freeze_level', true), '') = '' then 'pass' else 'fail:flag left set' end);
+
+    begin
+      delete from public.bank_questions where level_id = v_level and id = v_q0;
+      v_steps := v_steps || '{"6_delete_draft":"fail:accepted"}';
+    exception when others then
+      get stacked diagnostics v_state = returned_sqlstate;
+      v_steps := v_steps || jsonb_build_object('6_delete_draft', case when v_state = '42501' then 'pass' else 'fail:' || v_state end);
+    end;
 
     -- 6. The service role cannot write snapshot rows itself, even with the freeze flag set, nor change a review.
     perform set_config('unica.in_bank_freeze_level', '1', true);

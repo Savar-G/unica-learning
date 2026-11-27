@@ -1,5 +1,5 @@
 // Reviews and snapshots in memory, with the rules of migrations 20261127205833_bank_freeze_snapshots,
-// 20261127224116_bank_freeze_review_repair and 20261127225904_bank_freeze_integrity: every table is insert only, a
+// 20261127224116_bank_freeze_review_repair and 20261127231335_bank_freeze_integrity: every table is insert only, a
 // snapshot item never holds `basis`, a review names the current revision of a live item, and a snapshot write is refused
 // (and writes nothing) for a stale read, a version that is not the next one, an item that is not approved at its current
 // revision, items that are not exactly the items of the working copy, or a hash that is not the hash of the content. Each write checks and writes with no await in between, as the level lock of

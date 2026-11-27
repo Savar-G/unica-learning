@@ -1,4 +1,4 @@
-// Reviews and snapshots in Supabase (migrations 20261127205833_bank_freeze_snapshots, 20261127225904_bank_freeze_integrity).
+// Reviews and snapshots in Supabase (migrations 20261127205833_bank_freeze_snapshots, 20261127231335_bank_freeze_integrity).
 // The tables are insert only and service-only; the service role only reads snapshots, and bank_freeze_level writes one in
 // one transaction. Item reads page past PostgREST's 1,000-row cap, and a caller's signal stops them.
 import type { SupabaseClient } from "@supabase/supabase-js";

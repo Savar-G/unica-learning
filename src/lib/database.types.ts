@@ -10678,7 +10678,10 @@ export type Database = {
         Args: { p_child: string; p_number: number; p_shipping: boolean }
         Returns: undefined
       }
+      bank_canonical_json: { Args: { p_value: Json }; Returns: string }
       bank_freeze_level: { Args: { p_freeze: Json }; Returns: Json }
+      bank_json_key_index: { Args: { p_key: string }; Returns: number }
+      bank_json_utf16_sort_key: { Args: { p_key: string }; Returns: string }
       bank_live_items: {
         Args: { p_level_id: string }
         Returns: {

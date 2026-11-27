@@ -18,6 +18,13 @@ returns bigint language sql immutable parallel safe set search_path = '' as $$
   select case when p_key ~ '^(0|[1-9][0-9]{0,9})$' then case when p_key::bigint <= 4294967294 then p_key::bigint end end
 $$;
 
+-- UTF-8 sorts supplementary characters after all BMP characters. JavaScript's UTF-16 sort puts them before
+-- U+E000 through U+FFFF. Move the lead bytes EE and EF after F4, the last valid lead byte.
+create function public.bank_json_utf16_sort_key(p_key text)
+returns text language sql immutable parallel safe set search_path = '' as $$
+  select replace(replace(regexp_replace(encode(convert_to(p_key, 'UTF8'), 'hex'), '(..)', ' \1', 'g'), ' ee', ' f5'), ' ef', ' f6')
+$$;
+
 -- canonicalJson in SQL: sorted keys, no spaces. Strings and numbers keep the JSON text of jsonb, which is the text that
 -- JSON.stringify sent (a number that JavaScript writes with an exponent comes back without one, so its hash differs and
 -- the freeze is refused: the check fails closed).
@@ -26,11 +33,12 @@ returns text language sql immutable parallel safe set search_path = '' as $$
   select case jsonb_typeof(p_value)
     when 'object' then '{' || coalesce((
       select string_agg(to_jsonb(e.key)::text || ':' || public.bank_canonical_json(e.value), ','
-        order by public.bank_json_key_index(e.key) is null, public.bank_json_key_index(e.key), e.key collate "C")
+        order by public.bank_json_key_index(e.key) is null, public.bank_json_key_index(e.key), public.bank_json_utf16_sort_key(e.key) collate "C")
       from jsonb_each(p_value) e), '') || '}'
     when 'array' then '[' || coalesce((
       select string_agg(public.bank_canonical_json(a.value), ',' order by a.ord)
       from jsonb_array_elements(p_value) with ordinality a(value, ord)), '') || ']'
+    when 'number' then trim_scale(p_value::text::numeric)::text
     else p_value::text
   end
 $$;
@@ -200,7 +208,7 @@ begin
     (select encode(sha256(convert_to(public.bank_canonical_json(coalesce(jsonb_agg(jsonb_build_object('kind', g.kind, 'key', g.key, 'position', g.position, 'hash', g.hash)
       order by g.kind_order, g.position), '[]'::jsonb)), 'UTF8')), 'hex') from given g),
     (select encode(sha256(convert_to('{' || string_agg(to_jsonb(p.k)::text || ':' || p.v, ','
-      order by public.bank_json_key_index(p.k) is null, public.bank_json_key_index(p.k), p.k collate "C") || '}', 'UTF8')), 'hex') from parts p)
+      order by public.bank_json_key_index(p.k) is null, public.bank_json_key_index(p.k), public.bank_json_utf16_sort_key(p.k) collate "C") || '}', 'UTF8')), 'hex') from parts p)
   into v_problem, v_manifest, v_content;
   if v_problem is not null then
     raise exception 'bank level %: the hash of these snapshot items is not the hash of their content: %', v_level_id, v_problem using errcode = 'PT409';
@@ -235,6 +243,10 @@ begin
   return jsonb_build_object('snapshotId', v_snapshot, 'version', v_next);
 end $$;
 
+-- The import retires missing draft rows. Protect their keys and revisions from deletion or truncation.
+revoke delete, truncate on public.bank_levels, public.bank_topics, public.bank_sheets, public.bank_questions,
+  public.bank_scenarios, public.bank_region_packs from service_role;
+
 -- The service role reads snapshots and reads and adds reviews; only bank_freeze_level (as the owner) writes snapshots.
 revoke all on public.bank_snapshots, public.bank_snapshot_items from service_role;
 grant select on public.bank_snapshots, public.bank_snapshot_items to service_role;
@@ -243,6 +255,8 @@ grant select, insert on public.bank_reviews to service_role;
 
 revoke all on function public.bank_json_key_index(text) from public, anon, authenticated;
 grant execute on function public.bank_json_key_index(text) to service_role;
+revoke all on function public.bank_json_utf16_sort_key(text) from public, anon, authenticated;
+grant execute on function public.bank_json_utf16_sort_key(text) to service_role;
 revoke all on function public.bank_canonical_json(jsonb) from public, anon, authenticated;
 grant execute on function public.bank_canonical_json(jsonb) to service_role;
 revoke all on function public.bank_require_new_revision() from public, anon, authenticated;
