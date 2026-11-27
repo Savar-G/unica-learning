@@ -526,7 +526,7 @@ describe("the freeze of a draft", () => {
   /** A row of word problems keeps its first question, which every region has, in one place. */
   const cut = (d: Draft) => {
     for (const sheet of d.sheets) {
-      for (const side of [sheet.front, sheet.back] as { rows: { shape: string; limits: unknown }[] }[]) {
+      for (const side of [sheet.front, sheet.back] as { rows: { shape: string; limits: unknown; items: number }[] }[]) {
         const [row] = side.rows;
         side.rows = [row.shape === "story" ? { ...row, items: 1, limits: { questions: (row.limits as { questions: string[] }).questions.slice(0, 1) } } : { ...row, items: 2 }];
       }

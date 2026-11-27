@@ -15,7 +15,7 @@ const OPERATIONS: readonly string[] = ["+", "-", "×", "÷"];
 const FRACTIONS: Readonly<Record<string, string>> = { "1/2": "½", "1/4": "¼", "3/4": "¾" };
 const MAX_NUMBER = 1000;
 /** A word problem of a workbook takes few steps. */
-export const MAX_OPERATIONS = 4;
+const MAX_OPERATIONS = 4;
 
 export type ReadExpr = { ok: true; expr: Expr } | { ok: false; problem: string };
 
@@ -90,10 +90,4 @@ export function solve(expr: Expr, values: Readonly<Record<string, number>>): Sol
   const result = work(expr, values, lines);
   if (typeof result === "string") return { ok: false, problem: result };
   return result.d === 1 ? { ok: true, value: result.n, lines } : { ok: false, problem: "the answer is not a whole number" };
-}
-
-/** The slots that a formula reads. */
-export function slotsOf(expr: Expr): string[] {
-  if ("slot" in expr) return [expr.slot];
-  return "op" in expr ? [...slotsOf(expr.left), ...slotsOf(expr.right)] : [];
 }

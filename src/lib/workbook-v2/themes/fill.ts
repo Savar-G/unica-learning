@@ -20,8 +20,8 @@ const SCENARIO_WORDS: Readonly<Record<string, (s: Scenario) => string>> = {
   units: (s) => s.unit.many,
 };
 /** The plural words: a slot before one of them must never be 1, and before a singular word it must always be 1. */
-export const PLURAL_WORDS = ["containers", "things", "units"];
-export const SINGULAR_WORDS = ["container", "thing", "unit"];
+const PLURAL_WORDS = ["containers", "things", "units"];
+const SINGULAR_WORDS = ["container", "thing", "unit"];
 const REGION_WORD = /^(unit|units|coin|coins|spell)\.([a-z][a-z0-9-]*)$/;
 
 export const isScenarioWord = (name: string): boolean => Object.hasOwn(SCENARIO_WORDS, name);

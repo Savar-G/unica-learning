@@ -14,10 +14,10 @@ export const STORY_FIELDS = ["defaultRegion", "regionPacks", "scenarios", "quest
 const ROUNDINGS = ["none", "nearest-5-cents"];
 const MAX_WORDS = 40;
 const MAX_CENTS = 10_000;
-export const MAX_SLOT_NUMBER = 9999;
+const MAX_SLOT_NUMBER = 9999;
 
 /** A text that a story prints: printable, one space between words, no digit (only slots print numbers) and no bracket. */
-export function storyTextProblem(value: unknown): string | null {
+function storyTextProblem(value: unknown): string | null {
   if (typeof value !== "string" || value === "" || value.trim() !== value || value.includes("  ")) return "must be text with one space between words and none at its ends";
   if (!isPrintable(value)) return "has a character that the fonts cannot print";
   if (/\d/.test(value)) return "has a digit, and only a slot prints a number";

@@ -9,9 +9,9 @@ import { readExpr, solve } from "./solver";
 import type { DefinedQuestion, Phrasing, PhrasingToken, SlotRange } from "./types";
 
 /** A defined question has at least this many approved phrasings, so that a child meets it in other words. */
-export const MIN_PHRASINGS = 2;
+const MIN_PHRASINGS = 2;
 /** The most choices of numbers that the check of a formula works through. A word problem has small numbers. */
-export const MAX_CHOICES = 10_000;
+const MAX_CHOICES = 10_000;
 const MAX_NUMBER = 9999;
 const SLOT_NAME = /^[a-z][a-z0-9-]{0,31}$/;
 
