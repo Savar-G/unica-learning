@@ -24,7 +24,7 @@ import {
 import { printContractForPhoto, sha256Hex, type Box, type PagePrintContract, type Point } from "@/lib/workbook-print-contract";
 import { enclosingBox, limitReachToPhoto, renderAnswerCrop } from "@/lib/scan-answer-crops";
 import { answerReach, boundedAnswerArea, placedRegions, scanContentBounds } from "@/lib/scan-answer-reach";
-import { markingRegions } from "@/lib/scan-marking-regions";
+import { cropRegions } from "@/lib/scan-crop-regions";
 import { pageUrl } from "@/lib/workbook-render";
 
 /** How long one job holds a photo's lease. A call inside it starts nothing. */
@@ -318,7 +318,10 @@ export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: s
   if (!input) return finished("refused", { reason: "printed-page-changed" }, 0);
   const [photo, printed] = input;
   if (!frame.page.qrToken) return finished("refused", { reason: "qr-mismatch", details: { qrRead: 0 } }, 0);
+  const { layout, captures } = contract.contract;
+  const v2 = layout !== undefined;
   const writing = frame.page.questions.flatMap((q) => (q.regions ?? []).flatMap((r) => (r.box ? [r.box] : [])));
+  for (const capture of captures ?? []) for (const field of capture.fields) writing.push(field.box);
   const firstOthers = frame.page.others.length ? fetchOthers(store, frame.page.others, 0) : undefined;
   const result = calibratePhoto({ photo, printed, contract, pageLink: pageUrl(frame.page.qrToken), writing });
   if (Date.now() >= deadline) return timedOut();
@@ -326,7 +329,7 @@ export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: s
   if (result.status === "refused") return finished("refused", { reason: result.reason, details: result.details }, 0);
   const calibration = result.status === "calibrated" ? result.calibration : null;
   let review: ScanCalibrationResult["review"] = result.status === "review" ? result.reason : undefined;
-  const planned = cropPlan(frame.page.questions);
+  const planned = cropPlan(frame.page.questions, v2);
   const cutOff: number[] = [];
   const held = new Map<number, QuestionHold>();
   const covered: CoveredRegionDetails[] = [];
@@ -334,7 +337,7 @@ export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: s
   const crops: (typeof planned.crops[number] & { display?: { box: Box; areas: Box[] } })[] = [];
   if (calibration) {
     // Compare distinctive print wherever another page of this book differs (#456, #975).
-    const ask = sheetChecker({ photo, printed, transform: calibration.transform, writing, sheet: calibration });
+    const ask = sheetChecker({ photo, printed, transform: calibration.transform, writing, sheet: calibration, layout });
     const boxes = frame.page.questions.flatMap((q) => {
       const box = q.box ?? planned.crops.find((c) => c.number === q.number)?.box;
       return box ? [{ number: q.number, box }] : [];
@@ -351,14 +354,14 @@ export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: s
     if (sheet !== "this-page" && (unclaimed || !held.size)) review = sheet;
 
     if (!review) {
-      const place = answerPlacement({ photo, printed, calibration, writing });
+      const place = answerPlacement({ photo, printed, calibration, writing, layout });
       const page = contract.contract.coordinates.image;
       const hidden = calibration.hiddenMarks?.map((m) => contract.contract.marks.points[m]) ?? [];
       for (const crop of planned.crops) {
         if (held.has(crop.number)) continue;
         if (!cropInPhoto(calibration, contract.contract, crop.box)) { cutOff.push(crop.number); continue; }
         const question = frame.page.questions.find((q) => q.number === crop.number)!;
-        const regions = markingRegions(question).map((region) => {
+        const regions = cropRegions(question, v2).map((region) => {
           const x = region.box.x + region.box.width / 2, y = region.box.y + region.box.height / 2;
           const check = hidden.some((m) => (m.x < page.width / 2) === (x < page.width / 2) && (m.y < page.height / 2) === (y < page.height / 2));
           return { regionId: region.id, ...place(region.box, check) };
@@ -383,9 +386,9 @@ export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: s
   const questions = frame.page.questions.map(q => ({ ...q, regions: placedRegions(q, snaps) }));
   if (calibration) for (const crop of crops) {
     const question = questions.find(q => q.number === crop.number)!;
-    const regions = markingRegions(question);
+    const regions = cropRegions(question, v2);
     const reaches = regions.map(region => {
-      const reach = answerReach(region, question.number, questions, content);
+      const reach = region.kind === "box" ? region.reach : answerReach(region, question.number, questions, content);
       return reach && limitReachToPhoto(calibration, contract.contract, region.box, reach);
     });
     if (!reaches.some(Boolean)) continue;

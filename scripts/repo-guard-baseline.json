@@ -54,7 +54,7 @@
     "src/lib/question-package.ts": 1091,
     "src/lib/report-email.ts": 612,
     "src/lib/report-view.ts": 778,
-    "src/lib/scan-calibration.ts": 1957,
+    "src/lib/scan-calibration.ts": 1952,
     "src/lib/scan-marking.ts": 655,
     "src/lib/scan-photo-set.ts": 937,
     "src/lib/supported-time-zones.ts": 662,

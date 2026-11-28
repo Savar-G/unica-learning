@@ -255,6 +255,10 @@ This implementation changes no family release setting. Root owns hosted schema a
 
 ## Two pages in one photo (#915)
 
+A v2 workbook prints its QR code in the outer bottom corner. Upload reads the first code and loads that page's stored layout. It uses the opposite layout to find the other code and checks both pages before it cuts between their printed areas. A readable v2 code can place a page with all four marks hidden. The print, page identity and answer visibility checks still apply. The stored page uses image pixels for answers, reach and time log captures. Early v2 pages without stored reach use the bounded extension for supported answer regions. The scan check makes no time log reading.
+
+For v1 workbooks, the rules below apply.
+
 A parent may photograph the open book flat with two pages side by side. At upload (`src/lib/scan-photo-image.ts`), after the first page code is read, a second code is looked for only where a neighbouring page's code would print: one page width along the first code's own rightward direction (code symbol 0.0572 of the page width, centred 0.114 from its left edge). It counts only as a spread when it is another page's code of the same size and direction, 0.9 to 1.3 page widths away along that direction and within 0.1 off it. The photo is then split on the line halfway between the left page's right edge and the right page's left edge: each page keeps its side, the other side is painted white, so each page photo shows only its own code and corner marks. A single page is unchanged, and a sheet lying a little off another (not a page width away) is not a spread.
 
 The upload route binds the photo to the first page its own code identifies (a left page that already has a photo, or is not this child's, lets the right page take the photo). The other page becomes its own photo, admitted, bound by its own code, stored and saved like any upload, then checked; any refusal leaves the first page as it is, and the answer's `spread.state` says why. Each page photo is still checked against its own print like any photo, so a half can be refused (for example a corner mark in shadow) but never bound to another page.

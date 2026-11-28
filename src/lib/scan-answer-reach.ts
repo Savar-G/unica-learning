@@ -71,6 +71,8 @@ export function placedRegions(
 ): readonly PrintedRegion[] | null {
   return question.regions?.map(region => {
     const snap = snaps.find(s => s.number === question.number && s.regionId === region.id);
-    return snap ? { ...region, box: snap.box } : region;
+    if (!snap) return region;
+    const { reach, box } = region;
+    return { ...region, box: snap.box, ...(reach && box ? { reach: { ...reach, x: reach.x + snap.box.x - box.x, y: reach.y + snap.box.y - box.y } } : {}) };
   }) ?? null;
 }

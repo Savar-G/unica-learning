@@ -1,6 +1,6 @@
 // Puts the content of a sheet into the rectangles of its templates. It decides no position of its own.
 import type { SnapshotSheet } from "../bank/snapshot";
-import { BRACKET_SIGN, PAPER, partRegionName, PRINT_RULES, type BookItem, type Capture, type FaceToken, type Ink, type PageModel, type Rect, type Region, type RegionRole, type Side } from "../contract";
+import { BRACKET_SIGN, PAPER, partRegionName, PRINT_RULES, timeLogCapture, type BookItem, type Capture, type FaceToken, type Ink, type PageModel, type Rect, type Region, type RegionRole, type Side } from "../contract";
 import { qrSquares } from "./qr";
 import { cellsFor, placeProblem, tokensOf, type AnswerArea, type BracketPlace, type ColumnPlace, type FieldsPlace, type FigurePlace, type ItemPlace, type PageFrame, type StoryPlace, type TokenCell, type TokenPlace } from "./templates";
 
@@ -189,7 +189,7 @@ function timeLogOf(frame: PageFrame, id: string): { region: Region; capture: Cap
   const ink = place.fields.flatMap((field): Ink[] => [text(field.labelRect, field.label, label.size, label.weight, "right"), { kind: "outline", rect: field.box, color: BLACK, width: box.outline }]);
   return {
     region: { id, role: "capture", rect: place.rect, item: null, part: null, ink },
-    capture: { id, kind: "time-log", rect: place.rect, fields: place.fields.map(({ name, box: rect, reach }) => ({ name, rect, reach })) },
+    capture: timeLogCapture(place, id),
   };
 }
 

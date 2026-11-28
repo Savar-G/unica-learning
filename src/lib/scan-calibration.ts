@@ -20,7 +20,9 @@ import { paperEdges } from "@/lib/scan-paper-edges";
 import { noteScanCode, noteScanMarks, type AnswerPlacement, type CalibrationRefusal, type PageFitDetails, type ScanCalibrationDetails } from "@/lib/scan-calibration-details";
 import { snapPrint } from "@/lib/scan-answer-snap";
 import type { QuestionPackage } from "@/lib/question-package";
-import { markingRegions } from "@/lib/scan-marking-regions";
+import { cropRegions } from "@/lib/scan-crop-regions";
+import { QR_ZOOM_PASSES } from "@/lib/scan-qr-windows";
+import { isScanLayout, scanLayoutPixels } from "@/lib/workbook-print-layout";
 import {
   SCAN_MARKS,
   type Box,
@@ -553,7 +555,9 @@ function preparedPhoto(photo: Raster): PreparedPhoto {
 const overlaps = (a: Box, b: Box) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 
 // Scan marks constrain geometry separately. Either binding inset can appear on a near twin.
-function markPrint({ width, height }: { width: number; height: number }): Box[] {
+function markPrint(image: { width: number; height: number }, layout?: PagePrintContract["layout"]): Box[] {
+  if (layout) return scanLayoutPixels(layout, image).marks;
+  const { width, height } = image;
   const w = Math.ceil(width * 0.082), h = Math.ceil(width * 0.05);
   return [0, width - w].flatMap((x) => [0, height - h].map((y) => ({ x, y, width: w, height: h })));
 }
@@ -1206,13 +1210,13 @@ function spotScore(spot: readonly { x: number; y: number; apart: number }[], p: 
  * evidence refuses, so glare cannot pass a sheet. A twin with no such spot prints the same as this page apart from its code,
  * and cannot be told from it.
  */
-export function sheetChecker(o: { photo: Raster; printed: Raster; transform: Transform; writing?: readonly Box[]; sheet?: { bend?: Bend; mesh?: Mesh } }): (others: readonly Raster[]) => SheetCheck {
+export function sheetChecker(o: { photo: Raster; printed: Raster; transform: Transform; writing?: readonly Box[]; sheet?: { bend?: Bend; mesh?: Mesh }; layout?: PagePrintContract["layout"] }): (others: readonly Raster[]) => SheetCheck {
   const self = preparedPrinted(o.printed), { greySums } = preparedPhoto(o.photo);
   // A bent sheet is read where its calibration aligned it (#912), each part in its place.
   const shape = o.sheet ? sheetShape(o.sheet, self.source) : undefined;
   const { width, height } = self;
   const qr = self.qr ? [boundsOf(self.qr.corners)] : [];
-  const skip = [...(o.writing ?? []), ...qr, ...markPrint(self.source)];
+  const skip = [...(o.writing ?? []), ...qr, ...markPrint(self.source, o.layout)];
   const inked = printedInk(self, skip);
   let grids: { a: Float32Array; b: Float32Array; contrast: (x: number, y: number) => number } | null = null;
   return (others) => {
@@ -1481,15 +1485,6 @@ function wholePhotoQr(photo: Raster): FoundQr | null {
   return wholeQrCache.get(photo)!;
 }
 
-/** The upload's zoomed reads (scan-photo-image.ts), kept the same: change the two together. */
-// Each pass: its zoom, its window as a part of the photo's width and height, and the windows' top-left corners.
-// First a quarter-size window low on the left, where the page prints its code: a real photo's code that no half window
-// reads (a coil, a hand's shadow or the next page beside it in the same window) reads there (Aarav's book, 2026-11-14).
-const QR_ZOOM_PASSES = [
-  [2, 0.25, [[0, 0.75], [0.125, 0.75], [0, 0.625], [0.125, 0.625]]],
-  [2, 0.5, [[0, 0.5], [0.25, 0.5], [0.5, 0.5], [0, 0.25], [0.25, 0.25], [0.5, 0.25], [0, 0], [0.25, 0], [0.5, 0]]],
-  [3, 0.5, [[0, 0.5], [0.5, 0.5], [0, 0], [0.5, 0]]],
-] as const;
 const photoQrCache = new WeakMap<Raster, { found: Map<string, FoundQr>; remaining: Generator<FoundQr> }>();
 function* zoomedPhotoCodes(photo: Raster): Generator<FoundQr> {
   const grey: Raster = { ...photo, channels: 1, data: toGrey(photo) };
@@ -1561,7 +1556,7 @@ const MARK_WEIGHT = 10;
 interface QrPlacement { t: Transform; turns: 0 | 1 | 2 | 3; fit: number; mesh?: Mesh; marks: Point[]; missing: ScanMark[]; hidden: ScanMark[] }
 
 /** Place the page using its code, expanding print matches, and any reliable marks and paper edges. */
-function placedByQr(photo: Raster, printedQr: FoundQr, ink: PrintedInk, greySums: Uint32Array, shapes: readonly MarkShape[], stored: readonly Point[], page: { width: number; height: number }, qrGrid: PreparedPrinted["qrGrid"], details: ScanCalibrationDetails): QrPlacement | null {
+function placedByQr(photo: Raster, printedQr: FoundQr, ink: PrintedInk, greySums: Uint32Array, shapes: readonly MarkShape[], stored: readonly Point[], page: { width: number; height: number }, qrGrid: PreparedPrinted["qrGrid"], details: ScanCalibrationDetails, layout: ReturnType<typeof scanLayoutPixels> | null): QrPlacement | null {
   const code = photoQr(photo, printedQr.link);
   if (!code) return null;
   details.placement = 2;
@@ -1584,14 +1579,14 @@ function placedByQr(photo: Raster, printedQr: FoundQr, ink: PrintedInk, greySums
     }
     const kept = agreeing(matchPatches(sa.g, sb.g, sa.w, sa.h, nodes, MESH_COARSE_PATCH, MESH_REACH, MESH_COARSE).anchors, MESH_AGREE_COARSE / MESH_COARSE);
     details.qrPatches = kept.length;
-    if (kept.length < QR_PLACE_MIN_PATCHES) return null;
+    if (kept.length < QR_PLACE_MIN_PATCHES) { if (layout) break; return null; }
     const by = MESH_COARSE * 2;
     pairs = kept.map((k) => {
       const from = { x: k.i * MESH_STEP * 2, y: k.j * MESH_STEP * 2 };
       return { from, to: applyTransform(t!, { x: from.x + k.dx * by, y: from.y + k.dy * by }) };
     });
     let next = fit(pairs.map((p) => p.from), pairs.map((p) => p.to));
-    if (!next) return null;
+    if (!next) { if (layout) break; return null; }
     // Once more without the patches the map leaves furthest out.
     const errors = pairs.map((p) => distance(applyTransform(next!, p.from), p.to)), cut = Math.max(4, 3 * [...errors].sort((x, y) => x - y)[errors.length >> 1]);
     const close = pairs.filter((_, k) => errors[k] <= cut);
@@ -1604,14 +1599,14 @@ function placedByQr(photo: Raster, printedQr: FoundQr, ink: PrintedInk, greySums
   // Look for optional L shapes with arms that follow the placed page.
   const at = (p: Point) => photoPointOf(t!, first.mesh, p);
   const scale = distance(at({ x: 0, y: page.height / 2 }), at({ x: page.width, y: page.height / 2 })) / page.width;
-  const arm = MARK_ARM * page.width * scale;
+  const length = layout?.marks[0].width ?? MARK_ARM * page.width, stroke = layout?.stroke ?? length / 5;
+  const arm = length * scale;
   const found: { at: number; corner: Point }[] = [], missing: ScanMark[] = [], hidden: ScanMark[] = [];
   for (let k = 0; k < 4; k++) {
     const p = at(stored[k]);
     const inward = { x: stored[k].x < page.width / 2 ? 1 : -1, y: stored[k].y < page.height / 2 ? 1 : -1 };
     // The L points inward. A corner near an edge does not mean that either arm is cut off. Check the transformed L's
     // perimeter, including its stroke width, rather than a full arm-length band outside each side of the corner.
-    const length = MARK_ARM * page.width, stroke = length / 5;
     const footprint = [[0, 0], [length, 0], [length, stroke], [stroke, stroke], [stroke, length], [0, length]];
     const inPhoto = footprint.every(([x, y], i) => {
       const next = footprint[(i + 1) % footprint.length];
@@ -1675,16 +1670,18 @@ export function calibratePhoto(o: { photo: Raster; printed: Raster; contract: Ph
   if (o.contract.status !== "available") return { status: "unavailable", reason: o.contract.reason };
   const { contract, revision } = o.contract;
   const { photo, printed } = o;
-  // The code the page image printed: where it sits comes from the image the contract fingerprints, never from a template.
+  const pageSize = contract.coordinates.image;
+  if (contract.layout !== undefined && (!isScanLayout(contract.layout) || printed.width !== pageSize.width || printed.height !== pageSize.height)) return { status: "unavailable", reason: "no-contract" };
+  const layout = contract.layout ? scanLayoutPixels(contract.layout, pageSize) : null;
   const prepared = preparedPrinted(printed);
   const printedQr = prepared.qr;
   const details: ScanCalibrationDetails = { qrRead: 0 };
-  if (!printedQr || printedQr.link !== o.pageLink) return { status: "refused", reason: "qr-mismatch", details };
+  if (!printedQr || printedQr.link !== o.pageLink || (layout && !printedQr.corners.every(({ x, y }) =>
+    x >= layout.qr.x && x <= layout.qr.x + layout.qr.width && y >= layout.qr.y && y <= layout.qr.y + layout.qr.height))) return { status: "refused", reason: "qr-mismatch", details };
   const { greySums, quads, shapes } = preparedPhoto(photo);
   details.markCandidates = shapes.length;
-  const ink = printedInk(prepared, [...(o.writing ?? []), boundsOf(printedQr.corners), ...markPrint(prepared.source)]);
+  const ink = printedInk(prepared, [...(o.writing ?? []), boundsOf(printedQr.corners), ...(layout?.marks ?? markPrint(prepared.source))]);
   const stored = SCAN_MARKS.map((m) => contract.marks.points[m]);
-  const pageSize = contract.coordinates.image;
   let refusal: CalibrationRefusal = quads.length === 0 ? "marks-missing" : "marks-inconsistent";
   const followers: { order: MarkShape[]; t: Transform; turns: 0 | 1 | 2 | 3; fit: number; mesh?: Mesh; next: number | null }[] = [];
   // Flat first, every rectangle and way up; only when no rectangle follows the page flat is a bent sheet tried (#912). A
@@ -1737,7 +1734,7 @@ export function calibratePhoto(o: { photo: Raster; printed: Raster; contract: Ph
     };
   };
   if (oneSheet || followers.length === 0) {
-    const placed = placedByQr(photo, printedQr, ink, greySums, shapes, stored, pageSize, prepared.qrGrid, details);
+    const placed = placedByQr(photo, printedQr, ink, greySums, shapes, stored, pageSize, prepared.qrGrid, details, layout);
     if (!placed) return unplaced(oneSheet ? "ambiguous-page" : refusal);
     return calibration(placed, { placedBy: "qr", missingMarks: placed.missing, ...(placed.hidden.length ? { hiddenMarks: placed.hidden } : {}) });
   }
@@ -1760,13 +1757,13 @@ export function boxDistance(a: Box, b: Box): number {
 }
 
 /** Assess nearby question print and locate the frame in photo pixels before adding any crop margin. */
-export function answerPlacement(o: { photo: Raster; printed: Raster; calibration: Calibration; writing: readonly Box[] }) {
+export function answerPlacement(o: { photo: Raster; printed: Raster; calibration: Calibration; writing: readonly Box[]; layout?: PagePrintContract["layout"] }) {
   const { photo, printed, calibration, writing } = o;
   const prepared = preparedPrinted(printed), { greySums } = preparedPhoto(photo);
   const photoGrey = toGrey(photo);
   const { width, height, source } = prepared;
   const ink = printedInk(prepared, [...writing.map((b) => ({ x: b.x - 3, y: b.y - 3, width: b.width + 6, height: b.height + 6 })),
-    ...(prepared.qr ? [boundsOf(prepared.qr.corners)] : []), ...markPrint(prepared.source)], FIT_CELL / 2);
+    ...(prepared.qr ? [boundsOf(prepared.qr.corners)] : []), ...markPrint(prepared.source, o.layout)], FIT_CELL / 2);
   const shape = sheetShape(calibration, source), t = calibration.transform;
   const at = (x: number, y: number) => applyTransform(t, shape ? shape(x, y) : { x, y });
   let grids: { a: Float32Array; b: Float32Array } | undefined;
@@ -1940,10 +1937,10 @@ export interface CropQuestion {
 }
 
 /** The page's numbered crops, in printed order, and the questions this slice cannot crop. */
-export function cropPlan(questions: readonly CropQuestion[]): { crops: CropItem[]; notSupported: number[] } {
+export function cropPlan(questions: readonly CropQuestion[], v2 = false): { crops: CropItem[]; notSupported: number[] } {
   const crops: CropItem[] = [], notSupported: number[] = [];
   for (const q of [...questions].sort((a, b) => a.number - b.number)) {
-    const regions = markingRegions(q);
+    const regions = cropRegions(q, v2);
     if (!regions.length) { notSupported.push(q.number); continue; }
     const x = Math.min(...regions.map(r => r.box.x)), y = Math.min(...regions.map(r => r.box.y));
     const right = Math.max(...regions.map(r => r.box.x + r.box.width)), bottom = Math.max(...regions.map(r => r.box.y + r.box.height));

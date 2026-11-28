@@ -14,6 +14,8 @@ import { canonical, digestOf } from "@/lib/workbook-digest";
 import { packageItem, type QuestionPackage } from "@/lib/question-package";
 import type { PageContent } from "@/lib/workbook-page";
 import type { PlannedPage, PlannedPart, WorkbookPlan } from "@/lib/workbook-plan";
+import { isScanLayout, printedCapture, printedPixels } from "@/lib/workbook-print-layout";
+import { CAPTURE_KINDS, SCAN_LAYOUTS, V2_SCAN_LAYOUT_VERSION, timeLogCapture, type Capture, type ScanLayoutId } from "@/lib/workbook-v2/contract";
 
 export const PRINT_CONTRACT_VERSION = 1;
 export const TEACHING_CONTEXT_VERSION = 1;
@@ -40,6 +42,9 @@ export interface Box extends Point { width: number; height: number }
 
 export interface PagePrintContract {
   version: number;
+  /** The layout of the printed sheet. Older contracts omit this field. */
+  layout?: ScanLayoutId;
+  captures?: PrintedCapture[];
   workbookId: string;
   /** The page's number, which runs through the whole workbook. */
   page: number;
@@ -76,11 +81,19 @@ export interface PagePrintContract {
   };
 }
 
+export interface PrintedCapture {
+  id: string;
+  kind: Capture["kind"];
+  box: Box;
+  fields: { name: string; box: Box; reach: Box }[];
+}
+
 /** One answer region as printed. `box` is null when the template did not measure it on the page. */
 export interface PrintedRegion {
   id: string;
   kind: string;
   box: Box | null;
+  reach?: Box;
 }
 
 export type MasteryReason = "not-scorable" | "parent-checked" | "try-first" | "no-item-step";
@@ -267,6 +280,13 @@ const boxInside = (b: unknown, image: { width: number; height: number }) =>
   b.x >= 0 && b.y >= 0 && b.width > 0 && b.height > 0 &&
   b.x + b.width <= image.width + 0.01 && b.y + b.height <= image.height + 0.01;
 
+const isCapture = (v: unknown, image: { width: number; height: number }) => isObject(v) &&
+  typeof v.id === "string" && v.id.length > 0 && CAPTURE_KINDS.some((kind) => kind === v.kind) && boxInside(v.box, image) &&
+  Array.isArray(v.fields) && v.fields.length > 0 && v.fields.every((f) =>
+    isObject(f) && typeof f.name === "string" && f.name.length > 0 && boxInside(f.box, image) && boxInside(f.reach, image));
+
+const v2Side = (page: number) => (page % 2 === 1 ? "front" : "back");
+
 /** What is wrong with a stored or written contract, or null. `at`: the workbook, page and image it must name. */
 export function printContractProblem(c: unknown, at: { workbookId: string; page: number; image: { width: number; height: number } | null }): string | null {
   if (!isObject(c)) return "the print contract is not an object";
@@ -279,6 +299,10 @@ export function printContractProblem(c: unknown, at: { workbookId: string; page:
   }
   const image = coordinates.image as { width?: unknown; height?: unknown } | undefined;
   if (!at.image || image?.width !== at.image.width || image?.height !== at.image.height) return "the print contract's image size is not the page image's";
+  if (c.layout !== undefined && (!isScanLayout(c.layout) || c.layout.side !== v2Side(at.page))) return "the print contract has an unsupported scan layout";
+  if (c.captures !== undefined && (!isScanLayout(c.layout) || !Array.isArray(c.captures) || !c.captures.every((v) => isCapture(v, at.image!)))) {
+    return "the print contract has invalid captures";
+  }
   const content = coordinates.content;
   if (content !== undefined && !boxInside(content, at.image)) return "the content area is not inside the page image";
   const scale = coordinates.scale as { x?: unknown; y?: unknown } | undefined;
@@ -309,6 +333,8 @@ export function regionsProblem(regions: unknown, image: { width: number; height:
     if (!isObject(b) || ![b.x, b.y, b.width, b.height].every(isNumber) || b.x < 0 || b.y < 0 || b.width <= 0 || b.height <= 0) return `region ${r.id}'s box is not a box`;
     // (A thousandth over: a box rounded to the contract's precision.)
     if (!image || b.x + b.width > image.width + 0.01 || b.y + b.height > image.height + 0.01) return `region ${r.id}'s box is not inside the page image`;
+    if (r.reach !== undefined && (!boxInside(r.reach, image) || r.reach.x > b.x || r.reach.y > b.y
+      || r.reach.x + r.reach.width < b.x + b.width - 0.01 || r.reach.y + r.reach.height < b.y + b.height - 0.01)) return `region ${r.id}'s reach does not contain its box`;
   }
   return null;
 }
@@ -328,6 +354,20 @@ export const teachingProblem = (t: unknown) => (isTeaching(t) ? null : "the teac
 /** A stored value of each part, or null when this code cannot trust it: the book then has no automatic marking there. */
 export const storedPrintContract = (v: unknown, at: Parameters<typeof printContractProblem>[1]) =>
   (printContractProblem(v, at) === null ? (v as PagePrintContract) : null);
+
+/** The first v2 publisher recorded the generator, page order and day position. Those identify its layout and time log. */
+export function storedScanPrintContract(v: unknown, at: Parameters<typeof printContractProblem>[1], generator?: string): PagePrintContract | "unsupported" | null {
+  const contract = storedPrintContract(v, at);
+  if (!contract) return v == null && generator !== "v2" ? null : "unsupported";
+  if (contract.layout) return generator === "v1" ? "unsupported" : contract;
+  if (generator !== "v2") return contract;
+  const layout = { version: V2_SCAN_LAYOUT_VERSION, side: v2Side(at.page) } as const;
+  const { paper, content, timeLog } = SCAN_LAYOUTS[layout.version][layout.side];
+  const { image } = contract.coordinates;
+  const captures = timeLog && contract.pageOfDay === 1 && contract.label
+    ? [printedCapture(timeLogCapture(timeLog, `${contract.label}/time-log`), paper, image)] : [];
+  return { ...contract, layout, captures, coordinates: { ...contract.coordinates, content: printedPixels(content, paper, image) } };
+}
 export const storedRegions = (v: unknown, image: { width: number; height: number } | null) =>
   (regionsProblem(v, image) === null ? (v as PrintedRegion[]) : null);
 export const storedTeaching = (v: unknown) => (isTeaching(v) ? v : null);
@@ -540,5 +580,6 @@ export function printContractForPhoto(
 ): PhotoContract {
   if (!book.printedRevision || !page.printContract) return { status: "unavailable", reason: "no-contract" };
   if (photo.printedRevision !== book.printedRevision) return { status: "unavailable", reason: "other-revision" };
+  if (page.printContract.layout !== undefined && !isScanLayout(page.printContract.layout)) return { status: "unavailable", reason: "no-contract" };
   return { status: "available", revision: book.printedRevision, contract: page.printContract };
 }

@@ -57,6 +57,30 @@ function family(pages: Row[]) {
 const other = (n: number, path = `other-${n}.png`, more: Row = {}) => ({ id: pageId(n), parent_id: PARENT, workbook_id: BOOK, page_number: n, page_type: "practice", image_path: path, ...SIZE, ...more });
 const othersOf = async (db: SupabaseClient<Database>) => (await scanCropStore(db).frame({ parent: PARENT, photo: PHOTO }))!.page.others;
 
+it("reads early v2 page rows in the crop frame and refuses an explicit unsupported layout", async () => {
+  const tables = family([]);
+  Object.assign(tables.workbooks[0], { generator: "v2" });
+  const old = {
+    version: 1, workbookId: BOOK, page: 5, label: "invented/1/front", day: 2, pageOfDay: 1,
+    coordinates: {
+      units: "image-px", origin: "top-left", x: "right", y: "down", orientation: "portrait",
+      image: { width: 1275, height: 1650 }, cssPage: { width: 612, height: 792 }, scale: { x: 150 / 72, y: 150 / 72 },
+    },
+    marks: { anchor: "outer-corner", order: ["tl", "tr", "br", "bl"], points: {
+      tl: { x: 187.5, y: 75 }, tr: { x: 1200, y: 75 }, br: { x: 1200, y: 1575 }, bl: { x: 187.5, y: 1575 },
+    } },
+    fingerprints: { content: "invented", image: "f".repeat(64) },
+  };
+  const read = async (contract: object) => {
+    Object.assign(tables.workbook_pages[0], { print_contract: contract });
+    const frame = await scanCropStore(fakeDb(tables).db).frame({ parent: PARENT, photo: PHOTO });
+    expect(frame?.book.printedRevision).toBe("r");
+    return frame?.page.printContract;
+  };
+  expect(await read(old)).toMatchObject({ layout: { version: 2, side: "front" }, captures: [{ id: "invented/1/front/time-log" }] });
+  expect(await read({ ...old, layout: { version: 99, side: "front" } })).toBeNull();
+});
+
 describe("the child's other pages", () => {
   it("finds the only near twin when it is candidate 1,001 of 1,001", async () => {
     // Disproved if the answer stops at the database's 1,000-row limit.

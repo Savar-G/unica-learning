@@ -1,14 +1,24 @@
 import fc from "fast-check";
+import sharp from "sharp";
 import { beforeAll, describe, expect, it } from "vitest";
 import { createSession } from "@/lib/maya";
 import { teachingPackage } from "@/lib/maya-teaching";
 import { workbookAnswerPages } from "@/lib/parent-workbook-answers";
 import { checkQuestionPackage } from "@/lib/question-package";
 import { storedContent, storedQuestion, type Workbook } from "@/lib/workbook-content";
-import { printContractProblem, printedRevision, regionsProblem } from "@/lib/workbook-print-contract";
+import { calibratePhoto, cropMargin, photoPoint, sheetChecker } from "@/lib/scan-calibration";
+import { runScanCrops } from "@/lib/scan-crops";
+import { memoryScanCropStore } from "@/lib/scan-crops-memory";
+import { normalizeScanPhoto } from "@/lib/scan-photo-image";
+import { fillBox, greyRaster, pagePng } from "@/lib/scan-synthetic";
+import { printContractProblem, printContractForPhoto, printedRevision, regionsProblem, storedPrintContract, storedScanPrintContract, type PagePrintContract } from "@/lib/workbook-print-contract";
+import { pageUrl } from "@/lib/workbook-render";
 import { buildBook, wholeBook, type BuiltBook } from "@/lib/workbook-v2/build/build-book";
-import { PAPER } from "@/lib/workbook-v2/contract";
+import { PAPER, type Rect } from "@/lib/workbook-v2/contract";
+import type { Renderer } from "@/lib/workbook-v2/renderer";
+import { openRenderer } from "@/lib/workbook-v2/render/typst";
 import { fakeRenderer } from "@/lib/workbook-v2/testing/fake-renderer";
+import { skipTypstTests, testAssets } from "@/lib/workbook-v2/testing/typst";
 import { IMAGE, SCALE, answerValueOf, boxOf, payloadProblem, pngSize, writeBook } from "./contract-writer";
 import { allocationOf } from "./input";
 import { promptOf } from "./package-copy";
@@ -161,4 +171,182 @@ describe("a question's box", () => {
     expect(pngSize(built.pages[0].image)).toEqual({ width: 1275, height: 1650 });
     expect(pngSize(new Uint8Array(30))).toBeNull();
   });
+});
+
+describe.skipIf(skipTypstTests(process.env.WORKBOOK_V2_REQUIRE_TYPST === "1"))("scanning a published Typst workbook", () => {
+  let real: BuiltBook;
+  let renderer: Renderer;
+  let payload: ReturnType<typeof writeBook>["payload"];
+  beforeAll(async () => {
+    renderer = await openRenderer(testAssets());
+    const result = await buildBook({ snapshot: request().snapshot, book: allocation.allocation.book }, renderer, wholeBook(allocation.allocation.pagesPerDay));
+    if (result.status !== "built") throw new Error(result.problems.join("\n"));
+    real = result;
+    payload = writeBook(real, allocation).payload;
+  }, 60_000);
+
+  const fromStorage = (i: number) => {
+    const page = payload.pages[i];
+    return storedPrintContract(JSON.parse(JSON.stringify(page.printContract)), { workbookId: WORKBOOK, page: page.number, image: page.image })!;
+  };
+  const contractFor = async (token: string) => {
+    const i = tokens.indexOf(token);
+    return i < 0 ? null : fromStorage(i);
+  };
+  const calibrate = async (i: number, bytes: Uint8Array, contract: PagePrintContract | null = fromStorage(i), expected = tokens[i]) => {
+    const revision = payload.workbook.printedRevision;
+    return calibratePhoto({ photo: await greyRaster(bytes), printed: await greyRaster(real.pages[i].image),
+      contract: printContractForPhoto({ printedRevision: revision }, { printContract: contract }, { printedRevision: revision }),
+      pageLink: pageUrl(expected), writing: payload.questions.filter((q) => q.pageNumber === i + 1).flatMap((q) => q.regions.flatMap((r) => r.box ? [r.box] : [])) });
+  };
+  const hideMarks = async (i: number, count: number) => {
+    const { image, model } = real.pages[i];
+    const photo = await greyRaster(image);
+    for (const { rect } of model.regions.filter((r) => r.role === "scan-mark").slice(0, count)) {
+      const x = Math.floor(rect.x * SCALE) - 1, y = Math.floor(rect.y * SCALE) - 1;
+      fillBox(photo, x, y, Math.ceil((rect.x + rect.w) * SCALE) - x + 1, Math.ceil((rect.y + rect.h) * SCALE) - y + 1, 255);
+    }
+    return pagePng(photo);
+  };
+  const checkCrops = async (i: number, bytes: Uint8Array, { twin, early = false }: { twin?: Uint8Array; early?: boolean } = {}) => {
+    const page = payload.pages[i];
+    const legacy = { ...page.printContract, layout: undefined, captures: undefined, coordinates: { ...page.printContract.coordinates, content: undefined } };
+    const scanned = early ? storedScanPrintContract(legacy, { workbookId: WORKBOOK, page: page.number, image: page.image }, "v2") : fromStorage(i);
+    if (!scanned || scanned === "unsupported") throw new Error("No layout for the invented page");
+    const questions = payload.questions.filter((q) => q.pageNumber === i + 1).map((q) =>
+      early ? { ...q, regions: q.regions.map(({ id, kind, box }) => ({ id, kind, box })) } : q);
+    const clock = Date.parse("2026-11-27T12:00:00Z");
+    const ref = { parent: PARENT, photo: "typst-photo" };
+    const memory = memoryScanCropStore({ now: () => clock });
+    memory.printed.set(page.image.path, real.pages[i].image);
+    if (twin) memory.printed.set("invented-twin.png", twin);
+    memory.photos.set(ref.photo, { parent: PARENT, state: "saved", createdAt: clock, expiresAt: clock + 100_000, bytes, storedBytes: bytes.length,
+      frame: { book: { printedRevision: payload.workbook.printedRevision }, printedRevision: payload.workbook.printedRevision,
+        page: { printContract: scanned, qrToken: page.qrToken, imagePath: page.image.path, others: twin ? ["invented-twin.png"] : [], questions } } });
+    return runScanCrops(memory.store, ref, "test-lease");
+  };
+
+  it("stores the layout identity, answer rectangles and captures of the rendered page", () => {
+    for (const i of [0, 1]) {
+      const { model } = real.pages[i];
+      const px = (n: number) => Math.round(n * 1000) / 1000;
+      const box = ({ x, y, w, h }: Rect) => ({
+        x: px(x * IMAGE.width / model.size.w), y: px(y * IMAGE.height / model.size.h),
+        width: px(w * IMAGE.width / model.size.w), height: px(h * IMAGE.height / model.size.h),
+      });
+      expect(fromStorage(i)).toMatchObject({ layout: { version: 2, side: model.side }, captures: model.captures.map(({ id, kind, rect, fields }) => ({
+        id, kind, box: box(rect), fields: fields.map(({ name, rect, reach }) => ({ name, box: box(rect), reach: box(reach) })),
+      })) });
+      const expected = model.regions.filter((r) => r.role === "answer");
+      const stored = payload.questions.filter((q) => q.pageNumber === i + 1).flatMap((q) => q.regions);
+      expect(stored).toHaveLength(expected.length);
+      for (const [j, { rect, item, part }] of expected.entries()) {
+        const reach = model.regions.find((r) => r.role === "reach" && r.item === item && r.part === part)!;
+        expect(stored[j]).toMatchObject({ box: box(rect), reach: box(reach.rect) });
+      }
+    }
+  });
+
+  it("reads early v2 publications using the stored generator and page order", async () => {
+    for (const i of [0, 1, 2]) {
+      const { printContract, number, image } = payload.pages[i];
+      const legacy = { ...printContract, layout: undefined, captures: undefined, coordinates: { ...printContract.coordinates, content: undefined } };
+      const at = { workbookId: WORKBOOK, page: number, image };
+      expect(storedScanPrintContract(legacy, at, "v1")).toBe(legacy);
+      const read = storedScanPrintContract(legacy, at, "v2");
+      expect(read).toEqual(printContract);
+      if (!read || read === "unsupported") throw new Error("No scan layout for a stored v2 page");
+      expect((await calibrate(i, await hideMarks(i, 4), read)).status).toBe("calibrated");
+    }
+  }, 30_000);
+
+  it("keeps bounded room for numeric handwriting on early v2 pages with no saved reach", async () => {
+    const question = payload.questions.find((q) => q.pageNumber === 1 && q.number === 1)!;
+    const { box } = question.regions[0];
+    if (!box) throw new Error("The invented question has no answer box");
+    const preview = await checkCrops(0, real.pages[0].image, { early: true });
+    if (preview.status !== "ready") throw new Error(JSON.stringify(preview));
+    const crop = preview.crops.find((c) => c.number === question.number);
+    expect(crop?.width).toBeGreaterThan(Math.ceil(box.width + 2 * cropMargin(box)) + 4);
+  }, 30_000);
+
+  it.each([0, 1, 2, 3, 4])("places a front and a back page with %i marks hidden", async (hidden) => {
+    for (const i of [0, 1]) {
+      const photo = await normalizeScanPhoto(await hideMarks(i, hidden), undefined, contractFor);
+      expect(photo).toMatchObject({ token: tokens[i], spread: null });
+      const result = await calibrate(i, photo.bytes);
+      expect(result.status).toBe("calibrated");
+      if (result.status !== "calibrated") return;
+      expect(result.calibration.hiddenMarks ?? []).toHaveLength(hidden);
+      const { rect } = real.pages[i].model.regions.find((r) => r.role === "answer")!;
+      const expected = { x: rect.x * SCALE, y: rect.y * SCALE };
+      const found = photoPoint(result.calibration, IMAGE, expected);
+      expect(Math.hypot(found.x - expected.x, found.y - expected.y)).toBeLessThan(4);
+    }
+  }, 30_000);
+
+  it("keeps both identified pages in a spread with outer QR codes about 1.77 page widths apart", async () => {
+    const gap = 64;
+    const qrCenter = (i: number) => {
+      const { rect } = real.pages[i].model.regions.find((r) => r.role === "qr")!;
+      return (rect.x + rect.w / 2) * SCALE;
+    };
+    expect((IMAGE.width + gap + qrCenter(2) - qrCenter(1)) / IMAGE.width).toBeCloseTo(1.77, 2);
+    const spread = await sharp({ create: { width: IMAGE.width * 2 + gap, height: IMAGE.height, channels: 3, background: "#eeeeee" } })
+      .composite([{ input: Buffer.from(real.pages[1].image), left: 0, top: 0 }, { input: Buffer.from(real.pages[2].image), left: IMAGE.width + gap, top: 0 }]).png().toBuffer();
+    const normalized = await normalizeScanPhoto(spread, undefined, contractFor);
+    expect(normalized.spread?.map(({ token }) => token)).toEqual([tokens[1], tokens[2]]);
+    for (const [j, page] of (normalized.spread ?? []).entries()) {
+      expect(await normalizeScanPhoto(page.bytes, undefined, contractFor)).toMatchObject({ token: tokens[j + 1], spread: null });
+      expect((await calibrate(j + 1, page.bytes)).status).toBe("calibrated");
+    }
+  }, 30_000);
+
+  it("rejects unsupported explicit layout metadata during storage reads, upload and calibration", async () => {
+    const page = payload.pages[0];
+    const unsupported = { ...page.printContract, layout: { version: 99, side: "front" } };
+    const at = { workbookId: WORKBOOK, page: 1, image: page.image };
+    const stored = storedPrintContract(unsupported, at);
+    expect(stored).toBeNull();
+    await expect(normalizeScanPhoto(real.pages[0].image, undefined, async () => storedScanPrintContract(unsupported, at, "v2"))).rejects.toThrow("page");
+    expect(await calibrate(0, real.pages[0].image, stored)).toEqual({ status: "unavailable", reason: "no-contract" });
+  });
+
+  it("refuses another page and stops answers outside the photo with a readable QR", async () => {
+    expect((await calibrate(0, await hideMarks(1, 4))).status).toBe("refused");
+    const bytes = await sharp(await hideMarks(0, 4)).extract({ left: 0, top: 440, width: IMAGE.width, height: IMAGE.height - 440 }).png().toBuffer();
+    const preview = await checkCrops(0, bytes);
+    expect((await normalizeScanPhoto(bytes, undefined, contractFor)).token).toBe(tokens[0]);
+    expect(preview).toMatchObject({ status: "ready", cutOff: expect.arrayContaining([1]) });
+    if (preview.status === "ready") {
+      expect(preview.crops.length).toBeGreaterThan(0);
+      expect(preview.crops.some((c) => c.number === 1)).toBe(false);
+    }
+  }, 30_000);
+
+  it("keeps visible answers with all marks hidden and checks a near twin with the same readable QR", async () => {
+    const { model, image } = real.pages[0];
+    const markerless = await hideMarks(0, 4);
+    const preview = await checkCrops(0, markerless);
+    expect(preview).toMatchObject({ status: "ready", crops: expect.arrayContaining(payload.questions.filter((q) => q.pageNumber === 1)
+      .map((q) => expect.objectContaining({ number: q.number }))) });
+
+    const twin = structuredClone(model);
+    const label = twin.regions.find((r) => r.role === "label")!.ink[0];
+    if (label.kind !== "text") throw new Error("The invented question has no printed number");
+    label.text = "8";
+    const [other] = await renderer.images([twin]);
+    const [printed, photo, otherPrint] = await Promise.all([greyRaster(image), greyRaster(other), greyRaster(other)]);
+    const aligned = await calibrate(0, markerless);
+    if (aligned.status !== "calibrated") throw new Error("The reference photo did not calibrate");
+    const { calibration } = aligned;
+    const sheet = { printed, transform: calibration.transform, sheet: calibration, layout: fromStorage(0).layout };
+    expect(sheetChecker({ ...sheet, photo: await greyRaster(markerless) })([otherPrint]).verdict).toBe("this-page");
+    const verdict = sheetChecker({ ...sheet, photo })([otherPrint]);
+    expect(verdict.twins).toBe(1);
+    expect(verdict.verdict).not.toBe("this-page");
+    const wrong = await checkCrops(0, other, { twin: other });
+    expect(wrong).toMatchObject({ status: "ready", crops: expect.any(Array) });
+    if (wrong.status === "ready") expect(wrong.crops.some((c) => c.number === 1)).toBe(false);
+  }, 30_000);
 });

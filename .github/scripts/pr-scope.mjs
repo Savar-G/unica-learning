@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 
 export const MAX_AFFECTED_FILES = 40;
 const ENGINE_PREFIX = "src/lib/workbook-v2/";
+const WORKBOOK_SCAN_INPUT = /^src\/lib\/(?:scan-(?:answer-(?:reach|crops|snap)|calibration|photo-image|qr-windows|crop-regions|crops(?:-store)?)|workbook-print-(?:contract|layout)|workbook-v2-publish\/contract-writer)(?:\.test)?\.ts$/;
 
 /**
  * Non-code files dynamically read by tests via `fs.readFileSync` / `spawnSync` (not visible to Vitest's static import
@@ -82,7 +83,7 @@ function fullScope(reason) {
  * - PRs touching high-blast-radius configs, CI, DB migrations, data, scripts, or core shared modules ALWAYS run `full`.
  * - PRs touching only non-tested docs/design/skill files run `skip` (even when >40 files).
  * - PRs touching >40 non-skippable files or with an empty/unreadable diff ALWAYS fall back to `full`.
- * - Scoped PRs run `affected`: `engine` when `src/lib/workbook-v2/**` changed, `pr-unit` (`vitest --changed`, excluding
+ * - Scoped PRs run `affected`: `engine` when workbook v2 or its scan inputs changed, `pr-unit` (`vitest --changed`, excluding
  *   engine tests) when `src/` changed, explicit dynamically-read consumer tests, `lint-and-types` when code changed, and path-scoped `maya-behaviour` / `family-zones` / `voice-worker`.
  */
 export function classifyScope({ eventName, changedFiles }) {
@@ -114,7 +115,7 @@ export function classifyScope({ eventName, changedFiles }) {
   const runFamilyZones = files.some((f) => FAMILY_ZONES_PATTERN.test(f));
   const runVoiceWorker = files.some((f) => VOICE_WORKER_PATTERN.test(f));
   const runLintAndTypes = files.some((f) => CODE_LINT_PATTERN.test(f));
-  const runEngine = files.some((f) => f.startsWith(ENGINE_PREFIX) || f.startsWith("src/lib/workbook-v2-publish/bug-fixtures/"));
+  const runEngine = files.some((f) => f.startsWith(ENGINE_PREFIX) || f.startsWith("src/lib/workbook-v2-publish/bug-fixtures/") || WORKBOOK_SCAN_INPUT.test(f));
   const hasSrcChanges = files.some((f) => f.startsWith("src/"));
   const hasWorkerOnly = files.some((f) => f.startsWith("worker/"));
 

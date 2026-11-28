@@ -1,6 +1,9 @@
 import sharp from "sharp";
 import jsQR from "jsqr";
+import { QR_ZOOM_PASSES } from "@/lib/scan-qr-windows";
 import { SCAN_MARKS, type Box, type PagePrintContract } from "@/lib/workbook-print-contract";
+import { isScanLayout } from "@/lib/workbook-print-layout";
+import { SCAN_LAYOUTS, SCAN_QR_QUIET_MODULES, type ScanLayoutId } from "@/lib/workbook-v2/contract";
 
 export const SCAN_INPUT_BYTES = 20 * 1024 * 1024;
 export const SCAN_PIXELS = 48_000_000;
@@ -16,7 +19,7 @@ export async function zoomScanAnswerReach(image: Uint8Array, reach: Box): Promis
 }
 
 /** Decode actual bytes before persistence. Sharp strips metadata unless explicitly asked to keep it. */
-type SpreadContract = (token: string) => Promise<PagePrintContract | null>;
+type SpreadContract = (token: string) => Promise<PagePrintContract | "unsupported" | null>;
 
 export async function normalizeScanPhoto(input: Uint8Array, limits = { inputBytes: SCAN_INPUT_BYTES, pixels: SCAN_PIXELS, outputBytes: SCAN_INPUT_BYTES }, contractFor?: SpreadContract) {
   if (!input.length || input.length > limits.inputBytes) throw new Error("size");
@@ -38,7 +41,7 @@ export interface SpreadPage { bytes: Buffer; token: string; width: number; heigh
 
 interface Point { x: number; y: number }
 /** A page code read in the photo: its token, centre, side (photo pixels) and the code's own rightward direction. */
-interface PageCode { token: string; center: Point; side: number; dir: Point }
+interface PageCode { token: string; center: Point; side: number; dir: Point; modules: number }
 
 /**
  * Printed page geometry, as parts of the page's width (src/lib/workbook-template.ts): the footer code's symbol is 0.0572
@@ -79,7 +82,7 @@ function codeOf(found: NonNullable<ReturnType<typeof readQr>>, left: number, top
   const tl = at(l.topLeftCorner), tr = at(l.topRightCorner), br = at(l.bottomRightCorner);
   const side = Math.hypot(tr.x - tl.x, tr.y - tl.y);
   if (!(side > 0)) return null;
-  return { token, center: { x: (tl.x + br.x) / 2, y: (tl.y + br.y) / 2 }, side, dir: { x: (tr.x - tl.x) / side, y: (tr.y - tl.y) / side } };
+  return { token, center: { x: (tl.x + br.x) / 2, y: (tl.y + br.y) / 2 }, side, dir: { x: (tr.x - tl.x) / side, y: (tr.y - tl.y) / side }, modules: 17 + 4 * found.version };
 }
 
 /** The page token a QR link carries, or null for any other link. */
@@ -89,20 +92,6 @@ function tokenOf(link: string): string | null {
   const token = /^\/tutor\/p\/([A-Za-z0-9_-]{16,64})$/.exec(url.pathname)?.[1];
   return token && url.protocol === "https:" && url.hostname === "unicalearning.com" && !url.search && !url.hash ? token : null;
 }
-
-/**
- * The zoomed reads, in order, each with the crops it reads (half the photo's width and height, by where they start,
- * lower first): 2× over nine crops, then 3× over the four quarters, which still cover the whole photo. 3× reads a code
- * only a few pixels a module, as in a photo taken from higher up (two clear Robin photos read only at 3×, 2026-11-14).
- */
-// Each pass: its zoom, its window as a part of the photo's width and height, and the windows' top-left corners.
-// First a quarter-size window low on the left, where the page prints its code: a real photo's code that no half window
-// reads (a coil, a hand's shadow or the next page beside it in the same window) reads there (Aarav's book, 2026-11-14).
-const QR_ZOOM_PASSES = [
-  [2, 0.25, [[0, 0.75], [0.125, 0.75], [0, 0.625], [0.125, 0.625]]],
-  [2, 0.5, [[0, 0.5], [0.25, 0.5], [0.5, 0.5], [0, 0.25], [0.25, 0.25], [0.5, 0.25], [0, 0], [0.25, 0], [0.5, 0]]],
-  [3, 0.5, [[0, 0.5], [0.5, 0.5], [0, 0], [0.5, 0]]],
-] as const;
 
 /**
  * The page's token from its QR code: first over the whole photo, then in crops zoomed 2× and then 3× (QR_ZOOM_PASSES), where a phone photo's small
@@ -157,6 +146,9 @@ async function codeAround(jpeg: Buffer, photo: { width: number; height: number }
  * still bound to its page by its own code and checked against its own print like any other photo; this never decides a page.
  */
 async function spreadPages(jpeg: Buffer, photo: { width: number; height: number }, first: PageCode, outputBytes: number, contractFor?: SpreadContract): Promise<{ spread: SpreadPage[] | null; token: string; alternateToken?: string }> {
+  const firstContract = await contractFor?.(first.token) ?? null;
+  if (firstContract === "unsupported" || (firstContract?.layout !== undefined && !isScanLayout(firstContract.layout))) throw new Error("page");
+  if (firstContract?.layout && contractFor) return v2Spread(jpeg, photo, first, outputBytes, firstContract.layout, contractFor);
   const width = first.side / CODE_SIDE;
   let other: PageCode | null = null;
   for (const sign of [1, -1]) {
@@ -167,8 +159,9 @@ async function spreadPages(jpeg: Buffer, photo: { width: number; height: number 
   if (!other) return { spread: null, token: first.token };
   // Both pages must be in the photo, every corner mark (#965 review). Otherwise it is a photo of one page, the one more
   // of whose corners are in view (the first code read on a tie): a sliver of the next page never becomes a page photo.
-  const contracts = contractFor ? await Promise.all([contractFor(first.token), contractFor(other.token)]) : [null, null];
-  const [firstIn, otherIn] = [marksInView(first, photo, contracts[0]), marksInView(other, photo, contracts[1])];
+  const otherContract = await contractFor?.(other.token) ?? null;
+  if (otherContract === "unsupported" || otherContract?.layout !== undefined) return { spread: null, token: first.token };
+  const [firstIn, otherIn] = [marksInView(first, photo, firstContract), marksInView(other, photo, otherContract)];
   if (firstIn < 4 || otherIn < 4) return { spread: null, token: otherIn > firstIn ? other.token : first.token };
   // Left and right in the pages' own direction (the photo may be turned).
   const along = (c: PageCode) => c.center.x * first.dir.x + c.center.y * first.dir.y;
@@ -186,6 +179,53 @@ async function spreadPages(jpeg: Buffer, photo: { width: number; height: number 
   if (Math.max(...leftEdge) > -SPREAD_CUT_CLEARANCE || Math.min(...rightEdge) < SPREAD_CUT_CLEARANCE) {
     return { spread: null, token: first.token, alternateToken: other.token };
   }
+  return splitPhoto(jpeg, photo, first, left, right, split, outputBytes);
+}
+
+/** Place the spread's gutter from the outer codes of its back (left) and front (right) pages. */
+async function v2Spread(jpeg: Buffer, photo: { width: number; height: number }, first: PageCode, outputBytes: number, layout: ScanLayoutId, contractFor: SpreadContract) {
+  const layouts = SCAN_LAYOUTS[layout.version];
+  const from = layouts[layout.side], sign = layout.side === "back" ? 1 : -1;
+  const nextSide = layout.side === "back" ? "front" : "back", next = layouts[nextSide];
+  const centerX = ({ qr }: typeof from) => qr.x + qr.w / 2;
+  const pointScale = (c: PageCode, g: typeof from) => c.side * (c.modules + 2 * SCAN_QR_QUIET_MODULES) / (g.qr.w * c.modules);
+  const scale = pointScale(first, from), width = from.paper.w * scale;
+  const separation = 1 + Math.abs(centerX(next) - centerX(from)) / from.paper.w;
+  const predict = (separation + 0.08) * width * sign;
+  const at = { x: first.center.x + predict * first.dir.x, y: first.center.y + predict * first.dir.y };
+  const other = await codeAround(jpeg, photo, at, width * 0.8);
+  const single = { spread: null, token: first.token };
+  if (!other || other.token === first.token) return single;
+  const otherScale = pointScale(other, next);
+  if (!spreadPair(first, other, width, [separation - 0.1, separation + 0.3], otherScale / scale)) return single;
+  const dx = other.center.x - first.center.x, dy = other.center.y - first.center.y;
+  if ((dx * first.dir.x + dy * first.dir.y) * sign <= 0) return single;
+  const otherContract = await contractFor(other.token);
+  if (!otherContract || otherContract === "unsupported" || !isScanLayout(otherContract.layout)
+    || otherContract.layout.version !== layout.version || otherContract.layout.side !== nextSide) return single;
+  const [left, right] = sign > 0 ? [first, other] : [other, first];
+  const pagePointAt = (c: PageCode, g: typeof from, x: number, y: number): Point => {
+    const s = pointScale(c, g), across = (x - centerX(g)) * s, down = (y - g.qr.y - g.qr.h / 2) * s;
+    return { x: c.center.x + across * c.dir.x - down * c.dir.y, y: c.center.y + across * c.dir.y + down * c.dir.x };
+  };
+  const a = pagePointAt(left, layouts.back, from.paper.w, from.paper.h / 2);
+  const b = pagePointAt(right, layouts.front, 0, from.paper.h / 2);
+  const split = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  for (const [code, g, side] of [[left, layouts.back, -1], [right, layouts.front, 1]] as const) {
+    const { x, y, w, h } = g.content;
+    const mid = pagePointAt(code, g, x + w / 2, y + h / 2);
+    if (mid.x < 0 || mid.y < 0 || mid.x > photo.width || mid.y > photo.height) return single;
+    const edge = side < 0 ? x + w : x;
+    const clear = [y, y + h].every((top) => {
+      const p = pagePointAt(code, g, edge, top);
+      return side * ((p.x - split.x) * first.dir.x + (p.y - split.y) * first.dir.y) >= SPREAD_CUT_CLEARANCE * width;
+    });
+    if (!clear) return { ...single, alternateToken: other.token };
+  }
+  return splitPhoto(jpeg, photo, first, left, right, split, outputBytes);
+}
+
+async function splitPhoto(jpeg: Buffer, photo: { width: number; height: number }, first: PageCode, left: PageCode, right: PageCode, split: Point, outputBytes: number) {
   const pages: SpreadPage[] = [];
   for (const [code, keep] of [[left, -1], [right, 1]] as const) {
     const page = await halfOf(jpeg, photo, split, first.dir, keep);
@@ -216,13 +256,12 @@ function marksInView(c: PageCode, photo: { width: number; height: number }, cont
 }
 
 /** Two codes are the two pages of one spread: same size and direction, one page width apart along it, at one height. */
-function spreadPair(a: PageCode, b: PageCode, width: number): boolean {
-  const ratio = b.side / a.side;
+function spreadPair(a: PageCode, b: PageCode, width: number, range: readonly [number, number] = SPREAD_DISTANCE, ratio = b.side / a.side): boolean {
   if (ratio < SPREAD_SIDE_RATIO[0] || ratio > SPREAD_SIDE_RATIO[1]) return false;
   if (a.dir.x * b.dir.x + a.dir.y * b.dir.y < SPREAD_ALIGN) return false;
   const dx = b.center.x - a.center.x, dy = b.center.y - a.center.y;
   const alongAxis = Math.abs(dx * a.dir.x + dy * a.dir.y) / width, offAxis = Math.abs(-dx * a.dir.y + dy * a.dir.x) / width;
-  return alongAxis >= SPREAD_DISTANCE[0] && alongAxis <= SPREAD_DISTANCE[1] && offAxis <= SPREAD_OFF_AXIS;
+  return alongAxis >= range[0] && alongAxis <= range[1] && offAxis <= SPREAD_OFF_AXIS;
 }
 
 /**

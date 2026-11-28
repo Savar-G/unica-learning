@@ -15,6 +15,7 @@ const rejection = vi.hoisted(() => ({
   throwOnIdentify: false,
 }));
 const ai = vi.hoisted(() => vi.fn(() => { throw new Error("S1 must not dispatch AI"); }));
+const layoutRow = vi.hoisted(() => ({ value: null as Record<string, unknown> | null, parent: "", result: null as unknown }));
 vi.mock("@/lib/ai-client", () => ({ aiClient: ai }));
 // #915: the page check starts after the answer, for a family that gets checks.
 const later = vi.hoisted(() => ({ tasks: [] as (() => Promise<void>)[], checks: true, crops: [] as string[], fail: false, preview: "ready", photoChecks: [] as string[] }));
@@ -25,8 +26,12 @@ vi.mock("@/lib/scan-photo-check-start", () => ({ startPhotoCheck: async (_a: unk
 vi.mock("@/lib/scan-crops", () => ({ readScanPreview: async () => ({ status: later.preview }), runScanCrops: async (_s: unknown, ref: { photo: string }) => { if (later.fail) throw new Error("storage"); later.crops.push(ref.photo); return { status: "ready" }; } }));
 vi.mock("@/lib/scan-photo-image", () => ({
   readScanBody: async () => new Uint8Array([1]),
-  normalizeScanPhoto: async () => {
+  normalizeScanPhoto: async (_input: Uint8Array, _limits: unknown, contractFor: (token: string) => Promise<unknown>) => {
     if (!f.normalize) throw new Error(f.refuse);
+    if (layoutRow.value) {
+      layoutRow.result = await contractFor("qrTokenLeft000000000");
+      if (layoutRow.result === "unsupported") throw new Error("page");
+    }
     const one = (token: string) => ({ token, bytes: new Uint8Array([1]), width: 10, height: 20 });
     return { ...one("qrTokenLeft000000000"), spread: f.spread ? [one("qrTokenLeft000000000"), one("qrTokenRight00000000")] : null,
       alternateToken: f.unsplit ? "qrTokenRight00000000" : undefined };
@@ -40,8 +45,13 @@ vi.mock("@/lib/scan-photo-server", () => ({
   scanSession: async () => ({ parent: "family", photoOpen: async () => true, childOpen: async (child: string) => !f.closed.includes(child), admin: {
     from: (table: string) => ({ select: (columns = "") => {
       let token = "";
-      const chain = { single: async () => ({ data: { input_bytes: 100, output_bytes: 100, decoded_pixels: 100 } }), eq: (key: string, value: string) => { if (key === "qr_token") token = value; return chain; },
-        maybeSingle: async () => ({ data: table === "workbook_pages" ? { id: "page", page_number: 24, workbooks: f.candidateChild[token] ? { child_id: f.candidateChild[token] } : null } : table === "scan_photos" ? columns.includes("sent_at") ? f.held : { child_id: Array.isArray(f.filed) ? f.filed.shift() : f.filed } : table === "scan_calibrations" ? f.calibration : table === "scan_marking_jobs" ? f.job : null, error: null }) };
+      const layout = table === "workbook_pages" && columns.includes("generator");
+      const chain = { single: async () => ({ data: { input_bytes: 100, output_bytes: 100, decoded_pixels: 100 } }), eq: (key: string, value: string) => {
+        if (key === "qr_token") token = value;
+        if (layout && key === "parent_id") layoutRow.parent = value;
+        return chain;
+      },
+        maybeSingle: async () => ({ data: layout ? (token === "qrTokenLeft000000000" ? layoutRow.value : null) : table === "workbook_pages" ? { id: "page", page_number: 24, workbooks: f.candidateChild[token] ? { child_id: f.candidateChild[token] } : null } : table === "scan_photos" ? columns.includes("sent_at") ? f.held : { child_id: Array.isArray(f.filed) ? f.filed.shift() : f.filed } : table === "scan_calibrations" ? f.calibration : table === "scan_marking_jobs" ? f.job : null, error: null }) };
       return chain;
     } }),
     rpc: async (name: string, args: { p_parent: string; p_token?: string; p_id: string; p_action?: string; p_reason: string }) => {
@@ -73,6 +83,7 @@ const id = "00000000-0000-4000-8000-000000000001";
 const put = () => PUT(new Request(`https://unicalearning.com/api/account/scans/${id}`, { method: "PUT", headers: { Origin: "https://unicalearning.com" }, body: new Uint8Array([1]) }), { params: Promise.resolve({ id }) });
 beforeEach(() => { vi.clearAllMocks(); setProductObserver(null); later.tasks = []; later.checks = true; later.crops = []; later.fail = false; later.preview = "ready"; later.photoChecks = []; f.start = "started"; f.identify = "identified"; f.normalize = true; f.uploads = 0; f.calls = []; f.spread = false; f.unsplit = false; f.admit = "reserved"; f.tokens = []; f.saved = []; f.refuse = "qr"; f.storageFails = 0; f.recover = "pending"; f.filed = "child"; f.candidateChild = {}; f.closed = []; f.held = null; f.calibration = null; f.deleted = []; f.job = null; f.swap = "pending"; f.cleaned = []; f.keep = false; ai.mockClear(); vi.stubEnv("OPENROUTER_API_KEY", "synthetic-configured-key"); });
 beforeEach(() => {
+  Object.assign(layoutRow, { value: null, parent: "", result: null });
   rejection.write.mockReset().mockReturnValue({ data: "rejected", error: null });
   rejection.spreadStart = null;
   rejection.spreadFinish = null;
@@ -84,6 +95,52 @@ it("stores one normalized photo with zero AI dispatches when a key is configured
   expect(f.calls).toEqual(["start_scan_photo", "identify_scan_photo", "finish_scan_photo"]);
   expect(ai).not.toHaveBeenCalled();
 });
+
+const printContract = {
+  version: 1, workbookId: "book", page: 2,
+  coordinates: { units: "image-px", origin: "top-left", x: "right", y: "down", orientation: "portrait",
+    image: { width: 1275, height: 1650 }, scale: { x: 150 / 72, y: 150 / 72 } },
+  marks: { anchor: "outer-corner", order: ["tl", "tr", "br", "bl"], points: {
+    tl: { x: 75, y: 75 }, tr: { x: 1087.5, y: 75 }, br: { x: 1087.5, y: 1575 }, bl: { x: 75, y: 1575 },
+  } },
+  fingerprints: { content: "invented", image: "f".repeat(64) },
+};
+
+it("passes parent-scoped v2 layout metadata to normalization and refuses unsupported metadata before identifying", async () => {
+  layoutRow.value = { workbook_id: "book", page_number: 2, workbooks: { generator: "v2" }, image_width: 1275, image_height: 1650, print_contract: printContract };
+  expect((await put()).status).toBe(200);
+  expect(layoutRow.parent).toBe("family");
+  expect(layoutRow.result).toMatchObject({ layout: { version: 2, side: "back" } });
+  layoutRow.value.print_contract = { ...printContract, layout: { version: 99, side: "back" } };
+  f.calls = [];
+  const refused = await put();
+  expect(refused.status).toBe(422);
+  expect(await refused.json()).toEqual({ error: "page" });
+  expect(f.calls).toEqual(["start_scan_photo", "reject_scan_photo"]);
+  expect(f.uploads).toBe(1);
+});
+it.each([null, printContract])("identifies a legacy v1 page with absent or valid scan metadata", async (contract) => {
+  layoutRow.value = { workbook_id: "book", page_number: 2, workbooks: { generator: "v1" }, image_width: 1275, image_height: 1650, print_contract: contract };
+  expect((await put()).status).toBe(200);
+  expect(layoutRow.result).toEqual(contract);
+  expect(f.calls).toEqual(["start_scan_photo", "identify_scan_photo", "finish_scan_photo"]);
+  expect(f.uploads).toBe(1);
+});
+
+it.each([
+  ["v1", { ...printContract, workbookId: "another-book" }],
+  ["v1", { ...printContract, page: 9 }],
+  ["v1", { ...printContract, version: 99 }],
+  ["v2", null],
+] as const)("refuses an inconsistent %s print contract before identification or upload", async (generator, contract) => {
+  layoutRow.value = { workbook_id: "book", page_number: 2, workbooks: { generator }, image_width: 1275, image_height: 1650, print_contract: contract };
+  const refused = await put();
+  expect(refused.status).toBe(422);
+  expect(await refused.json()).toEqual({ error: "page" });
+  expect(f.calls).toEqual(["start_scan_photo", "reject_scan_photo"]);
+  expect(f.uploads).toBe(0);
+});
+
 it("does not create an object for a refused family admission, unreadable QR or wrong page", async () => {
   f.start = "busy"; expect((await put()).status).toBe(409); expect(f.uploads).toBe(0);
   expect(rejection.write).not.toHaveBeenCalled();

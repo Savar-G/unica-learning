@@ -226,6 +226,16 @@ test("an app PR with engine files runs both affected unit tests and engine job",
   assert.equal(appPlusEngineDoc.runPrUnit, true);
 });
 
+test("a scanner or publish contract change runs the workbook scan conformance job", () => {
+  const answerGeometry = ["reach", "crops", "snap"].flatMap(name => [
+    `src/lib/scan-answer-${name}.ts`, `src/lib/scan-answer-${name}.test.ts`,
+  ]);
+  for (const file of ["src/lib/scan-photo-image.ts", "src/lib/scan-calibration.ts", "src/lib/workbook-v2-publish/contract-writer.test.ts", ...answerGeometry]) {
+    const scope = classifyScope({ eventName: "pull_request", changedFiles: [file] });
+    assert.equal(scope.runEngine, true, file);
+  }
+});
+
 test("workbook-v2 has no DYNAMIC_READ_RULES entry now that engine owns its tests", () => {
   const hits = DYNAMIC_READ_RULES.filter((rule) =>
     rule.match("src/lib/workbook-v2/render/page.typ") || rule.match("src/lib/workbook-v2/build/build-book.ts"));

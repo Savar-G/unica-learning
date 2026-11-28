@@ -24,8 +24,8 @@ function installed(): boolean {
 }
 
 /** Whether a test that needs Typst must be skipped on this computer, with the reason printed. */
-export function skipTypstTests(): boolean {
-  const mode = typstMode({ installed: installed(), ci: Boolean(process.env.CI) });
+export function skipTypstTests(required = Boolean(process.env.CI)): boolean {
+  const mode = typstMode({ installed: installed(), ci: required });
   if (mode === "skip") console.warn(`Skipped: these tests need Typst ${PINS.version}. Run "npm run typst:install" once.`);
   return mode === "skip";
 }
