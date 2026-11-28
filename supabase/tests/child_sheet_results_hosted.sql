@@ -146,6 +146,9 @@ begin
   delete from public.child_deletions where child_id = c;
   update public.parents set deletion_requested_at = now() where id = p;
   execute 'set local role service_role';
+  r := public.write_child_sheet_results(c2, 9, jsonb_set(
+    jsonb_set(row_of, '{0,workbookId}', to_jsonb(w2::text)), '{0,printedRevision}', to_jsonb(repeat('f', 28))));
+  if r->>'status' is distinct from 'refused' then raise exception 'wrong_revision_during_deletion_admitted %', r; end if;
   begin perform public.write_child_sheet_results(c2, 9, jsonb_set(row_of, '{0,workbookId}', to_jsonb(w2::text))); raise exception 'family_fence_writer';
   exception when sqlstate '55000' then if sqlerrm <> 'family_unavailable' then raise; end if; end;
   begin insert into public.child_bank_state(child_id, parent_id, level_id) values (c2, p, 'other-level'); raise exception 'family_fence_state';
