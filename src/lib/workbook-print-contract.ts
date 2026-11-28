@@ -358,7 +358,7 @@ export const storedPrintContract = (v: unknown, at: Parameters<typeof printContr
 /** The first v2 publisher recorded the generator, page order and day position. Those identify its layout and time log. */
 export function storedScanPrintContract(v: unknown, at: Parameters<typeof printContractProblem>[1], generator?: string): PagePrintContract | "unsupported" | null {
   const contract = storedPrintContract(v, at);
-  if (!contract) return generator === "v2" || (isObject(v) && v.layout !== undefined) ? "unsupported" : null;
+  if (!contract) return v == null && generator !== "v2" ? null : "unsupported";
   if (contract.layout) return generator === "v1" ? "unsupported" : contract;
   if (generator !== "v2") return contract;
   const layout = { version: V2_SCAN_LAYOUT_VERSION, side: v2Side(at.page) } as const;

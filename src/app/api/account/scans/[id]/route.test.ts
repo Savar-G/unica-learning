@@ -96,16 +96,17 @@ it("stores one normalized photo with zero AI dispatches when a key is configured
   expect(ai).not.toHaveBeenCalled();
 });
 
+const printContract = {
+  version: 1, workbookId: "book", page: 2,
+  coordinates: { units: "image-px", origin: "top-left", x: "right", y: "down", orientation: "portrait",
+    image: { width: 1275, height: 1650 }, scale: { x: 150 / 72, y: 150 / 72 } },
+  marks: { anchor: "outer-corner", order: ["tl", "tr", "br", "bl"], points: {
+    tl: { x: 75, y: 75 }, tr: { x: 1087.5, y: 75 }, br: { x: 1087.5, y: 1575 }, bl: { x: 75, y: 1575 },
+  } },
+  fingerprints: { content: "invented", image: "f".repeat(64) },
+};
+
 it("passes parent-scoped v2 layout metadata to normalization and refuses unsupported metadata before identifying", async () => {
-  const printContract = {
-    version: 1, workbookId: "book", page: 2,
-    coordinates: { units: "image-px", origin: "top-left", x: "right", y: "down", orientation: "portrait",
-      image: { width: 1275, height: 1650 }, scale: { x: 150 / 72, y: 150 / 72 } },
-    marks: { anchor: "outer-corner", order: ["tl", "tr", "br", "bl"], points: {
-      tl: { x: 75, y: 75 }, tr: { x: 1087.5, y: 75 }, br: { x: 1087.5, y: 1575 }, bl: { x: 75, y: 1575 },
-    } },
-    fingerprints: { content: "invented", image: "f".repeat(64) },
-  };
   layoutRow.value = { workbook_id: "book", page_number: 2, workbooks: { generator: "v2" }, image_width: 1275, image_height: 1650, print_contract: printContract };
   expect((await put()).status).toBe(200);
   expect(layoutRow.parent).toBe("family");
@@ -118,6 +119,28 @@ it("passes parent-scoped v2 layout metadata to normalization and refuses unsuppo
   expect(f.calls).toEqual(["start_scan_photo", "reject_scan_photo"]);
   expect(f.uploads).toBe(1);
 });
+it.each([null, printContract])("identifies a legacy v1 page with absent or valid scan metadata", async (contract) => {
+  layoutRow.value = { workbook_id: "book", page_number: 2, workbooks: { generator: "v1" }, image_width: 1275, image_height: 1650, print_contract: contract };
+  expect((await put()).status).toBe(200);
+  expect(layoutRow.result).toEqual(contract);
+  expect(f.calls).toEqual(["start_scan_photo", "identify_scan_photo", "finish_scan_photo"]);
+  expect(f.uploads).toBe(1);
+});
+
+it.each([
+  ["v1", { ...printContract, workbookId: "another-book" }],
+  ["v1", { ...printContract, page: 9 }],
+  ["v1", { ...printContract, version: 99 }],
+  ["v2", null],
+] as const)("refuses an inconsistent %s print contract before identification or upload", async (generator, contract) => {
+  layoutRow.value = { workbook_id: "book", page_number: 2, workbooks: { generator }, image_width: 1275, image_height: 1650, print_contract: contract };
+  const refused = await put();
+  expect(refused.status).toBe(422);
+  expect(await refused.json()).toEqual({ error: "page" });
+  expect(f.calls).toEqual(["start_scan_photo", "reject_scan_photo"]);
+  expect(f.uploads).toBe(0);
+});
+
 it("does not create an object for a refused family admission, unreadable QR or wrong page", async () => {
   f.start = "busy"; expect((await put()).status).toBe(409); expect(f.uploads).toBe(0);
   expect(rejection.write).not.toHaveBeenCalled();
