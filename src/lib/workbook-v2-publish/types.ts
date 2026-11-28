@@ -154,6 +154,8 @@ export interface V2PublishStore {
   family(childId: string): Promise<FamilyCheck>;
   /** Saves the candidate, or gives back the allocation that its request key or input hash already has. */
   allocate(candidate: AllocationCandidate): Promise<AllocateResult>;
+  /** Reads a previous request for this family without reserving a new book. */
+  findAllocation(requestKey: string, childId: string, parentId: string): Promise<Allocation | null>;
   /** The published book with this input hash, or null. */
   findByInputHash(inputHash: string): Promise<PublishedRef | null>;
   /** Writes every row of the book, or nothing; the same input hash again writes nothing and gives back the book. */

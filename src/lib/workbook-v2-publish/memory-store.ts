@@ -47,6 +47,10 @@ export function memoryPublishStore(o: MemoryStoreOptions): V2PublishStore & { ta
       tables.allocations.push(allocation);
       return { status: "allocated", ...structuredClone(allocation) };
     },
+    async findAllocation(requestKey, childId, parentId) {
+      const found = tables.allocations.find((a) => a.requestKey === requestKey && a.childId === childId && a.parentId === parentId);
+      return found ? structuredClone(found) : null;
+    },
     async findByInputHash(hash) {
       const book = byHash(hash);
       return book ? ref(book) : null;

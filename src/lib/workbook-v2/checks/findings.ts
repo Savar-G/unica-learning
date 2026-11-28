@@ -65,10 +65,12 @@ export const finder = (check: BookCheck, into: BookFinding[]) => (rule: string, 
 const QUOTED = /"([^"]+)"/g;
 const PAGE_FIRST = /^Page (\d+): /;
 const FILE_PAGE = /\bon page (\d+) of the file\b/;
+const QUESTION_FIRST = /^question (\d+)\b/;
 
 /**
  * The place that a problem in words names, on the pages of a book: the first rectangle that it names in quotes (by its
- * whole id, or by its short name on `within` or on the page that the problem starts with), else that page, else the page
+ * whole id, or by its short name on `within` or on the page that the problem starts with), else its question slot or
+ * that page, else the page
  * of the file that it names (the typesetter's page index, from 1), else the whole book.
  */
 export function placeNamer(pages: readonly PageModel[]): (message: string, within?: PageModel | null) => Place {
@@ -83,7 +85,10 @@ export function placeNamer(pages: readonly PageModel[]): (message: string, withi
       const own: Region | undefined = page?.regions.find((r) => tailOf(r.id) === quoted);
       if (page && own) return pagePlace(page, quoted);
     }
-    if (page) return pagePlace(page);
+    if (page) {
+      const question = QUESTION_FIRST.exec(withoutPage(message));
+      return pagePlace(page, question ? `slot-${question[1]}` : "page");
+    }
     const file = FILE_PAGE.exec(message);
     const drawn = file ? pages[Number(file[1]) - 1] : undefined;
     return drawn ? pagePlace(drawn) : BOOK_PLACE;

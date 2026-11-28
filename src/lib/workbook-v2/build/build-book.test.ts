@@ -375,10 +375,23 @@ describe("the three checks of each book", () => {
   });
 
   it("stop a whole book whose days do not have the pages a day set for it, and never give it as built", async () => {
-    const result = await buildBook(golden(), fake(), wholeBook(8));
+    const render = vi.fn(async () => { throw new RenderError("the typesetter stopped"); });
+    const result = await buildBook(golden(), fake({ render }), wholeBook(8));
     if (result.status !== "failed") throw new Error("the book was built");
+    expect(render).not.toHaveBeenCalled();
     expect(result.findings).toEqual([expect.objectContaining({ check: "level", rule: "pages-a-day", page: expect.any(Number), slot: "time-log" })]);
     expect(result.problems).toEqual([expect.stringMatching(/^Level check, sheet "add-and-take-away", page \d+, slot "time-log": day 1 has 4 pages, and this book has 8 pages a day\.$/)]);
+  });
+
+  it("name the question slot when a label rectangle is missing", async () => {
+    layout.change = (pages) => pages.map((page, i) => i === 0
+      ? { ...page, regions: page.regions.filter((region) => !region.id.endsWith("/label-2")) }
+      : page);
+    const result = await buildBook(input(), fake(), PART_OF_BOOK);
+    expect(result).toMatchObject({
+      status: "failed",
+      findings: expect.arrayContaining([expect.objectContaining({ rule: "page-rule", page: 381, slot: "slot-2", message: 'question 2 has no "label" rectangle.' })]),
+    });
   });
 
   it("stop a book with ink in an answer area, with a finding that names the check, sheet, page and slot", async () => {
@@ -510,6 +523,32 @@ describe("rows in order that choose among the runs of their tables", () => {
       const keys = book.items.filter((i) => i.shape === "fact.mul" && (!side || i.side === side)).map((i) => canonicalJson(i.question));
       return keys.length - new Set(keys).size;
     };
+
+    it("allow the back run to take a front fact that still prints swapped", async () => {
+      const pair = (id: string, tables: number[], result: number) => {
+        const row = mul(id, tables, 1, "mixed");
+        row.limits.result = { min: result, max: result };
+        return row;
+      };
+      const fixed = (id: string) => mul(id, [9], 1, "mixed", { min: 9, max: 9 });
+      const snapshot = snapshotOf([{
+        id: "current",
+        front: side([pair("front-two-three", [2, 3], 6), pair("front-five-six", [5, 6], 30), fixed("fixed-a"), fixed("fixed-b")]),
+        back: side([mul("required", [2], 1, "mixed", { min: 3, max: 3 }), mul("fives-or-eights", [5, 8], 2, "up", { min: 6, max: 7 })]),
+      }]);
+      const fact = (a: number, b: number) => ({ shape: "fact.mul", key: canonicalJson({ a, b }) });
+      const first = [fact(3, 2), fact(5, 6)];
+      const history = {
+        books: [{ bookId: "first", items: first }, { bookId: "later", items: [fact(2, 3), fact(6, 5), fact(8, 6), fact(8, 7)] }],
+        lastAttempts: [{ sheetId: "current", attempt: 1, items: first.map((item, i) => ({ ...item, side: "front", rowId: i === 0 ? "front-two-three" : "front-five-six", form: item.key })) }],
+        seenPhrasings: [],
+      };
+      const book = await built({ snapshot, book: bookOf("repeat", CHILDREN[0], "current", 2, history) } as unknown as Input);
+      expect(run(book, "front-two-three")).toEqual([{ a: 3, b: 2 }]);
+      expect(run(book, "front-five-six")).toEqual([{ a: 6, b: 5 }]);
+      expect(run(book, "fives-or-eights")).toEqual([{ a: 5, b: 6 }, { a: 5, b: 7 }]);
+      expect([copies(book, "back"), copies(book)]).toEqual([0, 1]);
+    });
     // The front prints 5 × 1 to 5 × 3 and 7 × 6. An earlier book showed 5 × 1, 3 × 1 and 3 × 2.
     const FRONT = side([mul("front-fives", [5], 3, "mixed", { min: 1, max: 3 }), mul("front-seven", [7], 1, "mixed", { min: 6, max: 6 })]);
     const PAST = side([mul("seen-five", [5], 1, "mixed", { min: 1, max: 1 }), mul("seen-three", [3], 2, "mixed", { min: 1, max: 2 })]);

@@ -175,9 +175,12 @@ function repeatsAfter({ earlier, printed }: SidePrinting, own: Chosen) {
   const shown = printed(new Map([...earlier, ...own]));
   const keysOfRows = (rows: Iterable<AskedRow>) => [...rows].flatMap((row) => (shown.get(row) ?? []).map((q) => q.key));
   const keys = keysOfRows(own.keys());
-  const earlierKeys = new Set(keysOfRows(earlier.keys()));
+  const earlierPrinted = keysOfRows(earlier.keys());
+  const earlierKeys = new Set(earlierPrinted);
   const once = new Set(keys);
-  return { earlierKeys, side: keys.length - once.size, sheet: keys.length - [...once].filter((key) => !earlierKeys.has(key)).length };
+  const side = keys.length - once.size;
+  const overlap = [...once].filter((key) => earlierKeys.has(key)).length;
+  return { earlierKeys, side, overlap, sheet: side + overlap + earlierPrinted.length - earlierKeys.size };
 }
 
 /** A later choice can block a swap on the previous side. Retry the mixed rows against the questions that now print. */
@@ -186,7 +189,7 @@ function mixedAfter(runs: ReadonlyMap<Row, Question[]>, stale: Keys, assign: Mix
   if (!printing || stale.size === 0 || places.length === 0) return places;
   let avoid = stale;
   let repeats = repeatsAfter(printing, byRow(runs, places));
-  while (repeats.sheet > repeats.side && !sameKeys(avoid, repeats.earlierKeys)) {
+  while (repeats.overlap > 0 && !sameKeys(avoid, repeats.earlierKeys)) {
     avoid = repeats.earlierKeys;
     const next = assign(runs, avoid);
     const changed = repeatsAfter(printing, byRow(runs, next));
@@ -300,10 +303,10 @@ function firstRuns(ordered: readonly Row[], mixed: readonly Row[], taken: Keys, 
   return null;
 }
 
-/** Whether a row may take a run in a choice that stays all different: it takes no question of `taken` or of another run, and the mixed rows still can. */
-const keepsDifferent = (runs: ReadonlyMap<Row, Question[]>, mixed: readonly Row[], taken: Keys) => (row: Row, run: readonly Question[]): boolean => {
-  const others = new Set([...taken, ...[...runs].flatMap(([other, own]) => (other === row ? [] : own.map((q) => q.key)))]);
-  return count(run, others) === 0 && canAllDiffer(mixed, new Set([...others, ...run.map((q) => q.key)]));
+/** A run must differ from the other runs, and the mixed rows must still have distinct choices. */
+const keepsDifferent = (runs: ReadonlyMap<Row, Question[]>, mixed: readonly Row[], taken: Keys, barred: Keys) => (row: Row, run: readonly Question[]): boolean => {
+  const others = new Set([...runs].flatMap(([other, own]) => (other === row ? [] : own.map((q) => q.key))));
+  return count(run, barred) === 0 && count(run, others) === 0 && canAllDiffer(mixed, new Set([...taken, ...others, ...run.map((q) => q.key)]));
 };
 
 /**
@@ -323,7 +326,9 @@ function chooseDifferent(rows: readonly Row[], taken: Keys, stale: Keys, seen: S
   if (ordered.length === 0) return canAllDiffer(mixed, taken) ? byRow(new Map(), mixedOf(new Map())) : null;
   const runs = firstRuns(ordered, mixed, taken, stale, seen);
   if (!runs) return null;
-  settleRuns(runs, stale, seen, front, keepsDifferent(runs, mixed, taken), printing && stale.size > 0 ? repeatsOf(printing, mixedOf) : undefined);
+  // On a back side with a printed front, a run may take a raw front key when the final printed sheet allows it.
+  const legal = keepsDifferent(runs, mixed, taken, printing ? NONE : taken);
+  settleRuns(runs, stale, seen, front, legal, printing ? repeatsOf(printing, mixedOf) : undefined);
   return byRow(runs, mixedOf(runs));
 }
 
@@ -400,7 +405,7 @@ export function chooseQuestions(sides: readonly (readonly AskedRow[])[], seen: S
     const used = new Set(keysOf(printed(earlier)));
     const chosenKeys = new Set(keysOf(earlier));
     const printing = { earlier, printed };
-    const chosen = (used.size > 0 && (chooseDifferent(side, used, NONE, seen, front) || (!sameKeys(used, chosenKeys) && chooseDifferent(side, chosenKeys, NONE, seen, front))))
+    const chosen = (used.size > 0 && (chooseDifferent(side, used, NONE, seen, front) || (!sameKeys(used, chosenKeys) && chooseDifferent(side, chosenKeys, NONE, seen, front, printing))))
       || chooseDifferent(side, NONE, used, seen, front, printing) || chooseWithRepeats(side, used, seen, front, printing);
     earlier = new Map([...earlier, ...chosen]);
     for (const [row, questions] of chosen) if ((row as Row).runs) for (const q of questions) front.add(q.key);

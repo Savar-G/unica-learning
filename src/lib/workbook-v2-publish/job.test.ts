@@ -1,6 +1,9 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
+import { buildBook, PART_OF_BOOK } from "@/lib/workbook-v2/build/build-book";
 import { fakeRenderer } from "@/lib/workbook-v2/testing/fake-renderer";
+import { writeBook } from "./contract-writer";
+import { allocationOf, bookInput } from "./input";
 import { publishOnce, publishV2Book, type JobDeps } from "./job";
 import { CHILD, PARENT, REAL_CHILD, deps, memory, request } from "./publish.fixtures";
 import type { PublishPayload, V2PublishStore } from "./types";
@@ -149,6 +152,35 @@ describe("the v2 book job", () => {
     expect(await publishV2Book(retry, request({ sheets, pagesPerDay: 4 }))).toEqual({
       status: "invalid", problems: ["the request key was used for another book"],
     });
+  });
+
+  it("returns an already published book when its old sheet order fails the new preflight", async () => {
+    const { store, files } = memory();
+    const first = deps(store, files);
+    const good = request();
+    const legacy = request({ sheets: good.sheets.map((sheet, i) => ({ ...good.sheets[[1, 0, 2, 3][i]], day: sheet.day, startsDay: sheet.startsDay })) });
+    const workbookId = first.uuid();
+    const qrTokens = Array.from({ length: good.sheets.length * 2 }, () => first.token());
+    const planned = allocationOf(good, { parentId: PARENT, workbookId, qrTokens, allocatedAt: first.now().toISOString() });
+    if (!planned.ok) throw new Error(planned.problems.join("\n"));
+    const book = bookInput(legacy, workbookId, qrTokens);
+    const built = await buildBook({ snapshot: legacy.snapshot, book }, fakeRenderer(), PART_OF_BOOK);
+    if (built.status !== "built") throw new Error(built.problems.join("\n"));
+    const inputHash = built.record.inputHash;
+    const allocation = await store.allocate({
+      ...planned.candidate, inputHash, inputPath: `${PARENT}/${workbookId}/${inputHash}.json`,
+      allocation: { ...planned.candidate.allocation, book },
+    });
+    if (allocation.status !== "allocated") throw new Error(allocation.status);
+    const retry = deps(store, files, { seed: "d" });
+    expect(await publishV2Book(retry, legacy)).toMatchObject({ status: "invalid", problems: [expect.stringContaining("later in the level")] });
+    const stored = await store.publish(writeBook(built, allocation).payload);
+    expect(stored.status).toBe("published");
+    expect(await publishV2Book(retry, legacy)).toMatchObject({ status: "existing", record: { workbookId, inputHash } });
+    expect(await publishV2Book(retry, { ...legacy, scenario: "sports" })).toMatchObject({ status: "invalid" });
+    expect(store.tables.allocations).toHaveLength(1);
+    expect(files.files.size).toBe(0);
+    expect(retry.opened()).toBe(0);
   });
 
   it.each([

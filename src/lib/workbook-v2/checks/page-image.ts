@@ -158,8 +158,14 @@ export function readPageImage(png: Uint8Array): PageImage | string {
     if (parts === 1) low.set(lines.subarray(start, start + stride), to);
     else if (y > 0 && isSameAsAbove(bytes, start, stride)) low.copyWithin(to, to - width, to);
     else for (let x = 0, at = start; x < width; x++, at += parts) {
-      const [red, green, blue] = [lines[at], lines[at + 1], lines[at + 2]];
+      const red = lines[at];
+      const green = lines[at + 1];
+      const blue = lines[at + 2];
       const cover = parts === 4 ? lines[at + 3] : 255;
+      if (red === green && green === blue && cover === 255) {
+        low[to + x] = red;
+        continue;
+      }
       if (cover > 0 && (red !== green || green !== blue)) colour ??= { x, y };
       low[to + x] = onPaper(Math.min(red, green, blue), cover);
     }

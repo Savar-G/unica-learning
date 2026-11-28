@@ -96,3 +96,5 @@ The computer had a load average near 9 during the first runs, near 36 during the
 In the MacBook profile before the CI repair, the 116 PNG files took 0.59 s to read. The search for a second QR code took 0.32 s, and decoding the expected QR codes took 0.12 s. The PDF took 0.15 to 0.17 s, stray ink took 0.09 s, flat greys took 0.07 s, and page rules took 0.02 s. The source check took 57 to 69 ms and the level check took less than 1 ms.
 
 Before the CI repair, the layout check took 6.08 s with Typst on the GitHub runner. The repair skips light pixels in the QR search, copies equivalent runs in the PNG decoder, and reads each shared PDF font once per document. On the MacBook, median layout CPU time across three runs fell from 1.81 s to 1.24 s with Typst and from 1.43 s to 0.75 s with the fake typesetter. Vercel x64 timing remains unverified.
+
+The first CI repair brought the fake renderer under the budget at 3,079 ms of CPU time. Typst took 5,012 ms. The PNG reader now copies opaque grey values directly. In a separate MacBook comparison of three Typst runs per revision, the median layout CPU time fell from 1.22 s to 1.03 s.

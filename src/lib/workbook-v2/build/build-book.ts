@@ -11,14 +11,13 @@ import { checkLevel } from "../checks/level-check";
 import { checkPage } from "../checks/page-rules";
 import { answerFormProblem, checkAnswerForms, checkPrintedAnswers, printedAnswerProblem, regionsByItem } from "../checks/printed-answers";
 import { ENGINE_VERSION, type BookItem, type PageModel, type Position, type Side } from "../contract";
-import { canonicalJson, sha256 } from "../hash";
 import { buildPages, type PlannedSheet } from "../layout/build-pages";
 import { TEMPLATES } from "../layout/templates";
 import { RenderError, type Renderer, type Rendering } from "../renderer";
 import { SHAPES, type ShapeLibrary } from "../shapes";
 import { bindSheet } from "../themes/sheets";
 import { seenPhrasingIds, sheetHistory, type BookHistory } from "./book-history";
-import { readBookRequest } from "./book-input";
+import { bookInputHash, readBookRequest } from "./book-input";
 import { repeatNotices, sheetItems } from "./items";
 
 export { PART_OF_BOOK, wholeBook, type BookCheckOptions } from "../checks/book-checks";
@@ -160,7 +159,7 @@ export function planBook(input: BuildInput, shapes: ShapeLibrary = SHAPES, templ
   const layout = planPages(sheets, shapes);
   if (!layout.ok) return layout;
   const items = sheets.flatMap((s) => s.items);
-  const inputHash = sha256(canonicalJson({ snapshot: bank.hash, book: request.value }));
+  const inputHash = bookInputHash(bank.hash, request.value);
   return {
     ok: true, bookId: book.bookId, snapshot: { id: bank.snapshot.id, hash: bank.hash }, inputHash, items, pages: layout.pages, notices: sheets.flatMap((s) => repeatNotices(s.sheet, s.items)),
     source: { snapshot: bank.snapshot, sheets: sheets.map(({ sheet, attempt, startsDay }) => ({ sheet, attempt, startsDay })), history },
@@ -191,6 +190,10 @@ export function bookCheckInput(plan: BookPlan, drawn: Rendering, options: BookCh
 export async function buildBook(input: BuildInput, renderer: Renderer, checks: BookCheckOptions, shapes: ShapeLibrary = SHAPES): Promise<BuildResult> {
   const plan = planBook(input, shapes);
   if (!plan.ok) return failed(plan.problems, plan.findings);
+  if (checks.book === "whole") {
+    const findings = wholeBookFindings(plan, checks.pagesPerDay);
+    if (findings.length > 0) return failed([], findings);
+  }
   const { pages, items } = plan;
   const drawn = await draw(renderer, pages);
   if (typeof drawn === "string") return failed([drawn]);

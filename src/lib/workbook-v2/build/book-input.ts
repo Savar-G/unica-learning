@@ -3,6 +3,7 @@
 import { FieldReader } from "../bank/fields";
 import type { Snapshot, SnapshotSheet } from "../bank/snapshot";
 import type { Side } from "../contract";
+import { canonicalJson, sha256 } from "../hash";
 import { interestsOf } from "../themes/bind";
 import { DEFAULT_INTEREST, type StoryChoice } from "../themes/types";
 import { readHistory, type BookHistory } from "./book-history";
@@ -14,6 +15,9 @@ export interface BookSheet { sheet: SnapshotSheet; attempt: number; qr: Record<S
  * met in earlier books, or null when the request has none.
  */
 export interface BookRequest { bookId: string; childId: string; sheets: BookSheet[]; stories: StoryChoice | null; history: BookHistory | null }
+
+/** The published identity of a plain book request and its snapshot. */
+export const bookInputHash = (snapshot: string, book: unknown): string => sha256(canonicalJson({ snapshot, book }));
 
 const isName = (value: unknown): value is string => typeof value === "string" && /^[A-Za-z0-9-]{1,64}$/.test(value);
 const isQrText = (value: unknown): value is string => typeof value === "string" && /^[!-~]+$/.test(value);
