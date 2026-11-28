@@ -6,7 +6,7 @@ import { workbookAnswerPages } from "@/lib/parent-workbook-answers";
 import { checkQuestionPackage } from "@/lib/question-package";
 import { storedContent, storedQuestion, type Workbook } from "@/lib/workbook-content";
 import { printContractProblem, printedRevision, regionsProblem } from "@/lib/workbook-print-contract";
-import { buildBook, type BuiltBook } from "@/lib/workbook-v2/build/build-book";
+import { buildBook, wholeBook, type BuiltBook } from "@/lib/workbook-v2/build/build-book";
 import { PAPER } from "@/lib/workbook-v2/contract";
 import { fakeRenderer } from "@/lib/workbook-v2/testing/fake-renderer";
 import { IMAGE, SCALE, answerValueOf, boxOf, payloadProblem, pngSize, writeBook } from "./contract-writer";
@@ -26,7 +26,7 @@ beforeAll(async () => {
   const planned = allocationOf(request(), { workbookId: WORKBOOK, qrTokens: tokens, allocatedAt: "2026-11-27T02:35:00.000Z", parentId: PARENT });
   if (!planned.ok) throw new Error(planned.problems.join("\n"));
   allocation = { ...planned.candidate, parentId: PARENT, workbookNumber: 3 };
-  const result = await buildBook({ snapshot: request().snapshot, book: allocation.allocation.book }, fakeRenderer());
+  const result = await buildBook({ snapshot: request().snapshot, book: allocation.allocation.book }, fakeRenderer(), wholeBook(allocation.allocation.pagesPerDay));
   if (result.status !== "built") throw new Error(result.problems.join("\n"));
   built = result;
 });
@@ -117,9 +117,9 @@ describe("the contract writer", () => {
   it("writes the sheets, a time log for each day, and the book's printed revision", () => {
     const { payload, files } = writeBook(built, allocation);
     expect(payload.sheets.map((s) => [s.sheetId, s.day, s.frontPageNumber, s.backPageNumber, s.startsDay])).toEqual([
-      ["story-problems", 1, 1, 2, true], ["division-brackets", 1, 3, 4, false], ["times-facts", 2, 5, 6, true], ["equal-groups", 2, 7, 8, false],
+      ["times-facts", 1, 1, 2, true], ["division-brackets", 1, 3, 4, false], ["equal-groups", 2, 5, 6, true], ["story-problems", 2, 7, 8, false],
     ]);
-    expect(payload.timeLogs).toEqual([{ day: 1, firstSheetId: "story-problems", pageNumber: 1 }, { day: 2, firstSheetId: "times-facts", pageNumber: 5 }]);
+    expect(payload.timeLogs).toEqual([{ day: 1, firstSheetId: "times-facts", pageNumber: 1 }, { day: 2, firstSheetId: "equal-groups", pageNumber: 5 }]);
     expect(payload.workbook.printManifest.days).toEqual([{ day: 1, pages: [1, 2, 3, 4] }, { day: 2, pages: [5, 6, 7, 8] }]);
     const revision = printedRevision({ ...payload.workbook, id: WORKBOOK, pages: payload.pages.map((p) => ({ ...p, questions: payload.questions.filter((q) => q.pageNumber === p.number) })) });
     expect(payload.workbook.printedRevision).toBe(revision);

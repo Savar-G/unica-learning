@@ -129,14 +129,17 @@ function triedItems(row: SnapshotRow, seedOf: AskedRow["seedOf"], sheetUsed: Set
 /** The questions of the rows of a side, in the order of the bank. */
 interface SideRow { row: SnapshotRow; asked: AskedRow; items: Item<unknown>[] }
 
-/** What the rows of one shape with a list need of a history: the keys of that shape, and the last questions of each row. */
-function seenOf(shape: Shape, history: SheetHistory | null): SeenBefore {
+/**
+ * What the rows of one shape with a list need of a history: the keys of that shape, the last questions of each row, and
+ * whether this attempt is a repeat.
+ */
+function seenOf(shape: Shape, history: SheetHistory | null, attempt: number): SeenBefore {
   if (!history) return NOTHING_SEEN;
   const prefix = historyKey(shape.id, "");
   const recency = new Map([...history.recency].filter(([key]) => key.startsWith(prefix)).map(([key, r]) => [key.slice(prefix.length), r]));
   const lastOfRow = new Map<string, string[]>();
   for (const item of history.last?.items ?? []) if (item.shape === shape.id) lastOfRow.set(item.rowId, [...(lastOfRow.get(item.rowId) ?? []), item.key]);
-  return { recency, lastOfRow };
+  return { recency, lastOfRow, repeat: attempt >= 2 };
 }
 
 const isOrdered = ({ shape, limits, items }: SnapshotRow): boolean => (shape.orderedRuns?.(limits, items) ?? null) !== null;
@@ -144,7 +147,8 @@ const isOrdered = ({ shape, limits, items }: SnapshotRow): boolean => (shape.ord
 /**
  * A question of the last attempt prints in its swapped form (7 × 5 for 5 × 7) when the limits of its row allow that form,
  * the last attempt did not print that form too, and the sheet does not print it yet. A row in order keeps the order of
- * its table.
+ * its table. The rows of a shape with a list have their printed forms from `chooseQuestions` already, which chooses the
+ * runs of a later side with them.
  */
 function swapRepeats(rows: Record<Side, SideRow[]>, last: LastAttempt): void {
   const before = new Set(last.items.map((item) => historyKey(item.shape, item.key)));
@@ -152,7 +156,7 @@ function swapRepeats(rows: Record<Side, SideRow[]>, last: LastAttempt): void {
   const onSheet = new Set(all.flatMap(({ row, items }) => items.map((item) => keyOf(row.shape, item.question))));
   for (const one of all) {
     const { shape, limits } = one.row;
-    if (!shape.swapped || isOrdered(one.row)) continue;
+    if (!shape.swapped || shape.list || isOrdered(one.row)) continue;
     one.items = one.items.map((item) => {
       const turned = before.has(keyOf(shape, item.question)) ? shape.swapped?.(item.question, limits) : null;
       if (!turned?.inLimits || before.has(keyOf(shape, turned.question)) || onSheet.has(keyOf(shape, turned.question))) return item;
@@ -162,7 +166,7 @@ function swapRepeats(rows: Record<Side, SideRow[]>, last: LastAttempt): void {
   }
 }
 
-function sheetRows(sheet: SnapshotSheet, seed: string, history: SheetHistory | null): Record<Side, SideRow[]> {
+function sheetRows(sheet: SnapshotSheet, seed: string, attempt: number, history: SheetHistory | null): Record<Side, SideRow[]> {
   const rowsOf = (side: Side): SideRow[] => sheet[side].rows.map((row) => ({
     row, items: [], asked: { id: row.id, shape: row.shape, limits: row.limits, items: row.items, seedOf: (place, attempt) => itemSeed(seed, side, row.id, place, attempt) },
   }));
@@ -171,7 +175,7 @@ function sheetRows(sheet: SnapshotSheet, seed: string, history: SheetHistory | n
   const listed = [...new Map(all.filter(({ row }) => row.shape.list).map(({ row }) => [row.shape.id, row.shape])).values()];
   for (const shape of listed) {
     const own = SIDES.map((side) => rows[side].filter(({ row }) => row.shape.id === shape.id));
-    const chosen = chooseQuestions(own.map((side) => side.map(({ asked }) => asked)), seenOf(shape, history));
+    const chosen = chooseQuestions(own.map((side) => side.map(({ asked }) => asked)), seenOf(shape, history, attempt));
     for (const one of own.flat()) one.items = (chosen.get(one.asked) ?? []).map((question) => ({ question, answer: shape.answer(question) }));
   }
   const sheetUsed = new Set<string>();
@@ -248,7 +252,7 @@ function newOrder(runs: readonly { items: RowItem[]; ordered: boolean }[], lastF
  * no history, they are the same as before histories were known.
  */
 export function sheetItems(sheet: SnapshotSheet, childId: string, attempt: number, history: SheetHistory | null = null): BookItem[] {
-  const rows = sheetRows(sheet, seedFrom(childId, sheet.id, attempt), history);
+  const rows = sheetRows(sheet, seedFrom(childId, sheet.id, attempt), attempt, history);
   const lastForms = (side: Side) => history?.last?.items.filter((item) => item.side === side).map((item) => item.form) ?? null;
   return SIDES.flatMap((side) =>
     sideItems(sheet.id, side, rows[side], lastForms(side)).map((item, i) => ({ ...item, id: `${sheet.id}/${attempt}/${side}/${i + 1}`, number: i + 1 })));

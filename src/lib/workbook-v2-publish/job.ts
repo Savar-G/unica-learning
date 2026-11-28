@@ -7,12 +7,14 @@
 // 4. Write all rows in one call to publish_v2_workbook. When that call fails or its answer is lost, read the book by its
 //    input hash before one retry: a book that was written is given back, never written twice.
 // The record of each run says the time of each step and the bytes and rows it wrote.
-import { buildBook, planBook } from "@/lib/workbook-v2/build/build-book";
-import { canonicalJson } from "@/lib/workbook-v2/hash";
+import { plainCopy } from "@/lib/workbook-v2/bank/plain";
+import { buildBook, wholeBook } from "@/lib/workbook-v2/build/build-book";
+import { bookInputHash } from "@/lib/workbook-v2/build/book-input";
+import { canonicalJson, sha256 } from "@/lib/workbook-v2/hash";
 import type { Renderer } from "@/lib/workbook-v2/renderer";
 import { writeBook } from "./contract-writer";
-import { allocationOf, bookInput, type SavedInput } from "./input";
-import type { Allocation, PublishPayload, PublishRequest, PublishedRef, V2File, V2PublishStore, V2Storage } from "./types";
+import { allocationOf, bookInput, pagesPerDayOf, reasonsOf, REQUEST_KEY, type SavedInput } from "./input";
+import type { AllocateResult, Allocation, PublishPayload, PublishRequest, PublishedRef, V2File, V2PublishStore, V2Storage } from "./types";
 
 export interface JobDeps {
   store: V2PublishStore;
@@ -88,13 +90,19 @@ export async function publishOnce(store: V2PublishStore, payload: PublishPayload
 
 /**
  * An allocation that a request key or an input hash already has is reused only for the same book: the same child, sheets,
- * region and interest (the ids and tokens are the allocation's), and the same snapshot (its input hash).
+ * pages per day, region and interest (the ids and tokens are the allocation's), and the same snapshot (its input hash).
  */
 function sameBook(request: PublishRequest, a: Allocation): boolean {
+  if (a.childId !== request.childId || a.allocation.pagesPerDay !== pagesPerDayOf(request)) return false;
+  if (request.sheets.some((sheet, i) => sheet.day !== a.allocation.days[i])) return false;
+  const savedReasons = a.allocation.reasons;
+  if (savedReasons !== undefined && canonicalJson(savedReasons) !== canonicalJson(reasonsOf(request))) return false;
   const asked = bookInput(request, a.workbookId, a.allocation.qrTokens);
-  if (a.childId !== request.childId || canonicalJson(asked) !== canonicalJson(a.allocation.book)) return false;
-  const plan = planBook({ snapshot: request.snapshot, book: a.allocation.book });
-  return plan.ok && plan.inputHash === a.inputHash;
+  if (canonicalJson(asked) !== canonicalJson(a.allocation.book)) return false;
+  const snapshot = plainCopy("The snapshot", request.snapshot);
+  if (!snapshot.ok) return false;
+  const hash = sha256(canonicalJson(snapshot.value));
+  return bookInputHash(hash, asked) === a.inputHash;
 }
 
 const NO_COUNTS = { pages: 0, questions: 0, itemAnswers: 0, sheets: 0, timeLogs: 0 };
@@ -108,13 +116,17 @@ export async function publishV2Book(deps: JobDeps, request: PublishRequest): Pro
   const workbookId = deps.uuid();
   const qrTokens = Array.from({ length: request.sheets.length * 2 }, () => deps.token());
   const planned = allocationOf(request, { workbookId, qrTokens, allocatedAt: deps.now().toISOString(), parentId: family.parentId });
-  if (!planned.ok) return { status: "invalid", problems: planned.problems };
-  const allocated = await deps.store.allocate(planned.candidate);
+  let allocated: AllocateResult;
+  if (planned.ok) allocated = await deps.store.allocate(planned.candidate);
+  else {
+    // A published book can predate a stricter check. Only read the allocation and the published book on this path.
+    const previous = REQUEST_KEY.test(request.requestKey) ? await deps.store.findAllocation(request.requestKey, request.childId, family.parentId) : null;
+    if (!previous) return { status: "invalid", problems: planned.problems };
+    allocated = { ...previous, status: "existing" };
+  }
   if (allocated.status === "refused") return { status: "refused", reason: "database", detail: allocated.reason };
   const allocation: Allocation = allocated;
-  const savedReasons = allocation.allocation.reasons;
-  if (allocated.status === "existing" && (!sameBook(request, allocation)
-    || (savedReasons !== undefined && canonicalJson(savedReasons) !== canonicalJson(planned.candidate.allocation.reasons)))) {
+  if (allocated.status === "existing" && !sameBook(request, allocation)) {
     return { status: "invalid", problems: ["the request key was used for another book"] };
   }
   const record = (status: "published" | "existing", ref: PublishedRef, counts: TimingRecord["counts"], pdf: number, images: number, inputBytes: number, t: Omit<TimingRecord["timingMs"], "overhead" | "total">): TimingRecord => {
@@ -133,13 +145,16 @@ export async function publishV2Book(deps: JobDeps, request: PublishRequest): Pro
     const allocate = deps.clock() - started;
     return { status: "existing", record: record("existing", existing, NO_COUNTS, 0, 0, 0, { allocate, build: 0, upload: 0, publish: 0 }) };
   }
-  const saved: SavedInput = { format: 1, snapshot: request.snapshot, book: allocation.allocation.book };
+  if (!planned.ok) return { status: "invalid", problems: planned.problems };
+  const checks = wholeBook(allocation.allocation.pagesPerDay);
+  const saved: SavedInput = { format: 1, snapshot: request.snapshot, book: allocation.allocation.book, checks };
   const input = new TextEncoder().encode(canonicalJson(saved));
   await deps.files.put({ path: allocation.inputPath, contentType: "application/json", bytes: input });
   const allocate = deps.clock() - started;
 
   const buildStart = deps.clock();
-  const built = await buildBook({ snapshot: request.snapshot, book: allocation.allocation.book }, await deps.renderer());
+  // A published book is a whole book: its page count, order and days are checked at the pages a day of its allocation.
+  const built = await buildBook({ snapshot: request.snapshot, book: allocation.allocation.book }, await deps.renderer(), checks);
   if (built.status === "failed") return { status: "failed", problems: built.problems };
   if (built.record.inputHash !== allocation.inputHash) return { status: "failed", problems: ["the built book is not the book of its allocation"] };
   const build = deps.clock() - buildStart;

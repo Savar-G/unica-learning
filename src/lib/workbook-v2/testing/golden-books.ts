@@ -6,7 +6,7 @@
 import { historyFromBooks, planNextBook } from "../assemble/plan-book";
 import { position, type ChildPosition, type IssuedSheet, type SheetResultRecord } from "../assemble/position";
 import { validateSnapshot, type Snapshot } from "../bank/snapshot";
-import { buildBook, planBook, type BuildInput, type BuildResult } from "../build/build-book";
+import { buildBook, planBook, wholeBook, type BuildInput, type BuildResult } from "../build/build-book";
 import baseSnapshot from "../fixtures/snapshot.json";
 import fourDigitsSnapshot from "../fixtures/snapshot-4-digits.json";
 import addSubSnapshot from "../fixtures/snapshot-add-sub.json";
@@ -102,8 +102,9 @@ export function goldenInput(level: GoldenLevel, child: GoldenChild): BuildInput 
   return { snapshot: level.snapshot, book };
 }
 
+/** A golden book is a whole planned book, so every check of a book runs on it: its page count, order and days too. */
 export function buildGoldenBook(level: GoldenLevel, child: GoldenChild, renderer: Renderer): Promise<BuildResult> {
-  return buildBook(goldenInput(level, child), renderer);
+  return buildBook(goldenInput(level, child), renderer, wholeBook(PAGES_A_DAY));
 }
 
 /** Every golden book of the levels, strong then weak for each level, built with every check. `only` keeps one book by name. */

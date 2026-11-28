@@ -3,7 +3,7 @@
 // counted apart. A blank may stand where `places` allows it, and two printed neighbours must show the step.
 import { pick } from "../hash";
 import type { Answer, Step } from "../contract";
-import { readLimitFields, readLimitsThat, within, type Item, type Range, type Shape } from "./shape";
+import { isExactly, readLimitFields, readLimitsThat, wholeFields, within, type Item, type Range, type Shape } from "./shape";
 
 export interface SkipCountLimits {
   /** The size of the step. */
@@ -95,6 +95,19 @@ function generate(limits: SkipCountLimits, seed: string): Item<SkipCountQuestion
   throw new Error("the count is wrong");
 }
 
+/** Whether data is a question of the limits: a line of some group (its step, its terms and a start of it) with a choice of blanks of that group. */
+function contains(question: unknown, limits: SkipCountLimits): boolean {
+  const fields = wholeFields(question, ["start", "step", "terms"] as const);
+  const blanks = (question as { blanks?: unknown } | null)?.blanks;
+  if (!fields || !Array.isArray(blanks) || !blanks.every((n) => typeof n === "number" && Number.isSafeInteger(n))) return false;
+  if (!isExactly(question, { ...fields, blanks })) return false;
+  return groups(limits).some(({ lines, blanks: choices }) => {
+    const offset = fields.start - lines.first;
+    const isStart = offset >= 0 && offset % lines.every === 0 && offset / lines.every < lines.count;
+    return lines.step === fields.step && lines.terms === fields.terms && isStart && choices.some((one) => one.length === blanks.length && one.every((n, i) => n === blanks[i]));
+  });
+}
+
 /** The order in which steps get harder: 2, 10 and 5 first, then by size. */
 const STEPS = [2, 10, 5, 3, 4, 6, 7, 8, 9];
 
@@ -172,6 +185,7 @@ export const skipCount: Shape<SkipCountLimits, SkipCountQuestion> = {
   worstCase,
   forms,
   count,
+  contains,
   face: (q) => ({
     kind: "sequence",
     tokens: termsOf(q).map((value, i) => {

@@ -36,6 +36,22 @@ export function checkReport(pages: readonly PageModel[], { positions, texts }: R
 }
 
 export function checkRendering(pages: readonly PageModel[], drawn: Rendering): string[] {
-  const pdf = isBytes(drawn.pdf) && PDF.every((byte, i) => drawn.pdf[i] === byte) ? [] : told(["gave no PDF"]);
-  return [...pdf, ...checkImageFiles(pages, drawn.images), ...checkReport(pages, drawn)];
+  return renderingProblems(pages, drawn).map((p) => p.problem);
+}
+
+/** The same problems, each with the page that it names, or null for a problem of the whole drawing. */
+export function renderingProblems(pages: readonly PageModel[], drawn: Rendering): { page: PageModel | null; problem: string }[] {
+  const whole = (problem: string) => ({ page: null, problem });
+  const images = listOf(drawn.images);
+  const { positions, texts } = drawn;
+  return [
+    ...(isBytes(drawn.pdf) && PDF.every((byte, i) => drawn.pdf[i] === byte) ? [] : told(["gave no PDF"]).map(whole)),
+    ...(images.length === pages.length ? [] : told([`must give one image for each of the ${pages.length} pages, and it gave ${images.length}`]).map(whole)),
+    ...pages.flatMap((page, i) => (isBytes(images[i]) ? [] : told([`gave no image of page ${page.page}`]).map((problem) => ({ page, problem })))),
+    ...(listOf(texts).some((text) => !isText(text)) ? told(["gave a text with no size or place"]).map(whole) : []),
+    ...pages.flatMap((page, i) => told([
+      ...(hasSheet(positions, i + 1) ? [] : [`gave no positions of page ${page.page}`]),
+      ...(hasSheet(texts, i + 1) ? [] : [`gave no texts of page ${page.page}`]),
+    ]).map((problem) => ({ page, problem }))),
+  ];
 }

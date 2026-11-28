@@ -52,6 +52,27 @@ export interface Shape<L = unknown, Q = unknown> {
   orderedRuns?(limits: L, items: number): Q[][] | null;
   /** The swapped form and whether the limits allow it, or null for a question that has none. */
   swapped?(question: Q, limits: L): Swapped<Q> | null;
+  /**
+   * Whether a question, as data from a book, is one of the limits in exactly the form that the shape prints. It reads
+   * the question back apart from `generate`, for the source check of each book. A shape with no `contains` is checked
+   * against its list, or its whole space when that space is small (checks/membership.ts).
+   */
+  contains?(question: unknown, limits: L): boolean;
+}
+
+/** Whether data is exactly this question: the same fields with the same values, and no other field. */
+export const isExactly = (given: unknown, question: unknown): boolean => canonicalJson(given) === canonicalJson(question);
+
+/** The whole-number fields of a question given as data, or null when one is missing or is not a whole number. */
+export function wholeFields<K extends string>(given: unknown, names: readonly K[]): Record<K, number> | null {
+  if (!isRecord(given)) return null;
+  const out = {} as Record<K, number>;
+  for (const name of names) {
+    const value = given[name];
+    if (typeof value !== "number" || !Number.isSafeInteger(value)) return null;
+    out[name] = value;
+  }
+  return out;
 }
 
 /** Tells two questions of a shape apart. Two forms of one question have one key. */

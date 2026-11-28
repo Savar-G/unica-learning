@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { isUuid } from "@/lib/workbook-content";
-import { FULL_BOOK_SNAPSHOT, fullBookPlan } from "@/lib/workbook-v2-publish/full-book";
+import { FULL_BOOK_SHEETS, FULL_BOOK_SNAPSHOT, fullBookPlan } from "@/lib/workbook-v2-publish/full-book";
 import { REQUEST_KEY } from "@/lib/workbook-v2-publish/input";
 import { publishV2Book } from "@/lib/workbook-v2-publish/job";
 import { serverDeps } from "@/lib/workbook-v2-publish/server";
@@ -9,7 +9,7 @@ import { serverDeps } from "@/lib/workbook-v2-publish/server";
 // child of a test family inside this function, uploads its files and writes it into today's workbook tables, and answers
 // with the timing record of the run (docs/workbook-v2-engine.md, "Publishing"). Call it with
 // "Authorization: Bearer <CRON_SECRET>" and the body {"childId": "<uuid>", "requestKey": "<8 to 120 characters>"}, and
-// optionally "sheets" (2, 4 or 6, or a multiple of 6 up to 60: the first sheets of the plan). The same request key again writes
+// optionally "sheets" (2, 4 or 6, or a multiple of 6 up to 54: the first sheets of the plan). The same request key again writes
 // nothing and gives back the same book. It is off in production unless WORKBOOK_V2_TEST_PUBLISH=on, and each function
 // instance runs one book at a time (a second call while one runs gets 429).
 
@@ -28,13 +28,13 @@ interface Body { childId: string; requestKey: string; sheets: number }
 
 function readBody(raw: unknown): Body | string {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return "The body is a JSON object.";
-  const { childId, requestKey, sheets = 60, ...rest } = raw as Record<string, unknown>;
+  const { childId, requestKey, sheets = FULL_BOOK_SHEETS, ...rest } = raw as Record<string, unknown>;
   if (Object.keys(rest).length > 0) return `The body has unknown fields: ${Object.keys(rest).join(", ")}.`;
   if (!isUuid(childId)) return "childId is a UUID.";
   if (typeof requestKey !== "string" || !REQUEST_KEY.test(requestKey)) return "requestKey is 8 to 120 letters, digits, :, _ or -.";
   // Whole days of the same size and a multiple of 4 pages: 2, 4 or 6 sheets of the first day, or whole days of 6.
   const n = sheets as number;
-  if (!Number.isInteger(n) || n < 2 || n > 60 || n % 2 !== 0 || (n > 6 && n % 6 !== 0)) return "sheets is 2, 4 or 6, or a multiple of 6 up to 60.";
+  if (!Number.isInteger(n) || n < 2 || n > FULL_BOOK_SHEETS || n % 2 !== 0 || (n > 6 && n % 6 !== 0)) return `sheets is 2, 4 or 6, or a multiple of 6 up to ${FULL_BOOK_SHEETS}.`;
   return { childId, requestKey, sheets: sheets as number };
 }
 
@@ -53,7 +53,9 @@ export async function POST(request: Request) {
     const deps = serverDeps();
     if (!deps) return new Response("Not configured", { status: 503 });
     const sheets = fullBookPlan(body.sheets);
-    const result = await publishV2Book(deps, { requestKey: body.requestKey, childId: body.childId, snapshot: structuredClone(FULL_BOOK_SNAPSHOT), sheets });
+    // The days of the plan have 6 sheets, or all the sheets of a book of one day (2, 4 or 6).
+    const pagesPerDay = 2 * Math.min(body.sheets, 6);
+    const result = await publishV2Book(deps, { requestKey: body.requestKey, childId: body.childId, snapshot: structuredClone(FULL_BOOK_SNAPSHOT), sheets, pagesPerDay });
     switch (result.status) {
       case "published": case "existing": return Response.json(result.record, { status: result.record.httpStatus });
       case "refused": return Response.json({ error: result.detail, reason: result.reason }, { status: result.reason === "not-test-family" ? 403 : 422 });

@@ -61,7 +61,10 @@ const NEXT_STEP: Partial<Record<FirstDifference["kind"], string>> = {
 };
 
 function firstDifferenceText(first: FirstDifference): string {
-  const next = NEXT_STEP[first.kind];
+  let next = NEXT_STEP[first.kind];
+  if (first.kind === "engine" && first.details?.expected === "2.0.0-s11") {
+    next = "Replay from Git commit d94c3932a4db052c26d6e33ce2d68dc17c48aa68 with its pinned renderer and fonts.";
+  }
   return [`First difference (${first.kind}): ${first.message}`, ...(next ? [`Next: ${next}`] : [])].join("\n");
 }
 

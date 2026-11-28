@@ -27,12 +27,15 @@ const middles = ({ x, y, w, h }: Rect): Box => ({ left: Math.ceil(x * SCALE - 0.
 
 const inImage = ({ left, top, right, bottom }: Box, { width, height }: PageImage): Box => ({ left: Math.max(0, left), top: Math.max(0, top), right: Math.min(width, right), bottom: Math.min(height, bottom) });
 
-/** Where ink may be, and the part of the page that a problem names. */
-export interface Stray { place: string; x: number; y: number }
+/** Where ink may be, and the part of the page that a problem names. `slot` is the short name of that part: a rectangle, "spine-zone", "margin" or "page". */
+export interface Stray { place: string; slot: string; x: number; y: number }
+
+/** The last part of the id of a rectangle: its name on its page, such as "answer-3". */
+export const tailOf = (id: string): string => id.slice(id.lastIndexOf("/") + 1);
 
 const inkRects = (ink: Ink): Rect[] => (ink.kind === "outline" ? outlineLines(ink.rect, ink.width) : [ink.rect]);
 
-interface Zone { name: string; rect: Rect; region: Region | null }
+interface Zone { name: string; slot: string; rect: Rect; region: Region | null }
 
 const ZONE_ROLES: readonly Region["role"][] = ["answer", "reach", "work", "qr"];
 
@@ -41,19 +44,20 @@ function zonesOf(page: PageModel): Zone[] {
   const { w, h } = page.size;
   const { spineZone: spine, outerMargin: margin } = PRINT_RULES;
   const front = page.side === "front";
-  const edge = (name: string, rect: Rect): Zone => ({ name, rect, region: null });
+  const edge = (name: string, slot: string, rect: Rect): Zone => ({ name, slot, rect, region: null });
   const own = ZONE_ROLES.flatMap((role) => page.regions.filter((r) => r.role === role));
   // A child writes a time in each box of a capture: the box and its reach are blank but for the border of the box.
   const captured = page.captures.flatMap((capture) => capture.fields.flatMap(({ name, rect, reach }): Zone[] => [
-    { name: `the box "${name}" of the ${capture.kind}`, rect, region: null }, { name: `the reach of the box "${name}" of the ${capture.kind}`, rect: reach, region: null },
+    { name: `the box "${name}" of the ${capture.kind}`, slot: `${tailOf(capture.id)}-${name}`, rect, region: null },
+    { name: `the reach of the box "${name}" of the ${capture.kind}`, slot: `${tailOf(capture.id)}-${name}`, rect: reach, region: null },
   ]));
   return [
-    ...own.map((region) => ({ name: regionName(region), rect: region.rect, region })),
+    ...own.map((region) => ({ name: regionName(region), slot: tailOf(region.id), rect: region.rect, region })),
     ...captured,
-    edge("the spine zone", { x: front ? 0 : w - spine, y: 0, w: spine, h }),
-    edge("the margin", { x: front ? w - margin : 0, y: 0, w: margin, h }),
-    edge("the margin", { x: 0, y: 0, w, h: margin }),
-    edge("the margin", { x: 0, y: h - margin, w, h: margin }),
+    edge("the spine zone", "spine-zone", { x: front ? 0 : w - spine, y: 0, w: spine, h }),
+    edge("the margin", "margin", { x: front ? w - margin : 0, y: 0, w: margin, h }),
+    edge("the margin", "margin", { x: 0, y: 0, w, h: margin }),
+    edge("the margin", "margin", { x: 0, y: h - margin, w, h: margin }),
   ];
 }
 
@@ -131,19 +135,19 @@ export function strayInk(page: PageModel, image: PageImage): Stray[] {
   const places: Zone[] = [
     ...zones,
     ...page.regions.filter((r) => r.role !== "slot"), ...page.regions.filter((r) => r.role === "slot"),
-  ].map((p) => ("name" in p ? p : { name: regionName(p), rect: p.rect, region: p }));
+  ].map((p) => ("name" in p ? p : { name: regionName(p), slot: tailOf(p.id), rect: p.rect, region: p }));
   const found: Stray[] = [];
   // The first ink that is left. It changes only when a place takes ink.
   let rest = left.nextInk(0);
   // A pixel belongs to the first place that holds its middle, so a place never takes the ink of one that lies in it.
-  for (const { name, rect } of places) {
+  for (const { name, slot, rect } of places) {
     if (rest < 0) break;
     const at = left.takeInk(middles(rect));
     if (at < 0) continue;
-    if (!found.some((s) => s.place === name)) found.push({ place: name, ...left.pointOf(at) });
+    if (!found.some((s) => s.place === name)) found.push({ place: name, slot, ...left.pointOf(at) });
     rest = left.nextInk(rest);
   }
-  if (rest >= 0) found.push({ place: "no rectangle of the page", ...left.pointOf(rest) });
+  if (rest >= 0) found.push({ place: "no rectangle of the page", slot: "page", ...left.pointOf(rest) });
   return found.sort((a, b) => a.y - b.y || a.x - b.x);
 }
 

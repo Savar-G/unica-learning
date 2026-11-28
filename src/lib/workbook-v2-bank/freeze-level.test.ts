@@ -4,7 +4,7 @@
 // PostgREST (with its 1,000-row cap). The live tables are probed in a rolled-back transaction (docs/workbook-v2-bank.md).
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { buildBook, planBook, type BuildResult } from "@/lib/workbook-v2/build/build-book";
+import { buildBook, PART_OF_BOOK, planBook, type BuildResult } from "@/lib/workbook-v2/build/build-book";
 import { canonicalJson } from "@/lib/workbook-v2/hash";
 import { openRenderer } from "@/lib/workbook-v2/render/typst";
 import type { Renderer } from "@/lib/workbook-v2/renderer";
@@ -147,9 +147,9 @@ function runFreezeContract(name: string, makeStore: () => ContractStore) {
       expect(recs(part.snapshot.sheets).map((s) => s.id)).toEqual(request.sheets.map((s) => s.sheetId));
 
       const drawer = await bookRenderer();
-      const fromFile = built(await buildBook({ snapshot: structuredClone(frozen.snapshot), book: request }, drawer));
-      const fromStore = built(await buildBook({ snapshot: whole.snapshot, book: request }, drawer));
-      const fromBookRows = built(await buildBook({ snapshot: part.snapshot, book: request, whole: part.whole }, drawer));
+      const fromFile = built(await buildBook({ snapshot: structuredClone(frozen.snapshot), book: request }, drawer, PART_OF_BOOK));
+      const fromStore = built(await buildBook({ snapshot: whole.snapshot, book: request }, drawer, PART_OF_BOOK));
+      const fromBookRows = built(await buildBook({ snapshot: part.snapshot, book: request, whole: part.whole }, drawer, PART_OF_BOOK));
       expect(fromStore.record).toEqual(fromFile.record);
       // The book built from one book's rows records the whole snapshot: the same snapshot hash and input hash.
       expect(fromBookRows.record).toEqual(fromFile.record);

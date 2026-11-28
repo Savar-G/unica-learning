@@ -1,7 +1,7 @@
 // The questions of mul.column in order (by the first number, then by the multiplier), counted and found with no list of
 // them: there are 79,920. The numbers of a range are cut into blocks of 1, 10, 100 or 1,000 that share their first
 // digits. What the last digits of a block can carry into its first digits is counted one column at a time.
-import type { Range } from "./shape";
+import { isExactly, wholeFields, type Range } from "./shape";
 
 export interface MulColumnLimits {
   /** How many digits the first number has. */
@@ -151,6 +151,13 @@ export const countQuestions = (limits: MulColumnLimits): number => countFrom(que
 export function mulColumnSpace(limits: MulColumnLimits): { count: number; at(index: number): MulColumnQuestion } {
   const all = questionsOf(limits);
   return { count: countFrom(all, ...ALL), at: (index) => find(all, index) };
+}
+
+/** Whether data is a question of the limits, exactly as `chooseQuestion` gives it: whole numbers `a` and `b` and no other field. */
+export function mulColumnHas(limits: MulColumnLimits, question: unknown): boolean {
+  const fields = wholeFields(question, ["a", "b"] as const);
+  if (!fields || !isExactly(question, fields) || !within(fields.b, limits.b)) return false;
+  return countFrom([questionsBy(limits, fields.b)], fields.a, fields.a) === 1;
 }
 
 export function chooseQuestion(limits: MulColumnLimits, choose: (count: number) => number): MulColumnQuestion {

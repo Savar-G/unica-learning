@@ -1,6 +1,9 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
+import { buildBook, PART_OF_BOOK } from "@/lib/workbook-v2/build/build-book";
 import { fakeRenderer } from "@/lib/workbook-v2/testing/fake-renderer";
+import { writeBook } from "./contract-writer";
+import { allocationOf, bookInput } from "./input";
 import { publishOnce, publishV2Book, type JobDeps } from "./job";
 import { CHILD, PARENT, REAL_CHILD, deps, memory, request } from "./publish.fixtures";
 import type { PublishPayload, V2PublishStore } from "./types";
@@ -151,6 +154,46 @@ describe("the v2 book job", () => {
     expect(store.tables.books).toHaveLength(1);
   });
 
+  it("refuses a retry that changes the pages per day of the same sheets", async () => {
+    const { store, files } = memory();
+    const sheets = request().sheets.slice(0, 2).map((sheet, i) => ({ ...sheet, startsDay: i === 0, day: 1 }));
+    expect(await publishV2Book(deps(store, files), request({ sheets, pagesPerDay: 2 }))).toMatchObject({ status: "published" });
+    const retry = deps(store, files, { seed: "d" });
+    expect(await publishV2Book(retry, request({ sheets, pagesPerDay: 2 }))).toMatchObject({ status: "existing" });
+    expect(await publishV2Book(retry, request({ sheets, pagesPerDay: 4 }))).toEqual({
+      status: "invalid", problems: ["the request key was used for another book"],
+    });
+  });
+
+  it("returns an already published book when its old sheet order fails the new preflight", async () => {
+    const { store, files } = memory();
+    const first = deps(store, files);
+    const good = request();
+    const legacy = request({ sheets: good.sheets.map((sheet, i) => ({ ...good.sheets[[1, 0, 2, 3][i]], day: sheet.day, startsDay: sheet.startsDay })) });
+    const workbookId = first.uuid();
+    const qrTokens = Array.from({ length: good.sheets.length * 2 }, () => first.token());
+    const planned = allocationOf(good, { parentId: PARENT, workbookId, qrTokens, allocatedAt: first.now().toISOString() });
+    if (!planned.ok) throw new Error(planned.problems.join("\n"));
+    const book = bookInput(legacy, workbookId, qrTokens);
+    const built = await buildBook({ snapshot: legacy.snapshot, book }, fakeRenderer(), PART_OF_BOOK);
+    if (built.status !== "built") throw new Error(built.problems.join("\n"));
+    const inputHash = built.record.inputHash;
+    const allocation = await store.allocate({
+      ...planned.candidate, inputHash, inputPath: `${PARENT}/${workbookId}/${inputHash}.json`,
+      allocation: { ...planned.candidate.allocation, book },
+    });
+    if (allocation.status !== "allocated") throw new Error(allocation.status);
+    const retry = deps(store, files, { seed: "d" });
+    expect(await publishV2Book(retry, legacy)).toMatchObject({ status: "invalid", problems: [expect.stringContaining("later in the level")] });
+    const stored = await store.publish(writeBook(built, allocation).payload);
+    expect(stored.status).toBe("published");
+    expect(await publishV2Book(retry, legacy)).toMatchObject({ status: "existing", record: { workbookId, inputHash } });
+    expect(await publishV2Book(retry, { ...legacy, scenario: "sports" })).toMatchObject({ status: "invalid" });
+    expect(store.tables.allocations).toHaveLength(1);
+    expect(files.files.size).toBe(0);
+    expect(retry.opened()).toBe(0);
+  });
+
   it.each([
     ["a child of a family that is not a test family", REAL_CHILD, "not-test-family"],
     ["a child that is not known", "66666666-6666-4666-8666-666666666666", "unknown-child"],
@@ -164,12 +207,30 @@ describe("the v2 book job", () => {
     expect(d.opened()).toBe(0);
   });
 
+  it.each<[string, Parameters<typeof request>[0], number]>([
+    // At 2 pages a day, days of 1, 1 and 2 sheets: the last day takes one more sheet so that the book has an even number.
+    ["a last day with one more sheet", { sheets: request().sheets.map((s, i) => ({ ...s, startsDay: i < 3, day: Math.min(i, 2) + 1 })) }, 2],
+    // A book of one day: 1 sheet a day and one more, which only the pages a day that the request sets can say.
+    ["a book of one day with one more sheet", { pagesPerDay: 2, sheets: request().sheets.slice(0, 2).map((s, i) => ({ ...s, startsDay: i === 0, day: 1 })) }, 2],
+  ])("publishes %s, and saves the pages a day of the request", async (_case, change, pagesPerDay) => {
+    const { store, files } = memory();
+    const result = await publishV2Book(deps(store, files), request(change));
+    expect(result.status).toBe("published");
+    expect(store.tables.allocations.map((a) => a.allocation.pagesPerDay)).toEqual([pagesPerDay]);
+    expect(store.tables.books.map((b) => b.payload.workbook.pagesPerDay)).toEqual([pagesPerDay]);
+  });
+
   it.each([
     ["a request key that is too short", { requestKey: "short" }, /request key/],
     ["a repeat without a queue reason", { sheets: request().sheets.map((s, i) => i === 0 ? { ...s, attempt: 2 } : s) }, /queue reason/],
     ["pages that are not a multiple of 4", { sheets: request().sheets.slice(0, 3) }, /multiple of 4/],
     ["a day that does not start with its first sheet", { sheets: request().sheets.map((s, i) => ({ ...s, startsDay: i === 1 })) }, /each day starts/],
     ["a sheet the snapshot does not have", { sheets: request().sheets.map((s, i) => (i === 0 ? { ...s, sheetId: "no-such-sheet" } : s)) }, /no sheet/],
+    // 60 sheets are 120 pages, and with the 4 of the cover 124: more than a book has.
+    ["more than 120 pages with the cover", { sheets: Array.from({ length: 30 }, (_, d) => request().sheets.slice(0, 2).map((s, i) => ({ ...s, startsDay: i === 0, day: d + 1 }))).flat() }, /the pages of a book and the 4 of its cover are a multiple of 4, up to 120, and this book has 124/],
+    ["a middle day with more sheets than the pages a day set for the book", { pagesPerDay: 2, sheets: request().sheets.map((s, i) => ({ ...s, startsDay: i === 0 || i === 2, day: i < 2 ? 1 : 2 })) }, /^day 1 has 2 sheets, and at 2 pages a day each day has 1 \(the last day may have one more/m],
+    ["pages a day that are not even", { pagesPerDay: 3 }, /pages a day is an even whole number from 2 to 20, and this book has 3/],
+    ["new sheets out of the level order", { sheets: request().sheets.map((s, i, all) => ({ ...all[[1, 0, 2, 3][i]], startsDay: s.startsDay, day: s.day })) }, /^Level check, sheet "times-facts", page 1, slot "page": this new sheet comes after a new sheet that is later in the level\.$/m],
   ])("refuses %s before anything is written", async (_case, change, problem) => {
     const { store, files } = memory();
     const result = await publishV2Book(deps(store, files), request(change));

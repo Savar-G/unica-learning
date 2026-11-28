@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { buildBook, planBook } from "@/lib/workbook-v2/build/build-book";
+import { buildBook, PART_OF_BOOK, planBook, wholeBook } from "@/lib/workbook-v2/build/build-book";
 import { canonicalJson, sha256 } from "@/lib/workbook-v2/hash";
 import { RenderError } from "@/lib/workbook-v2/renderer";
 import { fakeRenderer } from "@/lib/workbook-v2/testing/fake-renderer";
@@ -24,6 +24,17 @@ describe("replay", () => {
   it("builds the same PDF and every page image again", async () => {
     const result = await replayBook(saved, expected, fakeRenderer());
     expect(result).toMatchObject({ ok: true, pdfSha256: expected.pdfSha256, pages: 8 });
+  });
+
+  it("names the archived engine before drawing a book saved with s11", async () => {
+    const renderer = fakeRenderer();
+    const older = { ...(saved as Record<string, unknown>) };
+    delete older.checks;
+    const result = await replayBook(older, { ...expected, engineVersion: "2.0.0-s11" }, renderer);
+    expect(result).toMatchObject({
+      ok: false, firstDifference: { kind: "engine", details: { expected: "2.0.0-s11", actual: "2.0.0-s12" } },
+    });
+    expect(renderer.drawn.render).toHaveLength(0);
   });
 
   it.each([
@@ -59,6 +70,26 @@ describe("replay", () => {
     const result = await replayBook(changed, expected, fakeRenderer());
     expect(!result.ok && result.differences[0]).toMatch(/the input hash differs/);
   });
+
+  it("checks a published input as the whole book that it was built as, and an input saved with no checks as a part of a book", async () => {
+    expect((saved as { checks: unknown }).checks).toEqual(wholeBook(4));
+    // The same sheets with the first two new sheets out of the level order: a part of a book builds, a whole book does not.
+    const swapped = structuredClone(saved) as { format: 1; snapshot: unknown; book: { sheets: { sheetId: string; attempt: number }[] }; checks?: unknown };
+    const [a, b] = swapped.book.sheets;
+    [swapped.book.sheets[0], swapped.book.sheets[1]] = [{ ...a, sheetId: b.sheetId, attempt: b.attempt }, { ...b, sheetId: a.sheetId, attempt: a.attempt }];
+    const renderer = fakeRenderer();
+    const part = await buildBook({ snapshot: swapped.snapshot, book: swapped.book }, renderer, PART_OF_BOOK);
+    if (part.status !== "built") throw new Error(part.problems.join("\n"));
+    const same: ReplayExpected = { ...expected, inputHash: part.record.inputHash, pdfSha256: sha256(part.pdf), pageSha256s: part.pages.map((p) => sha256(p.image)) };
+    const whole = await replayBook(swapped, same, fakeRenderer());
+    expect(whole).toMatchObject({ ok: false, firstDifference: { kind: "build" } });
+    expect(!whole.ok && whole.differences.join("\n")).toMatch(/^Level check, sheet ".+", page \d+, slot "page": this new sheet comes after a new sheet that is later in the level\.$/m);
+    const older = { ...swapped };
+    Reflect.deleteProperty(older, "checks");
+    expect(await replayBook(older, same, fakeRenderer())).toMatchObject({ ok: true });
+    const bad = { ...swapped, checks: { book: "whole" } };
+    expect(await replayBook(bad, same, fakeRenderer())).toMatchObject({ ok: false, firstDifference: { kind: "input-format", message: expect.stringMatching(/^the checks of the saved input are not/) } });
+  });
 });
 
 // The first difference (G6): the first cause in causal order, so a later difference that follows from it is never named first.
@@ -77,7 +108,7 @@ describe("the first difference of a replay", () => {
     return changed;
   };
   const modelHashes = async () => {
-    const built = await buildBook({ snapshot: (saved as Saved).snapshot, book: (saved as Saved).book }, fakeRenderer());
+    const built = await buildBook({ snapshot: (saved as Saved).snapshot, book: (saved as Saved).book }, fakeRenderer(), PART_OF_BOOK);
     if (built.status !== "built") throw new Error(built.problems.join("\n"));
     return built.pages.map((p) => sha256(canonicalJson(p.model)));
   };

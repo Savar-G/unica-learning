@@ -54,6 +54,19 @@ export function v2PublishStore(db: SupabaseClient<Database>): V2PublishStore {
       return allocateAnswer(data);
     },
 
+    async findAllocation(requestKey, childId, parentId) {
+      const { data, error } = await db.from("workbook_v2_allocations")
+        .select("workbook_id, workbook_number, input_hash, input_path, allocated_at, allocation")
+        .eq("request_key", requestKey).eq("child_id", childId).eq("parent_id", parentId).maybeSingle();
+      if (error) throw new Error(`v2 allocation load: ${error.message}`);
+      if (!data) return null;
+      const result = allocateAnswer({
+        status: "existing", requestKey, childId, parentId, workbookId: data.workbook_id, workbookNumber: data.workbook_number,
+        inputHash: data.input_hash, inputPath: data.input_path, allocatedAt: data.allocated_at, allocation: data.allocation,
+      });
+      return result.status === "existing" ? result : null;
+    },
+
     async findByInputHash(inputHash) {
       const { data, error } = await db.from("workbooks").select("id, printed_revision").eq("input_hash", inputHash).maybeSingle();
       if (error) throw new Error(`v2 book load: ${error.message}`);

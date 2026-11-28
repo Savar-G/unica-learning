@@ -1,7 +1,7 @@
 import { readdirSync } from "node:fs";
 import fc from "fast-check";
 import { afterAll, describe, expect, it } from "vitest";
-import { buildBook } from "../build/build-book";
+import { buildBook, PART_OF_BOOK } from "../build/build-book";
 import { ANSWER_KINDS, FACE_KINDS, REGION_ROLES } from "../contract";
 import divisionSnapshot from "../fixtures/snapshot-division.json";
 import factsSnapshot from "../fixtures/snapshot-facts.json";
@@ -88,7 +88,7 @@ describe.skipIf(skipTypstTests())("one book with a sheet for each shape, with th
     const ids = sheets.map((sheet) => sheet.id);
     const snapshot = { format: 1, id: "all-shapes", level: { id: "level", name: "1" }, topics: [{ id: "topic", code: "1-1", title: "All shapes", sheets: ids }], sheets };
     const book = { bookId: "all-shapes", childId: "child", sheets: ids.map((sheetId) => ({ sheetId, attempt: 1, qr: { front: `${sheetId}-front`, back: `${sheetId}-back` } })) };
-    const result = await buildBook({ snapshot, book }, await openRenderer(testAssets()));
+    const result = await buildBook({ snapshot, book }, await openRenderer(testAssets()), PART_OF_BOOK);
     expect(result).toMatchObject({ status: "built" });
     if (result.status !== "built") return;
     expect(new Set(result.items.map((item) => item.shape))).toEqual(new Set(SHAPES.keys()));

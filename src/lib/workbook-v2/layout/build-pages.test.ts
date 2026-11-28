@@ -257,7 +257,10 @@ describe("the templates of tokens", () => {
     const content = { instruction: "Write the missing number.", template: broken, rows: [{ ...row, items: 4 }] };
     const both = { ...found, front: { ...content, rows: [{ ...row, id: "f", items: 4 }] }, back: content };
     const pages = buildPages([{ sheet: both, levelName: "2", attempt: 1, qr: { front: "f", back: "b" }, items: sheetItems(both, "child", 1) }]);
-    expect(pages).toEqual({ ok: false, problems: [expect.stringMatching(new RegExp(`^Page ${side === "front" ? 125 : 126}: question 4 has its blanks where the template "blanks-1x10" has no answer area\\.$`))] });
+    const page = side === "front" ? 125 : 126;
+    const problem = `Page ${page}: question 4 has its blanks where the template "blanks-1x10" has no answer area.`;
+    // The problem names its sheet, page and the slot of the question, for the finding of the build.
+    expect(pages).toEqual({ ok: false, problems: [problem], failures: [{ problem, sheet: "equal-groups", page, slot: "slot-4" }] });
   });
 
   it("stop a page with a question that has no place, and name it", () => {
@@ -265,7 +268,7 @@ describe("the templates of tokens", () => {
     const mul = SHAPES.get("mul.column");
     if (!mul) throw new Error("no shape");
     const odd = shapeLibrary([{ ...mul, worstCase: (l) => ({ ...mul.worstCase(l), question: { a: 1000, b: 2 } }), face: (q) => ((q as { a: number }).a === 1000 ? mul.face(q) : equation("5", "×", "7", "=", "□")) }]);
-    expect(planBook({ snapshot: { ...wideSnapshot, sheets: [sheet] }, book: wideBook }, odd)).toEqual({ ok: false, problems: expect.arrayContaining([expect.stringMatching(/^Page \d+: question 1 is an equation question and the template "columns-2x4-wide" has no place for one\.$/)]) });
+    expect(planBook({ snapshot: { ...wideSnapshot, sheets: [sheet] }, book: wideBook }, odd)).toMatchObject({ ok: false, problems: expect.arrayContaining([expect.stringMatching(/^Page \d+: question 1 is an equation question and the template "columns-2x4-wide" has no place for one\.$/)]) });
   });
 });
 

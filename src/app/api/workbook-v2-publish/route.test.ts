@@ -88,12 +88,12 @@ it("answers 429 while this instance builds a book", async () => {
   expect((await first).status).toBe(201);
 });
 
-it("bundles the pinned Typst with this route only, and the build stages it first", async () => {
+it("bundles the pinned Typst with this route and the book checks timing route only, and the build stages it first", async () => {
   const { default: config } = await import("../../../../next.config");
   const includes = config.outputFileTracingIncludes ?? {};
   const withTypst = Object.entries(includes).filter(([, files]) => files.some((file) => file.includes(".workbook-v2/typst/"))).map(([route]) => route);
-  expect(withTypst).toEqual(["/api/workbook-v2-publish"]);
-  expect(includes["/api/workbook-v2-publish"]).toEqual([...workbookV2TraceFiles()]);
+  expect(withTypst).toEqual(["/api/workbook-v2-publish", "/api/workbook-v2-book-checks"]);
+  for (const route of withTypst) expect(includes[route]).toEqual([...workbookV2TraceFiles()]);
   const vercel = JSON.parse(readFileSync("vercel.json", "utf8")) as { buildCommand?: string };
   expect(vercel.buildCommand).toBe("npm run typst:stage && npm run build");
   expect(readFileSync(".gitignore", "utf8").split("\n")).toContain("/.workbook-v2/");

@@ -1,15 +1,17 @@
-// A full-size invented book for the v2 publish path (UNI-141): a Level 3 snapshot of seven sheets, written here as
-// TypeScript data, and the plan of a book of 60 sheets (120 pages, 10 days of 6 sheets) with about 2,000 questions. All
-// content is invented. App code may not name the engine's data files (scripts/engine-guard.mjs, engine-asset-use), so the
-// rows are written out here; validateSnapshot checks them like any other snapshot.
+// A full-size invented book for the v2 publish path (UNI-141): a Level 3 snapshot of 56 sheets (8 copies of seven invented
+// sheets, written here as TypeScript data) and the plan of a whole book of 54 sheets (108 pages and the 4 of the cover, 112
+// in all; 9 days of 6 sheets) with 1,378 questions. The plan is a whole book (UNI-259): its repeats come first, then
+// its new sheets, each part in level order. All content is invented. App code may not name the engine's data files
+// (scripts/engine-guard.mjs, engine-asset-use), so the rows are written out here; validateSnapshot checks them like any
+// other snapshot.
 
 import type { QueueReason } from "@/lib/workbook-v2/assemble/position";
 
 /** One sheet of a book plan. The first sheet of each day starts it, so its front page has the time log. */
 export interface PlannedBookSheet { sheetId: string; attempt: number; startsDay: boolean; day: number; reason?: QueueReason }
 
-/** The invented Level 3 snapshot: facts, brackets, columns, bar models and word problems with the CA and US packs. */
-export const FULL_BOOK_SNAPSHOT = {
+/** The seven invented sheets: facts, brackets, columns, bar models and word problems with the CA and US packs. */
+const SEVEN_SHEETS = {
   format: 1,
   id: "invented-full-level-3-v1",
   level: { id: "level-3", name: "3" },
@@ -121,27 +123,39 @@ export const FULL_BOOK_SNAPSHOT = {
 
 } as const;
 
-/** The sheets of a facts day, of a day with brackets and columns, and of a day of facts only. */
-const FIGURE_DAY = ["facts", "facts", "facts", "facts", "equal-groups", "story-problems"] as const;
-const MIXED_DAY = ["facts", "facts", "facts", "facts", "division-brackets", "column-multiplication"] as const;
-const FACTS_DAY = ["facts", "facts", "facts", "facts", "facts", "facts"] as const;
-/** 46 sheets of facts, 2 of brackets, 2 of columns, 5 of bar models and 5 of word problems. */
-const DAYS = [FIGURE_DAY, FIGURE_DAY, FIGURE_DAY, FIGURE_DAY, FIGURE_DAY, MIXED_DAY, MIXED_DAY, FACTS_DAY, FACTS_DAY, FACTS_DAY];
-const FACT_SHEETS = ["times-facts", "add-and-take-away", "division-facts"] as const;
+/** How many copies of the seven sheets the level has: 56 sheets, enough for a whole book of new sheets in level order. */
+const COPIES = 8;
+const idOf = (id: string, copy: number): string => (copy === 0 ? id : `${id}-${copy + 1}`);
 
 /**
- * The book plan: 10 days of 6 sheets. The facts sheets take turns, and each new issue of a sheet is its next attempt, so
- * no sheet and attempt repeats. `sheets` keeps the first sheets of the plan only (an even count, so the pages are a
- * multiple of 4).
+ * The invented Level 3 snapshot: the seven sheets, then copies of them under new ids, each copy with its own topics. The
+ * first copy keeps the ids of the seven sheets.
  */
-export function fullBookPlan(sheets = 60): PlannedBookSheet[] {
-  const attempts = new Map<string, number>();
-  let facts = 0;
-  const plan = DAYS.flatMap((kinds, d) => kinds.map((kind, i): PlannedBookSheet => {
-    const sheetId = kind === "facts" ? FACT_SHEETS[facts++ % FACT_SHEETS.length] : kind;
-    const attempt = (attempts.get(sheetId) ?? 0) + 1;
-    attempts.set(sheetId, attempt);
-    return { sheetId, attempt, startsDay: i === 0, day: d + 1, reason: attempt === 1 ? "new" : "repeat" };
+export const FULL_BOOK_SNAPSHOT = {
+  ...SEVEN_SHEETS,
+  topics: Array.from({ length: COPIES }, (_, copy) => SEVEN_SHEETS.topics.map((topic, t) => ({
+    ...topic, id: idOf(topic.id, copy), code: `3-${copy * SEVEN_SHEETS.topics.length + t + 1}`, sheets: topic.sheets.map((id) => idOf(id, copy)),
+  }))).flat(),
+  sheets: Array.from({ length: COPIES }, (_, copy) => SEVEN_SHEETS.sheets.map((sheet, i) => ({
+    ...sheet, id: idOf(sheet.id, copy), firstPage: 2 * (copy * SEVEN_SHEETS.sheets.length + i) + 1,
+  }))).flat(),
+};
+
+/** The sheets of a whole book of 9 days of 6 sheets. */
+export const FULL_BOOK_SHEETS = 54;
+const SHEETS_A_DAY = 6;
+/** The first sheets of the level print again (attempt 2) for the first two days; the next sheets of the level are new. */
+const REPEATS = 12;
+
+/**
+ * The book plan: 9 days of 6 sheets, the repeats first and then the new sheets, each part in level order, so it is a whole
+ * book. `sheets` keeps the first sheets of the plan only: 2, 4 or 6 (one day), or whole days of 6.
+ */
+export function fullBookPlan(sheets = FULL_BOOK_SHEETS): PlannedBookSheet[] {
+  const order = FULL_BOOK_SNAPSHOT.topics.flatMap((topic) => topic.sheets);
+  const plan = order.slice(0, FULL_BOOK_SHEETS).map((sheetId, i): PlannedBookSheet => ({
+    sheetId, attempt: i < REPEATS ? 2 : 1, startsDay: i % SHEETS_A_DAY === 0, day: Math.floor(i / SHEETS_A_DAY) + 1,
+    reason: i < REPEATS ? "repeat" : "new",
   }));
   return plan.slice(0, sheets);
 }

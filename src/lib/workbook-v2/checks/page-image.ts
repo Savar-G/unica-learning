@@ -69,6 +69,22 @@ function paeth(left: number, above: number, corner: number): number {
   return a <= b && a <= c ? left : b <= c ? above : corner;
 }
 
+function unfilterPaethRgba(lines: Uint8Array, words: DataView, first: number, end: number, up: number): void {
+  for (let at = first; at < end;) {
+    // When left equals the upper-left pixel, Paeth predicts the pixel above. With a zero difference this holds for
+    // the next pixel as well, so the entire run of zero differences can copy from the line above.
+    if (words.getUint32(at) === 0 && words.getUint32(at - 4) === words.getUint32(at - up - 4)) {
+      let stop = at + 4;
+      while (stop < end && words.getUint32(stop) === 0) stop += 4;
+      lines.copyWithin(at, at - up, stop - up);
+      at = stop;
+    } else {
+      const stop = at + 4;
+      for (; at < stop; at++) lines[at] += paeth(lines[at - 4], lines[at - up], lines[at - up - 4]);
+    }
+  }
+}
+
 /**
  * Each line holds its filter and then the difference of each byte from its neighbours. False: an unknown filter. Above the
  * first line and left of the first pixel there is nothing, which counts as 0. Each filter has a loop of its own, because a
@@ -77,6 +93,7 @@ function paeth(left: number, above: number, corner: number): number {
 function unfilter(lines: Uint8Array, { height, parts }: Header, stride: number): boolean {
   const up = stride + 1;
   const bytes = Buffer.from(lines.buffer, lines.byteOffset, lines.length);
+  const words = new DataView(lines.buffer, lines.byteOffset, lines.length);
   const nothing = Buffer.alloc(stride);
   for (let y = 0; y < height; y++) {
     const start = y * up + 1;
@@ -94,7 +111,8 @@ function unfilter(lines: Uint8Array, { height, parts }: Header, stride: number):
       for (let i = first; i < end; i++) lines[i] += (lines[i - parts] + lines[i - up]) >> 1;
     } else if (filter === 4) {
       for (let i = start; i < first; i++) lines[i] += lines[i - up];
-      for (let i = first; i < end; i++) lines[i] += paeth(lines[i - parts], lines[i - up], lines[i - up - parts]);
+      if (parts === 4) unfilterPaethRgba(lines, words, first, end, up);
+      else for (let i = first; i < end; i++) lines[i] += paeth(lines[i - parts], lines[i - up], lines[i - up - parts]);
     }
   }
   return true;
@@ -140,8 +158,14 @@ export function readPageImage(png: Uint8Array): PageImage | string {
     if (parts === 1) low.set(lines.subarray(start, start + stride), to);
     else if (y > 0 && isSameAsAbove(bytes, start, stride)) low.copyWithin(to, to - width, to);
     else for (let x = 0, at = start; x < width; x++, at += parts) {
-      const [red, green, blue] = [lines[at], lines[at + 1], lines[at + 2]];
+      const red = lines[at];
+      const green = lines[at + 1];
+      const blue = lines[at + 2];
       const cover = parts === 4 ? lines[at + 3] : 255;
+      if (red === green && green === blue && cover === 255) {
+        low[to + x] = red;
+        continue;
+      }
       if (cover > 0 && (red !== green || green !== blue)) colour ??= { x, y };
       low[to + x] = onPaper(Math.min(red, green, blue), cover);
     }

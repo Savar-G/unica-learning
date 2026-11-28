@@ -2,7 +2,7 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { validateSnapshot } from "../bank/snapshot";
 import { readBookRequest } from "../build/book-input";
-import { buildBook, planBook, type BuiltBook } from "../build/build-book";
+import { buildBook, PART_OF_BOOK, planBook, wholeBook, type BuiltBook } from "../build/build-book";
 import rawFacts from "../fixtures/snapshot-facts.json";
 import rawStories from "../fixtures/snapshot-invented-topic.json";
 import storyBook from "../fixtures/book-invented-topic.json";
@@ -49,6 +49,25 @@ describe("the next book", () => {
     const outcome = planNextBook(input({ pagesPerDay: 2, days: 3 }));
     if (!outcome.ok) throw new Error(outcome.problems.join("\n"));
     expect(outcome.request.sheets.map((s) => [s.sheetId, s.startsDay ?? false])).toEqual([[IDS[0], true], [IDS[1], true], [IDS[2], true], [IDS[3], false]]);
+  });
+
+  it("refuses a short queue that leaves a day with fewer sheets than the pages a day, which a whole book's build refuses too", async () => {
+    expect(problemsOf(planNextBook(input({ position: positionOf(newSheets(2)), pagesPerDay: 6, days: 1, qrTokens: tokens(4) }))))
+      .toMatch(/^Day 1 of the book has 2 sheets, and at 6 pages a day each day has 3 sheets \(the last day may have one more/);
+    expect(problemsOf(planNextBook(input({ position: positionOf(newSheets(4)), pagesPerDay: 6, days: 2, qrTokens: tokens(8) })))).toMatch(/^Day 2 of the book has 1 sheet/);
+    // The same two sheets planned at 4 pages a day are a day of 4 pages: a whole book of 6 pages a day stops at its level check.
+    const two = planNextBook(input({ position: positionOf(newSheets(2)), pagesPerDay: 4, days: 1, qrTokens: tokens(4) }));
+    if (!two.ok) throw new Error(two.problems.join("\n"));
+    const built = await buildBook({ snapshot: rawFacts, book: two.request }, fakeRenderer(), wholeBook(6));
+    expect(built).toMatchObject({ status: "failed", findings: [expect.objectContaining({ check: "level", rule: "pages-a-day", sheet: IDS[0] })] });
+  });
+
+  it("plans the extra sheet of an even book on its last day, and a whole book of it builds", async () => {
+    const outcome = planNextBook(input({ position: positionOf(newSheets(5)), pagesPerDay: 6, days: 1, qrTokens: tokens(8) }));
+    if (!outcome.ok) throw new Error(outcome.problems.join("\n"));
+    expect(outcome.request.sheets.map((s) => s.startsDay ?? false)).toEqual([true, false, false, false]);
+    const built = await buildBook({ snapshot: rawFacts, book: outcome.request }, fakeRenderer(), wholeBook(6));
+    expect(built.status === "built" ? [] : built.problems).toEqual([]);
   });
 
   it("refuses an odd queue that cannot round up to an even book, and refuses an empty queue", () => {
@@ -130,7 +149,7 @@ describe("the next book", () => {
 
 describe("the history of a child from built books", () => {
   const built = async (book: unknown, snapshot: unknown): Promise<BuiltBook> => {
-    const result = await buildBook({ snapshot, book }, fakeRenderer());
+    const result = await buildBook({ snapshot, book }, fakeRenderer(), PART_OF_BOOK);
     if (result.status !== "built") throw new Error(result.problems.join("\n"));
     return result;
   };

@@ -14,7 +14,9 @@ export interface PlannedSheet {
   startsDay?: boolean;
 }
 
-export type PagesResult = { ok: true; pages: PageModel[] } | { ok: false; problems: string[] };
+/** A page that cannot be made: its problem in words, and where it is (its sheet, page and the short name of its slot). */
+export interface PageFailure { problem: string; sheet: string; page: number; slot: string }
+export type PagesResult = { ok: true; pages: PageModel[] } | { ok: false; problems: string[]; failures: PageFailure[] };
 
 const SIDES: readonly Side[] = ["front", "back"];
 const BLACK = "black";
@@ -191,23 +193,24 @@ function timeLogOf(frame: PageFrame, id: string): { region: Region; capture: Cap
   };
 }
 
-function buildPage({ sheet, levelName, attempt, qr, items, startsDay = false }: PlannedSheet, side: Side): PageModel | string {
+function buildPage({ sheet, levelName, attempt, qr, items, startsDay = false }: PlannedSheet, side: Side): PageModel | PageFailure {
   const { template, instruction } = sheet[side];
   const { frame, places } = template.sides[side];
   const page = side === "front" ? sheet.firstPage : sheet.firstPage + 1;
   const id = `${sheet.id}/${attempt}/${side}`;
   const at = (name: string) => `${id}/${name}`;
+  const fail = (slot: string, problem: string): PageFailure => ({ problem: `Page ${page}: ${problem}.`, sheet: sheet.id, page, slot });
   const region = (name: string, role: RegionRole, rect: Rect, ink: Ink[]): Region => ({ id: at(name), role, rect, item: null, part: null, ink });
   const squares = qrSquares(frame.qr, qr[side]);
-  if (typeof squares === "string") return `Page ${page}: ${squares}.`;
+  if (typeof squares === "string") return fail("qr", squares);
   const onSide = items.filter((item) => item.side === side);
-  if (onSide.length > places.length) return `Page ${page}: ${onSide.length} questions do not fit the template "${template.id}", which has ${places.length} places.`;
+  if (onSide.length > places.length) return fail("page", `${onSide.length} questions do not fit the template "${template.id}", which has ${places.length} places`);
   for (const [i, { number, face, answer }] of onSide.entries()) {
     const problem = placeProblem(template, places[i], face, answer);
-    if (problem) return `Page ${page}: question ${number} ${problem}.`;
+    if (problem) return fail(`slot-${number}`, `question ${number} ${problem}`);
   }
   const timeLog = startsDay && side === "front" ? timeLogOf(frame, at("time-log")) : null;
-  if (typeof timeLog === "string") return `Page ${page}: ${timeLog}.`;
+  if (typeof timeLog === "string") return fail("time-log", timeLog);
   const { heading, footer, marks } = frame;
   return {
     id, sheetId: sheet.id, attempt, side, page, levelName, instruction, template: template.id, qr: qr[side],
@@ -228,6 +231,6 @@ function buildPage({ sheet, levelName, attempt, qr, items, startsDay = false }: 
 
 export function buildPages(sheets: readonly PlannedSheet[]): PagesResult {
   const built = sheets.flatMap((sheet) => SIDES.map((side) => buildPage(sheet, side)));
-  const problems = built.filter((p) => typeof p === "string");
-  return problems.length > 0 ? { ok: false, problems } : { ok: true, pages: built.filter((p) => typeof p !== "string") };
+  const failures = built.filter((p): p is PageFailure => "problem" in p);
+  return failures.length > 0 ? { ok: false, problems: failures.map((f) => f.problem), failures } : { ok: true, pages: built.filter((p): p is PageModel => !("problem" in p)) };
 }

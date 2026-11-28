@@ -228,6 +228,8 @@ describe("reading a page image", () => {
   it.each([1, 3, 4].flatMap((parts) => [0, 1, 2, 3, 4].map((filter): [number, number] => [parts, filter])))("%i parts a pixel, filter %i on the first line and on each second one", async (parts, filter) => {
     const [width, height] = [13, 10];
     const bytes = Uint8Array.from({ length: width * height * parts }, (_, i) => (parts === 4 && i % 4 === 3 ? 255 : (i * 2654435761) >>> 24));
+    // The second line repeats a non-uniform row. For Up and Paeth, its differences are all zero.
+    bytes.copyWithin(width * parts, 0, width * parts);
     const png = pngFile(width, height, { 1: 0, 3: 2, 4: 6 }[parts] ?? 0, filtered(bytes, width * parts, parts, (y) => (y % 2 === 0 ? filter : 4 - filter)));
     const other = await sharp(png).removeAlpha().toColourspace("srgb").raw().toBuffer();
     const image = readPageImage(png);

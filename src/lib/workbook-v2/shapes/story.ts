@@ -7,7 +7,7 @@ import { choosePhrasing, fill, PLACEHOLDER } from "../themes/fill";
 import { eachChoice, rangeCount, rangeValue, widestValues } from "../themes/ranges";
 import { solve, type Expr } from "../themes/solver";
 import type { DefinedQuestion, RegionPack, Scenario, SlotRange } from "../themes/types";
-import type { Item, Shape } from "./shape";
+import { isExactly, isRecord, type Item, type Shape } from "./shape";
 
 export const STORY_SHAPE_ID = "story";
 
@@ -79,6 +79,43 @@ function generateBound(bound: BoundQuestion, limits: StoryLimits, seed: string):
   return storyItem(bound, choosePhrasing(bound.question, seedFrom(seed, "phrasing"), seen), values);
 }
 
+/** The number of each slot of a printed story, when every one is a number that its range holds. */
+function slotValues(bound: BoundQuestion, slots: unknown): Record<string, number> | null {
+  if (!Array.isArray(slots)) return null;
+  const values: Record<string, number> = {};
+  for (const slot of slots) {
+    if (!isRecord(slot) || typeof slot.name !== "string" || typeof slot.value !== "number" || !Object.hasOwn(bound.ranges, slot.name) || Object.hasOwn(values, slot.name)) return null;
+    const range = bound.ranges[slot.name];
+    const { name, value } = slot;
+    if (!Array.from({ length: rangeCount(range) }, (_, i) => rangeValue(range, i)).includes(value)) return null;
+    values[name] = value;
+  }
+  return Object.keys(bound.ranges).every((name) => Object.hasOwn(values, name)) ? values : null;
+}
+
+/**
+ * The word problem that the row of a book prints for data that names one of its bound questions, one of its phrasings and
+ * numbers that the ranges of its scenario hold: filled again from these alone, or null.
+ */
+export function storyRendering(question: unknown, limits: StoryLimits): StoryQuestion | null {
+  if (!isRecord(question)) return null;
+  const bound = limits.questions.find((b) => b.question.id === question.question);
+  const phrasing = bound ? bound.question.phrasings.findIndex((p) => p.id === question.phrasing) : -1;
+  const values = bound && phrasing >= 0 ? slotValues(bound, question.slots) : null;
+  if (!bound || !values) return null;
+  try {
+    return storyItem(bound, phrasing, values).question;
+  } catch {
+    return null;
+  }
+}
+
+/** Whether data is a word problem of the row for this book: its rendering filled again (`storyRendering`) is the same in every field. */
+function containsStory(question: unknown, limits: StoryLimits): boolean {
+  const rendering = storyRendering(question, limits);
+  return rendering !== null && isExactly(question, rendering);
+}
+
 export const storyShape: Shape<StoryLimits, StoryQuestion> = {
   id: STORY_SHAPE_ID,
   version: 1,
@@ -106,5 +143,6 @@ export const storyShape: Shape<StoryLimits, StoryQuestion> = {
   // A child calls a story with other numbers the same story: a sheet repeats a defined question only when it must.
   count: ({ questions }) => questions.length,
   identity: (question) => question.question,
+  contains: containsStory,
   face: (question): StoryFace => ({ kind: "story", tokens: question.tokens, unit: question.unit, blank: "answer" }),
 };

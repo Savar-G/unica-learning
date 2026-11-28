@@ -15,6 +15,11 @@ export interface PublishRequest {
   childId: string;
   snapshot: unknown;
   sheets: PlannedBookSheet[];
+  /**
+   * The pages a day set for this book (product spec 7.2). Each day has half as many sheets, and the last day may have one
+   * more so that the book has an even number of sheets. When absent, it is twice the sheets of day 1.
+   */
+  pagesPerDay?: number;
   /** The region pack and the interest of the word problems; the snapshot's defaults when absent. */
   region?: string;
   scenario?: string;
@@ -152,6 +157,8 @@ export interface V2PublishStore {
   family(childId: string): Promise<FamilyCheck>;
   /** Saves the candidate, or gives back the allocation that its request key or input hash already has. */
   allocate(candidate: AllocationCandidate): Promise<AllocateResult>;
+  /** Reads a previous request for this family without reserving a new book. */
+  findAllocation(requestKey: string, childId: string, parentId: string): Promise<Allocation | null>;
   /** The published book with this input hash, or null. */
   findByInputHash(inputHash: string): Promise<PublishedRef | null>;
   /** Writes every row of the book, or nothing; the same input hash again writes nothing and gives back the book. */
