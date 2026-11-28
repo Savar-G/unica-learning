@@ -585,6 +585,32 @@ describe("rows in order that choose among the runs of their tables", () => {
       }
       expect(replayed).toBeGreaterThan(0);
     });
+
+    it("avoid duplicating the unswapped front when the back run blocks its swap", async () => {
+      const fixed = (id: string) => mul(id, [7], 1, "mixed", { min: 6, max: 6 });
+      const turnable = mul("turnable-front", [4, 7], 1, "mixed", { min: 4, max: 7 });
+      turnable.limits.result = { min: 28, max: 28 };
+      const snapshot = snapshotOf([
+        { id: "current", front: side([turnable, fixed("front-fixed")]), back: side([
+          mul("back-run", [6, 7], 1, "up", { min: 4, max: 4 }), separator,
+          mul("back-mixed", [4], 1, "mixed", { min: 6, max: 7 }), fixed("back-fixed"),
+        ]) },
+        { id: "later", front: side([mul("seen-four", [4], 1, "mixed", { min: 6, max: 6 }), mul("seen-seven", [7], 1, "mixed", { min: 4, max: 4 })]) },
+      ]);
+      let replayed = 0;
+      for (const child of CHILDREN) {
+        const first = await built({ snapshot, book: bookOf("first", child, "current", 1) } as unknown as Input);
+        if (run(first, "turnable-front")[0].a !== 4 || run(first, "back-run")[0].a !== 6) continue;
+        const later = await built({ snapshot, book: bookOf("later", child, "later", 1) } as unknown as Input);
+        const book = await repeatOf(snapshot, child, [first, later]);
+        expect(run(book, "back-run")).toEqual([{ a: 7, b: 4 }]);
+        expect(run(book, "turnable-front")).toEqual([{ a: 4, b: 7 }]);
+        expect(run(book, "back-mixed")).toEqual([{ a: 4, b: 6 }]);
+        expect([copies(book, "back"), copies(book)]).toEqual([0, 1]);
+        replayed++;
+      }
+      expect(replayed).toBeGreaterThan(0);
+    });
   });
 });
 
