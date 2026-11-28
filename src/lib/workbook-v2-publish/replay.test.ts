@@ -26,6 +26,17 @@ describe("replay", () => {
     expect(result).toMatchObject({ ok: true, pdfSha256: expected.pdfSha256, pages: 8 });
   });
 
+  it("names the archived engine before drawing a book saved with s11", async () => {
+    const renderer = fakeRenderer();
+    const older = { ...(saved as Record<string, unknown>) };
+    delete older.checks;
+    const result = await replayBook(older, { ...expected, engineVersion: "2.0.0-s11" }, renderer);
+    expect(result).toMatchObject({
+      ok: false, firstDifference: { kind: "engine", details: { expected: "2.0.0-s11", actual: "2.0.0-s12" } },
+    });
+    expect(renderer.drawn.render).toHaveLength(0);
+  });
+
   it.each([
     ["a font", (e: ReplayExpected) => ({ ...e, fontHashes: { ...e.fontHashes, "A.ttf": "z" } }), /the hash of A.ttf differs/],
     ["the drawing file", (e: ReplayExpected) => ({ ...e, fontHashes: { ...e.fontHashes, "page.typ": "z" } }), /the hash of page.typ differs/],

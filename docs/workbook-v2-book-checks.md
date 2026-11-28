@@ -64,6 +64,10 @@ The publish tool's book (`src/lib/workbook-v2-publish/full-book.ts`) is a whole 
 
 When a check of the pages stops a book before drawing (answer forms, page layout and QR fit, the first printed-answer check, `checkPage`, time logs), `buildBook` gives findings too, with the same places as after drawing; `planBook` and `planPages` keep their earlier wording for the bank checks. A text that the typesetter drew on a page of the file and that the model does not have is placed on the page model of that page. When a check stops a book, `BuildResult` has `problems` (from `formatFinding`) and `findings`.
 
+### Replay across engine versions
+
+This release records engine `2.0.0-s12` because question selection can change the printed pages. A replay of a book saved with `2.0.0-s11` reports the engine difference before rendering. Use Git commit `d94c3932a4db052c26d6e33ce2d68dc17c48aa68` and its pinned Typst and fonts to replay that book. The same replay command accepts a saved bundle offline.
+
 ## Timing (target: under 5 s)
 
 `src/lib/workbook-v2/testing/full-size-book.ts` makes a full-size synthetic book: Book 2 of a weak child on an invented level of 64 sheets. It has 58 sheets (116 pages and 4 cover pages, 120 in all) and 1,050 questions: 3 repeats with the history of Book 1, then 55 new sheets, at 6 pages a day (19 days of 3 sheets, and the last day 4).
