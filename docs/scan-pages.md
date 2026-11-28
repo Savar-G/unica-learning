@@ -255,7 +255,7 @@ This implementation changes no family release setting. Root owns hosted schema a
 
 ## Two pages in one photo (#915)
 
-A v2 workbook prints its QR code in the outer bottom corner. Upload reads the first code and loads that page's stored layout. It uses the opposite layout to find the other code and checks both pages before it cuts between their printed areas. A readable v2 code can place a page with all four marks hidden. The print, page identity and answer visibility checks still apply. The stored page uses image pixels for answers, reach and time log captures. The scan check makes no time log reading.
+A v2 workbook prints its QR code in the outer bottom corner. Upload reads the first code and loads that page's stored layout. It uses the opposite layout to find the other code and checks both pages before it cuts between their printed areas. A readable v2 code can place a page with all four marks hidden. The print, page identity and answer visibility checks still apply. The stored page uses image pixels for answers, reach and time log captures. Early v2 pages without stored reach use the bounded extension for supported answer regions. The scan check makes no time log reading.
 
 For v1 workbooks, the rules below apply.
 

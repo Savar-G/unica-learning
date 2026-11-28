@@ -6,7 +6,7 @@ import { teachingPackage } from "@/lib/maya-teaching";
 import { workbookAnswerPages } from "@/lib/parent-workbook-answers";
 import { checkQuestionPackage } from "@/lib/question-package";
 import { storedContent, storedQuestion, type Workbook } from "@/lib/workbook-content";
-import { calibratePhoto, photoPoint, sheetChecker } from "@/lib/scan-calibration";
+import { calibratePhoto, cropMargin, photoPoint, sheetChecker } from "@/lib/scan-calibration";
 import { runScanCrops } from "@/lib/scan-crops";
 import { memoryScanCropStore } from "@/lib/scan-crops-memory";
 import { normalizeScanPhoto } from "@/lib/scan-photo-image";
@@ -208,8 +208,13 @@ describe.skipIf(skipTypstTests(process.env.WORKBOOK_V2_REQUIRE_TYPST === "1"))("
     }
     return pagePng(photo);
   };
-  const checkCrops = async (i: number, bytes: Uint8Array, twin?: Uint8Array) => {
+  const checkCrops = async (i: number, bytes: Uint8Array, { twin, early = false }: { twin?: Uint8Array; early?: boolean } = {}) => {
     const page = payload.pages[i];
+    const legacy = { ...page.printContract, layout: undefined, captures: undefined, coordinates: { ...page.printContract.coordinates, content: undefined } };
+    const scanned = early ? storedScanPrintContract(legacy, { workbookId: WORKBOOK, page: page.number, image: page.image }, "v2") : fromStorage(i);
+    if (!scanned || scanned === "unsupported") throw new Error("No layout for the invented page");
+    const questions = payload.questions.filter((q) => q.pageNumber === i + 1).map((q) =>
+      early ? { ...q, regions: q.regions.map(({ id, kind, box }) => ({ id, kind, box })) } : q);
     const clock = Date.parse("2026-11-27T12:00:00Z");
     const ref = { parent: PARENT, photo: "typst-photo" };
     const memory = memoryScanCropStore({ now: () => clock });
@@ -217,7 +222,7 @@ describe.skipIf(skipTypstTests(process.env.WORKBOOK_V2_REQUIRE_TYPST === "1"))("
     if (twin) memory.printed.set("invented-twin.png", twin);
     memory.photos.set(ref.photo, { parent: PARENT, state: "saved", createdAt: clock, expiresAt: clock + 100_000, bytes, storedBytes: bytes.length,
       frame: { book: { printedRevision: payload.workbook.printedRevision }, printedRevision: payload.workbook.printedRevision,
-        page: { printContract: fromStorage(i), qrToken: page.qrToken, imagePath: page.image.path, others: twin ? ["invented-twin.png"] : [], questions: payload.questions.filter((q) => q.pageNumber === i + 1) } } });
+        page: { printContract: scanned, qrToken: page.qrToken, imagePath: page.image.path, others: twin ? ["invented-twin.png"] : [], questions } } });
     return runScanCrops(memory.store, ref, "test-lease");
   };
 
@@ -253,6 +258,16 @@ describe.skipIf(skipTypstTests(process.env.WORKBOOK_V2_REQUIRE_TYPST === "1"))("
       if (!read || read === "unsupported") throw new Error("No scan layout for a stored v2 page");
       expect((await calibrate(i, await hideMarks(i, 4), read)).status).toBe("calibrated");
     }
+  }, 30_000);
+
+  it("keeps bounded room for numeric handwriting on early v2 pages with no saved reach", async () => {
+    const question = payload.questions.find((q) => q.pageNumber === 1 && q.number === 1)!;
+    const { box } = question.regions[0];
+    if (!box) throw new Error("The invented question has no answer box");
+    const preview = await checkCrops(0, real.pages[0].image, { early: true });
+    if (preview.status !== "ready") throw new Error(JSON.stringify(preview));
+    const crop = preview.crops.find((c) => c.number === question.number);
+    expect(crop?.width).toBeGreaterThan(Math.ceil(box.width + 2 * cropMargin(box)) + 4);
   }, 30_000);
 
   it.each([0, 1, 2, 3, 4])("places a front and a back page with %i marks hidden", async (hidden) => {
@@ -330,7 +345,7 @@ describe.skipIf(skipTypstTests(process.env.WORKBOOK_V2_REQUIRE_TYPST === "1"))("
     const verdict = sheetChecker({ ...sheet, photo })([otherPrint]);
     expect(verdict.twins).toBe(1);
     expect(verdict.verdict).not.toBe("this-page");
-    const wrong = await checkCrops(0, other, other);
+    const wrong = await checkCrops(0, other, { twin: other });
     expect(wrong).toMatchObject({ status: "ready", crops: expect.any(Array) });
     if (wrong.status === "ready") expect(wrong.crops.some((c) => c.number === 1)).toBe(false);
   }, 30_000);

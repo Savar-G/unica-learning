@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 
 export const MAX_AFFECTED_FILES = 40;
 const ENGINE_PREFIX = "src/lib/workbook-v2/";
-const WORKBOOK_SCAN_INPUT = /^src\/lib\/(?:scan-(?:calibration|photo-image|qr-windows|crop-regions|crops(?:-store)?)|workbook-print-(?:contract|layout)|workbook-v2-publish\/contract-writer)(?:\.test)?\.ts$/;
+const WORKBOOK_SCAN_INPUT = /^src\/lib\/(?:scan-(?:answer-(?:reach|crops|snap)|calibration|photo-image|qr-windows|crop-regions|crops(?:-store)?)|workbook-print-(?:contract|layout)|workbook-v2-publish\/contract-writer)(?:\.test)?\.ts$/;
 
 /**
  * Non-code files dynamically read by tests via `fs.readFileSync` / `spawnSync` (not visible to Vitest's static import

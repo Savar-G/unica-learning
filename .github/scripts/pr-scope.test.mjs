@@ -227,7 +227,10 @@ test("an app PR with engine files runs both affected unit tests and engine job",
 });
 
 test("a scanner or publish contract change runs the workbook scan conformance job", () => {
-  for (const file of ["src/lib/scan-photo-image.ts", "src/lib/scan-calibration.ts", "src/lib/workbook-v2-publish/contract-writer.test.ts"]) {
+  const answerGeometry = ["reach", "crops", "snap"].flatMap(name => [
+    `src/lib/scan-answer-${name}.ts`, `src/lib/scan-answer-${name}.test.ts`,
+  ]);
+  for (const file of ["src/lib/scan-photo-image.ts", "src/lib/scan-calibration.ts", "src/lib/workbook-v2-publish/contract-writer.test.ts", ...answerGeometry]) {
     const scope = classifyScope({ eventName: "pull_request", changedFiles: [file] });
     assert.equal(scope.runEngine, true, file);
   }
