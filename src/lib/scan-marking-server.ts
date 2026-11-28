@@ -11,6 +11,7 @@ import { rebuildChildProfile } from "@/lib/child-profile";
 import { childProfileStore } from "@/lib/child-profile-store";
 import { learningEventStore } from "@/lib/learning-events-store";
 import { readPageExplanations } from "@/lib/parent-problem-explanation-page-server";
+import { hasV2Books, rebuildV2SheetResults } from "@/lib/workbook-v2-results/server";
 
 export { markingAccess, markingDecision, type ChildPlanAccess, type ChildPlanAccessDeps, type ChildPlanReason, type MarkingDecision, type MarkingScope } from "@/lib/scan-marking-access";
 
@@ -76,11 +77,20 @@ async function publishCommitted(db: SupabaseClient<Database>, parent: string, ph
     await rebuildOrDefer(db, child, options);
     return;
   }
-  // Publication can finish before a rebuild fails. Its durable revision stays ahead until a profile is saved.
-  const pending = await db.from("scan_marking_revisions").select("revision,profile_revision")
+  // Publication can finish before a rebuild fails. Its durable revision stays ahead until profile and v2 sheet results save.
+  const pending = await db.from("scan_marking_revisions").select("revision,profile_revision,sheet_results_revision")
     .eq("parent_id", parent).eq("child_id", child).maybeSingle();
   if (pending.error) throw new Error("marking_profile_revision");
-  if (pending.data && pending.data.profile_revision < pending.data.revision) await rebuildOrDefer(db, child, options);
+  const profileBehind = Boolean(pending.data && pending.data.profile_revision < pending.data.revision);
+  const sheetResultsBehind = Boolean(pending.data && typeof pending.data.sheet_results_revision === "number" && pending.data.sheet_results_revision < pending.data.revision);
+  if (profileBehind || (sheetResultsBehind && await sheetResultsEligible(db, child))) await rebuildOrDefer(db, child, options);
+}
+async function sheetResultsEligible(db: SupabaseClient<Database>, child: string): Promise<boolean> {
+  try { return await hasV2Books(db, child); }
+  catch {
+    monitorProduct("scan.recovery_failed", { step: "sheet_results_lookup" });
+    return false;
+  }
 }
 async function rebuildOrDefer(db: SupabaseClient<Database>, child: string, options: ProcessMarkingOptions) {
   if (options.deferRebuild) { options.deferRebuild(child); return; }
@@ -89,7 +99,32 @@ async function rebuildOrDefer(db: SupabaseClient<Database>, child: string, optio
 // No profile AI call is needed. This rebuild consumes the same canonical effective set as page results.
 async function rebuildChildNow(db: SupabaseClient<Database>, child: string) {
   const rebuilt = await rebuildChildProfile(child, { profiles: childProfileStore(db), events: learningEventStore(db) });
+  const v2Pending = await rebuildV2Results(db, child);
   if (!rebuilt.built && rebuilt.reason !== "nothing_to_build") throw new Error("marking_profile_pending");
+  if (v2Pending) throw new Error("marking_sheet_results_pending");
+}
+/**
+ * UNI-243: the child's v2 sheet results from the same effective marks (docs/workbook-v2-results.md). A child with v1
+ * books only costs one read. Returns true when any v2 work failed, was refused, or reported problems so callers track
+ * pending recovery instead of silently clearing it.
+ */
+async function rebuildV2Results(db: SupabaseClient<Database>, child: string): Promise<boolean> {
+  try {
+    const rebuilt = await rebuildV2SheetResults(db, child);
+    if (rebuilt.status === "no-v2-books") return false;
+    if (rebuilt.status === "books-unavailable") {
+      monitorProduct("scan.recovery_failed", { step: "sheet_results_lookup" });
+      return false;
+    }
+    if (rebuilt.status === "refused" || rebuilt.problems.length > 0) {
+      monitorProduct("scan.recovery_failed", { step: "sheet_results" });
+      return true;
+    }
+    return false;
+  } catch {
+    monitorProduct("scan.recovery_failed", { step: "sheet_results" });
+    return true;
+  }
 }
 /** Stable results read. Photo expiry is deliberately not a history filter. */
 export async function readScanMarking(db: SupabaseClient<Database>, parent: string, photo: string) {
@@ -220,13 +255,16 @@ export async function recoverScanMarking(db: SupabaseClient<Database>, env: Env 
 
 /**
  * After our team's mark (no parent changes a mark since 2026-11-14): publish the effective event and rebuild the child's
- * profile from the same canonical set. True when that work is still pending; the recovery cursor retries it.
+ * profile and the child's v2 sheet results from the same canonical set. True when the profile work is still pending;
+ * the recovery cursor retries it.
  */
 export async function publishMarkChange(db: SupabaseClient<Database>, parent: string, child: string): Promise<boolean> {
   try {
     await scanMarkingStore(db).publish(parent, child);
     const rebuilt = await rebuildChildProfile(child, { profiles: childProfileStore(db), events: learningEventStore(db) });
-    return (!rebuilt.built && rebuilt.reason !== "nothing_to_build") || (rebuilt.built && rebuilt.skillStates.outcome === "failed");
+    const v2Pending = await rebuildV2Results(db, child);
+    const profilePending = (!rebuilt.built && rebuilt.reason !== "nothing_to_build") || (rebuilt.built && rebuilt.skillStates.outcome === "failed");
+    return profilePending || v2Pending;
   } catch {
     // The transaction advanced the durable revision. The existing recovery cursor retries after image expiry.
     return true;

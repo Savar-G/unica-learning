@@ -1,5 +1,5 @@
 // The example book of the fixtures, for tests.
-import { validateSnapshot } from "../bank/snapshot";
+import { validateSnapshot, type Snapshot } from "../bank/snapshot";
 import { planBook, type BuildInput } from "../build/build-book";
 import { sheetItems } from "../build/items";
 import type { BookItem, ColumnFace, Face, PageModel, Region } from "../contract";
@@ -46,6 +46,13 @@ export const divisionBook = (): GoodBook => plannedBook({ snapshot: divisionSnap
 export const placesBook = (): GoodBook => plannedBook({ snapshot: placesSnapshot, book: placesRequest });
 /** The example book of the invented topic: a sheet of stacks that starts a day, with the time log, and a sheet of bar models. */
 export const inventedBook = (): GoodBook => plannedBook({ snapshot: inventedSnapshot, book: inventedRequest });
+
+/** The checked snapshot of the invented topic: three invented sheets in one topic, for tests of results and position. */
+export function inventedTopicSnapshot(): Snapshot {
+  const result = validateSnapshot(structuredClone(inventedSnapshot));
+  if (!result.ok) throw new Error(result.problems.join("\n"));
+  return result.snapshot;
+}
 
 /** A copy of the draft of the invented topic, with its notes: what the freeze and the bank import read. */
 export const inventedDraft = (): Record<string, unknown> => structuredClone(inventedDraftFile);

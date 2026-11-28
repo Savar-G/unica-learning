@@ -13,7 +13,7 @@ import { bookInputHash } from "@/lib/workbook-v2/build/book-input";
 import { canonicalJson, sha256 } from "@/lib/workbook-v2/hash";
 import type { Renderer } from "@/lib/workbook-v2/renderer";
 import { writeBook } from "./contract-writer";
-import { allocationOf, bookInput, pagesPerDayOf, REQUEST_KEY, type SavedInput } from "./input";
+import { allocationOf, bookInput, pagesPerDayOf, reasonsOf, REQUEST_KEY, type SavedInput } from "./input";
 import type { AllocateResult, Allocation, PublishPayload, PublishRequest, PublishedRef, V2File, V2PublishStore, V2Storage } from "./types";
 
 export interface JobDeps {
@@ -95,6 +95,8 @@ export async function publishOnce(store: V2PublishStore, payload: PublishPayload
 function sameBook(request: PublishRequest, a: Allocation): boolean {
   if (a.childId !== request.childId || a.allocation.pagesPerDay !== pagesPerDayOf(request)) return false;
   if (request.sheets.some((sheet, i) => sheet.day !== a.allocation.days[i])) return false;
+  const savedReasons = a.allocation.reasons;
+  if (savedReasons !== undefined && canonicalJson(savedReasons) !== canonicalJson(reasonsOf(request))) return false;
   const asked = bookInput(request, a.workbookId, a.allocation.qrTokens);
   if (canonicalJson(asked) !== canonicalJson(a.allocation.book)) return false;
   const snapshot = plainCopy("The snapshot", request.snapshot);

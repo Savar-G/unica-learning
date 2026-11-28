@@ -79,6 +79,10 @@ export function memoryPublishStore(o: MemoryStoreOptions): V2PublishStore & { ta
       }
       const tokens = new Set(tables.books.flatMap((b) => b.payload.pages.map((p) => p.qrToken)));
       if (payload.pages.some((p) => tokens.has(p.qrToken))) return { status: "refused", reason: "a value is already used (workbook_pages_qr_token_key)" };
+      const issuedAttempts = new Set(tables.books.filter((b) => b.payload.workbook.childId === w.childId).flatMap((b) => b.payload.sheets.map((s) => `${s.sheetId} ${s.attempt}`)));
+      if (payload.sheets.some((s) => issuedAttempts.has(`${s.sheetId} ${s.attempt}`))) {
+        return { status: "refused", reason: "a value is already used (workbook_sheets_child_attempt_key)" };
+      }
       tables.books.push({ parentId, payload: structuredClone(payload) });
       return { status: "published", workbookId: w.id, printedRevision: w.printedRevision };
     },

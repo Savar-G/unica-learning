@@ -5,8 +5,10 @@
 // (scripts/engine-guard.mjs, engine-asset-use), so the rows are written out here; validateSnapshot checks them like any
 // other snapshot.
 
+import type { QueueReason } from "@/lib/workbook-v2/assemble/position";
+
 /** One sheet of a book plan. The first sheet of each day starts it, so its front page has the time log. */
-export interface PlannedBookSheet { sheetId: string; attempt: number; startsDay: boolean; day: number }
+export interface PlannedBookSheet { sheetId: string; attempt: number; startsDay: boolean; day: number; reason?: QueueReason }
 
 /** The seven invented sheets: facts, brackets, columns, bar models and word problems with the CA and US packs. */
 const SEVEN_SHEETS = {
@@ -153,6 +155,7 @@ export function fullBookPlan(sheets = FULL_BOOK_SHEETS): PlannedBookSheet[] {
   const order = FULL_BOOK_SNAPSHOT.topics.flatMap((topic) => topic.sheets);
   const plan = order.slice(0, FULL_BOOK_SHEETS).map((sheetId, i): PlannedBookSheet => ({
     sheetId, attempt: i < REPEATS ? 2 : 1, startsDay: i % SHEETS_A_DAY === 0, day: Math.floor(i / SHEETS_A_DAY) + 1,
+    reason: i < REPEATS ? "repeat" : "new",
   }));
   return plan.slice(0, sheets);
 }

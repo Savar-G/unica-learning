@@ -163,7 +163,11 @@ export function writeBook(built: BuiltBook, a: Allocation): WrittenBook {
   const revisionSource = { id: workbookId, pdfPath, pdfSha256, printManifest: manifest, pages: pages.map((p) => ({ ...p, questions: questions.filter((q) => q.pageNumber === p.number) })) };
   const revision = printedRevision(revisionSource);
   if (!revision) throw new Error("the book has no printed revision");
-  const sheets = allocation.book.sheets.map((s, i) => ({ sheetId: s.sheetId, attempt: s.attempt, day: allocation.days[i], frontPageNumber: 2 * i + 1, backPageNumber: 2 * i + 2, snapshotId: built.record.snapshot.id, startsDay: s.startsDay }));
+  const sheets = allocation.book.sheets.map((s, i) => ({
+    sheetId: s.sheetId, attempt: s.attempt, day: allocation.days[i], frontPageNumber: 2 * i + 1, backPageNumber: 2 * i + 2,
+    snapshotId: built.record.snapshot.id, startsDay: s.startsDay,
+    ...(allocation.reasons?.[i] !== undefined ? { reason: allocation.reasons[i] } : s.attempt === 1 ? { reason: "new" as const } : {}),
+  }));
   const payload: PublishPayload = {
     schemaVersion: QUESTION_PACKAGE_VERSION,
     workbook: {

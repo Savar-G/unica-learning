@@ -42,6 +42,9 @@ export function requestProblem(r: PublishRequest): string | null {
   for (const [i, s] of r.sheets.entries()) {
     if (!isWhole(s.day, 1, 100) || typeof s.startsDay !== "boolean") return `sheet ${i + 1} has no day`;
     if (s.startsDay !== (s.day !== day) || (s.startsDay && s.day !== day + 1)) return `sheet ${i + 1}: each day starts with its first sheet, and the days follow in order`;
+    if (s.attempt === 1 ? s.reason !== undefined && s.reason !== "new" : s.reason !== "repeat" && s.reason !== "unscanned") {
+      return `sheet ${i + 1}: the queue reason does not match the attempt`;
+    }
     day = s.day;
   }
   const pagesPerDay = pagesPerDayOf(r);
@@ -58,6 +61,8 @@ const MOST_PAGES_A_DAY = 20;
 
 /** The pages a day of a request: the number that it sets, or else twice the sheets of its first day. */
 export const pagesPerDayOf = (r: PublishRequest): number => r.pagesPerDay ?? 2 * r.sheets.filter((s) => s.day === 1).length;
+
+export const reasonsOf = (request: PublishRequest) => request.sheets.map((sheet) => sheet.reason ?? "new");
 
 /** The levels of a snapshot: its level name as a number, U1 to U30. */
 function levelsOf(levelName: string): number[] | null {
@@ -89,7 +94,7 @@ export function allocationOf(request: PublishRequest, source: AllocationSource):
   if (whole.length > 0) return { ok: false, problems: [...new Set(whole.map(formatFinding))] };
   const allocation: AllocationRecord = {
     format: 1, snapshotId: plan.snapshot.id, snapshotHash: plan.snapshot.hash, levels, pagesPerDay,
-    book, days: request.sheets.map((s) => s.day), qrTokens: source.qrTokens,
+    book, days: request.sheets.map((s) => s.day), reasons: reasonsOf(request), qrTokens: source.qrTokens,
   };
   return {
     ok: true,

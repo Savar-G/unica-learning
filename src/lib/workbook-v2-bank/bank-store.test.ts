@@ -1,12 +1,8 @@
-// One contract for every BankStore (B1-3, B1-4, B1-6): the memory store, the Supabase store over a fake PostgREST, and
-// (with BANK_STORE_LIVE=1, SUPABASE_URL and SUPABASE_SECRET_KEY) the Supabase store on the live project, on synthetic
-// levels `synth-test-*` that are deleted afterwards.
+// One contract for both BankStore adapters: memory and Supabase over a fake PostgREST. The hosted SQL probes roll back.
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createClient } from "@supabase/supabase-js";
-import { afterAll, describe, expect, it } from "vitest";
-import type { Database } from "@/lib/database";
+import { describe, expect, it } from "vitest";
 import { checkDraft } from "./draft";
 import { importDraft, planImport, runBankImport } from "./import-draft";
 import { memoryBankStore } from "./memory-store";
@@ -44,12 +40,8 @@ function deepFreeze<T>(value: T): T {
 
 const levelOf = (draft: Rec) => String((draft.level as Rec).id);
 
-export function runBankStoreContract(name: string, makeStore: () => BankStore, used: string[] = [], timeout = 30_000) {
-  const draftFor = (make: (tag: string) => Rec = synthDraft) => {
-    const draft = make(freshTag());
-    used.push(levelOf(draft));
-    return draft;
-  };
+function runBankStoreContract(name: string, makeStore: () => BankStore, timeout = 30_000) {
+  const draftFor = (make: (tag: string) => Rec = synthDraft) => make(freshTag());
 
   describe(`the ${name} bank store`, () => {
     it("imports a draft file kept outside git and reads it back field for field, with notes outside the content", async () => {
@@ -164,7 +156,6 @@ export function runBankStoreContract(name: string, makeStore: () => BankStore, u
 
       const other = structuredClone(draft);
       const otherLevel = `${levelOf(draft)}-b`;
-      used.push(otherLevel);
       (other.level as Rec).id = otherLevel;
       expect(await importDraft(other, store)).toMatchObject({ ok: false, problems: [expect.stringContaining("belong to another level")] });
       expect(isEmpty(await store.readLevel(otherLevel))).toBe(true);
@@ -239,21 +230,4 @@ describe("the Supabase bank store over PostgREST", () => {
     expect(ids).toContain("aaa-inserted-mid-read");
     expect((rows.level?.config as Rec).draft).toMatchObject({ id: "updated-draft-id" });
   });
-});
-
-const live = process.env.BANK_STORE_LIVE === "1" ? { url: process.env.SUPABASE_URL ?? "", key: process.env.SUPABASE_SECRET_KEY ?? "" } : null;
-describe.skipIf(!live)("live", () => {
-  const db = createClient<Database>(live?.url ?? "https://unused.invalid", live?.key ?? "unused", { auth: { persistSession: false, autoRefreshToken: false } });
-  const used: string[] = [];
-  runBankStoreContract("live Supabase", () => supabaseBankStore(db), used, 120_000);
-  afterAll(async () => {
-    const levels = [...new Set(used)];
-    if (levels.some((id) => !id.startsWith("synth-test-"))) throw new Error("live cleanup: refusing a level that is not synthetic");
-    for (const table of ["bank_sheets", "bank_topics", "bank_questions", "bank_scenarios", "bank_region_packs"] as const) {
-      const { error } = await db.from(table).delete().in("level_id", levels);
-      if (error) throw new Error(`live cleanup ${table}: ${error.message}`);
-    }
-    const { error } = await db.from("bank_levels").delete().in("id", levels);
-    if (error) throw new Error(`live cleanup bank_levels: ${error.message}`);
-  }, 120_000);
 });

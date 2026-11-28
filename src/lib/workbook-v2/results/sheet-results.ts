@@ -77,3 +77,42 @@ export function sheetResult(items: readonly { id: string }[], marks: readonly It
       : right * 100 >= itemsScored * config.masteryPercent ? "mastered" : "repeat";
   return { ok: true, result, total, itemsScored, right, mistakes, maxMistakes };
 }
+
+/** A printed question of a book, with the sheet and the attempt it is on. Its id is unique in the book. */
+export interface ResultItem { id: string; sheetId: string; attempt: number }
+
+/** The result of one attempt of a sheet. */
+export interface SheetAttemptResult extends SheetResult { sheetId: string; attempt: number }
+
+export type SheetResultsOutcome = { ok: true; sheets: SheetAttemptResult[] } | { ok: false; problems: string[] };
+
+/**
+ * The result of each sheet attempt that `items` hold, in the order of their first question. Each mark goes to the
+ * attempt of its question, and `sheetResult` decides each attempt with the mastery percent of `config` (the config of
+ * the level: the percent is data, never a branch). A mark of no question is a problem.
+ */
+export function sheetResults(marks: readonly ItemMark[], items: readonly ResultItem[], config: ResultConfig): SheetResultsOutcome {
+  const problems: string[] = [];
+  const groups = new Map<string, { sheetId: string; attempt: number; items: { id: string }[]; marks: ItemMark[] }>();
+  const groupOf = new Map<string, string>();
+  for (const item of items) {
+    const key = `${item.sheetId}\u0000${item.attempt}`;
+    const group = groups.get(key) ?? { sheetId: item.sheetId, attempt: item.attempt, items: [], marks: [] };
+    groups.set(key, group);
+    group.items.push({ id: item.id });
+    if (groupOf.has(item.id) && groupOf.get(item.id) !== key) problems.push(`The question "${item.id}" is on more than one sheet.`);
+    groupOf.set(item.id, key);
+  }
+  for (const mark of marks) {
+    const key = groupOf.get(mark.itemId);
+    if (key === undefined) problems.push(`The mark of "${mark.itemId}" is for no question of the book.`);
+    else groups.get(key)?.marks.push(mark);
+  }
+  const sheets: SheetAttemptResult[] = [];
+  for (const { sheetId, attempt, items: own, marks: marked } of groups.values()) {
+    const outcome = sheetResult(own, marked, config);
+    if (outcome.ok) sheets.push({ sheetId, attempt, ...outcome });
+    else problems.push(...outcome.problems.map((p) => `The sheet "${sheetId}", attempt ${attempt}: ${p}`));
+  }
+  return problems.length > 0 ? { ok: false, problems: [...new Set(problems)] } : { ok: true, sheets };
+}
