@@ -334,7 +334,7 @@ function readDrawing(content: string, height: number, fonts: ReadonlyMap<string,
   return ink;
 }
 
-function readPage(file: PdfFile, page: Dict): PdfPage {
+function readPage(file: PdfFile, page: Dict, fontsByRef: Map<number, Font>): PdfPage {
   checkKeys("page", page, ["Type", "Resources", "MediaBox", "StructParents", "Parent", "Contents", "Tabs"]);
   const box = file.list(page.get("MediaBox"));
   const [x, y, w, h] = box;
@@ -346,7 +346,16 @@ function readPage(file: PdfFile, page: Dict): PdfPage {
     const [kind, profile] = file.list(value);
     if (isName(kind) && kind.name === "ICCBased" && file.stream(profile).dict.get("N") === 1) greys.add(name);
   }
-  const fonts = new Map([...part("Font")].map(([name, value]) => [name, readFont(file, value)]));
+  const fonts = new Map<string, Font>();
+  for (const [name, value] of part("Font")) {
+    const ref = isRef(value) ? value.ref : undefined;
+    let font = ref === undefined ? undefined : fontsByRef.get(ref);
+    if (!font) {
+      font = readFont(file, value);
+      if (ref !== undefined) fontsByRef.set(ref, font);
+    }
+    fonts.set(name, font);
+  }
   return { size: { w, h }, ink: readDrawing(file.stream(page.get("Contents")).text, h, fonts, greys) };
 }
 
@@ -365,15 +374,14 @@ function pageNodes(file: PdfFile, given: Value | undefined, seen: Set<number>, d
   return file.list(node.get("Kids")).flatMap((kid) => pageNodes(file, kid, seen, depth + 1));
 }
 
-const readPages = (file: PdfFile, given: Value | undefined): PdfPage[] => pageNodes(file, given, new Set()).map((page) => readPage(file, page));
-
 /** What each page of the file draws, or what is wrong with the file. */
 export function readPdf(pdf: Uint8Array): PdfPage[] | string {
   try {
     const file = new PdfFile(pdf);
     const catalog = file.dict(file.root);
     checkKeys("catalog", catalog, ["Type", "Pages", "Metadata", "Lang", "StructTreeRoot", "MarkInfo", "ViewerPreferences"]);
-    return readPages(file, catalog.get("Pages"));
+    const fontsByRef = new Map<number, Font>();
+    return pageNodes(file, catalog.get("Pages"), new Set()).map((page) => readPage(file, page, fontsByRef));
   } catch (error) {
     // A part that cannot be unpacked is a file that cannot be read.
     return error instanceof Refused ? error.message : CANNOT_READ;

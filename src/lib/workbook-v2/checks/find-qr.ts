@@ -61,24 +61,16 @@ function runsDown(dark: (y: number) => boolean, y: number): number[] {
 /** Longer than three squares of the largest code that a page can hold. */
 const MAX_RUN = 400;
 
-const WHITE = 0xffffffff;
-
-/** Whether each line can hold dark pixels. It looks at four pixels at a time, because most of a page is white. */
-function linesWithInk({ width, height, low }: PageImage): boolean[] {
-  const lines = new Array<boolean>(height).fill(false);
-  const start = Math.min((4 - (low.byteOffset & 3)) & 3, low.length);
-  for (let i = 0; i < start; i++) if (low[i] < DARK) lines[Math.floor(i / width)] = true;
-  if (start === low.length) return lines;
-  const count = (low.length - start) >> 2;
-  const fours = new Uint32Array(low.buffer, low.byteOffset + start, count);
-  for (let i = 0; i < count; i++) {
-    if (fours[i] === WHITE) continue;
-    const at = start + 4 * i;
-    const last = Math.floor((at + 3) / width);
-    for (let y = Math.floor(at / width); y <= last; y++) lines[y] = true;
+/** The first dark pixel in a span. Skip four pixels when their high bits all mark them as light. */
+function nextDark(low: Uint8Array, words: Uint32Array, aligned: number, from: number, end: number): number {
+  let at = from;
+  while (at < end && ((at - aligned) & 3) !== 0) {
+    if (low[at] < DARK) return at;
+    at++;
   }
-  for (let i = start + 4 * count; i < low.length; i++) if (low[i] < DARK) lines[Math.floor(i / width)] = true;
-  return lines;
+  while (at + 4 <= end && (~words[(at - aligned) >>> 2] & 0x80808080) === 0) at += 4;
+  while (at < end && low[at] >= DARK) at++;
+  return at;
 }
 
 function cornerMarks(image: PageImage, hidden: Box): CornerMark[] {
@@ -91,25 +83,29 @@ function cornerMarks(image: PageImage, hidden: Box): CornerMark[] {
     const square = [...runs, ...down].reduce((sum, n) => sum + n, 0) / 14;
     if (!marks.some((m) => Math.abs(m.x - x) < 2 * square && Math.abs(m.y - centre) < 3 * square)) marks.push({ x, y: centre, square });
   };
-  const { width, height } = image;
-  const inked = linesWithInk(image);
+  const { width, height, low } = image;
+  const aligned = (4 - (low.byteOffset & 3)) & 3;
+  const words = low.length < aligned ? new Uint32Array(0) : new Uint32Array(low.buffer, low.byteOffset + aligned, (low.length - aligned) >>> 2);
+  const maskLeft = Math.max(0, Math.min(width, Math.ceil(hidden.left)));
+  const maskRight = Math.max(0, Math.min(width, Math.ceil(hidden.right)));
   for (let y = 0; y < height; y++) {
-    if (!inked[y]) continue;
-    const line = image.low.subarray(y * width, (y + 1) * width);
-    const [from, to] = y >= hidden.top && y < hidden.bottom ? [hidden.left, hidden.right] : [width, width];
+    const row = y * width;
+    const end = row + width;
+    const masks = maskLeft < maskRight && y >= hidden.top && y < hidden.bottom;
+    const left = masks ? row + maskLeft : end;
+    const right = masks ? row + maskRight : end;
     let runs = [0, 0, 0, 0, 0];
-    let length = 0;
-    let last = false;
-    for (let x = 0; x <= width; x++) {
-      const now = x < width && line[x] < DARK && (x < from || x >= to);
-      if (now === last && x < width) {
-        length++;
-        continue;
-      }
-      runs = [runs[1], runs[2], runs[3], runs[4], length];
-      if (last && isCornerPattern(runs)) add(Math.round(x - runs[4] - runs[3] - runs[2] / 2), y, runs);
-      length = 1;
-      last = now;
+    let at = row;
+    while (at < end) {
+      const before = nextDark(low, words, aligned, at, left);
+      const start = before < left ? before : nextDark(low, words, aligned, Math.max(at, right), end);
+      if (start === end) break;
+      const limit = start < left ? left : end;
+      let stop = start + 1;
+      while (stop < limit && low[stop] < DARK) stop++;
+      runs = [runs[2], runs[3], runs[4], start - at, stop - start];
+      if (isCornerPattern(runs)) add(Math.round(stop - row - runs[4] - runs[3] - runs[2] / 2), y, runs);
+      at = stop;
     }
   }
   return marks;
