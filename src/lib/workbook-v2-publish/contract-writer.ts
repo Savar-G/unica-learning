@@ -17,8 +17,9 @@ import {
   type PrintedRegion,
   type ScanManifest,
 } from "@/lib/workbook-print-contract";
+import { printedCapture, printedPixels } from "@/lib/workbook-print-layout";
 import type { BuiltBook } from "@/lib/workbook-v2/build/build-book";
-import { IMAGE_PIXELS_PER_INCH, PAPER, answerLine, type AnswerPart, type BookItem, type PageModel, type Rect } from "@/lib/workbook-v2/contract";
+import { IMAGE_PIXELS_PER_INCH, PAPER, SCAN_LAYOUTS, V2_SCAN_LAYOUT_VERSION, answerLine, type AnswerPart, type BookItem, type PageModel, type Rect } from "@/lib/workbook-v2/contract";
 import { canonicalJson, sha256 } from "@/lib/workbook-v2/hash";
 import { answerKindOf, copiedPackage, promptOf } from "./package-copy";
 import type { Allocation, PayloadItemAnswer, PayloadPage, PayloadQuestion, PublishPayload, V2File } from "./types";
@@ -39,9 +40,6 @@ export function pngSize(bytes: Uint8Array): { width: number; height: number } | 
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   return { width: view.getUint32(16), height: view.getUint32(20) };
 }
-
-/** A rectangle of the page model in image pixels, to a thousandth. */
-const pixels = (r: Rect) => ({ x: milli(r.x * SCALE), y: milli(r.y * SCALE), width: milli(r.w * SCALE), height: milli(r.h * SCALE) });
 
 /** A question's box: the whole pixels that hold its slot, inside the image. */
 export function boxOf(r: Rect) {
@@ -64,11 +62,12 @@ function scanMarks(model: PageModel): PagePrintContract["marks"]["points"] {
 }
 
 /** The answer areas of a question, named by part, in image pixels. */
-function printedRegions(model: PageModel, item: BookItem): PrintedRegion[] {
+function printedRegions(model: PageModel, item: BookItem, image: { width: number; height: number }): PrintedRegion[] {
   return item.answer.parts.map((part) => {
-    const area = model.regions.find((r) => r.role === "answer" && r.item === item.id && r.part === part.name);
-    if (!area) throw new Error(`question ${item.id} has no answer area for ${part.name}`);
-    return { id: part.name, kind: "box", box: pixels(area.rect) };
+    const regions = model.regions.filter((r) => r.item === item.id && r.part === part.name);
+    const area = regions.find((r) => r.role === "answer"), reach = regions.find((r) => r.role === "reach");
+    if (!area || !reach) throw new Error(`question ${item.id} has no answer area or reach for ${part.name}`);
+    return { id: part.name, kind: "box", box: printedPixels(area.rect, model.size, image), reach: printedPixels(reach.rect, model.size, image) };
   });
 }
 
@@ -134,13 +133,16 @@ export function writeBook(built: BuiltBook, a: Allocation): WrittenBook {
       const slot = model.regions.find((r) => r.role === "slot" && r.item === item.id);
       if (!slot) throw new Error(`question ${item.id} has no slot`);
       const ref = { source: "workbook" as const, workbookId, page: number, question: item.number };
-      return { pageNumber: number, number: item.number, package: copiedPackage(item, ref, level), box: boxOf(slot.rect), regions: printedRegions(model, item) };
+      return { pageNumber: number, number: item.number, package: copiedPackage(item, ref, level), box: boxOf(slot.rect), regions: printedRegions(model, item, size) };
     });
     const dayStart = allocation.days.findIndex((d) => d === day) * 2;
     const printContract: PagePrintContract = {
       version: PRINT_CONTRACT_VERSION, workbookId, page: number, label: model.id, day, pageOfDay: i - dayStart + 1,
+      layout: { version: V2_SCAN_LAYOUT_VERSION, side: model.side },
+      captures: model.captures.map((capture) => printedCapture(capture, model.size, size)),
       coordinates: {
-        units: "image-px", origin: "top-left", x: "right", y: "down", orientation: "portrait", image: { ...IMAGE },
+        units: "image-px", origin: "top-left", x: "right", y: "down", orientation: "portrait", image: size,
+        content: printedPixels(SCAN_LAYOUTS[V2_SCAN_LAYOUT_VERSION][model.side].content, model.size, size),
         cssPage: { width: PAPER.w, height: PAPER.h }, scale: { x: SCALE, y: SCALE },
       },
       marks: { anchor: "outer-corner", order: [...SCAN_MARKS], points: scanMarks(model) },

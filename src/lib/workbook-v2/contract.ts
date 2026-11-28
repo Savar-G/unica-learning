@@ -231,6 +231,65 @@ export const PRINT_RULES = {
   maxTitleCharacters: 44,
 } as const;
 
+export const V2_SCAN_LAYOUT_VERSION = 2;
+export const SCAN_QR_QUIET_MODULES = 4;
+
+const rect = (x: number, y: number, w: number, h: number): Rect => ({ x, y, w, h });
+
+function timeLogAt(left: number) {
+  const log = PRINT_RULES.timeLog;
+  const reach = { w: log.box.w + 2 * log.reach, h: log.box.h + 2 * log.reach };
+  const pitch = log.label.w + log.labelGap + reach.w + log.gap;
+  const fields = log.fields.map((name, i) => {
+    const x = left + i * pitch;
+    const around = rect(x + log.label.w + log.labelGap, log.top + (log.h - reach.h) / 2, reach.w, reach.h);
+    return {
+      name, label: log.labels[i], labelRect: rect(x, around.y + log.reach, log.label.w, log.box.h),
+      box: rect(around.x + log.reach, around.y + log.reach, log.box.w, log.box.h), reach: around,
+    };
+  });
+  return { rect: rect(left, log.top, log.fields.length * pitch - log.gap, log.h), fields };
+}
+
+export type TimeLogPlace = ReturnType<typeof timeLogAt>;
+
+export function timeLogCapture(place: TimeLogPlace, id: string): Capture {
+  return { id, kind: "time-log", rect: place.rect, fields: place.fields.map(({ name, box, reach }) => ({ name, rect: box, reach })) };
+}
+
+/** The print geometry shared by the engine and the scanner. Lengths are points. The QR box includes its quiet zone. */
+function scanLayout(side: Side) {
+  const left = side === "front" ? PRINT_RULES.spineZone : PRINT_RULES.outerMargin;
+  const right = PAPER.w - (side === "front" ? PRINT_RULES.outerMargin : PRINT_RULES.spineZone);
+  const top = PRINT_RULES.outerMargin, bottom = PAPER.h - top;
+  const { gap, mark } = PRINT_RULES.frame;
+  const size = 57.6;
+  return {
+    paper: PAPER,
+    content: { x: left, y: top, w: right - left, h: bottom - top },
+    qr: { x: side === "front" ? right - mark.size - gap - size : left + mark.size + gap, y: bottom - size, w: size, h: size },
+    marks: {
+      tl: { x: left, y: top, w: mark.size, h: mark.size },
+      tr: { x: right - mark.size, y: top, w: mark.size, h: mark.size },
+      br: { x: right - mark.size, y: bottom - mark.size, w: mark.size, h: mark.size },
+      bl: { x: left, y: bottom - mark.size, w: mark.size, h: mark.size },
+    },
+    markStroke: mark.line,
+    timeLog: side === "front" ? timeLogAt(left + mark.size + gap) : null,
+  };
+}
+
+export const SCAN_LAYOUTS = {
+  [V2_SCAN_LAYOUT_VERSION]: { front: scanLayout("front"), back: scanLayout("back") },
+} as const;
+
+export interface ScanLayoutId { version: typeof V2_SCAN_LAYOUT_VERSION; side: Side }
+
+export function pagePixels(rect: Rect, paper: { w: number; h: number }, image: { width: number; height: number }) {
+  const x = image.width / paper.w, y = image.height / paper.h;
+  return { x: rect.x * x, y: rect.y * y, width: rect.w * x, height: rect.h * y };
+}
+
 /** The characters that every bundled font holds. The typesetter prints an empty box, with no warning, for any other. */
 const PRINTABLE = /^[ -~×÷·–‘’“”°½¼¾]*$/;
 export const isPrintable = (text: string): boolean => PRINTABLE.test(text);

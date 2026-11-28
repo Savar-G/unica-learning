@@ -1,10 +1,7 @@
 // The page templates: fixed rectangles in points. Nothing here depends on what a page holds. The design of the
 // templates is not chosen yet; these prove the path. A template writes both sides out from the same numbers: the
 // spine zone is on the left of a front page and on the right of a back page, and everything moves with it.
-import { answerLine, BRACKET_SIGN, PAPER, PRINT_RULES, tokenText, type Answer, type Face, type FaceToken, type Rect, type Side } from "../contract";
-
-/** The time log of the first page of a day: its band, and each field with its label, its box and the clear space round the box. */
-export interface TimeLogPlace { rect: Rect; fields: { name: string; label: string; labelRect: Rect; box: Rect; reach: Rect }[] }
+import { answerLine, BRACKET_SIGN, PAPER, PRINT_RULES, SCAN_LAYOUTS, V2_SCAN_LAYOUT_VERSION, tokenText, type Answer, type Face, type FaceToken, type Rect, type Side, type TimeLogPlace } from "../contract";
 
 export interface PageFrame {
   heading: Rect;
@@ -83,45 +80,20 @@ const rect = (x: number, y: number, w: number, h: number): Rect => ({ x, y, w, h
 const TOP = PRINT_RULES.outerMargin;
 const BOTTOM = PAPER.h - PRINT_RULES.outerMargin;
 const { gap: GAP, mark: { size: MARK }, heading: HEADING, instruction: INSTRUCTION, footer: FOOTER } = PRINT_RULES.frame;
-const QR = 57.6;
 const LIVE = PAPER.w - PRINT_RULES.spineZone - PRINT_RULES.outerMargin;
 const liveLeft = (side: Side) => (side === "front" ? PRINT_RULES.spineZone : PRINT_RULES.outerMargin);
 
-const TIME_LOG = PRINT_RULES.timeLog;
-
-/** The band between the questions and the footer, from the left end of the footer: a label and a box for each field. */
-function timeLogAt(left: number): TimeLogPlace {
-  const reach = { w: TIME_LOG.box.w + 2 * TIME_LOG.reach, h: TIME_LOG.box.h + 2 * TIME_LOG.reach };
-  const pitch = TIME_LOG.label.w + TIME_LOG.labelGap + reach.w + TIME_LOG.gap;
-  const fields = TIME_LOG.fields.map((name, i) => {
-    const x = left + i * pitch;
-    const around = rect(x + TIME_LOG.label.w + TIME_LOG.labelGap, TIME_LOG.top + (TIME_LOG.h - reach.h) / 2, reach.w, reach.h);
-    return {
-      name, label: TIME_LOG.labels[i], labelRect: rect(x, around.y + TIME_LOG.reach, TIME_LOG.label.w, TIME_LOG.box.h),
-      box: rect(around.x + TIME_LOG.reach, around.y + TIME_LOG.reach, TIME_LOG.box.w, TIME_LOG.box.h), reach: around,
-    };
-  });
-  return { rect: rect(left, TIME_LOG.top, TIME_LOG.fields.length * pitch - TIME_LOG.gap, TIME_LOG.h), fields };
-}
-
 function frame(side: Side): PageFrame {
-  const left = liveLeft(side);
-  const right = left + LIVE;
+  const { content: { x: left }, qr, marks, timeLog } = SCAN_LAYOUTS[V2_SCAN_LAYOUT_VERSION][side];
   const textLeft = left + MARK + GAP;
   const textWidth = LIVE - 2 * (MARK + GAP);
-  const qrLeft = side === "front" ? right - MARK - GAP - QR : left + MARK + GAP;
   return {
     heading: rect(textLeft, TOP, textWidth, HEADING.h),
     instruction: rect(left, TOP + INSTRUCTION.top, LIVE, INSTRUCTION.h),
-    footer: rect(side === "front" ? textLeft : qrLeft + QR + GAP, BOTTOM - FOOTER.h, textWidth - QR - GAP, FOOTER.h),
-    qr: rect(qrLeft, BOTTOM - QR, QR, QR),
-    marks: {
-      tl: rect(left, TOP, MARK, MARK),
-      tr: rect(right - MARK, TOP, MARK, MARK),
-      br: rect(right - MARK, BOTTOM - MARK, MARK, MARK),
-      bl: rect(left, BOTTOM - MARK, MARK, MARK),
-    },
-    timeLog: side === "front" ? timeLogAt(textLeft) : null,
+    footer: rect(side === "front" ? textLeft : qr.x + qr.w + GAP, BOTTOM - FOOTER.h, textWidth - qr.w - GAP, FOOTER.h),
+    qr,
+    marks,
+    timeLog,
   };
 }
 

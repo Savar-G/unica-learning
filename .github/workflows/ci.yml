@@ -195,6 +195,11 @@ jobs:
           WORKBOOK_V2_REQUIRE_TYPST: '1'
         run: npx vitest run src/lib/workbook-v2-publish/bug-fixture.test.ts
         timeout-minutes: 3
+      - name: Workbook scan conformance
+        env:
+          WORKBOOK_V2_REQUIRE_TYPST: '1'
+        run: npx vitest run src/lib/workbook-v2-publish/contract-writer.test.ts --sequence.shuffle
+        timeout-minutes: 3
 
   maya-behaviour:
     name: Maya behaviour and word limits

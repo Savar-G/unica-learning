@@ -1,8 +1,6 @@
 // A QR code as black squares in a fixed box. The box holds the quiet zone, so nothing else may print in it.
 import QRCode from "qrcode";
-import { PRINT_RULES, type Ink, type Rect } from "../contract";
-
-const QUIET = 4;
+import { PRINT_RULES, SCAN_QR_QUIET_MODULES as QUIET, type Ink, type Rect } from "../contract";
 
 /** The squares, joined along each line of the code, or why there is no code. */
 export function qrSquares(box: Rect, text: string): Ink[] | string {

@@ -5,7 +5,7 @@ import type { Database, Json } from "@/lib/database";
 import { scanPath, SCAN_BUCKET } from "@/lib/scan-photo-server";
 import { isFenceRefusal, SCAN_LEASE_MS, scanPartPath, type BeginAnswer, type FinishAnswer, type ScanCropStore } from "@/lib/scan-crops";
 import { storedQuestion, WORKBOOK_FILES_BUCKET } from "@/lib/workbook-content";
-import { storedPrintContract } from "@/lib/workbook-print-contract";
+import { storedScanPrintContract } from "@/lib/workbook-print-contract";
 
 /** How many of the other pages one read asks for. Only their paths: the job reads the images themselves a few at a time. */
 const OTHER_PAGES_READ = 500;
@@ -47,7 +47,7 @@ export function scanCropStore(db: SupabaseClient<Database>): ScanCropStore {
       const active = scanPhotoIsActive(p, Date.now());
       if (!p.page_id || !p.workbook_id) return { photo: { id: p.id, printedRevision: p.printed_revision, active }, book: { printedRevision: null }, page: { printContract: null, imagePath: null, qrToken: null, questions: [], others: [] } };
       const [book, page, questions] = await Promise.all([
-        db.from("workbooks").select("printed_revision,child_id").eq("id", p.workbook_id).eq("parent_id", parent).maybeSingle(),
+        db.from("workbooks").select("printed_revision,child_id,generator").eq("id", p.workbook_id).eq("parent_id", parent).maybeSingle(),
         db.from("workbook_pages").select("page_number,page_type,image_path,image_width,image_height,print_contract,qr_token").eq("id", p.page_id).eq("parent_id", parent).maybeSingle(),
         db.from("workbook_questions").select("question_number,schema_version,package,box_x,box_y,box_width,box_height,regions,teaching").eq("page_id", p.page_id).eq("parent_id", parent).order("question_number"),
       ]);
@@ -74,11 +74,12 @@ export function scanCropStore(db: SupabaseClient<Database>): ScanCropStore {
         }
       }
       const image = pg?.image_width && pg.image_height ? { width: pg.image_width, height: pg.image_height } : null;
+      const contract = pg ? storedScanPrintContract(pg.print_contract, { workbookId: p.workbook_id, page: pg.page_number, image }, book.data?.generator) : null;
       return {
         photo: { id: p.id, printedRevision: p.printed_revision, active },
         book: { printedRevision: book.data?.printed_revision ?? null },
         page: {
-          printContract: pg?.print_contract ? storedPrintContract(pg.print_contract, { workbookId: p.workbook_id, page: pg.page_number, image }) : null,
+          printContract: contract === "unsupported" ? null : contract,
           imagePath: pg?.image_path ?? null,
           qrToken: pg?.qr_token ?? null,
           others,
