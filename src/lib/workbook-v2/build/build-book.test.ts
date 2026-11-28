@@ -560,6 +560,31 @@ describe("rows in order that choose among the runs of their tables", () => {
       }
       expect(replayed).toBeGreaterThan(0);
     });
+
+    it("give the back the 5s when the front's 5 × 4 of the last attempt prints as 4 × 5, with the history of real books", async () => {
+      // The front's one product is 4 × 5 or 5 × 4. Both sides print 7 × 6, so only each side is all different. The last
+      // attempt printed 5 × 4 and the 6s; a later book printed 5 × 4, 4 × 5, 3 × 4 and 3 × 5. The front's 5 × 4 prints as
+      // 4 × 5 on the repeat, so the 5s (one seen question) repeat nothing and the 3s (two seen) must not print.
+      const pair = { ...mul("four-or-five", [4, 5], 1, "mixed"), limits: { tables: [4, 5], second: { min: 4, max: 5 }, result: { min: 20, max: 20 }, order: "mixed" } };
+      const seven = (id: string) => mul(id, [7], 1, "mixed", { min: 6, max: 6 });
+      const snapshot = snapshotOf([
+        { id: "current", front: side([pair, seven("front-seven")]), back: side([mul("three-five-or-six", [3, 5, 6], 2, "up", { min: 4, max: 5 }), seven("back-seven")]) },
+        { id: "later", front: side([[3, 5], [5, 4], [4, 5], [3, 4]].map(([a, b]) => mul(`${a}-times-${b}`, [a], 1, "mixed", { min: b, max: b }))) },
+      ]);
+      const children = Array.from({ length: 24 }, (_, i) => `review-${i + 1}`);
+      let replayed = 0;
+      for (const child of children) {
+        const first = await built({ snapshot, book: bookOf("first", child, "current", 1) } as unknown as Input);
+        if (canonicalJson(run(first, "four-or-five")) !== canonicalJson([{ a: 5, b: 4 }]) || run(first, "three-five-or-six")[0].a !== 6) continue;
+        const later = await built({ snapshot, book: bookOf("later", child, "later", 1) } as unknown as Input);
+        const book = await repeatOf(snapshot, child, [first, later]);
+        expect(run(book, "four-or-five")).toEqual([{ a: 4, b: 5 }]);
+        expect(run(book, "three-five-or-six")).toEqual([{ a: 5, b: 4 }, { a: 5, b: 5 }]);
+        expect([copies(book, "back"), copies(book)]).toEqual([0, 1]);
+        replayed++;
+      }
+      expect(replayed).toBeGreaterThan(0);
+    });
   });
 });
 

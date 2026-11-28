@@ -1,7 +1,8 @@
 // Chooses the questions of the rows of one shape that has a list: for the whole sheet when its rows can all be different,
 // and otherwise for each side. The seeds of the rows and places decide, and what the child met in earlier books: a
 // question that the child has not seen comes first, then one seen longest ago. A sheet never repeats a question to avoid
-// a seen one.
+// a seen one. A question of the last attempt prints in its swapped form when it can, and the sides after the first are
+// chosen and counted with the questions of the sides before them as they print.
 import { pick } from "../hash";
 import type { Shape } from "../shapes";
 import { questionKey } from "../shapes/shape";
@@ -163,14 +164,22 @@ function othersOf(row: Row, runs: ReadonlyMap<Row, Question[]>, front: Keys): Ke
  * side or also on the front), for a choice of runs with the mixed rows that it gives them.
  */
 type Repeats = (runs: ReadonlyMap<Row, Question[]>) => readonly [side: number, sheet: number];
+/** The `Repeats` of a side whose mixed rows `mixedOf` gives. */
+type RepeatsOf = (mixedOf: (runs: ReadonlyMap<Row, Question[]>) => readonly Place[]) => Repeats;
 
-function repeatsOf(mixedOf: (runs: ReadonlyMap<Row, Question[]>) => readonly Place[], front: Keys): Repeats {
-  return (runs) => {
-    const keys = keysOf(byRow(runs, mixedOf(runs)));
-    const once = new Set(keys);
-    return [keys.length - once.size, keys.length - [...once].filter((key) => !front.has(key)).length];
-  };
-}
+/**
+ * The repeats of a side after the sides `earlier`, all as they print (`printed`): a question of the last attempt that
+ * prints in its swapped form counts in that form, and it does not when this side prints that form.
+ */
+const repeatsAfter = (earlier: Chosen, printed: (chosen: Chosen) => Chosen): RepeatsOf => (mixedOf) => (runs) => {
+  const own = byRow(runs, mixedOf(runs));
+  const shown = printed(new Map([...earlier, ...own]));
+  const keysOfRows = (rows: Iterable<AskedRow>) => [...rows].flatMap((row) => (shown.get(row) ?? []).map((q) => q.key));
+  const keys = keysOfRows(own.keys());
+  const earlierKeys = new Set(keysOfRows(earlier.keys()));
+  const once = new Set(keys);
+  return [keys.length - once.size, keys.length - [...once].filter((key) => !earlierKeys.has(key)).length];
+};
 
 /**
  * Changes the run of a row in order that another legal run of its table beats: no worse on every count of `RunCost` and
@@ -280,16 +289,17 @@ const keepsDifferent = (runs: ReadonlyMap<Row, Question[]>, mixed: readonly Row[
  * across all run combinations. Then no row in order keeps a run that another run beats while the choice stays all
  * different (`settleRuns`): a row in order wants the fewest seen questions, not those seen longest ago. `front` holds
  * the runs of the front when only the back is chosen. The questions to avoid (`stale`: those of the front) are not
- * barred, so a change of run must not make the sheet repeat more of them; with none, the choice repeats nothing.
+ * barred, so a change of run must not make the sheet repeat more of them (`repeatsOf` counts); with none, the choice
+ * repeats nothing.
  */
-function chooseDifferent(rows: readonly Row[], taken: Keys, stale: Keys, seen: SeenBefore, front: Keys = NONE): Chosen | null {
+function chooseDifferent(rows: readonly Row[], taken: Keys, stale: Keys, seen: SeenBefore, front: Keys = NONE, repeatsOf?: RepeatsOf): Chosen | null {
   const ordered = rows.filter((row) => row.runs);
   const mixed = rows.filter((row) => !row.runs);
   if (ordered.length === 0) return canAllDiffer(mixed, taken) ? byRow(new Map(), assignMixed(mixed, taken, stale, seen)) : null;
   const runs = firstRuns(ordered, mixed, taken, stale, seen);
   if (!runs) return null;
   const mixedOf = (chosen: ReadonlyMap<Row, Question[]>) => assignMixed(mixed, new Set([...taken, ...keysOf(chosen)]), stale, seen);
-  settleRuns(runs, stale, seen, front, keepsDifferent(runs, mixed, taken), stale.size > 0 ? repeatsOf(mixedOf, stale) : undefined);
+  settleRuns(runs, stale, seen, front, keepsDifferent(runs, mixed, taken), stale.size > 0 ? repeatsOf?.(mixedOf) : undefined);
   return byRow(runs, mixedOf(runs));
 }
 
@@ -310,29 +320,65 @@ function mixedWithRepeats(mixed: readonly Row[], runs: ReadonlyMap<Row, Question
  * Each row in order takes a run in turn; then a row that an earlier row took a better run from gets another one, and so
  * on (`settleRuns`), so the rows after a row count too, when the side and the sheet repeat no more questions for it.
  */
-function chooseWithRepeats(rows: readonly Row[], stale: Keys, seen: SeenBefore, front: Keys = NONE): Chosen {
+function chooseWithRepeats(rows: readonly Row[], stale: Keys, seen: SeenBefore, front: Keys, repeatsOf: RepeatsOf): Chosen {
   const runs = new Map<Row, Question[]>();
   for (const row of rows.filter((r) => r.runs)) {
     const used = new Set(keysOf(runs));
     runs.set(row, runsInOrder(row, stale, seen).reduce((best, run) => (count(run, used) < count(best, used) ? run : best)));
   }
   const mixedOf = (chosen: ReadonlyMap<Row, Question[]>) => mixedWithRepeats(rows.filter((row) => !row.runs), chosen, stale, seen);
-  settleRuns(runs, stale, seen, front, () => true, repeatsOf(mixedOf, stale));
+  settleRuns(runs, stale, seen, front, () => true, repeatsOf(mixedOf));
   return byRow(runs, mixedOf(runs));
 }
 
-/** The questions of each row of a sheet, in the order of its places. All rows are of one shape. */
+/**
+ * The questions as they print: a question of the last attempt (`before`) prints in its swapped form (7 × 5 for 5 × 7)
+ * when the limits of its row allow that form, the last attempt did not print that form, and the sheet does not print it
+ * yet. A row in order keeps the order of its table. The rows go in the order of the sheet, the front first.
+ */
+function printedForms(order: readonly Row[], chosen: Chosen, before: Keys): Chosen {
+  if (before.size === 0) return chosen;
+  const onSheet = new Set(keysOf(chosen));
+  const shown: Chosen = new Map(chosen);
+  for (const row of order) {
+    const { shape, limits, runs } = row;
+    const questions = chosen.get(row);
+    if (!questions || runs || !shape.swapped) continue;
+    shown.set(row, questions.map((question) => {
+      const turned = before.has(question.key) ? shape.swapped?.(question.question, limits) : null;
+      if (!turned?.inLimits) return question;
+      const swapped = asked(shape)(turned.question);
+      if (before.has(swapped.key) || onSheet.has(swapped.key)) return question;
+      onSheet.add(swapped.key);
+      return swapped;
+    }));
+  }
+  return shown;
+}
+
+/**
+ * The questions of each row of a sheet, in the order of its places, as they print (`printedForms`). All rows are of one
+ * shape. A side after the first is chosen against the sides before it as they print: all different from their printed
+ * questions, else all different from their chosen questions (a swapped form that this side then takes keeps its front
+ * question unswapped), else avoiding their printed questions; and its rows in order count the repeats of the whole sheet
+ * as it prints. So a back row in order does not avoid a front question that prints in its swapped form.
+ */
 export function chooseQuestions(sides: readonly (readonly AskedRow[])[], seen: SeenBefore = NOTHING_SEEN): Map<AskedRow, unknown[]> {
   const rows = sides.map((side, s) => side.map((row) => prepared(row, s === 0)));
+  const before: Keys = new Set([...seen.lastOfRow.values()].flat());
+  const printed = (chosen: Chosen) => printedForms(rows.flat(), chosen, before);
   const whole = chooseDifferent(rows.flat(), NONE, NONE, seen);
-  const used = new Set<string>();
+  let earlier: Chosen = whole ?? new Map();
   const front = new Set<string>();
-  const found = whole ? [whole] : rows.map((side) => {
-    const chosen = (used.size > 0 && chooseDifferent(side, used, NONE, seen, front)) || chooseDifferent(side, NONE, used, seen, front) || chooseWithRepeats(side, used, seen, front);
-    for (const key of keysOf(chosen)) used.add(key);
+  if (!whole) for (const side of rows) {
+    const used = new Set(keysOf(printed(earlier)));
+    const chosenKeys = new Set(keysOf(earlier));
+    const repeats = repeatsAfter(earlier, printed);
+    const chosen = (used.size > 0 && (chooseDifferent(side, used, NONE, seen, front) || (!sameKeys(used, chosenKeys) && chooseDifferent(side, chosenKeys, NONE, seen, front))))
+      || chooseDifferent(side, NONE, used, seen, front, repeats) || chooseWithRepeats(side, used, seen, front, repeats);
+    earlier = new Map([...earlier, ...chosen]);
     for (const [row, questions] of chosen) if ((row as Row).runs) for (const q of questions) front.add(q.key);
-    return chosen;
-  });
+  }
   const asks = new Map(rows.flatMap((side, s) => side.map((row, i) => [row as AskedRow, sides[s][i]] as const)));
-  return new Map(found.flatMap((chosen) => [...chosen].map(([row, questions]) => [asks.get(row) ?? row, questions.map((q) => q.question)] as const)));
+  return new Map([...printed(earlier)].map(([row, questions]) => [asks.get(row) ?? row, questions.map((q) => q.question)] as const));
 }

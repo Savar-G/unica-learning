@@ -147,7 +147,8 @@ const isOrdered = ({ shape, limits, items }: SnapshotRow): boolean => (shape.ord
 /**
  * A question of the last attempt prints in its swapped form (7 × 5 for 5 × 7) when the limits of its row allow that form,
  * the last attempt did not print that form too, and the sheet does not print it yet. A row in order keeps the order of
- * its table.
+ * its table. The rows of a shape with a list have their printed forms from `chooseQuestions` already, which chooses the
+ * runs of a later side with them.
  */
 function swapRepeats(rows: Record<Side, SideRow[]>, last: LastAttempt): void {
   const before = new Set(last.items.map((item) => historyKey(item.shape, item.key)));
@@ -155,7 +156,7 @@ function swapRepeats(rows: Record<Side, SideRow[]>, last: LastAttempt): void {
   const onSheet = new Set(all.flatMap(({ row, items }) => items.map((item) => keyOf(row.shape, item.question))));
   for (const one of all) {
     const { shape, limits } = one.row;
-    if (!shape.swapped || isOrdered(one.row)) continue;
+    if (!shape.swapped || shape.list || isOrdered(one.row)) continue;
     one.items = one.items.map((item) => {
       const turned = before.has(keyOf(shape, item.question)) ? shape.swapped?.(item.question, limits) : null;
       if (!turned?.inLimits || before.has(keyOf(shape, turned.question)) || onSheet.has(keyOf(shape, turned.question))) return item;
