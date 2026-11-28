@@ -503,6 +503,64 @@ describe("rows in order that choose among the runs of their tables", () => {
       }
     }
   });
+
+  describe("do not take a run with fewer seen questions when the side or the sheet then repeats more", () => {
+    /** How many products a side (or the sheet, with no side) prints more than once. */
+    const copies = (book: BuiltBook, side?: "front" | "back") => {
+      const keys = book.items.filter((i) => i.shape === "fact.mul" && (!side || i.side === side)).map((i) => canonicalJson(i.question));
+      return keys.length - new Set(keys).size;
+    };
+    // The front prints 5 × 1 to 5 × 3 and 7 × 6. An earlier book showed 5 × 1, 3 × 1 and 3 × 2.
+    const FRONT = side([mul("front-fives", [5], 3, "mixed", { min: 1, max: 3 }), mul("front-seven", [7], 1, "mixed", { min: 6, max: 6 })]);
+    const PAST = side([mul("seen-five", [5], 1, "mixed", { min: 1, max: 1 }), mul("seen-three", [3], 2, "mixed", { min: 1, max: 2 })]);
+    const repeatOf = async (snapshot: ReturnType<typeof snapshotOf>, child: string, books: BuiltBook[]) =>
+      built({ snapshot, book: bookOf("replay", child, "current", 2, historyFromBooks(books)) } as unknown as Input);
+
+    it("keep the 3s on a back that can be all different, as the 5s would repeat the front three times more", async () => {
+      // The back's 7s must repeat 7 × 6, so only each side is all different. The 5s have one seen question and the 3s two.
+      const snapshot = snapshotOf([{ id: "past", front: PAST }, { id: "current", front: FRONT, back: side([mul("three-or-five", [3, 5], 9, "up"), mul("back-sevens", [7], 9, "up")]) }]);
+      for (const child of CHILDREN.slice(0, 4)) {
+        const book = await repeatOf(snapshot, child, [await built({ snapshot, book: bookOf("earlier", child, "past", 1) } as unknown as Input)]);
+        expect(run(book, "three-or-five").map((q) => q.a)).toEqual(Array(9).fill(3));
+        expect([copies(book, "back"), copies(book)]).toEqual([0, 1]);
+      }
+    });
+
+    /** One sum between the 7s and the 5s, so the easier 5s do not follow the 7s. */
+    const separator = { id: "separator", shape: "fact.add", items: 1, limits: { tables: [2], second: { min: 1, max: 1 }, result: { min: 0, max: 20 }, order: "mixed" } };
+    const repeatingBack = (tables: number[]) => side([
+      mul("three-or-five", tables, 8, "up", { min: 1, max: 8 }), mul("sevens-a", [7], 3, "up", { min: 6, max: 8 }),
+      mul("sevens-b", [7], 3, "up", { min: 6, max: 8 }), separator, mul("back-fives", [5], 2, "mixed", { min: 4, max: 5 }),
+    ]);
+
+    it("keep the 3s on a back that must repeat, as the 5s would repeat the back and the sheet more", async () => {
+      // The two rows of 7 × 6 to 7 × 8 repeat three questions; the 5s would also repeat 5 × 4, 5 × 5 and the front's fives.
+      const snapshot = snapshotOf([{ id: "past", front: PAST }, { id: "current", front: FRONT, back: repeatingBack([3, 5]) }]);
+      for (const child of CHILDREN.slice(0, 4)) {
+        const book = await repeatOf(snapshot, child, [await built({ snapshot, book: bookOf("earlier", child, "past", 1) } as unknown as Input)]);
+        expect(run(book, "three-or-five").map((q) => q.a)).toEqual(Array(8).fill(3));
+        expect([copies(book, "back"), copies(book)]).toEqual([3, 4]);
+      }
+    });
+
+    it("keep the 3s after a last attempt of the 2s, with the history of real books", async () => {
+      const snapshot = snapshotOf([
+        { id: "past", front: side([mul("seen-three", [3], 6, "mixed", { min: 1, max: 6 })]) },
+        { id: "current", front: FRONT, back: repeatingBack([2, 3, 5]) },
+      ]);
+      const children = Array.from({ length: 18 }, (_, i) => `review-${i + 1}`);
+      let replayed = 0;
+      for (const child of children) {
+        const first = await built({ snapshot, book: bookOf("last-book", child, "current", 1) } as unknown as Input);
+        if (run(first, "three-or-five")[0].a !== 2) continue;
+        const book = await repeatOf(snapshot, child, [await built({ snapshot, book: bookOf("older", child, "past", 1) } as unknown as Input), first]);
+        expect(run(book, "three-or-five").map((q) => q.a)).toEqual(Array(8).fill(3));
+        expect([copies(book, "back"), copies(book)]).toEqual([3, 4]);
+        replayed++;
+      }
+      expect(replayed).toBeGreaterThan(0);
+    });
+  });
 });
 
 describe("a book of word problems", () => {
