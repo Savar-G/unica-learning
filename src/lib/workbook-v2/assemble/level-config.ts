@@ -32,6 +32,15 @@ export const WORKBOOK_1_PACES: readonly { names: readonly string[]; config: Leve
   { names: ["11", "12"], config: { pagesPerDay: 4, minutesPerPage: 6, masteryPercent: 80 } },
 ];
 
+/**
+ * The mastery line of every numeric launch level (product spec 7.3: 90% at Levels 1 to 6, 80% from Level 7). Kept as
+ * data alongside WORKBOOK_1_PACES so Level 1 has its mastery line even before its Workbook 1 pace is confirmed.
+ */
+export const LEVEL_MASTERY_PERCENTS: readonly { names: readonly string[]; masteryPercent: number }[] = [
+  { names: ["1", "2", "3", "4", "5", "6"], masteryPercent: 90 },
+  { names: ["7", "8", "9", "10", "11", "12"], masteryPercent: 80 },
+];
+
 const isWhole = (n: unknown, min: number, max = Number.MAX_SAFE_INTEGER): n is number => typeof n === "number" && Number.isSafeInteger(n) && n >= min && n <= max;
 const show = (value: unknown): string => {
   if (typeof value === "bigint") return `${value}n`;

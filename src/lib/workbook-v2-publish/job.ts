@@ -112,7 +112,9 @@ export async function publishV2Book(deps: JobDeps, request: PublishRequest): Pro
   const allocated = await deps.store.allocate(planned.candidate);
   if (allocated.status === "refused") return { status: "refused", reason: "database", detail: allocated.reason };
   const allocation: Allocation = allocated;
-  if (allocated.status === "existing" && !sameBook(request, allocation)) {
+  const savedReasons = allocation.allocation.reasons;
+  if (allocated.status === "existing" && (!sameBook(request, allocation)
+    || (savedReasons !== undefined && canonicalJson(savedReasons) !== canonicalJson(planned.candidate.allocation.reasons)))) {
     return { status: "invalid", problems: ["the request key was used for another book"] };
   }
   const record = (status: "published" | "existing", ref: PublishedRef, counts: TimingRecord["counts"], pdf: number, images: number, inputBytes: number, t: Omit<TimingRecord["timingMs"], "overhead" | "total">): TimingRecord => {

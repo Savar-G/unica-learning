@@ -1,8 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
-import { beforeEach, afterEach, expect, it, vi } from "vitest";
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import type { Database } from "@/lib/database";
 import { expectedItems, firstObservation } from "@/lib/scan-observation";
-import { markingAccess, processScanMarking, readScanMarking, recoverScanMarking, scanMarkingServerReadiness } from "./scan-marking-server";
+import { setProductObserver, type ProductEvent } from "@/lib/product-monitoring";
+import { markingAccess, processScanMarking, publishMarkChange, readScanMarking, recoverScanMarking, scanMarkingServerReadiness } from "./scan-marking-server";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase-auth", () => ({ adminClient: () => null }));
@@ -15,12 +16,23 @@ vi.mock("@/lib/child-profile", () => ({ rebuildChildProfile: async () => {
   return { built: false, reason: "nothing_to_build" };
 } }));
 
+// UNI-243: the v2 sheet-result rebuild after each profile rebuild. Its own store and rules are tested in
+// src/lib/workbook-v2-results; here only the hand-off, pending tracking, and retry trigger.
+const v2 = vi.hoisted(() => ({ calls: [] as string[], fail: null as null | "throw" | "refused" | "problems" | "lookup", hasBooks: false }));
+vi.mock("@/lib/workbook-v2-results/server", () => ({ hasV2Books: async () => v2.hasBooks, rebuildV2SheetResults: async (_db: unknown, c: string) => {
+  v2.calls.push(c);
+  if (v2.fail === "lookup") return { status: "books-unavailable" };
+  if (v2.fail === "throw") throw Error("synthetic v2 store failure");
+  if (v2.fail === "refused") return { status: "refused", reason: "synthetic", problems: [] };
+  if (v2.fail === "problems") return { status: "written", marksVersion: 1, written: 0, stale: 0, problems: ["Book 1: missing config"] };
+  return { status: "no-v2-books" };
+} }));
 const parent = "11111111-1111-4111-8111-111111111111", child = "22222222-2222-4222-8222-222222222222";
 const otherParent = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const scopedEnv = (ids: string) => ({ SCAN_MARKING_ENABLED: "test-only", SCAN_MARKING_TEST_PARENT_IDS: ids });
 const expected = { ...expectedItems({ workbookId: "book", printedRevision: "print", pageId: "page", questions: [{ number: 1, package: null, teaching: null }] })[0], method: "parent" as const };
 const original = { ...firstObservation(expected, "expired-photo"), state: "parent-checked", method: "parent", result: "wrong", actor: "parent", resultVersion: 2 };
-const state = { test: false, admin: false, failed: false, wrongParent: false, photo: false, queries: [] as URL[], commands: [] as string[], mark: original, outbox: false, profilePending: false, revisionFailed: false };
+const state = { test: false, admin: false, failed: false, wrongParent: false, photo: false, queries: [] as URL[], commands: [] as string[], mark: original, outbox: false, profilePending: false, sheetResultsPending: false, revisionFailed: false };
 function persisted() {
   return { id: "item-row", expected, observation: state.mark, original_event: null, event_id: null,
     evidence_at: "2026-11-01T00:00:00.000Z", model: null, prompt: null };
@@ -52,8 +64,9 @@ const db = createClient<Database>("https://marking-launch.example.test", "synthe
     if (url.pathname.endsWith("/scan_marking_revisions")) {
       expect(url.searchParams.get("parent_id")).toBe(`eq.${parent}`);
       expect(url.searchParams.get("child_id")).toBe(`eq.${child}`);
+      const rev = state.profilePending || state.sheetResultsPending ? 2 : 1;
       return state.revisionFailed ? Response.json({ message: "read failed" }, { status: 503 })
-        : Response.json([{ revision: state.profilePending ? 2 : 1, profile_revision: 1 }]);
+        : Response.json([{ revision: rev, profile_revision: state.profilePending ? 1 : rev, sheet_results_revision: state.sheetResultsPending ? 1 : rev }]);
     }
     if (url.pathname.endsWith("/scan_marking_items")) {
       expect(url.searchParams.get("parent_id")).toBe(`eq.${parent}`); expect(url.searchParams.get("item_id")).toBe(`eq.${expected.identity.itemId}`);
@@ -77,8 +90,9 @@ const db = createClient<Database>("https://marking-launch.example.test", "synthe
   } },
 });
 beforeEach(() => {
-  Object.assign(state, { test: false, admin: false, failed: false, wrongParent: false, photo: false, queries: [], commands: [], mark: { ...original }, outbox: false, profilePending: false, revisionFailed: false });
+  Object.assign(state, { test: false, admin: false, failed: false, wrongParent: false, photo: false, queries: [], commands: [], mark: { ...original }, outbox: false, profilePending: false, sheetResultsPending: false, revisionFailed: false });
   Object.assign(profile, { failed: false, calls: 0 });
+  Object.assign(v2, { calls: [], fail: null, hasBooks: false });
   vi.stubEnv("SCAN_MARKING_ENABLED", "off");
 });
 afterEach(() => vi.unstubAllEnvs());
@@ -235,6 +249,7 @@ it("rebuilds the profile once when a closed-plan photo really publishes a commit
   // (The reader pages the outbox until an empty page, then the published mark is acknowledged.)
   expect(state.commands).toEqual(["outbox", "outbox", "ack"]);
   expect(profile.calls).toBe(1);
+  expect(v2.calls).toEqual([child]);
 });
 
 it("retries a failed closed-plan profile rebuild after its outbox was acknowledged", async () => {
@@ -264,4 +279,55 @@ it("keeps an unavailable closed-plan profile revision retryable", async () => {
   const closed = async () => ({ open: false, reason: "ended" as const });
   await expect(processScanMarking(db, parent, "33333333-3333-4333-8333-333333333333", { SCAN_MARKING_ENABLED: "families" }, closed as never)).rejects.toThrow("marking_profile_revision");
   expect(profile.calls).toBe(0);
+});
+
+describe("the v2 sheet results after a mark", () => {
+  const events: ProductEvent[] = [];
+  beforeEach(() => { events.length = 0; setProductObserver((e) => { events.push(e); }); });
+  afterEach(() => setProductObserver(null));
+
+  it("rebuilds them after our team's mark change, from the same published set", async () => {
+    expect(await publishMarkChange(db, parent, child)).toBe(false);
+    expect(state.commands).toEqual(["outbox"]);
+    expect([profile.calls, v2.calls]).toEqual([1, [child]]);
+    expect(events).toEqual([]);
+  });
+
+  it.each(["throw", "refused", "problems"] as const)("a v2 rebuild that fails (%s) runs profile rebuild, reports recoveryPending=true, and logs sheet_results failure", async (fail) => {
+    v2.fail = fail;
+    expect(await publishMarkChange(db, parent, child)).toBe(true);
+    expect(profile.calls).toBe(1);
+    expect(events).toEqual([{ code: "scan.recovery_failed", attributes: { step: "sheet_results" } }]);
+  });
+
+  it("keeps a v1 marking result when the v2 book lookup fails", async () => {
+    v2.fail = "lookup";
+    expect(await publishMarkChange(db, parent, child)).toBe(false);
+    expect(events).toEqual([{ code: "scan.recovery_failed", attributes: { step: "sheet_results_lookup" } }]);
+  });
+
+  it("does not enqueue a closed-plan v1 child whose profile is current", async () => {
+    state.photo = true; state.sheetResultsPending = true;
+    const deferRebuild = vi.fn();
+    const closed = async () => ({ open: false, reason: "ended" as const });
+    expect(await processScanMarking(db, parent, "33333333-3333-4333-8333-333333333333", { SCAN_MARKING_ENABLED: "families" }, closed as never, { deferRebuild })).toBe("off");
+    expect(deferRebuild).not.toHaveBeenCalled();
+    expect(profile.calls).toBe(0);
+  });
+
+  it("defers an outstanding closed-plan v2 sheet-results revision even when profile_revision is current", async () => {
+    state.photo = true; state.sheetResultsPending = true; v2.hasBooks = true;
+    const deferRebuild = vi.fn();
+    const closed = async () => ({ open: false, reason: "ended" as const });
+    expect(await processScanMarking(db, parent, "33333333-3333-4333-8333-333333333333", { SCAN_MARKING_ENABLED: "families" }, closed as never, { deferRebuild })).toBe("off");
+    expect(deferRebuild).toHaveBeenCalledWith(child);
+  });
+
+  it("rebuilds them once per child in the recovery run", async () => {
+    state.test = true;
+    await recoverScanMarking(db, { SCAN_MARKING_ENABLED: "test-only" }, (async () => ({ open: true })) as never, {
+      mark: async (_db, _parent, _photo, _env, _plan, options) => { options?.deferRebuild?.(child); options?.deferRebuild?.(child); return "finished"; },
+    });
+    expect([profile.calls, v2.calls]).toEqual([1, [child]]);
+  });
 });
