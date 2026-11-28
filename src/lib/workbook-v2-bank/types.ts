@@ -128,11 +128,109 @@ export interface LevelWrite {
 
 export type WriteResult = { ok: true; version: string } | { ok: false; problem: string };
 
+/** The kinds of an item that has a revision, and so needs an approval of that revision before a freeze. */
+export const REVIEW_KINDS = ["sheet", "question", "scenario", "region_pack"] as const;
+export type ReviewKind = (typeof REVIEW_KINDS)[number];
+export const REVIEW_DECISIONS = ["approved", "rejected"] as const;
+export type ReviewDecision = (typeof REVIEW_DECISIONS)[number];
+
+/** A review of one exact revision of one item (bank_reviews). The latest review of a revision decides. */
+export interface NewReview {
+  level_id: string;
+  item_kind: ReviewKind;
+  item_key: string;
+  revision: number;
+  reviewer: string;
+  decision: ReviewDecision;
+  comment: string | null;
+}
+export interface ReviewRow extends NewReview {
+  /** Rises with each review: the latest review of a revision has the largest id. */
+  id: number;
+  created_at: string;
+}
+export type ReviewResult = { ok: true; review: ReviewRow } | { ok: false; problem: string };
+
+/** The kinds of a snapshot item: the level header, then the topics, sheets, questions, scenarios and region packs. */
+export const SNAPSHOT_ITEM_KINDS = ["level", "topic", "sheet", "question", "scenario", "region_pack"] as const;
+export type SnapshotItemKind = (typeof SNAPSHOT_ITEM_KINDS)[number];
+
+/** One frozen item (bank_snapshot_items). `hash` is the SHA-256 of the canonical JSON of `content`. */
+export interface SnapshotItemRow {
+  kind: SnapshotItemKind;
+  key: string;
+  position: number;
+  content: JsonObject;
+  hash: string;
+}
+
+/** One line of a snapshot's manifest: an item without its content. The manifest hash covers the whole list. */
+export type SnapshotManifestEntry = Pick<SnapshotItemRow, "kind" | "key" | "position" | "hash">;
+
+/** One frozen level (bank_snapshots). `name` is the snapshot id inside the content, such as `level-3-v2`. */
+export interface SnapshotMeta {
+  id: string;
+  level_id: string;
+  version: number;
+  name: string;
+  /** The hash of the whole snapshot, as validateSnapshot and buildBook compute it. */
+  content_hash: string;
+  /** The hash of the list of items (kind, key, position, hash). */
+  manifest_hash: string;
+  min_engine_version: string;
+  item_count: number;
+  frozen_by: string;
+  frozen_at: string;
+}
+
+/** One write of a snapshot: refused when the level changed since `expected`, or `version` is not the next one. */
+export interface SnapshotWrite {
+  levelId: string;
+  expected: string;
+  version: number;
+  name: string;
+  frozenBy: string;
+  minEngineVersion: string;
+  contentHash: string;
+  manifestHash: string;
+  items: SnapshotItemRow[];
+}
+export type SnapshotWriteResult = { ok: true; snapshotId: string; version: number } | { ok: false; problem: string };
+
 export interface BankStore {
   /** Every row of the level, read in pages so that no PostgREST row cap cuts it short. */
   readLevel(levelId: string): Promise<LevelRows>;
-  /** Writes in one step, or nothing: refuses a stale `expected` and a sheet id that another level owns. */
+  /**
+   * Writes in one step, or nothing: refuses a stale `expected`, a sheet id that another level owns, and a revised item
+   * (sheet, question, scenario, region pack) whose revision goes down, or that changes without a higher revision, so an
+   * approval never covers content that was not reviewed.
+   */
   writeLevel(write: LevelWrite): Promise<WriteResult>;
   /** The level as a draft, from its rows that are not retired; null when there is no such level. */
   exportLevelDraft(levelId: string): Promise<Record<string, unknown> | null>;
+  /** Every review of the level, the oldest first. */
+  readReviews(levelId: string): Promise<ReviewRow[]>;
+  /**
+   * Adds one review, under the lock of the level that writes take. Refuses a review of an item that the level does not
+   * have, that is retired, or that is at another revision. Reviews are never changed or deleted.
+   */
+  addReview(review: NewReview): Promise<ReviewResult>;
+  /** The snapshots of the level, the oldest version first. */
+  readSnapshots(levelId: string): Promise<SnapshotMeta[]>;
+  /** `signal` stops the reads of a caller that no longer waits (the snapshot read check passes its deadline). */
+  readSnapshotMeta(snapshotId: string, signal?: AbortSignal): Promise<SnapshotMeta | null>;
+  /**
+   * The items of a snapshot, in pages past the PostgREST row cap: all of them, or with `sheetIds` the header, topics,
+   * questions, scenarios and region packs and only those sheets.
+   */
+  readSnapshotItems(snapshotId: string, sheetIds?: readonly string[], signal?: AbortSignal): Promise<SnapshotItemRow[]>;
+  /** The manifest of a snapshot: every item without its content, in pages. A book's part is checked against it. */
+  readSnapshotManifest(snapshotId: string, signal?: AbortSignal): Promise<SnapshotManifestEntry[]>;
+  /**
+   * Writes a snapshot and all its items in one step, or nothing (bank_freeze_level). Refuses a stale `expected`, a version
+   * that is not the next one, an item not approved at its current revision, items that are not exactly the items of the
+   * working copy (frozenItems), and an item, manifest or content hash that is not the hash of the canonical JSON. Only
+   * this write adds snapshot rows, and no item can be added to a snapshot later.
+   */
+  writeSnapshot(write: SnapshotWrite): Promise<SnapshotWriteResult>;
 }

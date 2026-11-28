@@ -751,6 +751,50 @@ export type Database = {
           },
         ]
       }
+      bank_reviews: {
+        Row: {
+          comment: string | null
+          created_at: string
+          decision: string
+          id: number
+          item_key: string
+          item_kind: string
+          level_id: string
+          reviewer: string
+          revision: number
+        }
+        Insert: {
+          comment?: string | null
+          created_at?: string
+          decision: string
+          id?: never
+          item_key: string
+          item_kind: string
+          level_id: string
+          reviewer: string
+          revision: number
+        }
+        Update: {
+          comment?: string | null
+          created_at?: string
+          decision?: string
+          id?: never
+          item_key?: string
+          item_kind?: string
+          level_id?: string
+          reviewer?: string
+          revision?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_reviews_level_id_fkey"
+            columns: ["level_id"]
+            isOneToOne: false
+            referencedRelation: "bank_levels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bank_scenarios: {
         Row: {
           basis: Json | null
@@ -854,6 +898,88 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "bank_topics"
             referencedColumns: ["level_id", "id"]
+          },
+        ]
+      }
+      bank_snapshot_items: {
+        Row: {
+          content: Json
+          hash: string
+          key: string
+          kind: string
+          position: number
+          snapshot_id: string
+        }
+        Insert: {
+          content: Json
+          hash: string
+          key: string
+          kind: string
+          position: number
+          snapshot_id: string
+        }
+        Update: {
+          content?: Json
+          hash?: string
+          key?: string
+          kind?: string
+          position?: number
+          snapshot_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_snapshot_items_snapshot_id_fkey"
+            columns: ["snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "bank_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bank_snapshots: {
+        Row: {
+          content_hash: string
+          frozen_at: string
+          frozen_by: string
+          id: string
+          item_count: number
+          level_id: string
+          manifest_hash: string
+          min_engine_version: string
+          name: string
+          version: number
+        }
+        Insert: {
+          content_hash: string
+          frozen_at?: string
+          frozen_by: string
+          id?: string
+          item_count: number
+          level_id: string
+          manifest_hash: string
+          min_engine_version: string
+          name: string
+          version: number
+        }
+        Update: {
+          content_hash?: string
+          frozen_at?: string
+          frozen_by?: string
+          id?: string
+          item_count?: number
+          level_id?: string
+          manifest_hash?: string
+          min_engine_version?: string
+          name?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_snapshots_level_id_fkey"
+            columns: ["level_id"]
+            isOneToOne: false
+            referencedRelation: "bank_levels"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -10692,6 +10818,18 @@ export type Database = {
       assert_plan_workbook_allowed: {
         Args: { p_child: string; p_number: number; p_shipping: boolean }
         Returns: undefined
+      }
+      bank_canonical_json: { Args: { p_value: Json }; Returns: string }
+      bank_freeze_level: { Args: { p_freeze: Json }; Returns: Json }
+      bank_json_key_index: { Args: { p_key: string }; Returns: number }
+      bank_json_utf16_sort_key: { Args: { p_key: string }; Returns: string }
+      bank_live_items: {
+        Args: { p_level_id: string }
+        Returns: {
+          key: string
+          kind: string
+          revision: number
+        }[]
       }
       bank_write_level: { Args: { p_write: Json }; Returns: Json }
       beat_workbook_worker: {

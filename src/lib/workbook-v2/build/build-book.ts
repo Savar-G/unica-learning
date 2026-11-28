@@ -17,8 +17,13 @@ import { seenPhrasingIds, sheetHistory } from "./book-history";
 import { readBookRequest } from "./book-input";
 import { repeatNotices, sheetItems } from "./items";
 
-/** Both parts are data from a file or a store; the build reads and checks them. */
-export interface BuildInput { snapshot: unknown; book: unknown }
+/**
+ * Both parts are data from a file or a store; the build reads and checks them. `whole` is given only when `snapshot` is
+ * the part of a stored snapshot that one book needs, read and checked item by item against that snapshot: it is the id
+ * and hash of the whole snapshot, so the book records the same snapshot as a book built from the whole file, and
+ * `partHash` is the hash of the part that was checked. Any other part (a changed instruction, say) is refused.
+ */
+export interface BuildInput { snapshot: unknown; book: unknown; whole?: { id: string; hash: string; partHash: string } }
 
 /** What made a book. A replay compares it. */
 export type BookRecord = Renderer["identity"] & {
@@ -96,6 +101,10 @@ export function planBook(input: BuildInput, shapes: ShapeLibrary = SHAPES, templ
   if (!request.ok) return request;
   const book = readBookRequest(request.value, bank.snapshot);
   if (Array.isArray(book)) return stop(book);
+  const { whole } = input;
+  if (whole && (whole.id !== bank.snapshot.id || !/^[0-9a-f]{64}$/.test(whole.hash))) return stop([`The part of snapshot "${bank.snapshot.id}" names another whole snapshot.`]);
+  if (whole && whole.partHash !== bank.hash) return stop([`The part of snapshot "${bank.snapshot.id}" is not the part that was read and checked against it.`]);
+  const snapshot = whole ? { id: whole.id, hash: whole.hash } : { id: bank.snapshot.id, hash: bank.hash };
 
   const { stories } = bank.snapshot;
   const { history } = book;
@@ -107,8 +116,8 @@ export function planBook(input: BuildInput, shapes: ShapeLibrary = SHAPES, templ
   const layout = planPages(sheets, shapes);
   if (!layout.ok) return layout;
   const items = sheets.flatMap((s) => s.items);
-  const inputHash = sha256(canonicalJson({ snapshot: bank.hash, book: request.value }));
-  return { ok: true, bookId: book.bookId, snapshot: { id: bank.snapshot.id, hash: bank.hash }, inputHash, items, pages: layout.pages, notices: sheets.flatMap((s) => repeatNotices(s.sheet, s.items)) };
+  const inputHash = sha256(canonicalJson({ snapshot: snapshot.hash, book: request.value }));
+  return { ok: true, bookId: book.bookId, snapshot, inputHash, items, pages: layout.pages, notices: sheets.flatMap((s) => repeatNotices(s.sheet, s.items)) };
 }
 
 export async function buildBook(input: BuildInput, renderer: Renderer, shapes: ShapeLibrary = SHAPES): Promise<BuildResult> {

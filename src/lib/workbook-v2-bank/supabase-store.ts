@@ -3,6 +3,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/database";
 import { draftFromRows } from "./draft";
+import { supabaseSnapshotStore } from "./supabase-snapshots";
 import type { BankStore, LevelRows, LevelWrite, WriteResult } from "./types";
 
 /** Rows of one read; PostgREST never gives more than 1,000, whatever the range asks. */
@@ -10,10 +11,11 @@ export const BANK_PAGE_ROWS = 1000;
 
 type Page<T> = PromiseLike<{ data: T[] | null; error: { message: string } | null }>;
 
-/** Every row, one range after another, until a page comes back short. */
-async function allPages<T>(what: string, page: (from: number, to: number) => Page<T>): Promise<T[]> {
+/** Every row, one range after another, until a page comes back short. An aborted `signal` stops before the next page. */
+async function allPages<T>(what: string, page: (from: number, to: number) => Page<T>, signal?: AbortSignal): Promise<T[]> {
   const rows: T[] = [];
   for (let from = 0; ; from += BANK_PAGE_ROWS) {
+    signal?.throwIfAborted();
     const { data, error } = await page(from, from + BANK_PAGE_ROWS - 1);
     if (error) throw new Error(`bank read ${what}: ${error.message}`);
     rows.push(...(data ?? []));
@@ -72,5 +74,5 @@ export function supabaseBankStore(db: SupabaseClient<Database>): BankStore {
     return { ok: true, version };
   };
 
-  return { readLevel, writeLevel, exportLevelDraft: async (levelId) => draftFromRows(await readLevel(levelId)) };
+  return { readLevel, writeLevel, exportLevelDraft: async (levelId) => draftFromRows(await readLevel(levelId)), ...supabaseSnapshotStore(db, allPages) };
 }
